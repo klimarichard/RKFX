@@ -3,6 +3,7 @@
 #include "ChorusEngine.h"
 #include "CompressorEngine.h"
 #include "DelayEngine.h"
+#include "DistortEngine.h"
 #include "DoubleEngine.h"
 #include "FilterEngine.h"
 #include "FlangeEngine.h"
@@ -261,6 +262,22 @@ int main (int argc, char** argv)
                   s.character = SaturateEngine::Character::transformer;
                   s.oversampling = 4;
                   s.tone = 0.3f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKDistort", "default (overdrive, 4x)", []
+          {
+              return makeEngine<DistortEngine> ([] (DistortEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKDistort", "fuzz, tight, mid, 4x12 cab, 4x", []
+          {
+              return makeEngine<DistortEngine> ([] (DistortEngine& e)
+              {
+                  DistortEngine::Settings s;
+                  s.type = DistortEngine::Type::fuzz;
+                  s.tightHz = 120.0f;
+                  s.midDb = 4.0f;
+                  s.cab = DistortEngine::Cab::large;
                   e.setSettings (s);
               });
           } },

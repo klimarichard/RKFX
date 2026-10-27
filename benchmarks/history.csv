@@ -148,3 +148,27 @@ date,plugin,case,us_per_64_block,percent_realtime
 20261028T000510.967+0100,RKPhase,"12 stages, envelope",3.744,0.281
 20261028T000511.137+0100,RKDelay,"default (digital, stereo)",3.374,0.253
 20261028T000511.253+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.335,0.175
+20261028T001756.275+0100,RKFreqShift,"default (1 shift)",1.276,0.096
+20261028T001756.454+0100,RKFreqShift,"4 shifts, feedback, spread",3.539,0.265
+20261028T001756.495+0100,RKFilter,"default (LP 12, static)",0.821,0.062
+20261028T001756.619+0100,RKFilter,"48 dB, envelope + LFO",2.481,0.186
+20261028T001756.636+0100,RKParaEQ,"default (transparent)",0.342,0.026
+20261028T001756.725+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.772,0.133
+20261028T001756.753+0100,RKGraphEQ,"default (transparent)",0.562,0.042
+20261028T001756.917+0100,RKGraphEQ,"31 bands, all active",3.265,0.245
+20261028T001756.954+0100,RKCompress,"default (RMS, internal)",0.747,0.056
+20261028T001757.013+0100,RKCompress,"peak, auto release, sidechain HPF",1.168,0.088
+20261028T001757.045+0100,RKGate,"default (gate, linked)",0.649,0.049
+20261028T001757.087+0100,RKGate,"expander, unlinked, key filters",0.837,0.063
+20261028T001757.104+0100,RKTremolo,"default (classic sine)",0.342,0.026
+20261028T001757.125+0100,RKTremolo,"harmonic, square, stereo phase",0.419,0.031
+20261028T001757.173+0100,RKChorus,"default (1 voice)",0.961,0.072
+20261028T001757.321+0100,RKChorus,"4 voices, tone, width",2.942,0.221
+20261028T001757.337+0100,RKDouble,"default",0.317,0.024
+20261028T001757.428+0100,RKFlange,"default",1.829,0.137
+20261028T001757.557+0100,RKPhase,"default (4 stages)",2.572,0.193
+20261028T001757.735+0100,RKPhase,"12 stages, envelope",3.558,0.267
+20261028T001757.894+0100,RKDelay,"default (digital, stereo)",3.164,0.237
+20261028T001758.003+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.179,0.163
+20261028T001758.087+0100,RKSaturate,"default (tape, 2x)",1.677,0.126
+20261028T001758.212+0100,RKSaturate,"transformer, 4x",2.499,0.187

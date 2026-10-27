@@ -11,6 +11,7 @@
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
 #include "PhaseEngine.h"
+#include "SaturateEngine.h"
 #include "TremoloEngine.h"
 
 #include <cstdio>
@@ -245,6 +246,21 @@ int main (int argc, char** argv)
                   s.stereo = DelayEngine::Stereo::pingPong;
                   s.modDepth = 0.3f;
                   s.duck = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKSaturate", "default (tape, 2x)", []
+          {
+              return makeEngine<SaturateEngine> ([] (SaturateEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKSaturate", "transformer, 4x", []
+          {
+              return makeEngine<SaturateEngine> ([] (SaturateEngine& e)
+              {
+                  SaturateEngine::Settings s;
+                  s.character = SaturateEngine::Character::transformer;
+                  s.oversampling = 4;
+                  s.tone = 0.3f;
                   e.setSettings (s);
               });
           } },

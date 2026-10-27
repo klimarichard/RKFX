@@ -115,3 +115,25 @@ target_link_libraries(RKFXBench
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# Factory preset check: every plugins/<Name>/presets/*.json against that
+# plugin's real parameters. Needs the parameter classes, so it links
+# juce_audio_processors (the DSP tests above deliberately don't).
+juce_add_console_app(RKFXPresetTests PRODUCT_NAME "RKFXPresetTests")
+target_sources(RKFXPresetTests PRIVATE
+    PresetTests.cpp
+    ${PROJECT_SOURCE_DIR}/core/plugin/ParamBuilder.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ/GraphEQEngine.cpp
+)
+target_compile_definitions(RKFXPresetTests PRIVATE
+    JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(RKFXPresetTests
+    PRIVATE
+        rkfx_core_dsp
+        juce::juce_audio_processors
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)

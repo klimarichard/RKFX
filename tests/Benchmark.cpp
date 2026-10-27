@@ -6,6 +6,7 @@
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
+#include "TremoloEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -43,7 +44,7 @@ namespace
         {
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
-            else if constexpr (std::is_same_v<Engine, FilterEngine>)
+            else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -169,6 +170,21 @@ int main (int argc, char** argv)
                   s.link = false;
                   s.keyHighPassHz = 100.0f;
                   s.keyLowPassHz = 5000.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKTremolo", "default (classic sine)", []
+          {
+              return makeEngine<TremoloEngine> ([] (TremoloEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKTremolo", "harmonic, square, stereo phase", []
+          {
+              return makeEngine<TremoloEngine> ([] (TremoloEngine& e)
+              {
+                  TremoloEngine::Settings s;
+                  s.mode = TremoloEngine::Mode::harmonic;
+                  s.shape = rkfx::LFO::Shape::square;
+                  s.phaseDeg = 90.0f;
                   e.setSettings (s);
               });
           } },

@@ -41,6 +41,7 @@ namespace
 
     enum MenuCommands
     {
+        factoryBase = 50000,      // + factory preset index
         resetCommand = 100000,
         revealCommand,
         libraryCommand
@@ -223,10 +224,23 @@ void EditorBase::showPresetMenu()
 
     auto files = std::make_shared<std::vector<juce::File>>();
     juce::PopupMenu menu;
+
+    // Factory presets first, in their own sub-menu (read-only).
+    const auto& factory = proc.getFactoryPresets();
+    if (! factory.empty())
+    {
+        juce::PopupMenu factoryMenu;
+        for (int i = 0; i < (int) factory.size(); ++i)
+            factoryMenu.addItem (factoryBase + i, factory[(size_t) i].name, true,
+                                 proc.getPresetFile() == juce::File() && proc.getPresetName() == factory[(size_t) i].name);
+        menu.addSubMenu ("Factory", factoryMenu);
+        menu.addSeparator();
+    }
+
     addPresetItems (menu, folder, *files, proc.getPresetFile());
 
     if (files->empty())
-        menu.addItem (-1, "No presets yet", false);
+        menu.addItem (-1, "No presets of your own yet", false);
 
     menu.addSeparator();
     menu.addItem (resetCommand, "Reset to defaults");
@@ -254,6 +268,11 @@ void EditorBase::showPresetMenu()
                             else if (result == libraryCommand)
                             {
                                 self.chooseLibraryFolder();
+                            }
+                            else if (result >= factoryBase && result < resetCommand)
+                            {
+                                const auto r = self.proc.loadFactoryPreset (result - factoryBase);
+                                self.showNote (r.message, ! r.ok);
                             }
                             else if (result > 0 && result <= (int) files->size())
                             {

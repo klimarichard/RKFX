@@ -49,6 +49,8 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
         }
     }
 
+    factoryPresets = rkfx::getFactoryPresets();
+
     // New instances start from the user's Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile (config.name);
     if (defaultFile.existsAsFile())
@@ -338,6 +340,22 @@ ProcessorBase::PresetResult ProcessorBase::loadPreset (const juce::File& file)
     applyValues (r.values);
     setPresetState (r.name.isNotEmpty() ? r.name : file.getFileNameWithoutExtension(), file, false);
 
+    return { true, r.notes.joinIntoString ("; ") };
+}
+
+ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
+{
+    if (index < 0 || index >= (int) factoryPresets.size())
+        return { false, "No such factory preset" };
+
+    const auto& preset = factoryPresets[(size_t) index];
+    const auto r = readPreset (preset.json, presetInfos);
+    if (! r.ok)
+        return { false, r.error };
+
+    applyValues (r.values);
+    // No file: Save on a factory preset asks for a new name (factory presets stay read-only).
+    setPresetState (r.name.isNotEmpty() ? r.name : preset.name, {}, false);
     return { true, r.notes.joinIntoString ("; ") };
 }
 

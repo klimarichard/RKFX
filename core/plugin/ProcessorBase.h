@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "FactoryPresets.h"
 #include "OutputStage.h"
 #include "dsp/TempoSync.h"
 #include "ParamBuilder.h"
@@ -65,6 +66,10 @@ public:
     };
 
     PresetResult loadPreset (const juce::File& file);
+
+    /** The built-in presets (read-only; Save on one of them works like Save as). */
+    const std::vector<FactoryPreset>& getFactoryPresets() const noexcept { return factoryPresets; }
+    PresetResult loadFactoryPreset (int index);
     PresetResult savePreset (const juce::File& file);
     void resetToDefaults();
 
@@ -134,6 +139,7 @@ protected:
 private:
     PluginConfig config;
     PresetLibrary library;
+    std::vector<FactoryPreset> factoryPresets;
 
     std::vector<juce::RangedAudioParameter*> allParams;      // in host order
     std::vector<ParamInfo> stateInfos;                       // every parameter (host state)

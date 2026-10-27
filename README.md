@@ -28,11 +28,11 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 | RKSwell | Auto swell | Planned |
 | RKSaturate | Saturation | Planned |
 | RKDistort | Distortion | Planned |
-| RKChorus | Chorus | Planned |
-| RKDouble | Artificial double tracking | Planned |
-| RKFlange | Flanger | Planned |
-| RKPhase | Phaser | Planned |
-| RKTremolo | Tremolo | Planned |
+| [RKChorus](docs/manuals/RKChorus.md) | Chorus, 1 to 4 voices per side | Available |
+| [RKDouble](docs/manuals/RKDouble.md) | Artificial double tracking with random drift | Available |
+| [RKFlange](docs/manuals/RKFlange.md) | Flanger with positive and negative feedback | Available |
+| [RKPhase](docs/manuals/RKPhase.md) | Phaser, 2 to 12 stages, LFO and envelope | Available |
+| [RKTremolo](docs/manuals/RKTremolo.md) | Tremolo, auto-pan and harmonic tremolo | Available |
 | RKRotary | Rotary speaker | Planned |
 | RKVibrato | Vibrato | Planned |
 | RKDelay | Delay | Planned |
@@ -68,7 +68,8 @@ Builds install the AU and VST3 into `~/Library/Audio/Plug-Ins` automatically. Re
 ctest --test-dir build --output-on-failure                     # DSP and preset tests
 ./build/tests/RKFXBench_artefacts/Release/RKFXBench            # CPU benchmark, 48 kHz / 64 samples
 auval -v aufx Fsh1 RKMu                                        # AU validation (per plugin code:
-                                                               #   Fsh1, Flt1, Peq1, Geq1, Cmp1, Gat1, ...)
+                                                               #   Fsh1, Flt1, Peq1, Geq1, Cmp1, Gat1,
+                                                               #   Trm1, Chr1, Dbl1, Flg1, Phs1, ...)
 /Applications/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 \
     --validate-in-process ~/Library/Audio/Plug-Ins/VST3/RKFreqShift.vst3
 ```
@@ -81,7 +82,8 @@ Every release build of every plugin must pass the tests, auval and [pluginval](h
 CMakeLists.txt     top level: fetches JUCE, adds core, plugins and tests
 core/              shared code for every plugin
   dsp/             filters (state-variable, cascades, matched bell/shelf),
-                   Hilbert transformer, oscillators, LFO, envelope follower,
+                   crossover, tone tilt, Hilbert transformer, oscillators, LFO,
+                   random modulator, envelope follower, modulated delay line,
                    dynamics (level detection, gain computer, gain smoothing)
   safety/          smoothing, DC blocker, NaN guard, soft clipper
   gui/             look and feel, knob, fader, switches, response curve,

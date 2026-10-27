@@ -22,7 +22,7 @@ public:
         reset();
     }
 
-    void reset() noexcept { s1 = s2 = 0.0f; }
+    void reset() noexcept { s1 = s2 = bp = 0.0f; }
 
     /** @param resonanceQ  0.7071 = Butterworth. Cutoff is clamped below Nyquist. */
     void setCutoff (float hz, float resonanceQ = 0.70710678f) noexcept
@@ -56,10 +56,14 @@ public:
         return k * process (x, Type::bandpass);
     }
 
+    /** The band-pass output of the last process() call (for filters that
+        need more than one output of the same update). */
+    float lastBandpass() const noexcept { return bp; }
+
     float process (float x, Type type) noexcept
     {
         const auto hp = (x - (k + g) * s1 - s2) * a1;
-        const auto bp = g * hp + s1;
+        bp = g * hp + s1;
         const auto lp = g * bp + s2;
         s1 = g * hp + bp;
         s2 = g * bp + lp;
@@ -77,7 +81,7 @@ private:
     double sampleRate = 48000.0;
     float cutoffHz = 1000.0f, q = 0.70710678f;
     float g = 0.0f, k = 1.4142f, a1 = 0.0f;
-    float s1 = 0.0f, s2 = 0.0f;
+    float s1 = 0.0f, s2 = 0.0f, bp = 0.0f;
 };
 
 } // namespace rkfx

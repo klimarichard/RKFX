@@ -10,10 +10,14 @@ target_sources(RKFXTests PRIVATE
     PresetFormatTests.cpp
     PresetLibraryTests.cpp
     FreqShiftTests.cpp
+    FilterTests.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
 )
 
-target_include_directories(RKFXTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift)
+target_include_directories(RKFXTests PRIVATE
+    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
+    ${PROJECT_SOURCE_DIR}/plugins/RKFilter)
 
 target_compile_definitions(RKFXTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 
@@ -35,8 +39,11 @@ juce_add_console_app(RKFXBench PRODUCT_NAME "RKFXBench")
 target_sources(RKFXBench PRIVATE
     Benchmark.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
 )
-target_include_directories(RKFXBench PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift)
+target_include_directories(RKFXBench PRIVATE
+    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
+    ${PROJECT_SOURCE_DIR}/plugins/RKFilter)
 target_compile_definitions(RKFXBench PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(RKFXBench
     PRIVATE

@@ -2,6 +2,7 @@
 
 #include "FilterEngine.h"
 #include "FreqShiftEngine.h"
+#include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
 
 #include <cstdio>
@@ -117,6 +118,21 @@ int main (int argc, char** argv)
                   s.lowPass = { true, 15000.0f, 4 };
                   for (auto& b : s.bands)
                       b.gainDb = 4.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKGraphEQ", "default (transparent)", []
+          {
+              return makeEngine<GraphEQEngine> ([] (GraphEQEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKGraphEQ", "31 bands, all active", []
+          {
+              return makeEngine<GraphEQEngine> ([] (GraphEQEngine& e)
+              {
+                  GraphEQEngine::Settings s;
+                  s.mode = GraphEQEngine::Mode::thirtyOne;
+                  for (auto& g : s.gainsDb[2])
+                      g = 3.0f;
                   e.setSettings (s);
               });
           } },

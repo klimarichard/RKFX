@@ -11,3 +11,11 @@ date,plugin,case,us_per_64_block,percent_realtime
 20261027T222915.732+0100,RKFilter,"48 dB, envelope + LFO",2.343,0.176
 20261027T222915.749+0100,RKParaEQ,"default (transparent)",0.342,0.026
 20261027T222915.833+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.671,0.125
+20261027T224655.972+0100,RKFreqShift,"default (1 shift)",1.367,0.103
+20261027T224656.148+0100,RKFreqShift,"4 shifts, feedback, spread",3.498,0.262
+20261027T224656.188+0100,RKFilter,"default (LP 12, static)",0.798,0.060
+20261027T224656.305+0100,RKFilter,"48 dB, envelope + LFO",2.346,0.176
+20261027T224656.323+0100,RKParaEQ,"default (transparent)",0.364,0.027
+20261027T224656.406+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.649,0.124
+20261027T224656.431+0100,RKGraphEQ,"default (transparent)",0.494,0.037
+20261027T224656.593+0100,RKGraphEQ,"31 bands, all active",3.244,0.243

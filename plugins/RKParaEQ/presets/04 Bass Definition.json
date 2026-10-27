@@ -1,0 +1,14 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Bass Definition",
+  "params": {
+    "hp_on": true,
+    "hp_freq": 35,
+    "mid_freq": 800,
+    "mid_gain": 3,
+    "mid_q": 1.2,
+    "lp_on": true,
+    "lp_freq": 8000
+  }
+}

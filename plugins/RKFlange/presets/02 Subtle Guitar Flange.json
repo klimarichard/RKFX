@@ -1,0 +1,12 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Subtle Guitar Flange",
+  "params": {
+    "rate": 0.4,
+    "depth": 50,
+    "manual": 1.5,
+    "feedback": 30,
+    "mix": 40
+  }
+}

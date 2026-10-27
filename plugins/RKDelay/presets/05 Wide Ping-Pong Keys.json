@@ -1,0 +1,13 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Wide Ping-Pong Keys",
+  "params": {
+    "stereo": "pingpong",
+    "sync": true,
+    "division": "1/4",
+    "feedback": 40,
+    "highcut": 7000,
+    "mix": 25
+  }
+}

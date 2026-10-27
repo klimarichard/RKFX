@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Electric Piano Swirl",
+  "params": {
+    "center": 1000,
+    "feedback": 40,
+    "rate": 0.6,
+    "phase": 120
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Electric Piano Shimmer",
+  "params": {
+    "voices": 2,
+    "rate": 1.2,
+    "delay": 8,
+    "tone": 20,
+    "mix": 45
+  }
+}

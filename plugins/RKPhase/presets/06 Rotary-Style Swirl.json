@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Rotary-Style Swirl",
+  "params": {
+    "center": 1200,
+    "feedback": 10,
+    "depth": 50,
+    "rate": 5,
+    "phase": 180
+  }
+}

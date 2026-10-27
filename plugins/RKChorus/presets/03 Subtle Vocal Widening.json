@@ -1,0 +1,12 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Subtle Vocal Widening",
+  "params": {
+    "voices": 2,
+    "rate": 0.5,
+    "depth": 20,
+    "delay": 14,
+    "mix": 25
+  }
+}

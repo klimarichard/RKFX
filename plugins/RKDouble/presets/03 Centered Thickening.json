@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDouble",
+  "version": 1,
+  "name": "Centered Thickening",
+  "params": {
+    "delay": 18,
+    "drift": 35,
+    "spread": 0,
+    "tone": -30,
+    "level": -8
+  }
+}

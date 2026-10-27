@@ -1,0 +1,13 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Ambient Wash",
+  "params": {
+    "mode": "tape",
+    "stereo": "pingpong",
+    "time": 600,
+    "feedback": 95,
+    "mod_depth": 40,
+    "mix": 50
+  }
+}

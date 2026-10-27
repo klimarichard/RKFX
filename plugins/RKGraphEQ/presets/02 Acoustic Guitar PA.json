@@ -1,0 +1,12 @@
+{
+  "plugin": "RKGraphEQ",
+  "version": 1,
+  "name": "Acoustic Guitar PA",
+  "params": {
+    "bands": "15",
+    "g15_b04": -4,
+    "g15_b06": -2,
+    "g15_b11": 2,
+    "g15_b14": 2
+  }
+}

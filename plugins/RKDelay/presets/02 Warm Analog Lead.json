@@ -1,0 +1,13 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Warm Analog Lead",
+  "params": {
+    "mode": "analog",
+    "time": 420,
+    "feedback": 45,
+    "mod_depth": 20,
+    "duck": 50,
+    "mix": 35
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "plugin": "RKGraphEQ",
+  "version": 1,
+  "name": "PA Smile Curve",
+  "params": {
+    "g10_b02": 3,
+    "g10_b03": 2,
+    "g10_b05": -2,
+    "g10_b06": -2,
+    "g10_b09": 2,
+    "g10_b10": 3
+  }
+}

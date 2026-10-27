@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Electric Piano Auto-Pan",
+  "params": {
+    "depth": 70,
+    "rate": 3,
+    "phase": 180
+  }
+}

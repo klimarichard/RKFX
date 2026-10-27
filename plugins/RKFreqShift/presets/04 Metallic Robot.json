@@ -1,0 +1,9 @@
+{
+  "plugin": "RKFreqShift",
+  "version": 1,
+  "name": "Metallic Robot",
+  "params": {
+    "shift1_freq": 300,
+    "shift1_updown": 50
+  }
+}

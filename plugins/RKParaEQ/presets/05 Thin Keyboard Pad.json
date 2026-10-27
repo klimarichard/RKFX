@@ -1,0 +1,13 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Thin Keyboard Pad",
+  "params": {
+    "hp_on": true,
+    "hp_slope": "24",
+    "hp_freq": 200,
+    "highmid_freq": 3000,
+    "highmid_gain": -2,
+    "highmid_q": 1
+  }
+}

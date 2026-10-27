@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDistort",
+  "version": 1,
+  "name": "Modern High-Gain Rhythm",
+  "params": {
+    "type": "distortion",
+    "gain": 38,
+    "tight": 120,
+    "mid": -4,
+    "cab": "large"
+  }
+}

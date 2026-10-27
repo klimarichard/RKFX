@@ -1,0 +1,14 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Vintage Tape Echo",
+  "params": {
+    "mode": "tape",
+    "stereo": "mono",
+    "time": 330,
+    "feedback": 50,
+    "lowcut": 200,
+    "highcut": 5000,
+    "mix": 35
+  }
+}

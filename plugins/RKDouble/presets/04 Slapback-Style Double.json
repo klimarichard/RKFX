@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDouble",
+  "version": 1,
+  "name": "Slapback-Style Double",
+  "params": {
+    "delay": 55,
+    "drift": 15,
+    "tone": -40,
+    "spread": 30,
+    "level": -6
+  }
+}

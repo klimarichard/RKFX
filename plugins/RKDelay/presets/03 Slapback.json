@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Slapback",
+  "params": {
+    "mode": "tape",
+    "stereo": "mono",
+    "time": 110,
+    "feedback": 10,
+    "highcut": 5000
+  }
+}

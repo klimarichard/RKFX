@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Clear Vocal Throw",
+  "params": {
+    "mode": "analog",
+    "sync": true,
+    "division": "1/4",
+    "feedback": 30,
+    "duck": 80
+  }
+}

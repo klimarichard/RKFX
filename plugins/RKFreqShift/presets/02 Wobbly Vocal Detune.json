@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFreqShift",
+  "version": 1,
+  "name": "Wobbly Vocal Detune",
+  "params": {
+    "shift1_range": "fine",
+    "shift1_fine": 4,
+    "mix": 30
+  }
+}

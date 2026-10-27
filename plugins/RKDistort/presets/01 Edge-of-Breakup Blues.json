@@ -1,0 +1,10 @@
+{
+  "plugin": "RKDistort",
+  "version": 1,
+  "name": "Edge-of-Breakup Blues",
+  "params": {
+    "gain": 12,
+    "tone": 10,
+    "cab": "medium"
+  }
+}

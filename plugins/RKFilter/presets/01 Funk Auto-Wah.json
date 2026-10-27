@@ -1,0 +1,13 @@
+{
+  "plugin": "RKFilter",
+  "version": 1,
+  "name": "Funk Auto-Wah",
+  "params": {
+    "mode": "bandpass",
+    "cutoff": 400,
+    "resonance": 60,
+    "env_amount": 80,
+    "env_attack": 5,
+    "env_release": 120
+  }
+}

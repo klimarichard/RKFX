@@ -1,0 +1,13 @@
+{
+  "plugin": "RKDouble",
+  "version": 1,
+  "name": "Wide Rhythm Guitar",
+  "params": {
+    "delay": 20,
+    "drift": 50,
+    "drift_speed": 0.7,
+    "tone": -10,
+    "spread": 100,
+    "level": -1
+  }
+}

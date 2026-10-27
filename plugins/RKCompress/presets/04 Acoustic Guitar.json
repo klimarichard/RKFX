@@ -1,0 +1,13 @@
+{
+  "plugin": "RKCompress",
+  "version": 1,
+  "name": "Acoustic Guitar",
+  "params": {
+    "threshold": -18,
+    "ratio": 2.5,
+    "knee": 9,
+    "attack": 15,
+    "release_auto": true,
+    "sc_hpf": 100
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKGraphEQ",
+  "version": 1,
+  "name": "Bass Growl",
+  "params": {
+    "g10_b02": 2,
+    "g10_b04": -3,
+    "g10_b06": 3,
+    "g10_b07": 2
+  }
+}

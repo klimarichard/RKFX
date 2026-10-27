@@ -1,0 +1,9 @@
+{
+  "plugin": "RKDouble",
+  "version": 1,
+  "name": "Natural Vocal Double",
+  "params": {
+    "spread": 40,
+    "level": -4
+  }
+}

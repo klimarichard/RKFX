@@ -1,0 +1,12 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Rhythmic Pumping Pad",
+  "params": {
+    "shape": "sawdown",
+    "depth": 80,
+    "sync": true,
+    "division": "1/4",
+    "smooth": 40
+  }
+}

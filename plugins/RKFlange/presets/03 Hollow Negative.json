@@ -1,0 +1,11 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Hollow Negative",
+  "params": {
+    "rate": 0.25,
+    "depth": 70,
+    "manual": 3,
+    "feedback": -70
+  }
+}

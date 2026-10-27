@@ -1,0 +1,13 @@
+{
+  "plugin": "RKCompress",
+  "version": 1,
+  "name": "Smooth Vocal",
+  "params": {
+    "threshold": -20,
+    "ratio": 3,
+    "knee": 9,
+    "attack": 10,
+    "release_auto": true,
+    "makeup_auto": true
+  }
+}

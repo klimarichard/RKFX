@@ -1,0 +1,13 @@
+{
+  "plugin": "RKGate",
+  "version": 1,
+  "name": "Snare Without Kick",
+  "params": {
+    "threshold": -28,
+    "range": -25,
+    "attack": 0.1,
+    "hold": 40,
+    "release": 80,
+    "key_hpf": 200
+  }
+}

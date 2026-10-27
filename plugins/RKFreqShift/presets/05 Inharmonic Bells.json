@@ -1,0 +1,14 @@
+{
+  "plugin": "RKFreqShift",
+  "version": 1,
+  "name": "Inharmonic Bells",
+  "params": {
+    "shift1_freq": 150,
+    "shift1_level": 70,
+    "shift2_on": true,
+    "shift2_freq": 420,
+    "shift2_level": 70,
+    "highcut": 8000,
+    "mix": 40
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Classic Amp Tremolo",
+  "params": {
+    "depth": 60,
+    "rate": 5
+  }
+}

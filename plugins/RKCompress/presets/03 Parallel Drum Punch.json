@@ -1,0 +1,15 @@
+{
+  "plugin": "RKCompress",
+  "version": 1,
+  "name": "Parallel Drum Punch",
+  "params": {
+    "threshold": -30,
+    "ratio": 8,
+    "knee": 0,
+    "attack": 5,
+    "release": 80,
+    "detect": "peak",
+    "makeup_auto": true,
+    "mix": 40
+  }
+}

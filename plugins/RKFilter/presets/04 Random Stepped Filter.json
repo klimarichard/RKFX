@@ -1,0 +1,13 @@
+{
+  "plugin": "RKFilter",
+  "version": 1,
+  "name": "Random Stepped Filter",
+  "params": {
+    "slope": "24",
+    "resonance": 50,
+    "lfo_depth": 70,
+    "lfo_shape": "samplehold",
+    "lfo_sync": true,
+    "lfo_division": "1/16"
+  }
+}

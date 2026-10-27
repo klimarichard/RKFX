@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Funky Envelope Phaser",
+  "params": {
+    "center": 400,
+    "feedback": 50,
+    "depth": 0,
+    "env_amount": 80
+  }
+}

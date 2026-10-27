@@ -1,0 +1,14 @@
+{
+  "plugin": "RKGate",
+  "version": 1,
+  "name": "Vocal Mic Expander",
+  "params": {
+    "mode": "expander",
+    "threshold": -45,
+    "ratio": 2,
+    "range": -15,
+    "attack": 1,
+    "hold": 80,
+    "release": 200
+  }
+}

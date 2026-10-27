@@ -10,6 +10,8 @@
 # the usual way JUCE code is shared between targets (JUCE's own modules work
 # the same way), so there are no duplicate-symbol problems with JUCE.
 
+set(RKFX_CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "RKFX core folder")
+
 add_library(rkfx_core_dsp INTERFACE)
 target_include_directories(rkfx_core_dsp INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(rkfx_core_dsp INTERFACE
@@ -60,6 +62,26 @@ function(rkfx_add_plugin name)
     )
 
     target_sources(${name} PRIVATE ${ARG_SOURCES})
+
+    # Factory presets: every plugins/<Name>/presets/*.json is compiled in.
+    # The "NN " prefix of a file name sets its menu position and is not shown.
+    file(GLOB presetFiles CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/presets/*.json")
+    list(SORT presetFiles)
+    set(presetList "${CMAKE_CURRENT_BINARY_DIR}/FactoryPresetList.cpp")
+
+    if(presetFiles)
+        juce_add_binary_data(${name}_FactoryPresets
+            HEADER_NAME FactoryPresetData.h
+            NAMESPACE   FactoryPresetData
+            SOURCES     ${presetFiles})
+        target_link_libraries(${name} PRIVATE ${name}_FactoryPresets)
+
+        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in" "${presetList}" COPYONLY)
+    else()
+        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetListEmpty.cpp.in" "${presetList}" COPYONLY)
+    endif()
+
+    target_sources(${name} PRIVATE "${presetList}")
 
     target_compile_definitions(${name}
         PUBLIC

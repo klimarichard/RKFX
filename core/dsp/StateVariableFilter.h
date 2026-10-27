@@ -35,6 +35,27 @@ public:
         a1 = 1.0f / (1.0f + g * (g + k));
     }
 
+    /** The "g" coefficient for a cutoff (shared by every stage at that cutoff). */
+    static float gFor (double hz, double rate) noexcept
+    {
+        return (float) std::tan (3.14159265358979323846 * std::clamp (hz, 1.0, 0.49 * rate) / rate);
+    }
+
+    /** Sets the coefficients directly, skipping tan(): for per-sample
+        modulation where several stages share one g. k = 1 / Q. */
+    void setCoefficients (float newG, float newK) noexcept
+    {
+        g = newG;
+        k = newK;
+        a1 = 1.0f / (1.0f + g * (g + k));
+    }
+
+    /** Band-pass scaled to 0 dB at the centre frequency, whatever the Q. */
+    float processNormalisedBandpass (float x) noexcept
+    {
+        return k * process (x, Type::bandpass);
+    }
+
     float process (float x, Type type) noexcept
     {
         const auto hp = (x - (k + g) * s1 - s2) * a1;

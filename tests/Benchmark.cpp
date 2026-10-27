@@ -1,9 +1,14 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "FilterEngine.h"
 #include "FreqShiftEngine.h"
+#include "GraphEQEngine.h"
+#include "ParaEQEngine.h"
 
 #include <cstdio>
 #include <functional>
+#include <memory>
+#include <type_traits>
 
 /** CPU benchmarks at 48 kHz with 64-sample blocks (the spec's reference
     setting), stereo. Prints microseconds per block and the share of the
@@ -16,18 +21,34 @@ namespace
     constexpr int kBlock = 64;
     constexpr int kBlocks = 50000;   // ~67 s of audio per case
 
+    using Processor = std::function<void (juce::AudioBuffer<float>&)>;
+
+    /** Each case builds a prepared engine and returns the per-block call. */
     struct Case
     {
         const char* plugin;
         const char* name;
-        std::function<void (FreqShiftEngine&)> setup;
+        std::function<Processor()> make;
     };
+
+    template <typename Engine, typename Setup>
+    Processor makeEngine (Setup setup)
+    {
+        auto engine = std::make_shared<Engine>();
+        setup (*engine);
+        engine->prepare (kRate);
+        return [engine] (juce::AudioBuffer<float>& b)
+        {
+            if constexpr (std::is_same_v<Engine, FilterEngine>)
+                engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
+            else
+                engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
+        };
+    }
 
     double run (const Case& c)
     {
-        FreqShiftEngine engine;
-        c.setup (engine);
-        engine.prepare (kRate);
+        auto process = c.make();
 
         juce::Random rng (1);
         juce::AudioBuffer<float> buffer (2, kBlock);
@@ -40,7 +61,7 @@ namespace
 
         for (int b = 0; b < kBlocks; ++b)
         {
-            engine.process (buffer.getArrayOfWritePointers(), 2, kBlock);
+            process (buffer);
             sink += buffer.getSample (0, 0);
             buffer.setSample (0, 0, rng.nextFloat()); // keep the input alive
         }
@@ -54,12 +75,66 @@ namespace
 int main (int argc, char** argv)
 {
     const Case cases[] = {
-        { "RKFreqShift", "default (1 shift)", [] (FreqShiftEngine& e) { e.setShift (0, { true, 100.0f, 0.0f, 0.0f, 1.0f }); } },
-        { "RKFreqShift", "4 shifts, feedback, spread", [] (FreqShiftEngine& e)
+        { "RKFreqShift", "default (1 shift)", []
           {
-              for (int k = 0; k < 4; ++k)
-                  e.setShift (k, { true, 100.0f * (float) (k + 1), 0.3f, 0.5f, 1.0f });
-              e.setSpread (0.5f);
+              return makeEngine<FreqShiftEngine> ([] (FreqShiftEngine& e) { e.setShift (0, { true, 100.0f, 0.0f, 0.0f, 1.0f }); });
+          } },
+        { "RKFreqShift", "4 shifts, feedback, spread", []
+          {
+              return makeEngine<FreqShiftEngine> ([] (FreqShiftEngine& e)
+              {
+                  for (int k = 0; k < 4; ++k)
+                      e.setShift (k, { true, 100.0f * (float) (k + 1), 0.3f, 0.5f, 1.0f });
+                  e.setSpread (0.5f);
+              });
+          } },
+        { "RKFilter", "default (LP 12, static)", []
+          {
+              return makeEngine<FilterEngine> ([] (FilterEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKFilter", "48 dB, envelope + LFO", []
+          {
+              return makeEngine<FilterEngine> ([] (FilterEngine& e)
+              {
+                  FilterEngine::Settings s;
+                  s.stages = 4;
+                  s.resonance = 0.7f;
+                  s.envAmount = 0.5f;
+                  s.lfoDepth = 0.5f;
+                  s.lfoPhaseDeg = 90.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKParaEQ", "default (transparent)", []
+          {
+              return makeEngine<ParaEQEngine> ([] (ParaEQEngine& e) { e.setSettings (ParaEQEngine::defaults()); });
+          } },
+        { "RKParaEQ", "all 7 bands active, 48 dB cuts", []
+          {
+              return makeEngine<ParaEQEngine> ([] (ParaEQEngine& e)
+              {
+                  auto s = ParaEQEngine::defaults();
+                  s.highPass = { true, 60.0f, 4 };
+                  s.lowPass = { true, 15000.0f, 4 };
+                  for (auto& b : s.bands)
+                      b.gainDb = 4.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKGraphEQ", "default (transparent)", []
+          {
+              return makeEngine<GraphEQEngine> ([] (GraphEQEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKGraphEQ", "31 bands, all active", []
+          {
+              return makeEngine<GraphEQEngine> ([] (GraphEQEngine& e)
+              {
+                  GraphEQEngine::Settings s;
+                  s.mode = GraphEQEngine::Mode::thirtyOne;
+                  for (auto& g : s.gainsDb[2])
+                      g = 3.0f;
+                  e.setSettings (s);
+              });
           } },
     };
 

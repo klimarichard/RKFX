@@ -21,7 +21,7 @@ namespace Units
     {
         if (hz >= 1000.0f)
             return juce::String (hz / 1000.0f, hz >= 10000.0f ? 1 : 2) + " kHz";
-        return juce::String (hz, hz >= 100.0f ? 0 : 1) + " Hz";
+        return juce::String (hz, hz >= 100.0f ? 0 : (hz >= 10.0f ? 1 : 2)) + " Hz";
     }
 
     juce::String decibels (float db)
@@ -37,6 +37,11 @@ namespace Units
         if (ms >= 1000.0f)
             return juce::String (ms / 1000.0f, 2) + " s";
         return juce::String (ms, ms >= 100.0f ? 0 : (ms >= 10.0f ? 1 : 2)) + " ms";
+    }
+
+    juce::String degrees (float deg)
+    {
+        return juce::String (juce::roundToInt (deg)) + juce::String::fromUTF8 ("\xc2\xb0");
     }
 
     juce::String percent (float pct)
@@ -109,6 +114,11 @@ void ParamBuilder::addTime (const juce::String& id, const juce::String& name, fl
 void ParamBuilder::addPercent (const juce::String& id, const juce::String& name, float minPct, float maxPct, float defaultPct)
 {
     addFloat (id, name, { minPct, maxPct }, defaultPct, Units::percent, Units::parseNumber);
+}
+
+void ParamBuilder::addDegrees (const juce::String& id, const juce::String& name, float minDeg, float maxDeg, float defaultDeg)
+{
+    addFloat (id, name, { minDeg, maxDeg }, defaultDeg, Units::degrees, Units::parseNumber);
 }
 
 void ParamBuilder::addInt (const juce::String& id, const juce::String& name, int minValue, int maxValue, int defaultValue,

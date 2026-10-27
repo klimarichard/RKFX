@@ -29,6 +29,9 @@ add_subdirectory(core)
 # Plugins
 # ---------------------------------------------------------------------------
 add_subdirectory(plugins/RKFreqShift)
+add_subdirectory(plugins/RKFilter)
+add_subdirectory(plugins/RKParaEQ)
+add_subdirectory(plugins/RKGraphEQ)
 
 # ---------------------------------------------------------------------------
 # Tests

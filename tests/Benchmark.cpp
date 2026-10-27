@@ -1,6 +1,8 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "CompressorEngine.h"
 #include "FilterEngine.h"
+#include "GateEngine.h"
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
@@ -39,7 +41,9 @@ namespace
         engine->prepare (kRate);
         return [engine] (juce::AudioBuffer<float>& b)
         {
-            if constexpr (std::is_same_v<Engine, FilterEngine>)
+            if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
+                engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
+            else if constexpr (std::is_same_v<Engine, FilterEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -133,6 +137,38 @@ int main (int argc, char** argv)
                   s.mode = GraphEQEngine::Mode::thirtyOne;
                   for (auto& g : s.gainsDb[2])
                       g = 3.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKCompress", "default (RMS, internal)", []
+          {
+              return makeEngine<CompressorEngine> ([] (CompressorEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKCompress", "peak, auto release, sidechain HPF", []
+          {
+              return makeEngine<CompressorEngine> ([] (CompressorEngine& e)
+              {
+                  CompressorEngine::Settings s;
+                  s.detection = rkfx::Dynamics::LevelDetector::Mode::peak;
+                  s.autoRelease = true;
+                  s.sidechainHpfHz = 100.0f;
+                  s.link = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKGate", "default (gate, linked)", []
+          {
+              return makeEngine<GateEngine> ([] (GateEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKGate", "expander, unlinked, key filters", []
+          {
+              return makeEngine<GateEngine> ([] (GateEngine& e)
+              {
+                  GateEngine::Settings s;
+                  s.mode = GateEngine::Mode::expander;
+                  s.link = false;
+                  s.keyHighPassHz = 100.0f;
+                  s.keyLowPassHz = 5000.0f;
                   e.setSettings (s);
               });
           } },

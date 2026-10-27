@@ -21,6 +21,7 @@ struct PluginConfig
     bool hasMix = false;             // dry/wet only where musically meaningful
     float mixDefault = 100.0f;       // percent
     bool monoToStereo = false;       // also accept mono in -> stereo out (chorus, reverb...)
+    bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
     juce::Colour accent;             // per-plugin family tint (active toggles only)
 };
 
@@ -115,6 +116,11 @@ protected:
         processDsp() (valid inside processDsp only). */
     const Transport& getTransport() const noexcept { return transport; }
 
+    /** The external sidechain input for the buffer handed to processDsp(),
+        or nullptr when the plugin has none or the host didn't enable it.
+        Unconnected inputs are silent. Valid inside processDsp only. */
+    const juce::AudioBuffer<float>* getSidechain() const noexcept { return hasSidechain ? &sidechain : nullptr; }
+
     /** Bring an older state's params object up to the current version. */
     virtual void migrateParams (juce::DynamicObject& /*params*/, int /*fromVersion*/) {}
 
@@ -131,6 +137,8 @@ private:
 
     OutputStage outputStage;
     Transport transport;
+    juce::AudioBuffer<float> sidechain;   // view into the host buffer, no allocation
+    bool hasSidechain = false;
     juce::AudioBuffer<float> dryBuffer;
     int maxBlock = 0;
     bool wetWasIdle = true;
@@ -143,7 +151,7 @@ private:
     std::atomic<int> presetStateCounter { 0 };
     std::atomic<bool> applyingValues { false };
 
-    static BusesProperties makeBuses();
+    static BusesProperties makeBuses (bool withSidechain);
     void processChunk (juce::AudioBuffer<float>& chunk);
     void updateTransport();
 

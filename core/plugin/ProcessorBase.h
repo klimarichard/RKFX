@@ -121,6 +121,13 @@ protected:
         Unconnected inputs are silent. Valid inside processDsp only. */
     const juce::AudioBuffer<float>* getSidechain() const noexcept { return hasSidechain ? &sidechain : nullptr; }
 
+    /** Declares the latency the plugin's DSP adds (oversampling only; every
+        other plugin reports 0). Safe from any thread: the dry signal (used by
+        dry/wet and bypass) is delayed to match from the next block on, and
+        the host is told on the message thread. Up to kMaxLatency samples. */
+    void reportLatency (int samples);
+    static constexpr int kMaxLatency = 63;
+
     /** Bring an older state's params object up to the current version. */
     virtual void migrateParams (juce::DynamicObject& /*params*/, int /*fromVersion*/) {}
 
@@ -139,6 +146,19 @@ private:
     Transport transport;
     juce::AudioBuffer<float> sidechain;   // view into the host buffer, no allocation
     bool hasSidechain = false;
+
+    // Dry-path delay matching the reported latency (ring buffer, 64 samples per channel).
+    std::atomic<int> latency { 0 };
+    juce::AudioBuffer<float> dryDelay;
+    int dryDelayWrite = 0;
+
+    struct LatencyNotifier : public juce::AsyncUpdater
+    {
+        explicit LatencyNotifier (ProcessorBase& o) : owner (o) {}
+        void handleAsyncUpdate() override { owner.setLatencySamples (owner.latency.load()); }
+        ProcessorBase& owner;
+    };
+    LatencyNotifier latencyNotifier { *this };
     juce::AudioBuffer<float> dryBuffer;
     int maxBlock = 0;
     bool wetWasIdle = true;
@@ -153,6 +173,7 @@ private:
 
     static BusesProperties makeBuses (bool withSidechain);
     void processChunk (juce::AudioBuffer<float>& chunk);
+    void delayDry (int numChannels, int numSamples) noexcept;
     void updateTransport();
 
     ParamValues currentValues() const;

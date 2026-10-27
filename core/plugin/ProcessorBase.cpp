@@ -103,6 +103,8 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto numChannels = juce::jmax (getMainBusNumInputChannels(), getMainBusNumOutputChannels());
 
     dryBuffer.setSize (numChannels, maxBlock, false, false, true);
+    dryDelay.setSize (numChannels, kMaxLatency + 1, false, true, true);
+    dryDelayWrite = 0;
 
     outputStage.prepare (sampleRate);
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
@@ -191,6 +193,40 @@ void ProcessorBase::updateTransport()
     }
 }
 
+void ProcessorBase::reportLatency (int samples)
+{
+    samples = juce::jlimit (0, kMaxLatency, samples);
+    if (latency.exchange (samples) == samples && getLatencySamples() == samples)
+        return;
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        setLatencySamples (samples);
+    else
+        latencyNotifier.triggerAsyncUpdate();
+}
+
+void ProcessorBase::delayDry (int numChannels, int numSamples) noexcept
+{
+    const auto delay = latency.load();
+    if (delay == 0)
+        return;
+
+    // Ring of kMaxLatency + 1 samples: write each dry sample, read the one `delay` samples older.
+    constexpr int size = kMaxLatency + 1;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto readIndex = (dryDelayWrite - delay + size) % size;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* ring = dryDelay.getWritePointer (ch);
+            auto* dry = dryBuffer.getWritePointer (ch);
+            ring[dryDelayWrite] = dry[i];
+            dry[i] = ring[readIndex];
+        }
+        dryDelayWrite = (dryDelayWrite + 1) % size;
+    }
+}
+
 void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
 {
     const auto numChannels = chunk.getNumChannels();
@@ -198,6 +234,8 @@ void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
 
     for (int ch = 0; ch < numChannels; ++ch)
         dryBuffer.copyFrom (ch, 0, chunk, ch, 0, numSamples);
+
+    delayDry (numChannels, numSamples);
 
     if (outputStage.wetNeeded())
     {

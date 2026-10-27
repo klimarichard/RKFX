@@ -38,6 +38,7 @@ add_subdirectory(plugins/RKTremolo)
 add_subdirectory(plugins/RKChorus)
 add_subdirectory(plugins/RKDouble)
 add_subdirectory(plugins/RKFlange)
+add_subdirectory(plugins/RKPhase)
 
 # ---------------------------------------------------------------------------
 # Tests

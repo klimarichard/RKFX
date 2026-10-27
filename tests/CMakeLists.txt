@@ -18,6 +18,7 @@ target_sources(RKFXTests PRIVATE
     TremoloTests.cpp
     ChorusTests.cpp
     DoubleTests.cpp
+    FlangeTests.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ/ParaEQEngine.cpp
@@ -27,6 +28,7 @@ target_sources(RKFXTests PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKTremolo/TremoloEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus/ChorusEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
 )
 
 target_include_directories(RKFXTests PRIVATE
@@ -38,7 +40,8 @@ target_include_directories(RKFXTests PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKGate
     ${PROJECT_SOURCE_DIR}/plugins/RKTremolo
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble)
+    ${PROJECT_SOURCE_DIR}/plugins/RKDouble
+    ${PROJECT_SOURCE_DIR}/plugins/RKFlange)
 
 target_compile_definitions(RKFXTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 
@@ -68,6 +71,7 @@ target_sources(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKTremolo/TremoloEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus/ChorusEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
 )
 target_include_directories(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
@@ -78,7 +82,8 @@ target_include_directories(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKGate
     ${PROJECT_SOURCE_DIR}/plugins/RKTremolo
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble)
+    ${PROJECT_SOURCE_DIR}/plugins/RKDouble
+    ${PROJECT_SOURCE_DIR}/plugins/RKFlange)
 target_compile_definitions(RKFXBench PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(RKFXBench
     PRIVATE

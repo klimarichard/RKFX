@@ -4,6 +4,7 @@
 #include "CompressorEngine.h"
 #include "DoubleEngine.h"
 #include "FilterEngine.h"
+#include "FlangeEngine.h"
 #include "GateEngine.h"
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
@@ -47,7 +48,7 @@ namespace
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
-                               || std::is_same_v<Engine, ChorusEngine>)
+                               || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -209,6 +210,10 @@ int main (int argc, char** argv)
         { "RKDouble", "default", []
           {
               return makeEngine<DoubleEngine> ([] (DoubleEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKFlange", "default", []
+          {
+              return makeEngine<FlangeEngine> ([] (FlangeEngine& e) { e.setSettings ({}); });
           } },
     };
 

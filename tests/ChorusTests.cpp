@@ -43,6 +43,14 @@ public:
                     maxError = std::max (maxError, std::abs (sine.read (100.37f) - (float) std::sin (w * (i - 100.37))));
             }
             expect (maxError < 0.002f, "error " + juce::String (maxError));
+
+            // Below one sample, reads are clamped to one sample (never wrap to old data).
+            rkfx::DelayLine shortLine;
+            shortLine.prepare (100);
+            for (int i = 1; i <= 10; ++i)
+                shortLine.write ((float) i);
+            expect (juce::exactlyEqual (shortLine.read (0.0f), 9.0f));
+            expect (juce::exactlyEqual (shortLine.read (0.5f), 9.0f));
         }
 
         beginTest ("Tilt: 0 passes exactly, positive brightens, negative darkens");

@@ -117,10 +117,7 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
 
             const auto level = envelope.process (detector * sens);
             if (std::abs (env) > 0.0f)
-            {
-                const auto db = 20.0f * std::log10 (level + 1.0e-9f);
-                envelope01 = juce::jlimit (0.0f, 1.0f, (db - kEnvFloorDb) / -kEnvFloorDb);
-            }
+                envelope01 = rkfx::EnvelopeFollower::toUnit (level, kEnvFloorDb);
         }
 
         for (int ch = 0; ch < numChannels; ++ch)

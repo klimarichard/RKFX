@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "OutputStage.h"
+#include "dsp/TempoSync.h"
 #include "ParamBuilder.h"
 #include "PresetFormat.h"
 #include "PresetLibrary.h"
@@ -110,6 +111,10 @@ protected:
     /** Process the wet signal in place. @p buffer holds the input. */
     virtual void processDsp (juce::AudioBuffer<float>& buffer) = 0;
 
+    /** Host tempo and beat position at the start of the buffer handed to
+        processDsp() (valid inside processDsp only). */
+    const Transport& getTransport() const noexcept { return transport; }
+
     /** Bring an older state's params object up to the current version. */
     virtual void migrateParams (juce::DynamicObject& /*params*/, int /*fromVersion*/) {}
 
@@ -125,6 +130,7 @@ private:
     juce::RangedAudioParameter* bypassParam = nullptr;
 
     OutputStage outputStage;
+    Transport transport;
     juce::AudioBuffer<float> dryBuffer;
     int maxBlock = 0;
     bool wetWasIdle = true;
@@ -139,6 +145,7 @@ private:
 
     static BusesProperties makeBuses();
     void processChunk (juce::AudioBuffer<float>& chunk);
+    void updateTransport();
 
     ParamValues currentValues() const;
     void applyValues (const ParamValues& values);

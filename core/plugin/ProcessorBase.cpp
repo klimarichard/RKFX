@@ -127,12 +127,41 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     outputStage.setOutputDecibels (valueOf (outputParam));
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
 
+    updateTransport();
+    const auto blockPpq = transport.ppq;
+    const auto quartersPerSample = transport.bpm / (60.0 * getSampleRate());
+
     // Hosts may send more samples than announced: work in prepared-size chunks.
     for (int start = 0; start < numSamples; start += maxBlock)
     {
+        transport.ppq = blockPpq + start * quartersPerSample;
+
         juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numOut, start,
                                         juce::jmin (maxBlock, numSamples - start));
         processChunk (chunk);
+    }
+}
+
+void ProcessorBase::updateTransport()
+{
+    transport.hasPosition = false;
+    transport.playing = false;
+
+    if (auto* playHead = getPlayHead())
+    {
+        if (const auto position = playHead->getPosition())
+        {
+            if (const auto bpm = position->getBpm(); bpm.hasValue() && *bpm > 0.0)
+                transport.bpm = *bpm;
+
+            if (const auto ppq = position->getPpqPosition(); ppq.hasValue())
+            {
+                transport.ppq = *ppq;
+                transport.hasPosition = true;
+            }
+
+            transport.playing = position->getIsPlaying();
+        }
     }
 }
 

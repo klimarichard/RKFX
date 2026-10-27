@@ -28,6 +28,7 @@ public:
         decibels    dB
         time        ms / s, logarithmic
         percent     %
+        degrees     °
 
     Parameters are numbered in the order they are added (the AU/VST3 version
     hint, which also sets the order hosts list them in). IDs are permanent:
@@ -39,6 +40,7 @@ public:
     void addDecibels  (const juce::String& id, const juce::String& name, float minDb, float maxDb, float defaultDb);
     void addTime      (const juce::String& id, const juce::String& name, float minMs, float maxMs, float defaultMs);
     void addPercent   (const juce::String& id, const juce::String& name, float minPct, float maxPct, float defaultPct);
+    void addDegrees   (const juce::String& id, const juce::String& name, float minDeg, float maxDeg, float defaultDeg);
     void addInt       (const juce::String& id, const juce::String& name, int minValue, int maxValue, int defaultValue,
                        const juce::String& unit = {});
     void addBool      (const juce::String& id, const juce::String& name, bool defaultValue);
@@ -67,6 +69,7 @@ namespace Units
     juce::String decibels (float db);
     juce::String time (float ms);
     juce::String percent (float pct);
+    juce::String degrees (float deg);
 
     /** Parses "1.2k", "1200 Hz", "1.2 kHz". */
     float parseFrequency (const juce::String& text);

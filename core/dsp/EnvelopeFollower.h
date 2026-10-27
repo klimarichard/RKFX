@@ -38,6 +38,15 @@ public:
 
     float getEnvelope() const noexcept { return envelope; }
 
+    /** Maps a level to 0..1 on a dB scale: @p floorDb (and below) -> 0,
+        0 dBFS -> 1. Used to drive filter sweeps (auto-wah, envelope phaser),
+        so quiet and loud playing spread evenly over the sweep. */
+    static float toUnit (float level, float floorDb = -48.0f) noexcept
+    {
+        const auto db = 20.0f * std::log10 (level + 1.0e-9f);
+        return std::fmin (1.0f, std::fmax (0.0f, (db - floorDb) / -floorDb));
+    }
+
 private:
     double sampleRate = 48000.0;
     float attackMs = 5.0f, releaseMs = 150.0f;

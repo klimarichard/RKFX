@@ -1,11 +1,16 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "ChorusEngine.h"
 #include "CompressorEngine.h"
+#include "DoubleEngine.h"
 #include "FilterEngine.h"
+#include "FlangeEngine.h"
 #include "GateEngine.h"
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
+#include "PhaseEngine.h"
+#include "TremoloEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -43,7 +48,9 @@ namespace
         {
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
-            else if constexpr (std::is_same_v<Engine, FilterEngine>)
+            else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
+                               || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
+                               || std::is_same_v<Engine, PhaseEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -169,6 +176,58 @@ int main (int argc, char** argv)
                   s.link = false;
                   s.keyHighPassHz = 100.0f;
                   s.keyLowPassHz = 5000.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKTremolo", "default (classic sine)", []
+          {
+              return makeEngine<TremoloEngine> ([] (TremoloEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKTremolo", "harmonic, square, stereo phase", []
+          {
+              return makeEngine<TremoloEngine> ([] (TremoloEngine& e)
+              {
+                  TremoloEngine::Settings s;
+                  s.mode = TremoloEngine::Mode::harmonic;
+                  s.shape = rkfx::LFO::Shape::square;
+                  s.phaseDeg = 90.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKChorus", "default (1 voice)", []
+          {
+              return makeEngine<ChorusEngine> ([] (ChorusEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKChorus", "4 voices, tone, width", []
+          {
+              return makeEngine<ChorusEngine> ([] (ChorusEngine& e)
+              {
+                  ChorusEngine::Settings s;
+                  s.voices = 4;
+                  s.tone = -0.3f;
+                  s.width = 0.7f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKDouble", "default", []
+          {
+              return makeEngine<DoubleEngine> ([] (DoubleEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKFlange", "default", []
+          {
+              return makeEngine<FlangeEngine> ([] (FlangeEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKPhase", "default (4 stages)", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKPhase", "12 stages, envelope", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e)
+              {
+                  PhaseEngine::Settings s;
+                  s.stages = 12;
+                  s.envAmount = 0.5f;
                   e.setSettings (s);
               });
           } },

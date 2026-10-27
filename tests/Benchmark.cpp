@@ -1,5 +1,6 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "ChorusEngine.h"
 #include "CompressorEngine.h"
 #include "FilterEngine.h"
 #include "GateEngine.h"
@@ -44,7 +45,8 @@ namespace
         {
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
-            else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>)
+            else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
+                               || std::is_same_v<Engine, ChorusEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -185,6 +187,21 @@ int main (int argc, char** argv)
                   s.mode = TremoloEngine::Mode::harmonic;
                   s.shape = rkfx::LFO::Shape::square;
                   s.phaseDeg = 90.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKChorus", "default (1 voice)", []
+          {
+              return makeEngine<ChorusEngine> ([] (ChorusEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKChorus", "4 voices, tone, width", []
+          {
+              return makeEngine<ChorusEngine> ([] (ChorusEngine& e)
+              {
+                  ChorusEngine::Settings s;
+                  s.voices = 4;
+                  s.tone = -0.3f;
+                  s.width = 0.7f;
                   e.setSettings (s);
               });
           } },

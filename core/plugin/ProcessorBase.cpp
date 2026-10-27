@@ -5,15 +5,20 @@
 namespace rkfx
 {
 
-juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses()
+juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain)
 {
-    return BusesProperties()
-               .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-               .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+    auto buses = BusesProperties()
+                     .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                     .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+
+    if (withSidechain)
+        buses = buses.withInput ("Sidechain", juce::AudioChannelSet::stereo(), true);
+
+    return buses;
 }
 
 ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
-    : juce::AudioProcessor (makeBuses()),
+    : juce::AudioProcessor (makeBuses (cfg.sidechain)),
       config (std::move (cfg))
 {
     // Standard controls, after the plugin's own parameters.
@@ -74,6 +79,13 @@ bool ProcessorBase::isBusesLayoutSupported (const BusesLayout& layouts) const
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
 
+    if (config.sidechain && layouts.inputBuses.size() > 1)
+    {
+        const auto sc = layouts.getChannelSet (true, 1);
+        if (! sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo())
+            return false;
+    }
+
     if (in == out)
         return true;
 
@@ -88,7 +100,7 @@ juce::AudioProcessorParameter* ProcessorBase::getBypassParameter() const
 void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     maxBlock = juce::jmax (1, samplesPerBlock);
-    const auto numChannels = juce::jmax (getTotalNumInputChannels(), getTotalNumOutputChannels());
+    const auto numChannels = juce::jmax (getMainBusNumInputChannels(), getMainBusNumOutputChannels());
 
     dryBuffer.setSize (numChannels, maxBlock, false, false, true);
 
@@ -107,9 +119,18 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const auto numIn  = getTotalNumInputChannels();
-    const auto numOut = getTotalNumOutputChannels();
+    const auto numIn  = getMainBusNumInputChannels();
+    const auto numOut = getMainBusNumOutputChannels();
     const auto numSamples = buffer.getNumSamples();
+
+    // External sidechain: its channels follow the main ones in the buffer.
+    int sidechainChannels = 0, sidechainOffset = 0;
+    if (config.sidechain)
+        if (auto* bus = getBus (true, 1); bus != nullptr && bus->isEnabled())
+        {
+            sidechainChannels = bus->getNumberOfChannels();
+            sidechainOffset = getChannelIndexInProcessBlockBuffer (true, 1, 0);
+        }
 
     // Mono in -> stereo out: every output starts as the mono input.
     for (int ch = numIn; ch < numOut; ++ch)
@@ -136,8 +157,13 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     {
         transport.ppq = blockPpq + start * quartersPerSample;
 
-        juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numOut, start,
-                                        juce::jmin (maxBlock, numSamples - start));
+        const auto length = juce::jmin (maxBlock, numSamples - start);
+        juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numOut, start, length);
+
+        hasSidechain = sidechainChannels > 0 && sidechainOffset + sidechainChannels <= buffer.getNumChannels();
+        if (hasSidechain)
+            sidechain.setDataToReferTo (buffer.getArrayOfWritePointers() + sidechainOffset, sidechainChannels, start, length);
+
         processChunk (chunk);
     }
 }

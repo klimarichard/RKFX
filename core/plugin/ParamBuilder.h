@@ -40,6 +40,11 @@ public:
     void addDecibels  (const juce::String& id, const juce::String& name, float minDb, float maxDb, float defaultDb);
     void addTime      (const juce::String& id, const juce::String& name, float minMs, float maxMs, float defaultMs);
     void addPercent   (const juce::String& id, const juce::String& name, float minPct, float maxPct, float defaultPct);
+    /** A frequency that can also be switched off: one end of the knob's travel
+        (the bottom for a high-pass, the top for a low-pass) reads "Off" and
+        stores 0. Logarithmic between minHz and maxHz. */
+    void addFrequencyOrOff (const juce::String& id, const juce::String& name, float minHz, float maxHz,
+                            float defaultHz, bool offAtTop);
     void addDegrees   (const juce::String& id, const juce::String& name, float minDeg, float maxDeg, float defaultDeg);
     void addInt       (const juce::String& id, const juce::String& name, int minValue, int maxValue, int defaultValue,
                        const juce::String& unit = {});
@@ -77,6 +82,9 @@ namespace Units
     float parseTime (const juce::String& text);
     /** Parses the leading number, ignoring any unit. */
     float parseNumber (const juce::String& text);
+
+    /** Logarithmic min..max plus an "off" zone (value 0) at one end. */
+    juce::NormalisableRange<float> logRangeWithOff (float min, float max, bool offAtTop);
 
     /** Exact logarithmic mapping between min and max (both > 0). */
     juce::NormalisableRange<float> logRange (float min, float max);

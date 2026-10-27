@@ -69,6 +69,36 @@ namespace Units
         return unit.startsWith ("s") ? value * 1000.0f : value;
     }
 
+    juce::NormalisableRange<float> logRangeWithOff (float min, float max, bool offAtTop)
+    {
+        jassert (min > 0.0f && max > min);
+        constexpr float offZone = 0.05f;
+        const auto ratio = std::log (max / min);
+
+        // Live part of the travel: [offZone, 1] (off at the bottom) or [0, 1 - offZone] (off at the top).
+        const auto liveStart = offAtTop ? 0.0f : offZone;
+
+        return { 0.0f, max,
+                 [=] (float, float, float x)
+                 {
+                     if (offAtTop ? x > 1.0f - offZone : x < offZone)
+                         return 0.0f;
+                     return min * std::exp (ratio * (x - liveStart) / (1.0f - offZone));
+                 },
+                 [=] (float, float, float v)
+                 {
+                     if (v < min * 0.5f)
+                         return offAtTop ? 1.0f : 0.0f;
+                     return liveStart + (1.0f - offZone) * std::log (juce::jmax (v, min) / min) / ratio;
+                 },
+                 [=] (float, float, float v)
+                 {
+                     if (v < min * 0.5f)
+                         return 0.0f;
+                     return juce::jlimit (min, max, v);
+                 } };
+    }
+
     juce::NormalisableRange<float> logRange (float min, float max)
     {
         jassert (min > 0.0f && max > min);
@@ -114,6 +144,17 @@ void ParamBuilder::addTime (const juce::String& id, const juce::String& name, fl
 void ParamBuilder::addPercent (const juce::String& id, const juce::String& name, float minPct, float maxPct, float defaultPct)
 {
     addFloat (id, name, { minPct, maxPct }, defaultPct, Units::percent, Units::parseNumber);
+}
+
+void ParamBuilder::addFrequencyOrOff (const juce::String& id, const juce::String& name, float minHz, float maxHz,
+                                      float defaultHz, bool offAtTop)
+{
+    addFloat (id, name, Units::logRangeWithOff (minHz, maxHz, offAtTop), defaultHz,
+              [] (float hz) { return hz <= 0.0f ? juce::String ("Off") : Units::frequency (hz); },
+              [] (const juce::String& text)
+              {
+                  return text.trim().equalsIgnoreCase ("off") ? 0.0f : Units::parseFrequency (text);
+              });
 }
 
 void ParamBuilder::addDegrees (const juce::String& id, const juce::String& name, float minDeg, float maxDeg, float defaultDeg)

@@ -32,6 +32,7 @@ add_subdirectory(plugins/RKFreqShift)
 add_subdirectory(plugins/RKFilter)
 add_subdirectory(plugins/RKParaEQ)
 add_subdirectory(plugins/RKGraphEQ)
+add_subdirectory(plugins/RKCompress)
 
 # ---------------------------------------------------------------------------
 # Tests

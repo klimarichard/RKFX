@@ -1,0 +1,15 @@
+# Development-only reference (not part of the public repo)
+/docs/RKFX Suite Reference.md
+
+# Build output (also where JUCE is fetched, under build/_deps)
+/build/
+build*/
+
+# macOS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.user
+compile_commands.json

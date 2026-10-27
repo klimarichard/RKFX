@@ -55,13 +55,15 @@ Plus the standard **Dry/Wet** (default 100%), **Output** and **Bypass**.
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Slow stereo phasing on keys or pads | Shift 1, Fine, 0.3 Hz, Up/Down 0%, Spread 60%, Dry/Wet 50% |
-| Wobbly detune on vocals | Shift 1, Fine, 4 Hz, Dry/Wet 30% |
-| Barber-pole rising spiral | Shift 1, Fine, 2 Hz, Feedback 70%, Dry/Wet 50% |
-| Metallic robot | Shift 1, Coarse, 300 Hz, Up/Down 50% |
-| Inharmonic bells on guitar | Shifts 1 and 2 on, Coarse 150 Hz and 420 Hz, levels 70%, High Cut 8 kHz, Dry/Wet 40% |
+| **Slow Stereo Phasing** | Shift 1, Fine, 0.3 Hz, Up/Down 0%, Spread 60%, Dry/Wet 50% |
+| **Wobbly Vocal Detune** | Shift 1, Fine, 4 Hz, Dry/Wet 30% |
+| **Barber-Pole Spiral** | Shift 1, Fine, 2 Hz, Feedback 70%, Dry/Wet 50% |
+| **Metallic Robot** | Shift 1, Coarse, 300 Hz, Up/Down 50% |
+| **Inharmonic Bells** | Shifts 1 and 2 on, Coarse 150 Hz and 420 Hz, levels 70%, High Cut 8 kHz, Dry/Wet 40% |
 
 ## Notes
 

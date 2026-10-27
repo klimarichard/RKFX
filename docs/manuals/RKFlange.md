@@ -31,14 +31,16 @@ Plus the standard **Dry/Wet** (default 50%, the deepest flanging), **Output** an
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic jet flanger | Rate 0.15 Hz, Depth 80%, Manual 2 ms, Feedback +70%, Stereo Phase 90° |
-| Subtle guitar flange | Rate 0.4 Hz, Depth 50%, Manual 1.5 ms, Feedback +30%, Dry/Wet 40% |
-| Hollow negative flange | Rate 0.25 Hz, Depth 70%, Manual 3 ms, Feedback -70% |
-| Drum bus whoosh (synced) | Sync on, 1/1, Depth 90%, Manual 1 ms, Feedback +60% |
-| Metallic static comb (robot voice) | Depth 0%, Manual 4 ms, Feedback +85% |
-| Wide stereo swirl on pads | Rate 0.1 Hz, Depth 100%, Manual 3 ms, Feedback +40%, Stereo Phase 180° |
+| **Classic Jet** | Rate 0.15 Hz, Depth 80%, Manual 2 ms, Feedback +70%, Stereo Phase 90° |
+| **Subtle Guitar Flange** | Rate 0.4 Hz, Depth 50%, Manual 1.5 ms, Feedback +30%, Dry/Wet 40% |
+| **Hollow Negative** | Rate 0.25 Hz, Depth 70%, Manual 3 ms, Feedback -70% |
+| **Synced Drum Whoosh** | Sync on, 1/1, Depth 90%, Manual 1 ms, Feedback +60% |
+| **Metallic Robot Comb** | Depth 0%, Manual 4 ms, Feedback +85% |
+| **Wide Pad Swirl** | Rate 0.1 Hz, Depth 100%, Manual 3 ms, Feedback +40%, Stereo Phase 180° |
 
 ## Notes
 

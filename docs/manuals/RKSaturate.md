@@ -34,14 +34,16 @@ The dry signal (for Dry/Wet and Bypass) is delayed by the same amount, so nothin
 
 ## Starting points
 
-| Use | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Subtle warmth on a vocal | Tape, Drive 4 dB, Tone -10%, Auto Gain on, 2x |
-| Bass weight and growl | Transformer, Drive 10 dB, Tone +10%, Auto Gain on, 2x |
-| Drum bus glue | Tape, Drive 8 dB, Tone 0%, Auto Gain on, Dry/Wet 60% |
-| Warm electric piano | Tube, Drive 9 dB, Tone -20%, Auto Gain on, 2x |
-| Gritty, pushed keys | Tube, Drive 18 dB, Tone +20%, Auto Gain on, 4x |
-| Parallel crunch on drums | Transformer, Drive 20 dB, Dry/Wet 35%, 4x |
+| **Vocal Warmth** | Tape, Drive 4 dB, Tone -10%, Auto Gain on, 2x |
+| **Bass Weight** | Transformer, Drive 10 dB, Tone +10%, Auto Gain on, 2x |
+| **Drum Bus Glue** | Tape, Drive 8 dB, Tone 0%, Auto Gain on, Dry/Wet 60% |
+| **Warm Electric Piano** | Tube, Drive 9 dB, Tone -20%, Auto Gain on, 2x |
+| **Gritty Keys** | Tube, Drive 18 dB, Tone +20%, Auto Gain on, 4x |
+| **Parallel Drum Crunch** | Transformer, Drive 20 dB, Dry/Wet 35%, 4x |
 
 ## Notes
 

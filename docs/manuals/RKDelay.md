@@ -54,15 +54,17 @@ Plus the standard **Dry/Wet** (default 30%), **Output** and **Bypass**. When Byp
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic rhythmic guitar delay | Digital, Stereo, Sync 1/8 D, Feedback 35%, Low Cut 150 Hz, High Cut 6 kHz, Dry/Wet 30% |
-| Warm analog lead delay | Analog, Stereo, Time 420 ms, Feedback 45%, Mod Depth 20%, Ducking 50%, Dry/Wet 35% |
-| Slapback (rockabilly, vocals) | Digital or Tape, Mono, Time 110 ms, Feedback 10%, High Cut 5 kHz, Dry/Wet 30% |
-| Vintage tape echo | Tape, Mono, Time 330 ms, Feedback 50%, Low Cut 200 Hz, High Cut 5 kHz, Dry/Wet 35% |
-| Wide ping-pong on keys | Digital, Ping-Pong, Sync 1/4, Feedback 40%, High Cut 7 kHz, Dry/Wet 25% |
-| Vocal throw that doesn't clutter | Analog, Stereo, Sync 1/4, Feedback 30%, Ducking 80%, Dry/Wet 30% |
-| Ambient wash / self-oscillation | Tape, Ping-Pong, Time 600 ms, Feedback 90 to 100%, Mod Depth 40%, Dry/Wet 50% |
+| **Rhythmic Guitar Delay** | Digital, Stereo, Sync 1/8 D, Feedback 35%, Low Cut 150 Hz, High Cut 6 kHz, Dry/Wet 30% |
+| **Warm Analog Lead** | Analog, Stereo, Time 420 ms, Feedback 45%, Mod Depth 20%, Ducking 50%, Dry/Wet 35% |
+| **Slapback** | Tape, Mono, Time 110 ms, Feedback 10%, High Cut 5 kHz, Dry/Wet 30% (try Digital for a cleaner slap) |
+| **Vintage Tape Echo** | Tape, Mono, Time 330 ms, Feedback 50%, Low Cut 200 Hz, High Cut 5 kHz, Dry/Wet 35% |
+| **Wide Ping-Pong Keys** | Digital, Ping-Pong, Sync 1/4, Feedback 40%, High Cut 7 kHz, Dry/Wet 25% |
+| **Clear Vocal Throw** | Analog, Stereo, Sync 1/4, Feedback 30%, Ducking 80%, Dry/Wet 30% |
+| **Ambient Wash** | Tape, Ping-Pong, Time 600 ms, Feedback 90 to 100%, Mod Depth 40%, Dry/Wet 50% |
 
 ## Notes
 

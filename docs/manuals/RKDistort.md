@@ -48,15 +48,17 @@ Oversampling adds 4 samples at 2x and 5 at 4x (about 0.1 ms at 44.1 or 48 kHz), 
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Edge-of-breakup blues | Drive, Gain 12 dB, Tone +10%, Cab 2x12 |
-| Classic overdrive lead | Drive, Gain 24 dB, Mid +4 dB, Tone 0%, Cab 2x12 |
-| Modern high-gain rhythm | Dist, Gain 38 dB, Tight 120 Hz, Mid -4 dB, Cab 4x12 |
-| Vintage fuzz | Fuzz, Gain 30 dB, Tone -20%, Cab 1x12 |
-| Gritty bass (parallel) | Dist, Gain 28 dB, Tight 80 Hz, Cab Bass, Dry/Wet 40% |
-| Distorted keys / organ | Drive, Gain 20 dB, Mid +3 dB, Cab 1x12, Dry/Wet 70% |
-| Lo-fi vocal crunch | Dist, Gain 18 dB, Tight 300 Hz, Tone +20%, Cab 1x12, Dry/Wet 50% |
+| **Edge-of-Breakup Blues** | Drive, Gain 12 dB, Tone +10%, Cab 2x12 |
+| **Overdrive Lead** | Drive, Gain 24 dB, Mid +4 dB, Tone 0%, Cab 2x12 |
+| **Modern High-Gain Rhythm** | Dist, Gain 38 dB, Tight 120 Hz, Mid -4 dB, Cab 4x12 |
+| **Vintage Fuzz** | Fuzz, Gain 30 dB, Tone -20%, Cab 1x12 |
+| **Gritty Bass** | Dist, Gain 28 dB, Tight 80 Hz, Cab Bass, Dry/Wet 40% |
+| **Distorted Keys** | Drive, Gain 20 dB, Mid +3 dB, Cab 1x12, Dry/Wet 70% |
+| **Lo-Fi Vocal Crunch** | Dist, Gain 18 dB, Tight 300 Hz, Tone +20%, Cab 1x12, Dry/Wet 50% |
 
 ## Notes
 

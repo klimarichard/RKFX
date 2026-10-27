@@ -55,14 +55,16 @@ The envelope and LFO add together, so you can combine an auto-wah with a slow LF
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic funk auto-wah (guitar, clavinet) | BP, 12, Cutoff 400 Hz, Resonance 60%, Env Amount +80%, Attack 5 ms, Release 120 ms |
-| Envelope bass filter | LP, 24, Cutoff 200 Hz, Resonance 50%, Env Amount +70%, Sensitivity +6 dB |
-| Tempo-synced filter pump on pads | LP, 24, Cutoff 800 Hz, Resonance 30%, LFO Depth +60%, Sync on, 1/8, Shape Sine |
-| Random stepped filter | LP, 24, Cutoff 1 kHz, Resonance 50%, LFO Depth +70%, Shape S&H, Sync on, 1/16 |
-| Telephone / lo-fi vocal | BP, 24, Cutoff 1.5 kHz, Resonance 20% |
-| Wide stereo sweep | LP, 12, Cutoff 1.2 kHz, LFO Depth +50%, Rate 0.2 Hz, Stereo Phase 180° |
+| **Funk Auto-Wah** | BP, 12, Cutoff 400 Hz, Resonance 60%, Env Amount +80%, Attack 5 ms, Release 120 ms |
+| **Envelope Bass Filter** | LP, 24, Cutoff 200 Hz, Resonance 50%, Env Amount +70%, Sensitivity +6 dB |
+| **Synced Filter Pump** | LP, 24, Cutoff 800 Hz, Resonance 30%, LFO Depth +60%, Sync on, 1/8, Shape Sine |
+| **Random Stepped Filter** | LP, 24, Cutoff 1 kHz, Resonance 50%, LFO Depth +70%, Shape S&H, Sync on, 1/16 |
+| **Telephone Voice** | BP, 24, Cutoff 1.5 kHz, Resonance 20% |
+| **Wide Stereo Sweep** | LP, 12, Cutoff 1.2 kHz, LFO Depth +50%, Rate 0.2 Hz, Stereo Phase 180° |
 
 ## Notes
 

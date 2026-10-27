@@ -29,14 +29,16 @@ The volume changes are always slightly smoothed, so even a hard square wave at f
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic amp tremolo (guitar) | Classic, Sine, Depth 60%, Rate 5 Hz |
-| Surf / spaghetti western | Classic, Tri, Depth 85%, Rate 7 Hz |
-| Electric piano auto-pan | Classic, Sine, Depth 70%, Rate 3 Hz, Stereo Phase 180° |
-| Brownface harmonic tremolo | Harmonic, Sine, Depth 70%, Rate 4.5 Hz, Crossover 600 Hz |
-| Synced stutter | Classic, Sqr, Depth 100%, Sync on, 1/16, Smoothing 10% |
-| Rhythmic pumping pad | Classic, Down, Depth 80%, Sync on, 1/4, Smoothing 40% |
+| **Classic Amp Tremolo** | Classic, Sine, Depth 60%, Rate 5 Hz |
+| **Surf Tremolo** | Classic, Tri, Depth 85%, Rate 7 Hz |
+| **Electric Piano Auto-Pan** | Classic, Sine, Depth 70%, Rate 3 Hz, Stereo Phase 180° |
+| **Brownface Harmonic** | Harmonic, Sine, Depth 70%, Rate 4.5 Hz, Crossover 600 Hz |
+| **Synced Stutter** | Classic, Sqr, Depth 100%, Sync on, 1/16, Smoothing 10% |
+| **Rhythmic Pumping Pad** | Classic, Down, Depth 80%, Sync on, 1/4, Smoothing 40% |
 
 ## Notes
 

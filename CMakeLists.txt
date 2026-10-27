@@ -40,6 +40,7 @@ add_subdirectory(plugins/RKDouble)
 add_subdirectory(plugins/RKFlange)
 add_subdirectory(plugins/RKPhase)
 add_subdirectory(plugins/RKDelay)
+add_subdirectory(plugins/RKSaturate)
 
 # ---------------------------------------------------------------------------
 # Tests

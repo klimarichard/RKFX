@@ -28,6 +28,7 @@ target_sources(rkfx_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/Knob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/Switches.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/gui/ResponseCurve.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/gui/Fader.cpp
 )
 
 # ---------------------------------------------------------------------------

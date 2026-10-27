@@ -57,7 +57,7 @@ void RKParaEQEditor::Strip::updateDimming()
 }
 
 RKParaEQEditor::RKParaEQEditor (RKParaEQProcessor& p)
-    : rkfx::EditorBase (p, 760, 630),
+    : rkfx::EditorBase (p, 900, 630),
       eq (p),
       curve ([this] (double hz) { return ParaEQEngine::magnitudeDb (eq.currentSettings(), displaySampleRate (eq), hz); },
              18.0f, accent()),

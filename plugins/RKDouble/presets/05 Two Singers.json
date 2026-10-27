@@ -1,0 +1,12 @@
+{
+  "plugin": "RKDouble",
+  "version": 1,
+  "name": "Two Singers",
+  "params": {
+    "delay": 30,
+    "drift": 80,
+    "drift_speed": 1.2,
+    "spread": 70,
+    "level": -2
+  }
+}

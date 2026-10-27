@@ -1,0 +1,11 @@
+{
+  "plugin": "RKDistort",
+  "version": 1,
+  "name": "Distorted Keys",
+  "params": {
+    "gain": 20,
+    "mid": 3,
+    "cab": "small",
+    "mix": 70
+  }
+}

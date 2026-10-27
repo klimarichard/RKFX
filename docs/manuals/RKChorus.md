@@ -32,14 +32,16 @@ Plus the standard **Dry/Wet** (default 50%, the classic chorus balance), **Outpu
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic pedal chorus (clean guitar) | Voices 1, Rate 0.8 Hz, Depth 45%, Delay 10 ms, Dry/Wet 50% |
-| Lush ensemble (pads, strings) | Voices 4, Rate 0.3 Hz, Depth 60%, Delay 18 ms, Tone -30%, Dry/Wet 60% |
-| Subtle vocal widening | Voices 2, Rate 0.5 Hz, Depth 20%, Delay 14 ms, Width 100%, Dry/Wet 25% |
-| Electric piano shimmer | Voices 2, Rate 1.2 Hz, Depth 40%, Delay 8 ms, Tone +20%, Dry/Wet 45% |
-| Bass chorus (keep the low end centered) | Voices 1, Rate 0.6 Hz, Depth 35%, Delay 10 ms, Width 60%, Tone +30%, Dry/Wet 35% |
-| Warbly lo-fi | Voices 1, Rate 4 Hz, Depth 70%, Delay 6 ms, Tone -60%, Dry/Wet 50% |
+| **Classic Pedal Chorus** | Voices 1, Rate 0.8 Hz, Depth 45%, Delay 10 ms, Dry/Wet 50% |
+| **Lush Ensemble** | Voices 4, Rate 0.3 Hz, Depth 60%, Delay 18 ms, Tone -30%, Dry/Wet 60% |
+| **Subtle Vocal Widening** | Voices 2, Rate 0.5 Hz, Depth 20%, Delay 14 ms, Width 100%, Dry/Wet 25% |
+| **Electric Piano Shimmer** | Voices 2, Rate 1.2 Hz, Depth 40%, Delay 8 ms, Tone +20%, Dry/Wet 45% |
+| **Bass Chorus** | Voices 1, Rate 0.6 Hz, Depth 35%, Delay 10 ms, Width 60%, Tone +30%, Dry/Wet 35% |
+| **Warbly Lo-Fi** | Voices 1, Rate 4 Hz, Depth 70%, Delay 6 ms, Tone -60%, Dry/Wet 50% |
 
 ## Notes
 

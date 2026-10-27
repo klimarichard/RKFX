@@ -54,13 +54,15 @@ RKGate has a second stereo input, labeled Sidechain. Wire the signal that should
 
 ## Starting points
 
-| Use | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Vocal mic between lines | Expander, Threshold -45 dB, Ratio 1:2, Range -15 dB, Attack 1 ms, Hold 80 ms, Release 200 ms |
-| Guitar amp hiss | Gate, Threshold -55 dB, Range -30 dB, Attack 0.5 ms, Hold 50 ms, Release 150 ms, Hysteresis 4 dB |
-| Tom mic spill | Gate, Threshold -30 dB, Range Closed, Attack 0.1 ms, Hold 60 ms, Release 120 ms, Key Low-Pass 2 kHz |
-| Snare without kick spill | Gate, Threshold -28 dB, Range -25 dB, Attack 0.1 ms, Hold 40 ms, Release 80 ms, Key High-Pass 200 Hz |
-| Rhythmic gated pad (pad gated by a drum loop) | Gate, Key Ext (drum loop into the sidechain), Threshold -30 dB, Range Closed, Attack 0.5 ms, Hold 20 ms, Release 60 ms |
+| **Vocal Mic Expander** | Expander, Threshold -45 dB, Ratio 1:2, Range -15 dB, Attack 1 ms, Hold 80 ms, Release 200 ms |
+| **Guitar Amp Hiss** | Gate, Threshold -55 dB, Range -30 dB, Attack 0.5 ms, Hold 50 ms, Release 150 ms, Hysteresis 4 dB |
+| **Tom Spill** | Gate, Threshold -30 dB, Range Closed, Attack 0.1 ms, Hold 60 ms, Release 120 ms, Key Low-Pass 2 kHz |
+| **Snare Without Kick** | Gate, Threshold -28 dB, Range -25 dB, Attack 0.1 ms, Hold 40 ms, Release 80 ms, Key High-Pass 200 Hz |
+| **Rhythmic Gated Pad** | Gate, Key Ext (drum loop into the sidechain), Threshold -30 dB, Range Closed, Attack 0.5 ms, Hold 20 ms, Release 60 ms |
 
 ## Notes
 

@@ -2,6 +2,8 @@
 
 #include "ChorusEngine.h"
 #include "CompressorEngine.h"
+#include "DelayEngine.h"
+#include "DistortEngine.h"
 #include "DoubleEngine.h"
 #include "FilterEngine.h"
 #include "FlangeEngine.h"
@@ -10,6 +12,7 @@
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
 #include "PhaseEngine.h"
+#include "SaturateEngine.h"
 #include "TremoloEngine.h"
 
 #include <cstdio>
@@ -50,7 +53,7 @@ namespace
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
-                               || std::is_same_v<Engine, PhaseEngine>)
+                               || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -228,6 +231,53 @@ int main (int argc, char** argv)
                   PhaseEngine::Settings s;
                   s.stages = 12;
                   s.envAmount = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKDelay", "default (digital, stereo)", []
+          {
+              return makeEngine<DelayEngine> ([] (DelayEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKDelay", "tape, ping-pong, modulation, ducking", []
+          {
+              return makeEngine<DelayEngine> ([] (DelayEngine& e)
+              {
+                  DelayEngine::Settings s;
+                  s.mode = DelayEngine::Mode::tape;
+                  s.stereo = DelayEngine::Stereo::pingPong;
+                  s.modDepth = 0.3f;
+                  s.duck = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKSaturate", "default (tape, 2x)", []
+          {
+              return makeEngine<SaturateEngine> ([] (SaturateEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKSaturate", "transformer, 4x", []
+          {
+              return makeEngine<SaturateEngine> ([] (SaturateEngine& e)
+              {
+                  SaturateEngine::Settings s;
+                  s.character = SaturateEngine::Character::transformer;
+                  s.oversampling = 4;
+                  s.tone = 0.3f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKDistort", "default (overdrive, 4x)", []
+          {
+              return makeEngine<DistortEngine> ([] (DistortEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKDistort", "fuzz, tight, mid, 4x12 cab, 4x", []
+          {
+              return makeEngine<DistortEngine> ([] (DistortEngine& e)
+              {
+                  DistortEngine::Settings s;
+                  s.type = DistortEngine::Type::fuzz;
+                  s.tightHz = 120.0f;
+                  s.midDb = 4.0f;
+                  s.cab = DistortEngine::Cab::large;
                   e.setSettings (s);
               });
           } },

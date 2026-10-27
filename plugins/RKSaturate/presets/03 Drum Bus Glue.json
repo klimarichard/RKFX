@@ -1,0 +1,9 @@
+{
+  "plugin": "RKSaturate",
+  "version": 1,
+  "name": "Drum Bus Glue",
+  "params": {
+    "drive": 8,
+    "mix": 60
+  }
+}

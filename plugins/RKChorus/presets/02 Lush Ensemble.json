@@ -1,0 +1,13 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Lush Ensemble",
+  "params": {
+    "voices": 4,
+    "rate": 0.3,
+    "depth": 60,
+    "delay": 18,
+    "tone": -30,
+    "mix": 60
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Synced Pulse",
+  "params": {
+    "stages": "6",
+    "center": 900,
+    "sync": true,
+    "division": "1/8"
+  }
+}

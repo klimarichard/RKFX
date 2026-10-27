@@ -1,0 +1,11 @@
+{
+  "plugin": "RKFreqShift",
+  "version": 1,
+  "name": "Barber-Pole Spiral",
+  "params": {
+    "shift1_range": "fine",
+    "shift1_fine": 2,
+    "shift1_feedback": 70,
+    "mix": 50
+  }
+}

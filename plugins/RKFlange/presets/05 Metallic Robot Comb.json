@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Metallic Robot Comb",
+  "params": {
+    "depth": 0,
+    "manual": 4,
+    "feedback": 85
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKGate",
+  "version": 1,
+  "name": "Rhythmic Gated Pad",
+  "params": {
+    "sc_source": "external",
+    "threshold": -30,
+    "hold": 20,
+    "release": 60
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFilter",
+  "version": 1,
+  "name": "Telephone Voice",
+  "params": {
+    "mode": "bandpass",
+    "slope": "24",
+    "cutoff": 1500
+  }
+}

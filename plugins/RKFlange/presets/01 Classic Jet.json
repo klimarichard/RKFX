@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Classic Jet",
+  "params": {
+    "rate": 0.15,
+    "depth": 80,
+    "feedback": 70
+  }
+}

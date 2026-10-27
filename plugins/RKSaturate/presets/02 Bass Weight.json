@@ -1,0 +1,10 @@
+{
+  "plugin": "RKSaturate",
+  "version": 1,
+  "name": "Bass Weight",
+  "params": {
+    "character": "transformer",
+    "drive": 10,
+    "tone": 10
+  }
+}

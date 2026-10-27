@@ -1,0 +1,13 @@
+{
+  "plugin": "RKCompress",
+  "version": 1,
+  "name": "Sidechain Ducking",
+  "params": {
+    "sc_source": "external",
+    "threshold": -35,
+    "ratio": 3,
+    "attack": 10,
+    "release": 300,
+    "sc_hpf": 150
+  }
+}

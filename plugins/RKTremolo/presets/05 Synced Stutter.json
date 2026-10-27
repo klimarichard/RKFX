@@ -1,0 +1,12 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Synced Stutter",
+  "params": {
+    "shape": "square",
+    "depth": 100,
+    "sync": true,
+    "division": "1/16",
+    "smooth": 10
+  }
+}

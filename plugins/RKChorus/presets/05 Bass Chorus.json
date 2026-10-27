@@ -1,0 +1,13 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Bass Chorus",
+  "params": {
+    "rate": 0.6,
+    "depth": 35,
+    "delay": 10,
+    "width": 60,
+    "tone": 30,
+    "mix": 35
+  }
+}

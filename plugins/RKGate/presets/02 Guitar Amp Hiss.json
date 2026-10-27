@@ -1,0 +1,12 @@
+{
+  "plugin": "RKGate",
+  "version": 1,
+  "name": "Guitar Amp Hiss",
+  "params": {
+    "threshold": -55,
+    "range": -30,
+    "hold": 50,
+    "release": 150,
+    "hysteresis": 4
+  }
+}

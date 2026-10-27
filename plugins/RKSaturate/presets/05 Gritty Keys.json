@@ -1,0 +1,11 @@
+{
+  "plugin": "RKSaturate",
+  "version": 1,
+  "name": "Gritty Keys",
+  "params": {
+    "character": "tube",
+    "drive": 18,
+    "tone": 20,
+    "oversampling": "4x"
+  }
+}

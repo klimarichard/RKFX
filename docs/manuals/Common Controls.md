@@ -57,11 +57,14 @@ All changes glide over a few milliseconds, so turning a knob, moving a Gig Perfo
 
 The header shows the current preset name. A `*` after the name means you have changed something since the preset was loaded or saved.
 
-- **Preset name button:** opens the preset menu with every preset of this plugin. Sub-folders appear as sub-menus. At the bottom:
-  - **Reset to defaults:** every control back to its built-in default.
-  - **Show presets folder:** opens the plugin's preset folder in Finder.
-  - **Change library folder...:** moves where all RKFX plugins look for presets.
-- **Save:** overwrites the current preset file, after asking. If the current settings don't come from a file yet, works like Save as.
+- **Preset name button:** opens the preset menu:
+  - **Factory:** the plugin's built-in presets, matching the starting points in its manual. They're part of the plugin, so they're always there and can't be changed or deleted; to keep a modified version, use **Save as**.
+  - Your own presets, with sub-folders as sub-menus.
+  - At the bottom:
+    - **Reset to defaults:** every control back to its built-in default.
+    - **Show presets folder:** opens the plugin's preset folder in Finder.
+    - **Change library folder...:** moves where all RKFX plugins look for presets.
+- **Save:** overwrites the current preset file, after asking. If the current settings don't come from a file of your own yet (for example a factory preset), works like Save as.
 - **Save as:** saves the settings under a new name.
 
 ### Where presets live

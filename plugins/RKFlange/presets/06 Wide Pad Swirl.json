@@ -1,0 +1,12 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Wide Pad Swirl",
+  "params": {
+    "rate": 0.1,
+    "depth": 100,
+    "manual": 3,
+    "feedback": 40,
+    "phase": 180
+  }
+}

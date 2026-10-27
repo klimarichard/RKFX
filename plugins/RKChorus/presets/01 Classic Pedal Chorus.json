@@ -1,0 +1,9 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Classic Pedal Chorus",
+  "params": {
+    "depth": 45,
+    "delay": 10
+  }
+}

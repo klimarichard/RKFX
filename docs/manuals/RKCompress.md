@@ -59,13 +59,15 @@ Plus **Dry/Wet** (default 100%), **Output** and **Bypass**. Turning Dry/Wet down
 
 ## Starting points
 
-| Use | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Smooth vocal | Threshold -20 dB, Ratio 3:1, Knee 9 dB, Attack 10 ms, Release Auto, RMS, Makeup Auto |
-| Bass guitar evening out | Threshold -24 dB, Ratio 4:1, Knee 6 dB, Attack 20 ms, Release 150 ms, RMS |
-| Punchy drums (parallel) | Threshold -30 dB, Ratio 8:1, Knee 0, Attack 5 ms, Release 80 ms, Peak, Makeup Auto, Dry/Wet 40% |
-| Acoustic guitar | Threshold -18 dB, Ratio 2.5:1, Knee 9 dB, Attack 15 ms, Release Auto, RMS, High-Pass 100 Hz |
-| Duck a backing track under the vocal | Source Ext (vocal into the sidechain), Threshold -35 dB, Ratio 3:1, Attack 10 ms, Release 300 ms, High-Pass 150 Hz |
+| **Smooth Vocal** | Threshold -20 dB, Ratio 3:1, Knee 9 dB, Attack 10 ms, Release Auto, RMS, Makeup Auto |
+| **Bass Evener** | Threshold -24 dB, Ratio 4:1, Knee 6 dB, Attack 20 ms, Release 150 ms, RMS |
+| **Parallel Drum Punch** | Threshold -30 dB, Ratio 8:1, Knee 0, Attack 5 ms, Release 80 ms, Peak, Makeup Auto, Dry/Wet 40% |
+| **Acoustic Guitar** | Threshold -18 dB, Ratio 2.5:1, Knee 9 dB, Attack 15 ms, Release Auto, RMS, High-Pass 100 Hz |
+| **Sidechain Ducking** | Source Ext (vocal into the sidechain), Threshold -35 dB, Ratio 3:1, Attack 10 ms, Release 300 ms, High-Pass 150 Hz |
 
 ## Notes
 

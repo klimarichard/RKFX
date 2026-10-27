@@ -1,0 +1,12 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Boomy Acoustic Fix",
+  "params": {
+    "hp_on": true,
+    "hp_freq": 90,
+    "lowmid_freq": 200,
+    "lowmid_gain": -4,
+    "lowmid_q": 2
+  }
+}

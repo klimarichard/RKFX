@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "String-Machine Phase",
+  "params": {
+    "stages": "8",
+    "center": 600,
+    "feedback": 50,
+    "depth": 90,
+    "rate": 0.15
+  }
+}

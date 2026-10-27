@@ -1,0 +1,11 @@
+{
+  "plugin": "RKFreqShift",
+  "version": 1,
+  "name": "Slow Stereo Phasing",
+  "params": {
+    "shift1_range": "fine",
+    "shift1_fine": 0.3,
+    "spread": 60,
+    "mix": 50
+  }
+}

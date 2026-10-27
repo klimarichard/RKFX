@@ -1,0 +1,11 @@
+{
+  "plugin": "RKChorus",
+  "version": 1,
+  "name": "Warbly Lo-Fi",
+  "params": {
+    "rate": 4,
+    "depth": 70,
+    "delay": 6,
+    "tone": -60
+  }
+}

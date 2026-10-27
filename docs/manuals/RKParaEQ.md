@@ -59,14 +59,16 @@ The ranges overlap, so two bands can work close together, for example a wide boo
 
 ## Starting points
 
-| Use | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version. (“Remove a feedback ring” is a technique rather than a fixed setting, so it isn't a preset.)
+
+| Factory preset | Settings |
 | --- | --- |
-| Clean up a vocal mic | HP on, 24, 100 Hz; Low Mid -3 dB at 300 Hz, Q 1.5; High shelf +3 dB at 10 kHz |
-| Tame a boomy acoustic guitar | HP on, 12, 90 Hz; Low Mid -4 dB at 200 Hz, Q 2 |
-| Kick drum punch | Low bell +4 dB at 60 Hz, Q 1.5; Mid -4 dB at 400 Hz, Q 2; High Mid +3 dB at 4 kHz |
-| Bass guitar definition | HP on, 12, 35 Hz; Mid +3 dB at 800 Hz, Q 1.2; LP on, 12, 8 kHz |
+| **Vocal Mic Cleanup** | HP on, 24, 100 Hz; Low Mid -3 dB at 300 Hz, Q 1.5; High shelf +3 dB at 10 kHz |
+| **Boomy Acoustic Fix** | HP on, 12, 90 Hz; Low Mid -4 dB at 200 Hz, Q 2 |
+| **Kick Punch** | Low bell +4 dB at 60 Hz, Q 1.5; Mid -4 dB at 400 Hz, Q 2; High Mid +3 dB at 4 kHz |
+| **Bass Definition** | HP on, 12, 35 Hz; Mid +3 dB at 800 Hz, Q 1.2; LP on, 12, 8 kHz |
 | Remove a feedback ring | The matching band at the ringing frequency, -9 dB, Q 8 |
-| Thin keyboard pad for the mix | HP on, 24, 200 Hz; High Mid -2 dB at 3 kHz, Q 1 |
+| **Thin Keyboard Pad** | HP on, 24, 200 Hz; High Mid -2 dB at 3 kHz, Q 1 |
 
 ## Notes
 

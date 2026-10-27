@@ -28,13 +28,15 @@ The double always comes slightly *after* the original, never before it, so the p
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Natural double-tracked vocal | Delay 25 ms, Drift 40%, Drift Speed 0.5 Hz, Tone -20%, Spread 40%, Level -4 dB |
-| Wide rhythm guitar | Delay 20 ms, Drift 50%, Drift Speed 0.7 Hz, Tone -10%, Spread 100%, Level -1 dB |
-| Thicken a vocal in the center | Delay 18 ms, Drift 35%, Spread 0%, Tone -30%, Level -8 dB |
-| Slapback-style double | Delay 55 ms, Drift 15%, Tone -40%, Spread 30%, Level -6 dB |
-| Loose, "two singers" chorus part | Delay 30 ms, Drift 80%, Drift Speed 1.2 Hz, Spread 70%, Level -2 dB |
+| **Natural Vocal Double** | Delay 25 ms, Drift 40%, Drift Speed 0.5 Hz, Tone -20%, Spread 40%, Level -4 dB |
+| **Wide Rhythm Guitar** | Delay 20 ms, Drift 50%, Drift Speed 0.7 Hz, Tone -10%, Spread 100%, Level -1 dB |
+| **Centered Thickening** | Delay 18 ms, Drift 35%, Spread 0%, Tone -30%, Level -8 dB |
+| **Slapback-Style Double** | Delay 55 ms, Drift 15%, Tone -40%, Spread 30%, Level -6 dB |
+| **Two Singers** | Delay 30 ms, Drift 80%, Drift Speed 1.2 Hz, Spread 70%, Level -2 dB |
 
 ## Notes
 

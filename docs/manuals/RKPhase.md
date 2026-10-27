@@ -50,14 +50,16 @@ Plus the standard **Dry/Wet** (default 50%, the deepest notches), **Output** and
 
 ## Starting points
 
-| Sound | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version.
+
+| Factory preset | Settings |
 | --- | --- |
-| Classic orange-pedal phase (guitar) | 4 stages, Center 700 Hz, Feedback +20%, Depth 80%, Rate 0.4 Hz |
-| Electric piano swirl | 4 stages, Center 1 kHz, Feedback +40%, Depth 70%, Rate 0.6 Hz, Stereo Phase 120° |
-| Deep string-machine phase | 8 stages, Center 600 Hz, Feedback +50%, Depth 90%, Rate 0.15 Hz |
-| Funky envelope phaser | 4 stages, Center 400 Hz, Feedback +50%, Depth 0%, Env Amount +80%, Attack 5 ms, Release 150 ms |
-| Synced pulsing phase | 6 stages, Center 900 Hz, Feedback +30%, Depth 70%, Sync on, 1/8 |
-| Fast rotary-style swirl | 4 stages, Center 1.2 kHz, Feedback +10%, Depth 50%, Rate 5 Hz, Stereo Phase 180° |
+| **Orange Pedal Phase** | 4 stages, Center 700 Hz, Feedback +20%, Depth 80%, Rate 0.4 Hz |
+| **Electric Piano Swirl** | 4 stages, Center 1 kHz, Feedback +40%, Depth 70%, Rate 0.6 Hz, Stereo Phase 120° |
+| **String-Machine Phase** | 8 stages, Center 600 Hz, Feedback +50%, Depth 90%, Rate 0.15 Hz |
+| **Funky Envelope Phaser** | 4 stages, Center 400 Hz, Feedback +50%, Depth 0%, Env Amount +80%, Attack 5 ms, Release 150 ms |
+| **Synced Pulse** | 6 stages, Center 900 Hz, Feedback +30%, Depth 70%, Sync on, 1/8 |
+| **Rotary-Style Swirl** | 4 stages, Center 1.2 kHz, Feedback +10%, Depth 50%, Rate 5 Hz, Stereo Phase 180° |
 
 ## Notes
 

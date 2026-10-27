@@ -1,0 +1,12 @@
+{
+  "plugin": "RKGate",
+  "version": 1,
+  "name": "Tom Spill",
+  "params": {
+    "threshold": -30,
+    "attack": 0.1,
+    "hold": 60,
+    "release": 120,
+    "key_lpf": 2000
+  }
+}

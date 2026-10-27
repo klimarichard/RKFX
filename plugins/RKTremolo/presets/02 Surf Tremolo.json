@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Surf Tremolo",
+  "params": {
+    "shape": "triangle",
+    "depth": 85,
+    "rate": 7
+  }
+}

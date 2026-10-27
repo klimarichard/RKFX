@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Orange Pedal Phase",
+  "params": {
+    "center": 700,
+    "feedback": 20,
+    "depth": 80,
+    "rate": 0.4
+  }
+}

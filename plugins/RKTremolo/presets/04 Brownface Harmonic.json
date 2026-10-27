@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTremolo",
+  "version": 1,
+  "name": "Brownface Harmonic",
+  "params": {
+    "mode": "harmonic",
+    "depth": 70,
+    "rate": 4.5
+  }
+}

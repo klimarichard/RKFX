@@ -1,0 +1,11 @@
+{
+  "plugin": "RKDistort",
+  "version": 1,
+  "name": "Vintage Fuzz",
+  "params": {
+    "type": "fuzz",
+    "gain": 30,
+    "tone": -20,
+    "cab": "small"
+  }
+}

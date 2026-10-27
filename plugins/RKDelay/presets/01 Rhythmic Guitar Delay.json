@@ -1,0 +1,10 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Rhythmic Guitar Delay",
+  "params": {
+    "sync": true,
+    "lowcut": 150,
+    "highcut": 6000
+  }
+}

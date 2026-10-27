@@ -49,6 +49,8 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
         }
     }
 
+    factoryPresets = rkfx::getFactoryPresets();
+
     // New instances start from the user's Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile (config.name);
     if (defaultFile.existsAsFile())
@@ -103,6 +105,8 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto numChannels = juce::jmax (getMainBusNumInputChannels(), getMainBusNumOutputChannels());
 
     dryBuffer.setSize (numChannels, maxBlock, false, false, true);
+    dryDelay.setSize (numChannels, kMaxLatency + 1, false, true, true);
+    dryDelayWrite = 0;
 
     outputStage.prepare (sampleRate);
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
@@ -191,6 +195,40 @@ void ProcessorBase::updateTransport()
     }
 }
 
+void ProcessorBase::reportLatency (int samples)
+{
+    samples = juce::jlimit (0, kMaxLatency, samples);
+    if (latency.exchange (samples) == samples && getLatencySamples() == samples)
+        return;
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        setLatencySamples (samples);
+    else
+        latencyNotifier.triggerAsyncUpdate();
+}
+
+void ProcessorBase::delayDry (int numChannels, int numSamples) noexcept
+{
+    const auto delay = latency.load();
+    if (delay == 0)
+        return;
+
+    // Ring of kMaxLatency + 1 samples: write each dry sample, read the one `delay` samples older.
+    constexpr int size = kMaxLatency + 1;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto readIndex = (dryDelayWrite - delay + size) % size;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            auto* ring = dryDelay.getWritePointer (ch);
+            auto* dry = dryBuffer.getWritePointer (ch);
+            ring[dryDelayWrite] = dry[i];
+            dry[i] = ring[readIndex];
+        }
+        dryDelayWrite = (dryDelayWrite + 1) % size;
+    }
+}
+
 void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
 {
     const auto numChannels = chunk.getNumChannels();
@@ -198,6 +236,8 @@ void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
 
     for (int ch = 0; ch < numChannels; ++ch)
         dryBuffer.copyFrom (ch, 0, chunk, ch, 0, numSamples);
+
+    delayDry (numChannels, numSamples);
 
     if (outputStage.wetNeeded())
     {
@@ -300,6 +340,22 @@ ProcessorBase::PresetResult ProcessorBase::loadPreset (const juce::File& file)
     applyValues (r.values);
     setPresetState (r.name.isNotEmpty() ? r.name : file.getFileNameWithoutExtension(), file, false);
 
+    return { true, r.notes.joinIntoString ("; ") };
+}
+
+ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
+{
+    if (index < 0 || index >= (int) factoryPresets.size())
+        return { false, "No such factory preset" };
+
+    const auto& preset = factoryPresets[(size_t) index];
+    const auto r = readPreset (preset.json, presetInfos);
+    if (! r.ok)
+        return { false, r.error };
+
+    applyValues (r.values);
+    // No file: Save on a factory preset asks for a new name (factory presets stay read-only).
+    setPresetState (r.name.isNotEmpty() ? r.name : preset.name, {}, false);
     return { true, r.notes.joinIntoString ("; ") };
 }
 

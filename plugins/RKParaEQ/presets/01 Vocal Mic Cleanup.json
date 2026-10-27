@@ -1,0 +1,15 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Vocal Mic Cleanup",
+  "params": {
+    "hp_on": true,
+    "hp_slope": "24",
+    "hp_freq": 100,
+    "lowmid_freq": 300,
+    "lowmid_gain": -3,
+    "lowmid_q": 1.5,
+    "high_freq": 10000,
+    "high_gain": 3
+  }
+}

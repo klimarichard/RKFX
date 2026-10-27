@@ -1,0 +1,11 @@
+{
+  "plugin": "RKCompress",
+  "version": 1,
+  "name": "Bass Evener",
+  "params": {
+    "threshold": -24,
+    "ratio": 4,
+    "knee": 6,
+    "attack": 20
+  }
+}

@@ -42,13 +42,15 @@ The curve shows the actual combined response of all bands, including how neighbo
 
 ## Starting points
 
-| Use | Settings |
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. Load one, then adjust it to your sound and use **Save as** to keep your version. (“Ring out a vocal monitor” is a technique rather than a fixed setting, so it isn't a preset.)
+
+| Factory preset | Settings |
 | --- | --- |
-| Smile curve for a fuller PA sound | 10 bands: 63 Hz +3, 125 Hz +2, 500 Hz -2, 1 kHz -2, 8 kHz +2, 16 kHz +3 |
+| **PA Smile Curve** | 10 bands: 63 Hz +3, 125 Hz +2, 500 Hz -2, 1 kHz -2, 8 kHz +2, 16 kHz +3 |
 | Ring out a vocal monitor | 31 bands: raise the gain until feedback starts, then pull down the slider at the ringing frequency by 6 to 9 dB; repeat for the next ring |
-| Acoustic guitar through a PA | 15 bands: 100 Hz -4, 250 Hz -2, 2.5 kHz +2, 10 kHz +2 |
-| Bass guitar growl | 10 bands: 63 Hz +2, 250 Hz -3, 1 kHz +3, 2 kHz +2 |
-| Telephone effect | 10 bands: 31.5 to 250 Hz all -12, 4 kHz to 16 kHz all -12, 1 kHz +6 |
+| **Acoustic Guitar PA** | 15 bands: 100 Hz -4, 250 Hz -2, 2.5 kHz +2, 10 kHz +2 |
+| **Bass Growl** | 10 bands: 63 Hz +2, 250 Hz -3, 1 kHz +3, 2 kHz +2 |
+| **Telephone** | 10 bands: 31.5 to 250 Hz all -12, 4 kHz to 16 kHz all -12, 1 kHz +6 |
 
 ## Notes
 

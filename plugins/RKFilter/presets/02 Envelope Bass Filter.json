@@ -1,0 +1,12 @@
+{
+  "plugin": "RKFilter",
+  "version": 1,
+  "name": "Envelope Bass Filter",
+  "params": {
+    "slope": "24",
+    "cutoff": 200,
+    "resonance": 50,
+    "env_amount": 70,
+    "env_sens": 6
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKFlange",
+  "version": 1,
+  "name": "Synced Drum Whoosh",
+  "params": {
+    "sync": true,
+    "division": "1/1",
+    "depth": 90,
+    "manual": 1,
+    "feedback": 60
+  }
+}

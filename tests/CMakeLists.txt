@@ -20,6 +20,9 @@ target_sources(RKFXTests PRIVATE
     DoubleTests.cpp
     FlangeTests.cpp
     PhaseTests.cpp
+    DelayTests.cpp
+    SaturateTests.cpp
+    DistortTests.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ/ParaEQEngine.cpp
@@ -31,6 +34,9 @@ target_sources(RKFXTests PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKPhase/PhaseEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKDelay/DelayEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate/SaturateEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKDistort/DistortEngine.cpp
 )
 
 target_include_directories(RKFXTests PRIVATE
@@ -44,7 +50,10 @@ target_include_directories(RKFXTests PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble
     ${PROJECT_SOURCE_DIR}/plugins/RKFlange
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase)
+    ${PROJECT_SOURCE_DIR}/plugins/RKPhase
+    ${PROJECT_SOURCE_DIR}/plugins/RKDelay
+    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate
+    ${PROJECT_SOURCE_DIR}/plugins/RKDistort)
 
 target_compile_definitions(RKFXTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 
@@ -76,6 +85,9 @@ target_sources(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
     ${PROJECT_SOURCE_DIR}/plugins/RKPhase/PhaseEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKDelay/DelayEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate/SaturateEngine.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKDistort/DistortEngine.cpp
 )
 target_include_directories(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
@@ -88,7 +100,10 @@ target_include_directories(RKFXBench PRIVATE
     ${PROJECT_SOURCE_DIR}/plugins/RKChorus
     ${PROJECT_SOURCE_DIR}/plugins/RKDouble
     ${PROJECT_SOURCE_DIR}/plugins/RKFlange
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase)
+    ${PROJECT_SOURCE_DIR}/plugins/RKPhase
+    ${PROJECT_SOURCE_DIR}/plugins/RKDelay
+    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate
+    ${PROJECT_SOURCE_DIR}/plugins/RKDistort)
 target_compile_definitions(RKFXBench PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(RKFXBench
     PRIVATE
@@ -100,3 +115,25 @@ target_link_libraries(RKFXBench
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# Factory preset check: every plugins/<Name>/presets/*.json against that
+# plugin's real parameters. Needs the parameter classes, so it links
+# juce_audio_processors (the DSP tests above deliberately don't).
+juce_add_console_app(RKFXPresetTests PRODUCT_NAME "RKFXPresetTests")
+target_sources(RKFXPresetTests PRIVATE
+    PresetTests.cpp
+    ${PROJECT_SOURCE_DIR}/core/plugin/ParamBuilder.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ/GraphEQEngine.cpp
+)
+target_compile_definitions(RKFXPresetTests PRIVATE
+    JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(RKFXPresetTests
+    PRIVATE
+        rkfx_core_dsp
+        juce::juce_audio_processors
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)

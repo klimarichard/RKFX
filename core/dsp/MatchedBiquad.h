@@ -32,7 +32,8 @@ struct BiquadCoefficients
     DC, at the band frequency and at Nyquist. Each design is computed in the
     direction where this is most accurate (bell boosts, shelf cuts) and the
     opposite direction is its exact inverse. Within 1 dB of the analog
-    response for band frequencies up to 12 kHz at any sample rate.
+    response for band frequencies up to 12 kHz at any sample rate, about
+    1.5 dB at 16 kHz on 44.1 kHz; the centre gain is always exact.
 
     Gains are in dB; 0 dB returns an exact identity. */
 namespace MatchedDesign

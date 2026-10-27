@@ -2,6 +2,7 @@
 
 #include "FilterEngine.h"
 #include "FreqShiftEngine.h"
+#include "ParaEQEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -100,6 +101,22 @@ int main (int argc, char** argv)
                   s.envAmount = 0.5f;
                   s.lfoDepth = 0.5f;
                   s.lfoPhaseDeg = 90.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKParaEQ", "default (transparent)", []
+          {
+              return makeEngine<ParaEQEngine> ([] (ParaEQEngine& e) { e.setSettings (ParaEQEngine::defaults()); });
+          } },
+        { "RKParaEQ", "all 7 bands active, 48 dB cuts", []
+          {
+              return makeEngine<ParaEQEngine> ([] (ParaEQEngine& e)
+              {
+                  auto s = ParaEQEngine::defaults();
+                  s.highPass = { true, 60.0f, 4 };
+                  s.lowPass = { true, 15000.0f, 4 };
+                  for (auto& b : s.bands)
+                      b.gainDb = 4.0f;
                   e.setSettings (s);
               });
           } },

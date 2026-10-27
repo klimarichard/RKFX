@@ -4,7 +4,7 @@ A suite of separate, lightweight audio effect plugins by RKMusic, built for live
 
 Goals, in priority order:
 
-1. **Zero latency.** Every plugin reports zero latency: no lookahead, no FFT, no block-based processing.
+1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate and RKDistort (4 or 5 samples, about 0.1 ms, reported to the host).
 2. **Lightweight.** Minimal CPU and memory, fast loading, no heavy graphics.
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
@@ -26,8 +26,8 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 | RKTransient | Transient shaper | Planned |
 | RKDeEss | De-esser | Planned |
 | RKSwell | Auto swell | Planned |
-| RKSaturate | Saturation | Planned |
-| RKDistort | Distortion | Planned |
+| [RKSaturate](docs/manuals/RKSaturate.md) | Tape, tube and transformer saturation | Available |
+| [RKDistort](docs/manuals/RKDistort.md) | Overdrive, distortion and fuzz with cab filter | Available |
 | [RKChorus](docs/manuals/RKChorus.md) | Chorus, 1 to 4 voices per side | Available |
 | [RKDouble](docs/manuals/RKDouble.md) | Artificial double tracking with random drift | Available |
 | [RKFlange](docs/manuals/RKFlange.md) | Flanger with positive and negative feedback | Available |
@@ -35,7 +35,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 | [RKTremolo](docs/manuals/RKTremolo.md) | Tremolo, auto-pan and harmonic tremolo | Available |
 | RKRotary | Rotary speaker | Planned |
 | RKVibrato | Vibrato | Planned |
-| RKDelay | Delay | Planned |
+| [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong and ducking | Available |
 | RKVerb | Reverb | Planned |
 | RKUtility | Gain, pan, width, mono, polarity, mid/side | Planned |
 
@@ -50,6 +50,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 - Mono and stereo; sample rates 44.1 to 192 kHz.
 - RKCompress and RKGate have a second stereo input (Sidechain) for an external key signal.
 - Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`.
+- Every plugin comes with factory presets (the starting points from its manual), built in and shown under **Factory** in the preset menu. Their source files are in `plugins/<Plugin>/presets/` and are compiled in automatically.
 
 ## Building
 
@@ -65,11 +66,12 @@ Builds install the AU and VST3 into `~/Library/Audio/Plug-Ins` automatically. Re
 ### Tests and validation
 
 ```sh
-ctest --test-dir build --output-on-failure                     # DSP and preset tests
+ctest --test-dir build --output-on-failure                     # DSP, preset format and factory preset tests
 ./build/tests/RKFXBench_artefacts/Release/RKFXBench            # CPU benchmark, 48 kHz / 64 samples
 auval -v aufx Fsh1 RKMu                                        # AU validation (per plugin code:
                                                                #   Fsh1, Flt1, Peq1, Geq1, Cmp1, Gat1,
-                                                               #   Trm1, Chr1, Dbl1, Flg1, Phs1, ...)
+                                                               #   Trm1, Chr1, Dbl1, Flg1, Phs1,
+                                                               #   Dly1, Sat1, Dst1, ...)
 /Applications/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 \
     --validate-in-process ~/Library/Audio/Plug-Ins/VST3/RKFreqShift.vst3
 ```
@@ -84,12 +86,13 @@ core/              shared code for every plugin
   dsp/             filters (state-variable, cascades, matched bell/shelf),
                    crossover, tone tilt, Hilbert transformer, oscillators, LFO,
                    random modulator, envelope follower, modulated delay line,
+                   2x/4x oversampler,
                    dynamics (level detection, gain computer, gain smoothing)
   safety/          smoothing, DC blocker, NaN guard, soft clipper
   gui/             look and feel, knob, fader, switches, response curve,
                    gain reduction meter
   plugin/          base processor and editor, parameters, presets, output stage
-plugins/<Name>/    one folder per plugin
+plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
 tests/             DSP and format tests, CPU benchmark
 docs/manuals/      user manuals
 benchmarks/        recorded CPU benchmark results

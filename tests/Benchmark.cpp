@@ -2,6 +2,7 @@
 
 #include "ChorusEngine.h"
 #include "CompressorEngine.h"
+#include "DoubleEngine.h"
 #include "FilterEngine.h"
 #include "GateEngine.h"
 #include "FreqShiftEngine.h"
@@ -204,6 +205,10 @@ int main (int argc, char** argv)
                   s.width = 0.7f;
                   e.setSettings (s);
               });
+          } },
+        { "RKDouble", "default", []
+          {
+              return makeEngine<DoubleEngine> ([] (DoubleEngine& e) { e.setSettings ({}); });
           } },
     };
 

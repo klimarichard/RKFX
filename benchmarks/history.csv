@@ -71,3 +71,20 @@ date,plugin,case,us_per_64_block,percent_realtime
 20261027T232708.695+0100,RKTremolo,"harmonic, square, stereo phase",0.430,0.032
 20261027T232708.744+0100,RKChorus,"default (1 voice)",0.971,0.073
 20261027T232708.894+0100,RKChorus,"4 voices, tone, width",3.004,0.225
+20261027T233414.200+0100,RKFreqShift,"default (1 shift)",1.353,0.101
+20261027T233414.378+0100,RKFreqShift,"4 shifts, feedback, spread",3.527,0.265
+20261027T233414.419+0100,RKFilter,"default (LP 12, static)",0.818,0.061
+20261027T233414.540+0100,RKFilter,"48 dB, envelope + LFO",2.405,0.180
+20261027T233414.558+0100,RKParaEQ,"default (transparent)",0.375,0.028
+20261027T233414.646+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.757,0.132
+20261027T233414.674+0100,RKGraphEQ,"default (transparent)",0.557,0.042
+20261027T233414.838+0100,RKGraphEQ,"31 bands, all active",3.268,0.245
+20261027T233414.876+0100,RKCompress,"default (RMS, internal)",0.755,0.057
+20261027T233414.934+0100,RKCompress,"peak, auto release, sidechain HPF",1.169,0.088
+20261027T233414.966+0100,RKGate,"default (gate, linked)",0.629,0.047
+20261027T233415.006+0100,RKGate,"expander, unlinked, key filters",0.810,0.061
+20261027T233415.024+0100,RKTremolo,"default (classic sine)",0.344,0.026
+20261027T233415.045+0100,RKTremolo,"harmonic, square, stereo phase",0.425,0.032
+20261027T233415.093+0100,RKChorus,"default (1 voice)",0.952,0.071
+20261027T233415.239+0100,RKChorus,"4 voices, tone, width",2.917,0.219
+20261027T233415.255+0100,RKDouble,"default",0.323,0.024

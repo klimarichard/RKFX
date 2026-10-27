@@ -1,0 +1,70 @@
+# RKDelay
+
+**Stereo delay** · Delay family (green) · zero latency
+
+RKDelay repeats the sound as echoes. It has three characters (clean **digital**, warm **analog** and wobbly **tape**), stereo, mono and **ping-pong** modes, tempo sync, filters that shape the repeats, modulation and **ducking**, which keeps the echoes out of the way while you play.
+
+For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls](Common%20Controls.md). A mono input gives a stereo output, so ping-pong works on mono sources.
+
+## How the signal flows
+
+1. The input goes into a delay line (up to 4 seconds).
+2. Each repeat passes through the **character** (digital, analog or tape) and the **Low Cut** and **High Cut** filters.
+3. **Feedback** sends the repeat back into the delay for more echoes. A soft limiter in that loop means even 100% feedback sustains without ever running away.
+4. **Ducking** turns the echoes down while the input is loud.
+5. **Dry/Wet** blends the echoes with the original, then **Output** sets the level.
+
+The original signal is never delayed, so RKDelay adds no latency.
+
+## Delay
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Digital / Analog / Tape** | Digital, analog, tape | Digital | The character of the repeats. **Digital**: clean, exact copies; only the cut filters shape them. **Analog**: like a bucket-brigade pedal, each repeat gets darker and gently saturated, so the echoes melt away. **Tape**: wow and flutter make the repeats waver slightly in pitch, with tape-style saturation and a slight loss of highs. Switching glides, so it never clicks. |
+| **Mono / Stereo / Ping-Pong** | Mono, stereo, ping-pong | Stereo | **Mono**: one delay for both sides. **Stereo**: left and right have their own delays (see R Offset). **Ping-pong**: the echoes bounce from left to right and back. |
+| **Time** (Sync off) | 1 ms to 2 s | 375 ms | Time between echoes. Changing it while echoes are ringing glides smoothly, with the tape-like pitch bend of a real delay. |
+| **Time** (Sync on) | 1/1 to 1/32, dotted (D) and triplet (T) | 1/8 D | Time as a note value, following the song tempo. Dotted eighths are the classic "U2"-style rhythmic delay. Times longer than 4 s (slow tempos with long notes) are limited to 4 s. |
+| **Sync** | Off, on | Off | Off: Time in ms. On: Time as a note value. |
+| **Feedback** | 0 to 100% | 35% | How many repeats: 0% is a single echo; higher values give longer trails; 100% sustains (self-oscillating textures) without running away. |
+| **R Offset** | -50% to +50% | 0% | Makes the right side's time shorter or longer than the left's, for a wider, more complex stereo echo. Dimmed in Mono mode. |
+
+## Feedback Tone
+
+These filters sit inside the feedback loop, so every repeat is filtered again: the echoes get progressively thinner (Low Cut) or darker (High Cut).
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Low Cut** | 20 Hz to 1 kHz | 100 Hz | Removes lows from the echoes, keeping them from muddying the bass. |
+| **High Cut** | 1 to 20 kHz | 8 kHz | Removes highs from the echoes, so they sit behind the original. |
+
+## Modulation
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Depth** | 0 to 100% | 0% | Gently moves the delay time up and down, adding a chorus-like shimmer to the repeats. Works in every mode, on top of the tape wow and flutter. |
+| **Rate** | 0.1 to 5 Hz | 0.6 Hz | Speed of the modulation. Dimmed while Depth is 0. |
+
+## Bottom row
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Ducking** | 0 to 100% | 0% | Turns the echoes down while you play and lets them come up in the gaps, so a vocal or solo stays clear while the delay fills the spaces. |
+
+Plus the standard **Dry/Wet** (default 30%), **Output** and **Bypass**. When Bypass is switched on, the echoes stop at once; switching back on starts fresh.
+
+## Starting points
+
+| Sound | Settings |
+| --- | --- |
+| Classic rhythmic guitar delay | Digital, Stereo, Sync 1/8 D, Feedback 35%, Low Cut 150 Hz, High Cut 6 kHz, Dry/Wet 30% |
+| Warm analog lead delay | Analog, Stereo, Time 420 ms, Feedback 45%, Mod Depth 20%, Ducking 50%, Dry/Wet 35% |
+| Slapback (rockabilly, vocals) | Digital or Tape, Mono, Time 110 ms, Feedback 10%, High Cut 5 kHz, Dry/Wet 30% |
+| Vintage tape echo | Tape, Mono, Time 330 ms, Feedback 50%, Low Cut 200 Hz, High Cut 5 kHz, Dry/Wet 35% |
+| Wide ping-pong on keys | Digital, Ping-Pong, Sync 1/4, Feedback 40%, High Cut 7 kHz, Dry/Wet 25% |
+| Vocal throw that doesn't clutter | Analog, Stereo, Sync 1/4, Feedback 30%, Ducking 80%, Dry/Wet 30% |
+| Ambient wash / self-oscillation | Tape, Ping-Pong, Time 600 ms, Feedback 90 to 100%, Mod Depth 40%, Dry/Wet 50% |
+
+## Notes
+
+- High feedback in Digital mode with the filters wide open repeats almost forever; lower Feedback or the High Cut for trails that fade.
+- Gig Performer tip: map Feedback to an expression pedal for dub-style swells, or Dry/Wet to a widget to throw echoes on single words.

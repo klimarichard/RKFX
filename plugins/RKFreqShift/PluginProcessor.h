@@ -2,10 +2,11 @@
 
 #include "plugin/ProcessorBase.h"
 
-/** RKFreqShift: four-voice Bode-style frequency shifter.
+#include "FreqShiftEngine.h"
+#include "Parameters.h"
 
-    Foundation shell: standard controls only, the signal passes through
-    unchanged. The shifter DSP and its parameters come in the next step. */
+/** RKFreqShift: four independent Bode-style frequency shifts mixed to one
+    stereo output. */
 class RKFreqShiftProcessor : public rkfx::ProcessorBase
 {
 public:
@@ -19,5 +20,17 @@ protected:
     void processDsp (juce::AudioBuffer<float>&) override;
 
 private:
+    struct ShiftParams
+    {
+        juce::RangedAudioParameter *on, *freq, *fine, *range, *updown, *feedback, *level;
+    };
+
+    std::array<ShiftParams, FreqShiftParams::kNumShifts> shiftParams {};
+    juce::RangedAudioParameter *spread = nullptr, *lowCut = nullptr, *highCut = nullptr;
+
+    FreqShiftEngine engine;
+
+    void updateEngine();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKFreqShiftProcessor)
 };

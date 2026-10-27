@@ -4,4 +4,5 @@ rkfx_add_plugin(RKFreqShift
     SOURCES
         PluginProcessor.cpp
         PluginEditor.cpp
+        FreqShiftEngine.cpp
 )

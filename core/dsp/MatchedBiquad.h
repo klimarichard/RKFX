@@ -104,7 +104,9 @@ namespace MatchedDesign
         }
     }
 
-    /** Peaking bell, gain-symmetric: a cut is the exact mirror of the boost. */
+    /** Peaking bell, gain-symmetric: a cut is the exact mirror of the boost,
+        and the width between the half-gain points (in dB) is the same at every
+        gain, so a band keeps its width however far it is pushed. */
     inline BiquadCoefficients bell (double hz, double gainDb, double q, double sampleRate)
     {
         using namespace detail;
@@ -118,24 +120,6 @@ namespace MatchedDesign
 
         double a1, a2;
         poles (1.0 / (2.0 * a * q), w0, a1, a2);
-        const auto boost = match (analog, a1, a2, w0);
-        return gainDb > 0.0 ? boost : invert (boost);
-    }
-
-    /** Constant-Q bell (graphic EQ): the bandwidth stays the same whatever the gain. */
-    inline BiquadCoefficients bellConstantQ (double hz, double gainDb, double q, double sampleRate)
-    {
-        using namespace detail;
-        if (isFlat (gainDb))
-            return {};
-
-        const auto w0 = omega (hz, sampleRate);
-        const auto g = std::pow (10.0, std::abs (gainDb) / 20.0);
-
-        const auto analog = [=] (Complex s) { return (s * s + s * (g / q) * w0 + w0 * w0) / (s * s + s * w0 / q + w0 * w0); };
-
-        double a1, a2;
-        poles (1.0 / (2.0 * q), w0, a1, a2);
         const auto boost = match (analog, a1, a2, w0);
         return gainDb > 0.0 ? boost : invert (boost);
     }

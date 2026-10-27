@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dsp/EnvelopeFollower.h"
+#include "dsp/FilterCascade.h"
 #include "dsp/LFO.h"
 #include "dsp/StateVariableFilter.h"
 #include "dsp/TempoSync.h"
@@ -21,10 +22,10 @@
 class FilterEngine
 {
 public:
-    enum class Mode { lowpass, highpass, bandpass };
+    using Mode = rkfx::FilterCascade::Mode;
 
     static constexpr int kMaxChannels = 2;
-    static constexpr int kMaxStages = 4;
+    static constexpr int kMaxStages = rkfx::FilterCascade::kMaxStages;
     static constexpr float kMaxQ = 10.0f;            // resonance 100%
     static constexpr float kModOctaves = 4.0f;       // envelope / LFO at 100%
     static constexpr float kEnvFloorDb = -48.0f;     // envelope range: -48 dB (closed) to 0 dB (fully open)
@@ -59,24 +60,10 @@ public:
     void process (float* const* io, int numChannels, int numSamples, const rkfx::Transport&) noexcept;
 
 private:
-    struct Bank
-    {
-        Mode mode = Mode::lowpass;
-        int stages = 1;
-        float extraK[kMaxStages - 1] {};   // 1/Q of the Butterworth stages
-        std::array<std::array<rkfx::StateVariableFilter, kMaxStages>, kMaxChannels> filters;
-
-        void configure (Mode, int stages);
-        void reset();
-        float process (int channel, float x, float g, float resonantK) noexcept;
-    };
-
     double sampleRate = 48000.0;
     Settings settings;
 
-    std::array<Bank, 2> banks;
-    int active = 0;
-    int fadeRemaining = 0, fadeLength = 480;
+    rkfx::CrossfadingCascade cascade;
 
     rkfx::EnvelopeFollower envelope;
     std::array<rkfx::LFO, kMaxChannels> lfos;

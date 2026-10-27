@@ -4,16 +4,7 @@
 
 namespace
 {
-    using Type = rkfx::StateVariableFilter::Type;
-
     constexpr float kButterworthQ = 0.70710678f;
-
-    /** Butterworth section Qs for the extra stages (orders 2, 4 and 6). */
-    constexpr float kExtraQ[3][3] = {
-        { 0.70710678f, 0.0f,        0.0f },
-        { 0.54119610f, 1.30656296f, 0.0f },
-        { 0.51763809f, 0.70710678f, 1.93185165f }
-    };
 }
 
 float FilterEngine::resonanceToQ (float r) noexcept
@@ -22,56 +13,10 @@ float FilterEngine::resonanceToQ (float r) noexcept
 }
 
 //==============================================================================
-void FilterEngine::Bank::configure (Mode newMode, int newStages)
-{
-    mode = newMode;
-    stages = juce::jlimit (1, kMaxStages, newStages);
-
-    for (int s = 0; s < stages - 1; ++s)
-        extraK[s] = 1.0f / (mode == Mode::bandpass ? kButterworthQ : kExtraQ[stages - 2][s]);
-}
-
-void FilterEngine::Bank::reset()
-{
-    for (auto& channel : filters)
-        for (auto& f : channel)
-            f.reset();
-}
-
-float FilterEngine::Bank::process (int channel, float x, float g, float resonantK) noexcept
-{
-    auto& f = filters[(size_t) channel];
-
-    f[0].setCoefficients (g, resonantK);
-    for (int s = 1; s < stages; ++s)
-        f[(size_t) s].setCoefficients (g, extraK[s - 1]);
-
-    switch (mode)
-    {
-        case Mode::lowpass:
-            for (int s = 0; s < stages; ++s)
-                x = f[(size_t) s].process (x, Type::lowpass);
-            return x;
-
-        case Mode::highpass:
-            for (int s = 0; s < stages; ++s)
-                x = f[(size_t) s].process (x, Type::highpass);
-            return x;
-
-        case Mode::bandpass:
-            for (int s = 0; s < stages; ++s)
-                x = f[(size_t) s].processNormalisedBandpass (x);
-            return x;
-    }
-
-    return x;
-}
-
-//==============================================================================
 void FilterEngine::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
-    fadeLength = juce::jmax (1, (int) (0.01 * sampleRate));
+    cascade.prepare (sampleRate);
 
     envelope.prepare (sampleRate);
     for (auto& lfo : lfos)
@@ -94,11 +39,7 @@ void FilterEngine::reset()
     lfoDepth.setCurrentAndTargetValue (lfoDepth.getTargetValue());
     envSens.setCurrentAndTargetValue (envSens.getTargetValue());
 
-    active = 0;
-    fadeRemaining = 0;
-    banks[0].configure (settings.mode, settings.stages);
-    for (auto& b : banks)
-        b.reset();
+    cascade.reset (settings.mode, settings.stages, true);
 
     envelope.reset();
     lfos[0].reset();
@@ -108,6 +49,7 @@ void FilterEngine::reset()
 void FilterEngine::setSettings (const Settings& s)
 {
     settings = s;
+    cascade.setTarget (s.mode, juce::jlimit (1, kMaxStages, s.stages), true);
 
     cutoffOctaves.setTargetValue (std::log2 (juce::jlimit (20.0f, 20000.0f, s.cutoffHz)));
     resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, s.resonance));
@@ -124,14 +66,8 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
 {
     numChannels = juce::jmin (numChannels, kMaxChannels);
 
-    // A mode or slope change starts a crossfade to the other bank (one at a time).
-    if (fadeRemaining == 0 && (settings.mode != banks[(size_t) active].mode || settings.stages != banks[(size_t) active].stages))
-    {
-        auto& next = banks[(size_t) (1 - active)];
-        next.configure (settings.mode, settings.stages);
-        next.reset();
-        fadeRemaining = fadeLength;
-    }
+    // A mode or slope change crossfades to the new layout.
+    cascade.beginBlock();
 
     // LFO: free-running, or locked to the host's beat when it provides one.
     const auto phaseOffset = settings.lfoPhaseDeg / 360.0;
@@ -187,8 +123,6 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
             }
         }
 
-        const auto fadeIn = fadeRemaining > 0 ? 1.0f - (float) fadeRemaining / (float) fadeLength : 1.0f;
-
         for (int ch = 0; ch < numChannels; ++ch)
         {
             const auto lfoValue = lfos[(size_t) ch].next();
@@ -201,19 +135,12 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
                 g = rkfx::StateVariableFilter::gFor (std::exp2 ((double) octave), sampleRate);
             }
 
-            const auto x = data[ch][i];
-            auto y = banks[(size_t) active].process (ch, x, g, resonantK);
-
-            if (fadeRemaining > 0)
-                y += fadeIn * (banks[(size_t) (1 - active)].process (ch, x, g, resonantK) - y);
-
-            data[ch][i] = y;
+            data[ch][i] = cascade.process (ch, data[ch][i], g, resonantK);
         }
 
         if (numChannels == 1)
             lfos[1].next();   // keep the right LFO in step for a later switch to stereo
 
-        if (fadeRemaining > 0 && --fadeRemaining == 0)
-            active = 1 - active;
+        cascade.endSample();
     }
 }

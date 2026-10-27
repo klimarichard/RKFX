@@ -7,7 +7,7 @@
 namespace rkfx
 {
 
-GainReductionMeter::GainReductionMeter (juce::Colour accentColour) : accent (accentColour)
+GainReductionMeter::GainReductionMeter (juce::Colour accentColour, float range) : accent (accentColour), rangeDb (range)
 {
     setInterceptsMouseClicks (false, false);
 }
@@ -15,8 +15,8 @@ GainReductionMeter::GainReductionMeter (juce::Colour accentColour) : accent (acc
 void GainReductionMeter::setReduction (float reductionDb, float secondsSinceLast)
 {
     // Instant rise, gentle fall back towards 0 dB.
-    const auto released = juce::jmin (0.0f, shownDb + 20.0f * secondsSinceLast);
-    const auto next = juce::jmax (-kRangeDb, juce::jmin (reductionDb, released));
+    const auto released = juce::jmin (0.0f, shownDb + rangeDb * 0.8f * secondsSinceLast);
+    const auto next = juce::jmax (-rangeDb, juce::jmin (reductionDb, released));
 
     if (std::abs (next - shownDb) > 0.05f)
     {
@@ -39,13 +39,14 @@ void GainReductionMeter::paint (juce::Graphics& g)
     g.setColour (Palette::background);
     g.fillRoundedRectangle (bar, 3.0f);
 
-    const auto depth = juce::jlimit (0.0f, 1.0f, -shownDb / kRangeDb);
+    const auto depth = juce::jlimit (0.0f, 1.0f, -shownDb / rangeDb);
     g.setColour (accent);
     g.fillRoundedRectangle (bar.withHeight (bar.getHeight() * depth), 3.0f);
 
-    for (int db = 0; db <= (int) kRangeDb; db += 6)
+    const auto step = rangeDb > 30.0f ? 12 : 6;
+    for (int db = 0; db <= (int) rangeDb; db += step)
     {
-        const auto y = bar.getY() + bar.getHeight() * (float) db / kRangeDb;
+        const auto y = bar.getY() + bar.getHeight() * (float) db / rangeDb;
         g.setColour (Palette::outline);
         g.drawHorizontalLine ((int) y, bar.getX(), bar.getRight());
         g.setColour (Palette::textDim);

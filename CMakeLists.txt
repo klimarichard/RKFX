@@ -37,6 +37,7 @@ add_subdirectory(plugins/RKGate)
 add_subdirectory(plugins/RKTremolo)
 add_subdirectory(plugins/RKChorus)
 add_subdirectory(plugins/RKDouble)
+add_subdirectory(plugins/RKFlange)
 
 # ---------------------------------------------------------------------------
 # Tests

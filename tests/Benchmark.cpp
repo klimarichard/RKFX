@@ -9,6 +9,7 @@
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
+#include "PhaseEngine.h"
 #include "TremoloEngine.h"
 
 #include <cstdio>
@@ -48,7 +49,8 @@ namespace
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
-                               || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>)
+                               || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
+                               || std::is_same_v<Engine, PhaseEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -214,6 +216,20 @@ int main (int argc, char** argv)
         { "RKFlange", "default", []
           {
               return makeEngine<FlangeEngine> ([] (FlangeEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKPhase", "default (4 stages)", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKPhase", "12 stages, envelope", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e)
+              {
+                  PhaseEngine::Settings s;
+                  s.stages = 12;
+                  s.envAmount = 0.5f;
+                  e.setSettings (s);
+              });
           } },
     };
 

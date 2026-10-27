@@ -1,0 +1,3 @@
+date,plugin,case,us_per_64_block,percent_realtime
+20261027T212538.028+0100,RKFreqShift,"default (1 shift)",1.466,0.110
+20261027T212538.198+0100,RKFreqShift,"4 shifts, feedback, spread",3.388,0.254

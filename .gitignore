@@ -13,3 +13,6 @@ build*/
 .idea/
 *.user
 compile_commands.json
+
+# clangd index
+.cache/

@@ -11,8 +11,9 @@ namespace rkfx
 
     Power-of-two ring buffer, allocated in prepare() only. read() uses cubic
     Hermite interpolation: smooth under fast modulation and clean down to
-    sub-millisecond delays (flanging). Write first, then read: read (0) is the
-    sample just written. */
+    sub-millisecond delays (flanging). Write first, then read: read (1) is the
+    sample written just before the latest one. Delays are clamped to at least
+    one sample, because the interpolation needs one newer sample to work with. */
 class DelayLine
 {
 public:
@@ -37,10 +38,10 @@ public:
         buffer[(size_t) writeIndex] = x;
     }
 
-    /** Sample from @p delaySamples ago (fractional, clamped to the line's length). */
+    /** Sample from @p delaySamples ago (fractional, clamped to 1..the line's length). */
     float read (float delaySamples) const noexcept
     {
-        delaySamples = std::fmin (std::fmax (delaySamples, 0.0f), (float) getMaxDelay());
+        delaySamples = std::fmin (std::fmax (delaySamples, 1.0f), (float) getMaxDelay());
 
         const auto whole = (int) delaySamples;
         const auto t = delaySamples - (float) whole;

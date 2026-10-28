@@ -13,6 +13,7 @@ namespace
         c.midiInput = true;                   // internal carrier played by MIDI
         c.monoToStereo = true;
         c.accent = juce::Colour (0xff5a3aa8); // Filter and EQ family, indigo violet
+        c.family = rkfx::Palette::Family::filterEQ;
         return c;
     }
 }

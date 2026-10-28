@@ -11,6 +11,7 @@ namespace
         c.hasMix = false;
         c.hasOutput = false;                  // Gain replaces Output
         c.accent = juce::Colour (0xffb4b4b4); // Utility family, light gray
+        c.family = rkfx::Palette::Family::utility;
         return c;
     }
 }

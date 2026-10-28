@@ -11,6 +11,7 @@ namespace
         c.hasMix = false;                     // depth already sets the blend
         c.monoToStereo = true;                // auto-pan on a mono source
         c.accent = juce::Colour (0xff3fb2c4); // Modulation family, cyan blue
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

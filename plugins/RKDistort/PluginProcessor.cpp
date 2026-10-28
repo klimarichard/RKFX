@@ -11,6 +11,7 @@ namespace
         c.hasMix = true;                      // also for parallel distortion
         c.mixDefault = 100.0f;
         c.accent = juce::Colour (0xffc4262e); // Drive family, deep red
+        c.family = rkfx::Palette::Family::drive;
         return c;
     }
 }

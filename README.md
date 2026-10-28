@@ -81,10 +81,12 @@ auval -v aufx Fsh1 RKMu                                        # AU validation (
 
 Every release build of every plugin must pass the tests, auval and [pluginval](https://github.com/Tracktion/pluginval) at strictness 10. Benchmark results can be logged with `RKFXBench --record benchmarks/history.csv`.
 
+To check a GUI without a host, `cmake --build build --target RKFXSnapshots` builds a snapshot tool per plugin; `build/tools/RKFXSnapshot_<Name>_artefacts/Release/RKFXSnapshot_<Name> out.png [scale]` saves that plugin's window as a PNG.
+
 ## Repository layout
 
 ```
-CMakeLists.txt     top level: fetches JUCE, adds core, plugins and tests
+CMakeLists.txt     top level: fetches JUCE, adds core, plugins, tests and tools
 core/              shared code for every plugin
   dsp/             filters (state-variable, cascades, matched bell/shelf),
                    crossover, tone tilt, Hilbert transformer, oscillators, LFO,
@@ -97,6 +99,7 @@ core/              shared code for every plugin
   plugin/          base processor and editor, parameters, presets, output stage
 plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
 tests/             DSP and format tests, CPU benchmark
+tools/             snapshot tool: renders a plugin's window to PNG
 docs/manuals/      user manuals
 benchmarks/        recorded CPU benchmark results
 ```

@@ -11,6 +11,7 @@ namespace
         c.hasMix = true;
         c.mixDefault = 100.0f;
         c.accent = juce::Colour (0xffe8b923); // Dynamics family, mustard
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 }

@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 50.0f;                 // equal blend = deepest notches
         c.monoToStereo = true;                // stereo phase on a mono source
         c.accent = juce::Colour (0xff8ad6f2); // Modulation family, pale blue
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

@@ -10,6 +10,7 @@ namespace
         c.stateVersion = 1;
         c.hasMix = false;
         c.accent = juce::Colour (0xffc9961a); // Dynamics family, ochre
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 }

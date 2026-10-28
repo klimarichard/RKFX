@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 100.0f;
         c.monoToStereo = true;                // stereo spread works on a mono source
         c.accent = juce::Colour (0xff2e9fd6); // Modulation family, sky blue
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

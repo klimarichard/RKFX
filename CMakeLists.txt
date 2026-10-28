@@ -28,32 +28,40 @@ add_subdirectory(core)
 # ---------------------------------------------------------------------------
 # Plugins
 # ---------------------------------------------------------------------------
-add_subdirectory(plugins/RKFreqShift)
-add_subdirectory(plugins/RKFilter)
-add_subdirectory(plugins/RKParaEQ)
-add_subdirectory(plugins/RKGraphEQ)
-add_subdirectory(plugins/RKCompress)
-add_subdirectory(plugins/RKGate)
-add_subdirectory(plugins/RKTremolo)
-add_subdirectory(plugins/RKChorus)
-add_subdirectory(plugins/RKDouble)
-add_subdirectory(plugins/RKFlange)
-add_subdirectory(plugins/RKPhase)
-add_subdirectory(plugins/RKDelay)
-add_subdirectory(plugins/RKSaturate)
-add_subdirectory(plugins/RKDistort)
-add_subdirectory(plugins/RKVerb)
-add_subdirectory(plugins/RKLimit)
-add_subdirectory(plugins/RKTransient)
-add_subdirectory(plugins/RKDeEss)
-add_subdirectory(plugins/RKSwell)
-add_subdirectory(plugins/RKRotary)
-add_subdirectory(plugins/RKVibrato)
-add_subdirectory(plugins/RKVocode)
-add_subdirectory(plugins/RKUtility)
+set(RKFX_PLUGINS
+    RKFreqShift
+    RKFilter
+    RKParaEQ
+    RKGraphEQ
+    RKCompress
+    RKGate
+    RKTremolo
+    RKChorus
+    RKDouble
+    RKFlange
+    RKPhase
+    RKDelay
+    RKSaturate
+    RKDistort
+    RKVerb
+    RKLimit
+    RKTransient
+    RKDeEss
+    RKSwell
+    RKRotary
+    RKVibrato
+    RKVocode
+    RKUtility
+)
+foreach(plugin IN LISTS RKFX_PLUGINS)
+    add_subdirectory(plugins/${plugin})
+endforeach()
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 enable_testing()
 add_subdirectory(tests)
+
+# Offscreen editor snapshots (optional tool)
+add_subdirectory(tools)

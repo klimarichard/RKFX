@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 100.0f;
         c.monoToStereo = true;                // a rotary cabinet is mono in, stereo out
         c.accent = juce::Colour (0xff1f8fc0); // Modulation family, deep sky
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

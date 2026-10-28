@@ -11,6 +11,7 @@ namespace
         c.hasMix = true;
         c.mixDefault = 100.0f;
         c.accent = juce::Colour (0xffe2583e); // Drive family, warm red
+        c.family = rkfx::Palette::Family::drive;
         return c;
     }
 }

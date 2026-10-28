@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 50.0f;
         c.monoToStereo = true;                // mono in, wide stereo chorus out
         c.accent = juce::Colour (0xff5cc2ec); // Modulation family, light sky
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

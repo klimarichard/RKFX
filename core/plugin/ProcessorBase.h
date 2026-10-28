@@ -8,6 +8,7 @@
 #include "ParamBuilder.h"
 #include "PresetFormat.h"
 #include "PresetLibrary.h"
+#include "gui/LookAndFeel.h"
 
 #include <atomic>
 
@@ -26,6 +27,7 @@ struct PluginConfig
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     juce::Colour accent;             // per-plugin family tint (active toggles only)
+    Palette::Family family = Palette::Family::utility;   // tints the window background
 };
 
 /** The base every RKFX plugin derives from. It owns:

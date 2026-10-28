@@ -10,6 +10,7 @@ namespace
         c.stateVersion = 1;
         c.hasMix = false;                     // mixing an EQ with the dry signal colours the phase
         c.accent = juce::Colour (0xff6e45c4); // Filter and EQ family, deep purple
+        c.family = rkfx::Palette::Family::filterEQ;
         return c;
     }
 }

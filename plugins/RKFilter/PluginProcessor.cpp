@@ -11,6 +11,7 @@ namespace
         c.hasMix = true;
         c.mixDefault = 100.0f;
         c.accent = juce::Colour (0xff8e5bd9); // Filter and EQ family, violet
+        c.family = rkfx::Palette::Family::filterEQ;
         return c;
     }
 }

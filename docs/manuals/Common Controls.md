@@ -12,7 +12,7 @@ RKFX plugins are built for live use: they add no latency (except where a manual 
 
 The window can be resized by dragging its bottom-right corner; it keeps its shape and stays sharp at any size.
 
-Each plugin family has its own accent color, used for switches that are on, so you can tell plugins apart at a glance:
+Each plugin family has its own accent color, used for switches that are on and as a faint tint in the background and panels, so you can tell plugins apart at a glance:
 
 | Family | Color |
 | --- | --- |

@@ -49,6 +49,7 @@ add_subdirectory(plugins/RKDeEss)
 add_subdirectory(plugins/RKSwell)
 add_subdirectory(plugins/RKRotary)
 add_subdirectory(plugins/RKVibrato)
+add_subdirectory(plugins/RKVocode)
 
 # ---------------------------------------------------------------------------
 # Tests

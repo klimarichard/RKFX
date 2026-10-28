@@ -160,12 +160,12 @@ void EditorBase::resized()
 //==============================================================================
 juce::Colour EditorBase::backgroundColour() const
 {
-    return Palette::background.interpolatedWith (Palette::familyColour (proc.getConfig().family), Palette::kBackgroundTint);
+    return Palette::tintedBackground (Palette::familyColour (proc.getConfig().family));
 }
 
 juce::Colour EditorBase::panelColour() const
 {
-    return Palette::panel.interpolatedWith (Palette::familyColour (proc.getConfig().family), Palette::kPanelTint);
+    return Palette::tintedPanel (Palette::familyColour (proc.getConfig().family));
 }
 
 void EditorBase::paint (juce::Graphics& g)
@@ -198,15 +198,7 @@ void EditorBase::paintCanvas (juce::Graphics& g)
 
 void EditorBase::drawSection (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title) const
 {
-    g.setColour (panelColour());
-    g.fillRoundedRectangle (area.toFloat(), 6.0f);
-
-    if (title.isNotEmpty())
-    {
-        g.setColour (Palette::textDim);
-        g.setFont (Fonts::bold (12.5f));
-        g.drawText (title.toUpperCase(), area.reduced (10, 6).removeFromTop (16), juce::Justification::centredLeft);
-    }
+    drawPanel (g, area, panelColour(), title);
 }
 
 //==============================================================================

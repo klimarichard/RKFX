@@ -3,8 +3,9 @@
 #
 #   rkfx_core_dsp  dsp/, safety/, and the GUI-free parts of plugin/
 #                  (output stage, preset format, preset library)
-#   rkfx_core      everything else in plugin/ and gui/ (base processor and
-#                  editor, parameter builder, look and feel, knobs, switches)
+#   rkfx_core      everything else in plugin/ (base processor and editor,
+#                  parameter builder), plus rk_gui
+#   rk_gui         gui/: the look shared with RKTracks (see gui/CMakeLists.txt)
 #
 # Both are INTERFACE libraries: each plugin compiles the core sources itself,
 # the usual way JUCE code is shared between targets (JUCE's own modules work
@@ -20,18 +21,14 @@ target_sources(rkfx_core_dsp INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/plugin/PresetLibrary.cpp
 )
 
+add_subdirectory(gui)
+
 add_library(rkfx_core INTERFACE)
-target_link_libraries(rkfx_core INTERFACE rkfx_core_dsp)
+target_link_libraries(rkfx_core INTERFACE rkfx_core_dsp rk_gui)
 target_sources(rkfx_core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/plugin/ParamBuilder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/plugin/ProcessorBase.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/plugin/EditorBase.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/LookAndFeel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/Knob.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/Switches.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/ResponseCurve.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/Fader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/gui/GainReductionMeter.cpp
 )
 
 # ---------------------------------------------------------------------------

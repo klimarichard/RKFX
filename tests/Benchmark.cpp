@@ -24,6 +24,7 @@
 #include "VibratoEngine.h"
 #include "VocodeEngine.h"
 #include "OctaveEngine.h"
+#include "AcousticEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -380,6 +381,22 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKAcoustic", "violin, every band, notch, compressor", []
+          {
+              return makeEngine<AcousticEngine> ([] (AcousticEngine& e)
+              {
+                  AcousticEngine::Settings s;
+                  s.voicing = AcousticEngine::Voicing::violin;
+                  s.highPassHz = 80.0f;
+                  s.lowDb = 2.0f;
+                  s.midDb = -3.0f;
+                  s.trebleDb = 1.0f;
+                  s.airDb = 3.0f;
+                  s.notchHz = 300.0f;
+                  s.compress = 0.5f;
                   e.setSettings (s);
               });
           } },

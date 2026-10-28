@@ -1,0 +1,14 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Strummed Guitar",
+  "params": {
+    "voicing": "guitar",
+    "body": 50,
+    "quack": 40,
+    "highpass": 70,
+    "mid": -2,
+    "mid_freq": 400,
+    "compress": 35
+  }
+}

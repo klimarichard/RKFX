@@ -2,6 +2,7 @@
 
 // Every plugin's processor, compiled into the board (RKFX_BOARD leaves out
 // their own plugin entry points).
+#include "../RKAcoustic/PluginProcessor.h"
 #include "../RKChorus/PluginProcessor.h"
 #include "../RKCompress/PluginProcessor.h"
 #include "../RKDeEss/PluginProcessor.h"
@@ -34,6 +35,7 @@
 // Every factory preset list in the board (generated, one per plugin).
 #define RKBOARD_PRESET_LISTS(X) \
     X (RKBoard) \
+    X (RKAcoustic) \
     X (RKChorus) \
     X (RKCompress) \
     X (RKDeEss) \
@@ -92,6 +94,7 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKFlange() { return std::make_unique<RKFlangeProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKPhase() { return std::make_unique<RKPhaseProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKTremolo() { return std::make_unique<RKTremoloProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKAcoustic() { return std::make_unique<RKAcousticProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKOctave() { return std::make_unique<RKOctaveProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVibrato() { return std::make_unique<RKVibratoProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKRotary() { return std::make_unique<RKRotaryProcessor>(); }
@@ -107,6 +110,7 @@ const std::vector<PedalType>& pedalTypes()
 
     using Family = rkfx::Palette::Family;
     static const std::vector<PedalType> types {
+        { "RKAcoustic", "Acoustic", Family::filterEQ, makeRKAcoustic },
         { "RKWah", "Wah", Family::filterEQ, makeRKWah },
         { "RKFilter", "Filter", Family::filterEQ, makeRKFilter },
         { "RKParaEQ", "ParaEQ", Family::filterEQ, makeRKParaEQ },

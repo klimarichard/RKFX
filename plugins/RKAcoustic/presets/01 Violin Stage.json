@@ -1,0 +1,13 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Violin Stage",
+  "params": {
+    "voicing": "violin",
+    "body": 60,
+    "quack": 40,
+    "highpass": 80,
+    "air": 2,
+    "compress": 20
+  }
+}

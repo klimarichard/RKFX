@@ -1,0 +1,14 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Loud Stage",
+  "params": {
+    "voicing": "guitar",
+    "body": 30,
+    "quack": 40,
+    "highpass": 100,
+    "low": -3,
+    "notch": 200,
+    "compress": 20
+  }
+}

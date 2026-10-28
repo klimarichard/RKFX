@@ -441,6 +441,11 @@ void BoardStrip::showTileMenu (int id)
     const auto full = (int) board.getChain().size() >= BoardProcessor::kMaxPedals;
     menu.addItem (1, "Duplicate", ! full);
     menu.addItem (2, "Remove");
+    if (board.canHaveTrails (id))
+    {
+        menu.addSeparator();
+        menu.addItem (3, "Trails (echoes ring out when bypassed)", true, board.getTrails (id));
+    }
 
     juce::Component::SafePointer<BoardStrip> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
@@ -458,6 +463,10 @@ void BoardStrip::showTileMenu (int id)
                             else if (result == 2)
                             {
                                 safe->board.removePedal (id);
+                            }
+                            else if (result == 3)
+                            {
+                                safe->board.setTrails (id, ! safe->board.getTrails (id));
                             }
                             safe->repaint();
                         });
@@ -478,6 +487,24 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     assignButton.setClickingTogglesState (false);
     assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
     addAndMakeVisible (assignButton);
+
+    sceneLabel.setText ("Scene", juce::dontSendNotification);
+    sceneLabel.setFont (Fonts::regular (13.0f));
+    sceneLabel.setColour (juce::Label::textColourId, Palette::textDim);
+    addAndMakeVisible (sceneLabel);
+
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+    {
+        auto& button = sceneButtons[(size_t) i];
+        button.setButtonText (juce::String (i + 1));
+        button.setTooltip ("Scene " + juce::String (i + 1) + " (right-click to copy it to another scene)");
+        button.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0)
+                                  | (i < BoardProcessor::kNumScenes - 1 ? juce::Button::ConnectedOnRight : 0));
+        button.onClick = [this, i] { board.setScene (i); refreshSceneButtons(); };
+        button.addMouseListener (this, false);   // right-click: copy menu
+        addAndMakeVisible (button);
+    }
+    refreshSceneButtons();
 
     noteLabel.setFont (Fonts::regular (12.0f));
     noteLabel.setJustificationType (juce::Justification::centredRight);
@@ -535,7 +562,7 @@ BoardEditor::~BoardEditor()
 
 juce::Rectangle<int> BoardEditor::panelArea() const
 {
-    return getLocalBounds().withTrimmedTop (kHeaderHeight + BoardStrip::kHeight + 8).reduced (kMargin, 0).withTrimmedBottom (kMargin);
+    return getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight + BoardStrip::kHeight + 8).reduced (kMargin, 0).withTrimmedBottom (kMargin);
 }
 
 void BoardEditor::paint (juce::Graphics& g)
@@ -586,7 +613,14 @@ void BoardEditor::resized()
     header.removeFromRight (8);
     noteLabel.setBounds (header);
 
-    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + 4).removeFromTop (BoardStrip::kHeight));
+    auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
+    const auto buttonWidth = 40;
+    sceneBar = sceneBar.withSizeKeepingCentre (54 + BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
+    sceneLabel.setBounds (sceneBar.removeFromLeft (54));
+    for (auto& button : sceneButtons)
+        button.setBounds (sceneBar.removeFromLeft (buttonWidth));
+
+    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (BoardStrip::kHeight));
     layoutPedalEditor();
 }
 
@@ -632,7 +666,17 @@ void BoardEditor::showPedal (int id)
 
 void BoardEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu() || pedalEditor == nullptr || e.originalComponent == nullptr)
+    if (! e.mods.isPopupMenu() || e.originalComponent == nullptr)
+        return;
+
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+        if (e.originalComponent == &sceneButtons[(size_t) i])
+        {
+            showSceneMenu (i);
+            return;
+        }
+
+    if (pedalEditor == nullptr)
         return;
 
     auto* knob = dynamic_cast<rkfx::Knob*> (e.originalComponent);
@@ -658,28 +702,65 @@ void BoardEditor::showAssignMenu (int pedalId, juce::RangedAudioParameter& param
         slots.addItem (slot + 1, text, true, slot == current);
     }
 
+    const auto sceneControlled = board.isSceneControlled (pedalId, paramId);
+
     juce::PopupMenu menu;
     menu.addSectionHeader (param.getName (40));
     menu.addSubMenu ("Assign to", slots);
     if (current >= 0)
         menu.addItem (1000, "Remove Assign " + juce::String (current + 1));
     menu.addSeparator();
+    menu.addItem (1002, "Scene controlled", true, sceneControlled);
+    menu.addSeparator();
     menu.addItem (1001, "Show assignments");
 
     juce::Component::SafePointer<BoardEditor> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
-                        [safe, pedalId, paramId, current] (int result)
+                        [safe, pedalId, paramId, current, sceneControlled] (int result)
                         {
                             if (safe == nullptr || result == 0)
                                 return;
 
-                            if (result == 1000)
+                            if (result == 1002)
+                            {
+                                if (! safe->board.setSceneControlled (pedalId, paramId, ! sceneControlled))
+                                    safe->showNote ("All 48 scene knobs are in use", true);
+                            }
+                            else if (result == 1000)
                                 safe->board.clearAssignment (current);
                             else if (result == 1001)
                                 safe->showPedal (BoardStrip::kAssignView);
                             else if (result >= 1 && result <= BoardProcessor::kNumAssigns)
                                 safe->board.assign (result - 1, pedalId, paramId);
                         });
+}
+
+void BoardEditor::showSceneMenu (int scene)
+{
+    juce::PopupMenu copyTo;
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+        copyTo.addItem (i + 1, "Scene " + juce::String (i + 1), i != scene);
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Scene " + juce::String (scene + 1));
+    menu.addSubMenu ("Copy to", copyTo);
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sceneButtons[(size_t) scene]),
+                        [safe, scene] (int result)
+                        {
+                            if (safe != nullptr && result > 0)
+                            {
+                                safe->board.copyScene (scene, result - 1);
+                                safe->showNote ("Scene " + juce::String (scene + 1) + " copied to scene " + juce::String (result), false);
+                            }
+                        });
+}
+
+void BoardEditor::refreshSceneButtons()
+{
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+        sceneButtons[(size_t) i].setToggleState (i == board.getScene(), juce::dontSendNotification);
 }
 
 void BoardEditor::closePedalEditor()
@@ -732,6 +813,7 @@ void BoardEditor::timerCallback()
             showPedal (0);
 
         strip.repaint();
+        refreshSceneButtons();
         repaint (panelArea());
         if (routingPanel != nullptr)
             routingPanel->repaint();

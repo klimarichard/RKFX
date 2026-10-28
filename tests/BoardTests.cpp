@@ -504,6 +504,155 @@ public:
             expectEquals (stateJson (copy), json);
         }
 
+        beginTest ("Scenes store bypasses and scene-controlled knobs; other knobs are shared");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = board.addPedal ("RKDistort");
+            const auto delay = board.addPedal ("RKDelay");
+            prepare (board);
+            auto* time = board.getPedal (delay)->findParam ("time");
+            auto* mix = board.getPedal (delay)->findParam ("mix");
+
+            expect (board.setSceneControlled (delay, "time", true));
+            time->setValueNotifyingHost (0.2f);           // scene 1
+            board.setPedalBypassed (drive, true);         // scene 1
+
+            board.setScene (1);
+            expectEquals (board.getScene(), 1);
+            expect (! board.isPedalBypassed (drive), "scene 2 kept the drive on");
+            time->setValueNotifyingHost (0.7f);           // scene 2
+            mix->setValueNotifyingHost (0.9f);            // not scene-controlled: all scenes
+
+            board.setScene (0);
+            expect (board.isPedalBypassed (drive));
+            expectWithinAbsoluteError (board.getSceneValue (0, delay, "time"), 0.2f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "time"), 0.7f, 1.0e-6f);
+
+            // The knob glides there (100 ms for the whole range).
+            run (board, 2);
+            expect (time->getValue() > 0.25f, "still gliding");
+            run (board, 40);
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            expectWithinAbsoluteError (mix->getValue(), 0.9f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "time"), 0.7f, 1.0e-6f, "the glide isn't an edit");
+
+            // Through the host parameter too.
+            board.getSceneParam().setValueNotifyingHost (board.getSceneParam().convertTo0to1 (2.0f));
+            expectEquals (board.getScene(), 1);
+            expect (! board.isPedalBypassed (drive));
+
+            board.copyScene (1, 5);
+            expect (! board.getSceneBypass (5, drive));
+            expectWithinAbsoluteError (board.getSceneValue (5, delay, "time"), 0.7f, 1.0e-6f);
+        }
+
+        beginTest ("Scenes round-trip");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = board.addPedal ("RKDistort");
+            const auto delay = board.addPedal ("RKDelay");
+            board.setSceneControlled (delay, "time", true);
+            board.setScene (3);
+            board.setPedalBypassed (drive, true);
+            board.getPedal (delay)->findParam ("time")->setValueNotifyingHost (0.6f);
+
+            BoardProcessor loaded;
+            expect (loaded.fromVar (board.toVar (false), false).ok);
+            expectEquals (loaded.getScene(), 3);
+            expect (loaded.getSceneBypass (3, drive));
+            expect (! loaded.getSceneBypass (0, drive));
+            expect (loaded.isSceneControlled (delay, "time"));
+            expectWithinAbsoluteError (loaded.getSceneValue (3, delay, "time"), 0.6f, 1.0e-4f);
+
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (stateJson (copy), json);
+        }
+
+        beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");
+        {
+            const auto measureTail = [this] (bool withTrails)
+            {
+                BoardProcessor board;
+                board.clearBoard();
+                const auto delay = board.addPedal ("RKDelay");
+                expect (board.canHaveTrails (delay));
+                board.setTrails (delay, withTrails);
+                // One echo (375 ms) and no repeats, so the tail is over within the measuring time.
+                board.getPedal (delay)->findParam ("feedback")->setValueNotifyingHost (0.0f);
+                prepare (board);
+
+                // A burst into the delay, then bypass, then silence.
+                juce::AudioBuffer<float> buffer (2, kBlock);
+                juce::MidiBuffer midi;
+                juce::Random random (3);
+                for (int b = 0; b < 20; ++b)
+                {
+                    fillNoise (buffer, random);
+                    board.processBlock (buffer, midi);
+                }
+                board.setPedalBypassed (delay, true);
+                expect (board.isPedalBypassed (delay));
+
+                float tail = 0.0f, leak = 0.0f;
+                for (int b = 0; b < 400; ++b)
+                {
+                    buffer.clear();
+                    board.processBlock (buffer, midi);
+                    tail = juce::jmax (tail, buffer.getMagnitude (0, kBlock));
+                }
+
+                // New input doesn't reach the delay while bypassed: after the
+                // tail, a burst passes dry only (no echoes later).
+                for (int b = 0; b < 4; ++b)
+                {
+                    fillNoise (buffer, random);
+                    board.processBlock (buffer, midi);
+                }
+                for (int b = 0; b < 200; ++b)
+                {
+                    buffer.clear();
+                    board.processBlock (buffer, midi);
+                    leak = juce::jmax (leak, buffer.getMagnitude (0, kBlock));
+                }
+                return std::pair { tail, leak };
+            };
+
+            const auto [trailsTail, trailsLeak] = measureTail (true);
+            const auto [cutTail, cutLeak] = measureTail (false);
+            expect (trailsTail > 0.01f, "echoes ring out: " + juce::String (trailsTail));
+            expect (cutTail < 1.0e-4f, "cut without trails: " + juce::String (cutTail));
+            expect (trailsLeak < 1.0e-4f, "no new echoes while bypassed: " + juce::String (trailsLeak));
+        }
+
+        beginTest ("Trails: switching it doesn't change the bypass; the pedal's own switch bypasses with trails");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto verb = board.addPedal ("RKVerb");
+            const auto chorus = board.addPedal ("RKChorus");
+            expect (! board.canHaveTrails (chorus));
+
+            board.setPedalBypassed (verb, true);
+            board.setTrails (verb, true);
+            expect (board.isPedalBypassed (verb));
+            expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f, "the pedal itself keeps running");
+
+            board.setTrails (verb, false);
+            expect (board.isPedalBypassed (verb));
+            expect (board.getPedal (verb)->getBypassParameter()->getValue() >= 0.5f);
+
+            board.setPedalBypassed (verb, false);
+            board.setTrails (verb, true);
+            board.getPedal (verb)->getBypassParameter()->setValueNotifyingHost (1.0f);   // its editor's switch
+            expect (board.isPedalBypassed (verb));
+            expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f);
+            expectEquals (board.getParameters()[verb - 1]->getValue(), 1.0f);
+        }
+
         beginTest ("Unknown pedals in a preset are skipped with a note");
         {
             const auto json = R"({ "plugin": "RKBoard", "version": 1, "pedals": [

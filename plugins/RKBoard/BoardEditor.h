@@ -112,8 +112,9 @@ public:
     int getShownPedal() const noexcept { return shownPedal; }
 
     static constexpr int kWidth = 960;
-    static constexpr int kHeight = 820;
+    static constexpr int kHeight = 856;
     static constexpr int kHeaderHeight = 44;
+    static constexpr int kSceneBarHeight = 36;
     static constexpr int kMargin = 12;
 
 private:
@@ -124,6 +125,8 @@ private:
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
     juce::TextButton assignButton { "Assign" };
+    juce::Label sceneLabel;
+    std::array<juce::TextButton, BoardProcessor::kNumScenes> sceneButtons;
     juce::Label noteLabel;
     juce::Label inputLabel, outputLabel;
     juce::Slider inputSlider, outputSlider;
@@ -144,6 +147,8 @@ private:
     juce::Rectangle<int> panelArea() const;
     void closePedalEditor();
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
+    void showSceneMenu (int scene);
+    void refreshSceneButtons();
     void layoutPedalEditor();
 
     void refreshPresetButton();

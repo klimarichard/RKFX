@@ -41,6 +41,8 @@ class BoardProcessor : public juce::AudioProcessor,
 public:
     static constexpr int kMaxPedals = 12;
     static constexpr int kNumAssigns = 32;
+    static constexpr int kNumScenes = 16;
+    static constexpr int kMaxSceneKnobs = 48;
 
     BoardProcessor();
     ~BoardProcessor() override;
@@ -124,6 +126,36 @@ public:
 
     juce::AudioParameterFloat& getAssignParam (int slot) const noexcept { return *assignParams[(size_t) slot]; }
 
+    //==============================================================================
+    // Scenes: 16 per board. Each stores every pedal's bypass, and the value of
+    // every scene-controlled knob (right-click a knob to make it one); other
+    // knobs are the same in all scenes. Recalling a scene switches bypasses at
+    // once (delay and reverb tails ring out with trails on) and glides the
+    // scene-controlled knobs. Edits while a scene is active go into it.
+    // Recalled through the host parameter "Scene" (1-16), the scene buttons,
+    // and MIDI program changes 0-15 in the standalone app.
+
+    int getScene() const noexcept { return currentScene.load(); }     // 0..15
+    void setScene (int index);
+    juce::RangedAudioParameter& getSceneParam() const noexcept { return *sceneParam; }
+
+    bool isSceneControlled (int pedalId, const juce::String& paramId) const;
+    /** Makes a knob scene-controlled: every scene starts at its current value.
+        Returns false when the board's 48 scene knobs are taken. */
+    bool setSceneControlled (int pedalId, const juce::String& paramId, bool controlled);
+
+    bool getSceneBypass (int scene, int pedalId) const;
+    float getSceneValue (int scene, int pedalId, const juce::String& paramId) const;   // normalised
+    void copyScene (int from, int to);
+
+    //==============================================================================
+    // Trails (delay and reverb pedals): when bypassed with trails on, the pedal
+    // stops taking input and its echoes and tail ring out.
+
+    bool canHaveTrails (int pedalId) const;
+    bool getTrails (int pedalId) const;
+    void setTrails (int pedalId, bool on);
+
     juce::RangedAudioParameter& getInputParam() const noexcept  { return *inputParam; }
     juce::RangedAudioParameter& getOutputParam() const noexcept { return *outputParam; }
 
@@ -133,6 +165,8 @@ public:
     //       "board": { "input": 0, "output": 0 },
     //       "routing": { "split": "frequency", "crossover": 800, ... },
     //       "assign": [ { "slot": 1, "pedal": 3, "param": "time", "min": 100, "max": 800, "invert": false } ],
+    //       "scenes": { "current": 1, "bypass": [ [2, 5], [], ... one list of bypassed IDs per scene ],
+    //                   "knobs": [ { "pedal": 3, "param": "time", "values": [ 350, 500, ... 16 ] } ] },
     //       "pedals": [ { "id": 3, "section": "a", "bypass": false,
     //                     "preset": { "plugin": "RKChorus", "version": 1, "params": {...} } }, ... ] }
     // A pedal's "preset" is exactly a plugin preset, so one can be copied out
@@ -188,6 +222,7 @@ private:
     struct SectionChain
     {
         std::array<rkfx::ProcessorBase*, kMaxPedals> pedals {};
+        std::array<int, kMaxPedals> ids {};
         int size = 0;
     };
     using Chain = std::array<SectionChain, kNumSections>;
@@ -232,6 +267,34 @@ private:
     std::array<Assignment, kNumAssigns> assignments;
     std::array<juce::AudioParameterFloat*, kNumAssigns> assignParams {};
     std::atomic<bool> syncingAssign { false };
+
+    // Scenes
+    juce::AudioParameterInt* sceneParam = nullptr;
+    std::atomic<int> currentScene { 0 };
+    std::array<std::array<std::atomic<bool>, kMaxPedals>, kNumScenes> sceneBypass {};
+
+    struct SceneKnob
+    {
+        std::atomic<int> pedal { 0 };          // 0 = free
+        std::atomic<int> paramIndex { -1 };
+        std::array<std::atomic<float>, kNumScenes> values {};
+        std::atomic<float> glideTarget { 0.0f };
+        std::atomic<bool> gliding { false };
+    };
+    std::array<SceneKnob, kMaxSceneKnobs> sceneKnobs;
+    static inline thread_local bool applyingScene = false;    // this thread is recalling a scene
+
+    void recallScene (int index);
+    void glideSceneKnobs (int numSamples);
+    void clearSceneKnobsOf (int pedalId);
+    int findSceneKnob (int pedalId, int paramIndex) const;
+
+    // Trails
+    std::array<std::atomic<bool>, kMaxPedals> trails {};
+    std::array<std::atomic<bool>, kMaxPedals> trailBypassed {};
+    std::array<bool, kMaxPedals> trailIdle {};              // audio thread
+    std::array<int, kMaxPedals> trailSilence {};            // audio thread, samples
+    juce::AudioBuffer<float> trailBuffer;
     static inline thread_local bool applyingAssign = false;   // this thread is moving a knob for an Assign parameter
 
     juce::RangedAudioParameter* assignTarget (int slot) const;      // under chainLock on the audio thread
@@ -284,6 +347,8 @@ private:
     void updateLatency();
     int sectionLatency (const SectionChain&) const;
     void processSection (const SectionChain&, juce::AudioBuffer<float>&, const juce::MidiBuffer&, int midiOffset);
+    void setPedalOwnBypass (int id, bool bypassed);
+    int paramIndexOf (int pedalId, const juce::String& paramId) const;
     void processChunk (juce::AudioBuffer<float>&, const juce::MidiBuffer&, int midiOffset);
     void updateMergeTargets (bool snap);
 

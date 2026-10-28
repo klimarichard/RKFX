@@ -18,6 +18,29 @@ namespace Palette
     const juce::Colour textDim     { 0xff8d9198 };
     const juce::Colour warning     { 0xffe0a040 };
 
+    /** The suite's effect families; each has a main colour (the plugins' own
+        accents are tints of it). */
+    enum class Family { filterEQ, dynamics, drive, modulation, delay, reverb, utility };
+
+    inline juce::Colour familyColour (Family f)
+    {
+        switch (f)
+        {
+            case Family::filterEQ:   return juce::Colour (0xff8e5bd9);   // violet
+            case Family::dynamics:   return juce::Colour (0xffe8b923);   // yellow
+            case Family::drive:      return juce::Colour (0xffd4403a);   // red
+            case Family::modulation: return juce::Colour (0xff3a9ad9);   // light blue
+            case Family::delay:      return juce::Colour (0xff3dae5b);   // green
+            case Family::reverb:     return juce::Colour (0xfff08a24);   // orange
+            case Family::utility:    return juce::Colour (0xffb4b4b4);   // light gray
+        }
+        return juce::Colour (0xffb4b4b4);
+    }
+
+    /** How strongly the family colour tints the background and the panels. */
+    inline constexpr float kBackgroundTint = 0.06f;
+    inline constexpr float kPanelTint = 0.09f;
+
     /** Text drawn on top of an accent fill (dark on light tints, light on dark). */
     inline juce::Colour onAccent (juce::Colour accent)
     {

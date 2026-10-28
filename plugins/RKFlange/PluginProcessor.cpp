@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 50.0f;                 // equal blend = deepest flanging
         c.monoToStereo = true;                // stereo phase on a mono source
         c.accent = juce::Colour (0xff3b82cc); // Modulation family, cornflower
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

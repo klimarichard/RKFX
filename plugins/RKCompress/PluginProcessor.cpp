@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 100.0f;
         c.sidechain = true;
         c.accent = juce::Colour (0xfff2c230); // Dynamics family, golden yellow
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 

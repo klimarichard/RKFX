@@ -158,17 +158,27 @@ void EditorBase::resized()
 }
 
 //==============================================================================
+juce::Colour EditorBase::backgroundColour() const
+{
+    return Palette::background.interpolatedWith (Palette::familyColour (proc.getConfig().family), Palette::kBackgroundTint);
+}
+
+juce::Colour EditorBase::panelColour() const
+{
+    return Palette::panel.interpolatedWith (Palette::familyColour (proc.getConfig().family), Palette::kPanelTint);
+}
+
 void EditorBase::paint (juce::Graphics& g)
 {
-    g.fillAll (Palette::background);
+    g.fillAll (backgroundColour());
 }
 
 void EditorBase::paintCanvas (juce::Graphics& g)
 {
-    g.fillAll (Palette::background);
+    g.fillAll (backgroundColour());
 
     // Header
-    g.setColour (Palette::panel);
+    g.setColour (panelColour());
     g.fillRect (0, 0, baseWidth, kHeaderHeight);
     g.setColour (accent());
     g.fillRect (0, kHeaderHeight - 2, baseWidth, 2);
@@ -178,7 +188,7 @@ void EditorBase::paintCanvas (juce::Graphics& g)
     g.drawText (proc.getConfig().name, kMargin, 0, 200, kHeaderHeight, juce::Justification::centredLeft);
 
     // Bottom row
-    g.setColour (Palette::panel);
+    g.setColour (panelColour());
     g.fillRect (0, baseHeight - kBottomHeight, baseWidth, kBottomHeight);
     g.setColour (Palette::outline);
     g.fillRect (0, baseHeight - kBottomHeight, baseWidth, 1);
@@ -186,9 +196,9 @@ void EditorBase::paintCanvas (juce::Graphics& g)
     paintContent (g);
 }
 
-void EditorBase::drawSection (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title)
+void EditorBase::drawSection (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title) const
 {
-    g.setColour (Palette::panel);
+    g.setColour (panelColour());
     g.fillRoundedRectangle (area.toFloat(), 6.0f);
 
     if (title.isNotEmpty())

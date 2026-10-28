@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 30.0f;
         c.monoToStereo = true;                // ping-pong on a mono source
         c.accent = juce::Colour (0xff3dae5b); // Delay family, green
+        c.family = rkfx::Palette::Family::delay;
         return c;
     }
 }

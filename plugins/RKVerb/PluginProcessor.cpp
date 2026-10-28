@@ -12,6 +12,7 @@ namespace
         c.mixDefault = 25.0f;
         c.monoToStereo = true;                // mono in, stereo reverb out
         c.accent = juce::Colour (0xfff08a24); // Reverb family, orange
+        c.family = rkfx::Palette::Family::reverb;
         return c;
     }
 }

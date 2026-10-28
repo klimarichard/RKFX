@@ -11,6 +11,7 @@ namespace
         c.hasMix = false;
         c.sidechain = true;
         c.accent = juce::Colour (0xffd9a21b); // Dynamics family, amber yellow
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 }

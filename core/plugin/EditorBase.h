@@ -62,7 +62,11 @@ protected:
     void finishSetup();
 
     /** A titled frame around a group of controls, drawn in paintContent(). */
-    static void drawSection (juce::Graphics&, juce::Rectangle<int> area, const juce::String& title);
+    void drawSection (juce::Graphics&, juce::Rectangle<int> area, const juce::String& title) const;
+
+    /** The window background and panel colours, tinted with the family colour. */
+    juce::Colour backgroundColour() const;
+    juce::Colour panelColour() const;
 
     ProcessorBase& proc;
 

@@ -11,6 +11,7 @@ namespace
         c.hasMix = false;                     // mixing dry would turn it into a chorus
         c.monoToStereo = true;                // stereo phase on a mono source
         c.accent = juce::Colour (0xff79b8e8); // Modulation family, powder blue
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

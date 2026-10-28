@@ -11,6 +11,7 @@ namespace
         c.hasMix = false;                     // the dry signal always stays at full level
         c.monoToStereo = true;                // spread places dry and double apart
         c.accent = juce::Colour (0xff6fa3d8); // Modulation family, steel blue
+        c.family = rkfx::Palette::Family::modulation;
         return c;
     }
 }

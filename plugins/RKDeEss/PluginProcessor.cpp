@@ -10,6 +10,7 @@ namespace
         c.stateVersion = 1;
         c.hasMix = false;
         c.accent = juce::Colour (0xfff5d76e); // Dynamics family, pale yellow
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 }

@@ -10,6 +10,7 @@ namespace
         c.stateVersion = 1;
         c.hasMix = false;                     // a parallel limiter would defeat its protection
         c.accent = juce::Colour (0xffffd54a); // Dynamics family, bright yellow
+        c.family = rkfx::Palette::Family::dynamics;
         return c;
     }
 }

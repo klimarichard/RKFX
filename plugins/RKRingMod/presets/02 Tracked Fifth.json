@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Tracked Fifth",
+  "params": {
+    "mode": "tracked",
+    "wave": "sine",
+    "interval": 7,
+    "mix": 70
+  }
+}

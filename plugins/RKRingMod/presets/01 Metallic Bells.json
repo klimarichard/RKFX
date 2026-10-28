@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Metallic Bells",
+  "params": {
+    "mode": "free",
+    "wave": "sine",
+    "frequency": 620,
+    "mix": 60
+  }
+}

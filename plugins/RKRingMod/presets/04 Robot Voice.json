@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Robot Voice",
+  "params": {
+    "mode": "free",
+    "wave": "square",
+    "frequency": 90,
+    "mix": 100
+  }
+}

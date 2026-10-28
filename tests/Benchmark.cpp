@@ -27,6 +27,7 @@
 #include "AcousticEngine.h"
 #include "PreampEngine.h"
 #include "SynthEngine.h"
+#include "RingModEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -68,7 +69,7 @@ namespace
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
                                || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>
-                               || std::is_same_v<Engine, VibratoEngine>)
+                               || std::is_same_v<Engine, VibratoEngine> || std::is_same_v<Engine, RingModEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -383,6 +384,17 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKRingMod", "tracked, square, LFO", []
+          {
+              return makeEngine<RingModEngine> ([] (RingModEngine& e)
+              {
+                  RingModEngine::Settings s;
+                  s.mode = RingModEngine::Mode::tracked;
+                  s.wave = RingModEngine::Wave::square;
+                  s.lfoDepth = 0.3f;
                   e.setSettings (s);
               });
           } },

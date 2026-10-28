@@ -1,0 +1,13 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Wobbling Sci-Fi",
+  "params": {
+    "mode": "free",
+    "wave": "sine",
+    "frequency": 300,
+    "lfo_depth": 60,
+    "lfo_rate": 0.5,
+    "mix": 80
+  }
+}

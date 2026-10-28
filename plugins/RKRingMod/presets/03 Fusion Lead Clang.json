@@ -1,0 +1,12 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Fusion Lead Clang",
+  "params": {
+    "mode": "tracked",
+    "range": "violin",
+    "wave": "triangle",
+    "interval": 12.5,
+    "mix": 50
+  }
+}

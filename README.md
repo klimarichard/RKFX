@@ -94,8 +94,9 @@ core/              shared code for every plugin
                    2x/4x oversampler,
                    dynamics (level detection, gain computer, gain smoothing)
   safety/          smoothing, DC blocker, NaN guard, soft clipper
-  gui/             look and feel, knob, fader, switches, response curve,
-                   gain reduction meter
+  gui/             rk_gui, the RKMusic look: palette, look and feel, knob,
+                   fader, switches, response curve, gain reduction meter
+                   (standalone target, also used by RKTracks)
   plugin/          base processor and editor, parameters, presets, output stage
 plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
 tests/             DSP and format tests, CPU benchmark

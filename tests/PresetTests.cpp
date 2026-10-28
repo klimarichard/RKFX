@@ -24,6 +24,7 @@
 #include "../plugins/RKDeEss/Parameters.h"
 #include "../plugins/RKSwell/Parameters.h"
 #include "../plugins/RKRotary/Parameters.h"
+#include "../plugins/RKVibrato/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -57,6 +58,7 @@ public:
             { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
             { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },
             { "RKSwell", SwellParams::create, 6 },       { "RKRotary", RotaryParams::create, 7 },
+            { "RKVibrato", VibratoParams::create, 6 },
         };
 
         for (const auto& plugin : plugins)

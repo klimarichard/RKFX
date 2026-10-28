@@ -21,6 +21,7 @@ set(RKFX_ENGINE_PLUGINS
     RKDeEss/DeEssEngine
     RKSwell/SwellEngine
     RKRotary/RotaryEngine
+    RKVibrato/VibratoEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -62,6 +63,7 @@ target_sources(RKFXTests PRIVATE
     DeEssTests.cpp
     SwellTests.cpp
     RotaryTests.cpp
+    VibratoTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

@@ -20,6 +20,7 @@
 #include "SwellEngine.h"
 #include "TransientEngine.h"
 #include "TremoloEngine.h"
+#include "VibratoEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -59,7 +60,8 @@ namespace
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
-                               || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>)
+                               || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>
+                               || std::is_same_v<Engine, VibratoEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -344,6 +346,10 @@ int main (int argc, char** argv)
                   s.drive = 0.5f;
                   e.setSettings (s);
               });
+          } },
+        { "RKVibrato", "default", []
+          {
+              return makeEngine<VibratoEngine> ([] (VibratoEngine& e) { e.setSettings ({}); });
           } },
     };
 

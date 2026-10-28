@@ -16,6 +16,7 @@ set(RKFX_ENGINE_PLUGINS
     RKSaturate/SaturateEngine
     RKDistort/DistortEngine
     RKVerb/ReverbEngine
+    RKLimit/LimitEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -52,6 +53,7 @@ target_sources(RKFXTests PRIVATE
     SaturateTests.cpp
     DistortTests.cpp
     VerbTests.cpp
+    LimitTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

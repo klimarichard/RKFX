@@ -19,6 +19,7 @@
 #include "../plugins/RKSaturate/Parameters.h"
 #include "../plugins/RKDistort/Parameters.h"
 #include "../plugins/RKVerb/Parameters.h"
+#include "../plugins/RKLimit/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -49,7 +50,7 @@ public:
             { "RKDouble", DoubleParams::create, 5 },       { "RKFlange", FlangeParams::create, 6 },
             { "RKPhase", PhaseParams::create, 6 },         { "RKDelay", DelayParams::create, 7 },
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
-            { "RKVerb", VerbParams::create, 8 },
+            { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
         };
 
         for (const auto& plugin : plugins)

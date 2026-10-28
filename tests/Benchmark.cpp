@@ -8,6 +8,7 @@
 #include "FilterEngine.h"
 #include "FlangeEngine.h"
 #include "GateEngine.h"
+#include "LimitEngine.h"
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
@@ -285,6 +286,21 @@ int main (int argc, char** argv)
         { "RKVerb", "default (hall)", []
           {
               return makeEngine<ReverbEngine> ([] (ReverbEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKLimit", "default", []
+          {
+              return makeEngine<LimitEngine> ([] (LimitEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKLimit", "+12 dB input, auto release, 4x", []
+          {
+              return makeEngine<LimitEngine> ([] (LimitEngine& e)
+              {
+                  LimitEngine::Settings s;
+                  s.inputDb = 12.0f;
+                  s.autoRelease = true;
+                  s.oversampling = 4;
+                  e.setSettings (s);
+              });
           } },
     };
 

@@ -119,8 +119,9 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     wetWasIdle = false;
 }
 
-void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    midiIn = &midi;
     juce::ScopedNoDenormals noDenormals;
 
     const auto numIn  = getMainBusNumInputChannels();
@@ -160,6 +161,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     for (int start = 0; start < numSamples; start += maxBlock)
     {
         transport.ppq = blockPpq + start * quartersPerSample;
+        chunkStart = start;
 
         const auto length = juce::jmin (maxBlock, numSamples - start);
         juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numOut, start, length);
@@ -170,6 +172,9 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
         processChunk (chunk);
     }
+
+    // Effects never pass MIDI on.
+    midi.clear();
 }
 
 void ProcessorBase::updateTransport()

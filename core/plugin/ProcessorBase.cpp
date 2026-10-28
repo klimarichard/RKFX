@@ -431,6 +431,8 @@ juce::var ProcessorBase::getPresetVar (bool fullState) const
     root->setProperty ("modified", isPresetModified());
     if (const auto file = getPresetFile(); file != juce::File())
         root->setProperty ("file", file.getFullPathName());
+    if (const auto extra = getExtraState(); ! extra.isVoid())
+        root->setProperty ("extra", extra);
 
     return state;
 }
@@ -445,6 +447,7 @@ ProcessorBase::PresetResult ProcessorBase::loadPresetVar (const juce::var& prese
 
     if (fullState)
     {
+        setExtraState (preset["extra"]);
         const auto path = preset["file"].toString();
         setPresetState (r.name.isNotEmpty() ? r.name : "Default",
                         juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File(),

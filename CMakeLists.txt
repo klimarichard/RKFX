@@ -42,6 +42,7 @@ add_subdirectory(plugins/RKPhase)
 add_subdirectory(plugins/RKDelay)
 add_subdirectory(plugins/RKSaturate)
 add_subdirectory(plugins/RKDistort)
+add_subdirectory(plugins/RKVerb)
 
 # ---------------------------------------------------------------------------
 # Tests

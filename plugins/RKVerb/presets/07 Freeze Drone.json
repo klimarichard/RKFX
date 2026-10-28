@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Freeze Drone",
+  "params": {
+    "decay": 12000,
+    "size": 100,
+    "mod": 40,
+    "mix": 60
+  }
+}

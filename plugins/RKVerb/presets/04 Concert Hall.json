@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Concert Hall",
+  "params": {
+    "decay": 2800,
+    "size": 80,
+    "predelay": 30,
+    "mod": 25
+  }
+}

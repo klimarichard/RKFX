@@ -1,0 +1,14 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Ambient Pad Wash",
+  "params": {
+    "decay": 8000,
+    "size": 100,
+    "predelay": 60,
+    "damping": 30,
+    "lowcut": 300,
+    "mod": 60,
+    "mix": 45
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Synced Vocal Hall",
+  "params": {
+    "decay": 2200,
+    "predelay_sync": true,
+    "predelay_division": "1/16",
+    "mix": 22
+  }
+}

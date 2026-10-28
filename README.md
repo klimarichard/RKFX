@@ -36,7 +36,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 | RKRotary | Rotary speaker | Planned |
 | RKVibrato | Vibrato | Planned |
 | [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong and ducking | Available |
-| RKVerb | Reverb | Planned |
+| [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
 | RKUtility | Gain, pan, width, mono, polarity, mid/side | Planned |
 
 ## Documentation
@@ -71,7 +71,7 @@ ctest --test-dir build --output-on-failure                     # DSP, preset for
 auval -v aufx Fsh1 RKMu                                        # AU validation (per plugin code:
                                                                #   Fsh1, Flt1, Peq1, Geq1, Cmp1, Gat1,
                                                                #   Trm1, Chr1, Dbl1, Flg1, Phs1,
-                                                               #   Dly1, Sat1, Dst1, ...)
+                                                               #   Dly1, Sat1, Dst1, Vrb1, ...)
 /Applications/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 \
     --validate-in-process ~/Library/Audio/Plug-Ins/VST3/RKFreqShift.vst3
 ```

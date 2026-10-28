@@ -12,6 +12,7 @@
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
 #include "PhaseEngine.h"
+#include "ReverbEngine.h"
 #include "SaturateEngine.h"
 #include "TremoloEngine.h"
 
@@ -280,6 +281,10 @@ int main (int argc, char** argv)
                   s.cab = DistortEngine::Cab::large;
                   e.setSettings (s);
               });
+          } },
+        { "RKVerb", "default (hall)", []
+          {
+              return makeEngine<ReverbEngine> ([] (ReverbEngine& e) { e.setSettings ({}); });
           } },
     };
 

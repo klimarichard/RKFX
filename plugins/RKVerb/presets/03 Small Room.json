@@ -1,0 +1,13 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Small Room",
+  "params": {
+    "type": "room",
+    "decay": 600,
+    "size": 40,
+    "predelay": 5,
+    "damping": 60,
+    "mix": 20
+  }
+}

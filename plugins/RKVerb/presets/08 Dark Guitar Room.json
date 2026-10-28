@@ -1,0 +1,12 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Dark Guitar Room",
+  "params": {
+    "type": "room",
+    "decay": 1000,
+    "size": 60,
+    "damping": 75,
+    "highcut": 5000
+  }
+}

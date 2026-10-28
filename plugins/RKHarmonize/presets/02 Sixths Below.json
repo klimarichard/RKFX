@@ -1,0 +1,8 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 1,
+  "name": "Sixths Below",
+  "params": {
+    "voice1": "6th_below"
+  }
+}

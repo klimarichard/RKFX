@@ -45,6 +45,17 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
 | [RKLoop](docs/manuals/RKLoop.md) | Live looper, eight loops as song parts or layers, synced to Loop 1: overdub, undo/redo, reverse, half speed, footswitch control | Available |
 
+### MIDI effects
+
+The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controllers in front of an instrument:
+
+| Plugin | Effect | Status |
+| --- | --- | --- |
+| [RKHarmonize](docs/manuals/RKHarmonize.md) | Harmonizer: up to two harmony notes in a key and scale | Available |
+| [RKArpeggiate](docs/manuals/RKArpeggiate.md) | Tempo-synced arpeggiator with latch, swing and octaves | Available |
+| [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
+| [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
+
 ### RKBoard
 
 [RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding the plugins above as pedals, as many as you like (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain with up to four splits, each into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets, expression pedals and footswitches (knobs or pedal on/off), 16 scenes, and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app. Its app icon is the RKMusic name strip (RK over a warm white band).
@@ -56,7 +67,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 
 ## Formats and requirements
 
-- macOS, AU and VST3; RKBoard also as a standalone app.
+- macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out.
 - Mono and stereo; sample rates 44.1 to 192 kHz.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).

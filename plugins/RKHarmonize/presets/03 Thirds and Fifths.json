@@ -1,0 +1,9 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 1,
+  "name": "Thirds and Fifths",
+  "params": {
+    "voice1": "3rd_above",
+    "voice2": "5th_above"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Swung Sixteenths",
+  "params": {
+    "pattern": "played",
+    "swing": 62,
+    "gate": 55
+  }
+}

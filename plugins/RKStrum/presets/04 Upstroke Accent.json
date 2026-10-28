@@ -1,0 +1,10 @@
+{
+  "plugin": "RKStrum",
+  "version": 1,
+  "name": "Upstroke Accent",
+  "params": {
+    "direction": "up",
+    "speed": 12,
+    "ramp": -25
+  }
+}

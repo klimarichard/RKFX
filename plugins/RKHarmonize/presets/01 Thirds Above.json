@@ -1,0 +1,8 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 1,
+  "name": "Thirds Above",
+  "params": {
+    "voice1": "3rd_above"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "plugin": "RKSustain",
+  "version": 1,
+  "name": "Footswitch Sustain",
+  "params": {
+    "mode": "sustain",
+    "use_cc": false
+  }
+}

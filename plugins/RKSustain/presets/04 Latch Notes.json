@@ -1,0 +1,8 @@
+{
+  "plugin": "RKSustain",
+  "version": 1,
+  "name": "Latch Notes",
+  "params": {
+    "mode": "latch"
+  }
+}

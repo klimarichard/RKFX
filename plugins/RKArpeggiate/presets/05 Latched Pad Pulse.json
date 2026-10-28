@@ -1,0 +1,11 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Latched Pad Pulse",
+  "params": {
+    "pattern": "chord",
+    "division": "1/8",
+    "gate": 40,
+    "latch": true
+  }
+}

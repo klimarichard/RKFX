@@ -20,7 +20,7 @@ namespace Palette
 
     /** The suite's effect families; each has a main colour (the plugins' own
         accents are tints of it). */
-    enum class Family { filterEQ, dynamics, drive, modulation, delay, reverb, utility };
+    enum class Family { filterEQ, dynamics, drive, modulation, delay, reverb, utility, midi };
 
     inline juce::Colour familyColour (Family f)
     {
@@ -33,6 +33,7 @@ namespace Palette
             case Family::delay:      return juce::Colour (0xff3dae5b);   // green
             case Family::reverb:     return juce::Colour (0xfff08a24);   // orange
             case Family::utility:    return juce::Colour (0xffb4b4b4);   // light gray
+            case Family::midi:       return juce::Colour (0xffd9509a);   // magenta
         }
         return juce::Colour (0xffb4b4b4);
     }

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKStrum",
+  "version": 1,
+  "name": "Slow Harp Roll",
+  "params": {
+    "direction": "down",
+    "speed": 70,
+    "ramp": 10
+  }
+}

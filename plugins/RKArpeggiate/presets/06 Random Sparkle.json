@@ -1,0 +1,12 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Random Sparkle",
+  "params": {
+    "pattern": "random",
+    "octaves": 2,
+    "gate": 30,
+    "velocity_mode": "fixed",
+    "velocity": 90
+  }
+}

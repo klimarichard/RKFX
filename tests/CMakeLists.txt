@@ -30,6 +30,10 @@ set(RKFX_ENGINE_PLUGINS
     RKSynth/SynthEngine
     RKRingMod/RingModEngine
     RKLoop/LoopEngine
+    RKHarmonize/HarmonizeEngine
+    RKArpeggiate/ArpEngine
+    RKStrum/StrumEngine
+    RKSustain/SustainEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -81,6 +85,10 @@ target_sources(RKFXTests PRIVATE
     SynthTests.cpp
     RingModTests.cpp
     LoopTests.cpp
+    HarmonizeTests.cpp
+    ArpTests.cpp
+    StrumTests.cpp
+    SustainTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

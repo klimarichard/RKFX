@@ -1,0 +1,11 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Triplet Cascade",
+  "params": {
+    "pattern": "down",
+    "division": "1/8t",
+    "octaves": 3,
+    "gate": 60
+  }
+}

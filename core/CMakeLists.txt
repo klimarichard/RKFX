@@ -32,17 +32,25 @@ target_sources(rkfx_core INTERFACE
 )
 
 # ---------------------------------------------------------------------------
-# rkfx_add_plugin(<Name> CODE <Abc1> BUNDLE_ID <id> [MIDI_INPUT] SOURCES <files...>)
+# rkfx_add_plugin(<Name> CODE <Abc1> BUNDLE_ID <id> [MIDI_INPUT | MIDI_EFFECT] SOURCES <files...>)
 #
 # One call per plugin. Identity fields shared by the whole suite (vendor,
 # manufacturer code, formats, effect type) live here so they can't drift.
 # CODE and BUNDLE_ID are permanent: never change them after a release.
 # ---------------------------------------------------------------------------
 function(rkfx_add_plugin name)
-    cmake_parse_arguments(ARG "MIDI_INPUT" "CODE;BUNDLE_ID" "SOURCES" ${ARGN})
+    cmake_parse_arguments(ARG "MIDI_INPUT;MIDI_EFFECT" "CODE;BUNDLE_ID" "SOURCES" ${ARGN})
 
-    # MIDI input (vocoder carrier) makes the AU a music effect (aumf).
-    if(ARG_MIDI_INPUT)
+    # MIDI input (vocoder carrier) makes the AU a music effect (aumf); a MIDI
+    # effect (MIDI in and out, no audio) is a MIDI processor (aumi).
+    set(midiOut FALSE)
+    set(midiEffect FALSE)
+    if(ARG_MIDI_EFFECT)
+        set(needsMidi TRUE)
+        set(midiOut TRUE)
+        set(midiEffect TRUE)
+        set(auType kAudioUnitType_MIDIProcessor)
+    elseif(ARG_MIDI_INPUT)
         set(needsMidi TRUE)
         set(auType kAudioUnitType_MusicEffect)
     else()
@@ -59,8 +67,8 @@ function(rkfx_add_plugin name)
         FORMATS                  AU VST3
         IS_SYNTH                 FALSE
         NEEDS_MIDI_INPUT         ${needsMidi}
-        NEEDS_MIDI_OUTPUT        FALSE
-        IS_MIDI_EFFECT           FALSE
+        NEEDS_MIDI_OUTPUT        ${midiOut}
+        IS_MIDI_EFFECT           ${midiEffect}
         EDITOR_WANTS_KEYBOARD_FOCUS FALSE
         AU_MAIN_TYPE             ${auType}
         VST3_CATEGORIES          Fx

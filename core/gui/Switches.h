@@ -6,6 +6,24 @@
 namespace rkfx
 {
 
+/** Controls tag themselves with the ID of the parameter they drive, so a
+    host of the editor (RKBoard) can find it, e.g. to assign it on a
+    right-click. */
+inline void tagParameter (juce::Component& c, const juce::String& parameterId)
+{
+    c.getProperties().set ("rkfx.parameter", parameterId);
+}
+
+/** The parameter ID @p c (or the nearest of its parents) was tagged with,
+    up to and excluding @p stopAt; empty if none. */
+inline juce::String findTaggedParameter (juce::Component* c, const juce::Component* stopAt = nullptr)
+{
+    for (; c != nullptr && c != stopAt; c = c->getParentComponent())
+        if (const auto* id = c->getProperties().getVarPointer ("rkfx.parameter"))
+            return id->toString();
+    return {};
+}
+
 /** An on/off switch for a bool parameter: a flat rounded box, filled with the
     plugin's accent when on. Click toggles; repaints only on change. */
 class ToggleSwitch : public juce::Component

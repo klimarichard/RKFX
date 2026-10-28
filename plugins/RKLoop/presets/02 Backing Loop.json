@@ -1,0 +1,8 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Backing Loop",
+  "params": {
+    "level": 70
+  }
+}

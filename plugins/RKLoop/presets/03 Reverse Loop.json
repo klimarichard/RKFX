@@ -1,0 +1,8 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Reverse Loop",
+  "params": {
+    "reverse": true
+  }
+}

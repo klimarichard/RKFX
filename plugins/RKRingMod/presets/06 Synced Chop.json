@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRingMod",
+  "version": 1,
+  "name": "Synced Chop",
+  "params": {
+    "mode": "synced",
+    "wave": "square",
+    "division": "1/16",
+    "mix": 100
+  }
+}

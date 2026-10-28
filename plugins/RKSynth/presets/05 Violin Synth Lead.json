@@ -1,0 +1,15 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Violin Synth Lead",
+  "params": {
+    "range": "violin",
+    "wave": "saw",
+    "glide": 40,
+    "cutoff": 2000,
+    "resonance": 30,
+    "env_amount": 30,
+    "decay": 600,
+    "dynamics": 90
+  }
+}

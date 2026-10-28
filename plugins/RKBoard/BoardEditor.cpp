@@ -942,15 +942,14 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    if (pedalEditor == nullptr)
+    if (pedalEditor == nullptr || ! pedalEditor->isParentOf (e.originalComponent))
         return;
 
-    auto* knob = dynamic_cast<rkfx::Knob*> (e.originalComponent);
-    if (knob == nullptr)
-        knob = e.originalComponent->findParentComponentOfClass<rkfx::Knob>();
-
-    if (knob != nullptr && pedalEditor->isParentOf (knob))
-        showAssignMenu (shownPedal, knob->getParameter());
+    // Any control tagged with its parameter: knobs, switches, footswitches.
+    if (const auto id = rkfx::findTaggedParameter (e.originalComponent, pedalEditor.get()); id.isNotEmpty())
+        if (auto* pedal = board.getPedal (shownPedal))
+            if (auto* param = pedal->findParam (id); param != nullptr && param != pedal->getBypassParameter())
+                showAssignMenu (shownPedal, *param);
 }
 
 void BoardEditor::showAssignMenu (int pedalId, juce::RangedAudioParameter& param)

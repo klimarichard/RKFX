@@ -26,6 +26,9 @@
 #include "OctaveEngine.h"
 #include "AcousticEngine.h"
 #include "PreampEngine.h"
+#include "SynthEngine.h"
+#include "RingModEngine.h"
+#include "LoopEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -67,7 +70,7 @@ namespace
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
                                || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>
-                               || std::is_same_v<Engine, VibratoEngine>)
+                               || std::is_same_v<Engine, VibratoEngine> || std::is_same_v<Engine, RingModEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -238,6 +241,15 @@ int main (int argc, char** argv)
           {
               return makeEngine<PhaseEngine> ([] (PhaseEngine& e) { e.setSettings ({}); });
           } },
+        { "RKPhase", "Uni-Vibe", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e)
+              {
+                  PhaseEngine::Settings s;
+                  s.univibe = true;
+                  e.setSettings (s);
+              });
+          } },
         { "RKPhase", "12 stages, envelope", []
           {
               return makeEngine<PhaseEngine> ([] (PhaseEngine& e)
@@ -382,6 +394,43 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKLoop", "overdubbing", []
+          {
+              // A one-second loop, then overdubbing over it.
+              auto engine = std::make_shared<LoopEngine>();
+              engine->prepare (kRate);
+              engine->press (LoopEngine::Button::record);
+              juce::AudioBuffer<float> second (2, (int) kRate);
+              second.clear();
+              engine->process (second.getArrayOfWritePointers(), 2, second.getNumSamples());
+              engine->press (LoopEngine::Button::record);
+              engine->press (LoopEngine::Button::record);
+              return Processor ([engine] (juce::AudioBuffer<float>& b)
+              {
+                  engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
+              });
+          } },
+        { "RKRingMod", "tracked, square, LFO", []
+          {
+              return makeEngine<RingModEngine> ([] (RingModEngine& e)
+              {
+                  RingModEngine::Settings s;
+                  s.mode = RingModEngine::Mode::tracked;
+                  s.wave = RingModEngine::Wave::square;
+                  s.lfoDepth = 0.3f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKSynth", "saw + sub, resonant filter", []
+          {
+              return makeEngine<SynthEngine> ([] (SynthEngine& e)
+              {
+                  SynthEngine::Settings s;
+                  s.sub = 0.5f;
+                  s.resonance = 0.6f;
                   e.setSettings (s);
               });
           } },

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Uni-Vibe Vibrato",
+  "params": {
+    "mode": "univibe",
+    "center": 1000,
+    "depth": 70,
+    "rate": 5,
+    "mix": 100
+  }
+}

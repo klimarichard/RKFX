@@ -30,6 +30,9 @@
 #include "../plugins/RKOctave/Parameters.h"
 #include "../plugins/RKAcoustic/Parameters.h"
 #include "../plugins/RKPreamp/Parameters.h"
+#include "../plugins/RKSynth/Parameters.h"
+#include "../plugins/RKRingMod/Parameters.h"
+#include "../plugins/RKLoop/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -58,7 +61,7 @@ public:
             { "RKCompress", CompressParams::create, 5 },   { "RKGate", GateParams::create, 5 },
             { "RKTremolo", TremoloParams::create, 6 },     { "RKChorus", ChorusParams::create, 6 },
             { "RKDouble", DoubleParams::create, 5 },       { "RKFlange", FlangeParams::create, 6 },
-            { "RKPhase", PhaseParams::create, 6 },         { "RKDelay", DelayParams::create, 7 },
+            { "RKPhase", PhaseParams::create, 8 },         { "RKDelay", DelayParams::create, 7 },
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
             { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
             { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },
@@ -66,6 +69,8 @@ public:
             { "RKVibrato", VibratoParams::create, 6 },   { "RKVocode", VocodeParams::create, 7 },
             { "RKUtility", UtilityParams::create, 7 },   { "RKOctave", OctaveParams::create, 6 },
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
+            { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
+            { "RKLoop", LoopParams::create, 4 },
         };
 
         for (const auto& plugin : plugins)

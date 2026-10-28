@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dsp/EnvelopeFollower.h"
+#include "dsp/PitchTracker.h"
 #include "dsp/StateVariableFilter.h"
 #include "safety/Smoothing.h"
 
@@ -8,12 +9,9 @@
 
 /** The RKOctave DSP: an analog-style octave divider, with zero latency.
 
-    - Tracking: the input (summed to mono) is band-limited to the range of
-      the instrument: a high-pass below its lowest note and a 24 dB/oct
-      low-pass that follows the detected pitch (1.25 x the fundamental), so
-      the fundamental dominates and the harmonics don't add zero crossings.
-      A Schmitt trigger (hysteresis at 30% of the filtered level) finds one
-      rising crossing per cycle.
+    - Tracking: the input, summed to mono, goes to the shared pitch tracker
+      (core/dsp/PitchTracker.h), which reports one rising crossing of the
+      fundamental per cycle.
     - Dividing: a flip-flop toggles once per cycle, a square at half the
       input frequency (Octave 1); a second flip-flop toggles on the first
       one's rising edges (Octave 2, two octaves down). It toggles at the
@@ -36,7 +34,7 @@ public:
     static constexpr int kMaxChannels = 2;
     static constexpr float kHysteresisDb = 3.0f;
 
-    enum class Range { bass, guitar, violin };
+    using Range = rkfx::PitchTracker::Range;
     enum class Voice { natural, synth };
 
     struct Settings
@@ -51,8 +49,8 @@ public:
     };
 
     /** Lowest and highest fundamental a range tracks, in Hz. */
-    struct Limits { float lowHz, highHz; };
-    static Limits limitsFor (Range) noexcept;
+    using Limits = rkfx::PitchTracker::Limits;
+    static Limits limitsFor (Range r) noexcept { return rkfx::PitchTracker::limitsFor (r); }
 
     void prepare (double sampleRate);
     void reset();
@@ -61,22 +59,20 @@ public:
     void process (float* const* io, int numChannels, int numSamples) noexcept;
 
     /** The tracked fundamental in Hz (0 while below the threshold), for tests. */
-    float getTrackedHz() const noexcept { return gateOpen ? estimateHz : 0.0f; }
+    float getTrackedHz() const noexcept { return gateOpen ? tracker.getHz() : 0.0f; }
 
 private:
     static constexpr int kUpdateInterval = 16;   // samples between coefficient updates
 
     double sampleRate = 48000.0;
     Settings settings;
-    Limits limits = limitsFor (Range::guitar);
 
     // Tracker (mono).
-    rkfx::StateVariableFilter highPass, trackLow1, trackLow2;
-    rkfx::EnvelopeFollower trackLevel, inputLevel, gateLevel;
-    bool high = false, gateOpen = false, togglePending = false;
-    int samplesSinceRise = 0, pendingFor = 0;
+    rkfx::PitchTracker tracker;
+    rkfx::EnvelopeFollower inputLevel, gateLevel;
+    bool gateOpen = false, togglePending = false;
+    int pendingFor = 0;
     float lastBand = 0.0f;
-    float estimateHz = 0.0f;
     float square1 = 1.0f, square2 = 1.0f;        // flip-flop targets
     float edge1 = 1.0f, edge2 = 1.0f;            // ramped squares
     float step1 = 1.0f, step2 = 1.0f;

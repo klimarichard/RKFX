@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPhase",
+  "version": 1,
+  "name": "Uni-Vibe Chorus",
+  "params": {
+    "mode": "univibe",
+    "center": 1000,
+    "depth": 80,
+    "rate": 1.2,
+    "mix": 50
+  }
+}

@@ -31,7 +31,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKChorus](docs/manuals/RKChorus.md) | Chorus, 1 to 4 voices per side | Available |
 | [RKDouble](docs/manuals/RKDouble.md) | Artificial double tracking with random drift | Available |
 | [RKFlange](docs/manuals/RKFlange.md) | Flanger with positive and negative feedback | Available |
-| [RKPhase](docs/manuals/RKPhase.md) | Phaser, 2 to 12 stages, LFO and envelope | Available |
+| [RKPhase](docs/manuals/RKPhase.md) | Phaser, 2 to 12 stages, LFO and envelope, plus a Uni-Vibe mode | Available |
 | [RKTremolo](docs/manuals/RKTremolo.md) | Tremolo, auto-pan and harmonic tremolo | Available |
 | [RKRotary](docs/manuals/RKRotary.md) | Rotary speaker with horn, drum and drive | Available |
 | [RKVibrato](docs/manuals/RKVibrato.md) | Pitch vibrato with rise | Available |
@@ -41,6 +41,9 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
 | [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
+| [RKSynth](docs/manuals/RKSynth.md) | Monophonic synth played by your bass, guitar or violin: saw, square, triangle, sub, resonant filter envelope | Available |
+| [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
+| [RKLoop](docs/manuals/RKLoop.md) | Live looper: record, overdub, undo/redo, reverse, half speed, footswitch control | Available |
 
 ### RKBoard
 

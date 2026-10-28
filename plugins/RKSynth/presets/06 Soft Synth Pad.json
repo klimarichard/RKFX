@@ -1,0 +1,15 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Soft Synth Pad",
+  "params": {
+    "range": "guitar",
+    "wave": "triangle",
+    "glide": 120,
+    "cutoff": 2500,
+    "resonance": 10,
+    "env_amount": 0,
+    "dynamics": 100,
+    "mix": 60
+  }
+}

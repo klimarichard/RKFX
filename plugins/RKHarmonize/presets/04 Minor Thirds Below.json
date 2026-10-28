@@ -1,0 +1,10 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 1,
+  "name": "Minor Thirds Below",
+  "params": {
+    "key": "a",
+    "scale": "minor",
+    "voice1": "3rd_below"
+  }
+}

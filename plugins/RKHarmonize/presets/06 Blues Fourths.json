@@ -1,0 +1,10 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 1,
+  "name": "Blues Fourths",
+  "params": {
+    "key": "e",
+    "scale": "blues",
+    "voice1": "4th_above"
+  }
+}

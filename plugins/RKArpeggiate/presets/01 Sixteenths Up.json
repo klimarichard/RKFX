@@ -1,0 +1,8 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Sixteenths Up",
+  "params": {
+    "pattern": "up"
+  }
+}

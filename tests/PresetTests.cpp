@@ -33,6 +33,8 @@
 #include "../plugins/RKSynth/Parameters.h"
 #include "../plugins/RKRingMod/Parameters.h"
 #include "../plugins/RKLoop/Parameters.h"
+#include "../plugins/RKHarmonize/Parameters.h"
+#include "../plugins/RKArpeggiate/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -70,7 +72,8 @@ public:
             { "RKUtility", UtilityParams::create, 7 },   { "RKOctave", OctaveParams::create, 6 },
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
             { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
-            { "RKLoop", LoopParams::create, 8 },
+            { "RKLoop", LoopParams::create, 8 },        { "RKHarmonize", HarmonizeParams::create, 6 },
+            { "RKArpeggiate", ArpParams::create, 6 },
         };
 
         for (const auto& plugin : plugins)

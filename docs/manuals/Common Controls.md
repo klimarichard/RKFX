@@ -92,3 +92,7 @@ Gig Performer saves each plugin's complete settings inside the gig file, togethe
 ## Using RKFX in Gig Performer
 
 Every control (including Bypass) is exposed as a parameter, so you can map it to panel widgets or MIDI controllers in Gig Performer and keep the plugin window closed during a show. Parameters are listed in the same order as on screen: the plugin's own controls first, then Dry/Wet, Output and Bypass.
+
+## MIDI effects
+
+The MIDI family (RKHarmonize, RKArpeggiate) works on MIDI, not audio: notes come in, notes go out, so they go between a MIDI input and an instrument in Gig Performer. They have the same header and presets, but no Dry/Wet and no Output, only **Bypass**: bypassed, MIDI passes through unchanged, and any note the effect was playing ends first, so nothing hangs.

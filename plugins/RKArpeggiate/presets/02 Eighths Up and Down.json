@@ -1,0 +1,10 @@
+{
+  "plugin": "RKArpeggiate",
+  "version": 1,
+  "name": "Eighths Up and Down",
+  "params": {
+    "pattern": "updown",
+    "division": "1/8",
+    "octaves": 2
+  }
+}

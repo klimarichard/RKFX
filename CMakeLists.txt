@@ -44,6 +44,7 @@ add_subdirectory(plugins/RKSaturate)
 add_subdirectory(plugins/RKDistort)
 add_subdirectory(plugins/RKVerb)
 add_subdirectory(plugins/RKLimit)
+add_subdirectory(plugins/RKTransient)
 
 # ---------------------------------------------------------------------------
 # Tests

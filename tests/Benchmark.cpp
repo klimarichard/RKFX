@@ -2,6 +2,7 @@
 
 #include "ChorusEngine.h"
 #include "CompressorEngine.h"
+#include "DeEssEngine.h"
 #include "DelayEngine.h"
 #include "DistortEngine.h"
 #include "DoubleEngine.h"
@@ -314,6 +315,10 @@ int main (int argc, char** argv)
                   s.focusLowPassHz = 8000.0f;
                   e.setSettings (s);
               });
+          } },
+        { "RKDeEss", "default (relative, split)", []
+          {
+              return makeEngine<DeEssEngine> ([] (DeEssEngine& e) { e.setSettings ({}); });
           } },
     };
 

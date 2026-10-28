@@ -18,6 +18,7 @@ set(RKFX_ENGINE_PLUGINS
     RKVerb/ReverbEngine
     RKLimit/LimitEngine
     RKTransient/TransientEngine
+    RKDeEss/DeEssEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -56,6 +57,7 @@ target_sources(RKFXTests PRIVATE
     VerbTests.cpp
     LimitTests.cpp
     TransientTests.cpp
+    DeEssTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

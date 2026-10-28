@@ -1,0 +1,8 @@
+{
+  "plugin": "RKSustain",
+  "version": 1,
+  "name": "Hold Until Next Chord",
+  "params": {
+    "mode": "hold"
+  }
+}

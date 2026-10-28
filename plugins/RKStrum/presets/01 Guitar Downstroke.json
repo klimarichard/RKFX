@@ -1,0 +1,10 @@
+{
+  "plugin": "RKStrum",
+  "version": 1,
+  "name": "Guitar Downstroke",
+  "params": {
+    "direction": "down",
+    "speed": 18,
+    "ramp": -10
+  }
+}

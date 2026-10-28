@@ -1,0 +1,11 @@
+{
+  "plugin": "RKStrum",
+  "version": 1,
+  "name": "Loose Human Strum",
+  "params": {
+    "direction": "alternate",
+    "speed": 25,
+    "humanize": 70,
+    "ramp": -15
+  }
+}

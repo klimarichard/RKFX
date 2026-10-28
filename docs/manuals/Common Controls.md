@@ -95,4 +95,4 @@ Every control (including Bypass) is exposed as a parameter, so you can map it to
 
 ## MIDI effects
 
-The MIDI family (RKHarmonize, RKArpeggiate) works on MIDI, not audio: notes come in, notes go out, so they go between a MIDI input and an instrument in Gig Performer. They have the same header and presets, but no Dry/Wet and no Output, only **Bypass**: bypassed, MIDI passes through unchanged, and any note the effect was playing ends first, so nothing hangs.
+The MIDI family (RKHarmonize, RKArpeggiate, RKStrum, RKSustain) works on MIDI, not audio: notes come in, notes go out, so they go between a MIDI input and an instrument in Gig Performer. They have the same header and presets, but no Dry/Wet and no Output, only **Bypass**: bypassed, MIDI passes through unchanged, and any note the effect was playing ends first, so nothing hangs.

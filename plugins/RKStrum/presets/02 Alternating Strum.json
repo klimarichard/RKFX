@@ -1,0 +1,10 @@
+{
+  "plugin": "RKStrum",
+  "version": 1,
+  "name": "Alternating Strum",
+  "params": {
+    "direction": "alternate",
+    "speed": 15,
+    "humanize": 30
+  }
+}

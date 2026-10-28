@@ -72,6 +72,8 @@ add_subdirectory(plugins/RKBoard)
 set(RKFX_MIDI_PLUGINS
     RKHarmonize
     RKArpeggiate
+    RKStrum
+    RKSustain
 )
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})

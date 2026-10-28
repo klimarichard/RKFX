@@ -1,0 +1,8 @@
+{
+  "plugin": "RKSustain",
+  "version": 1,
+  "name": "Sostenuto Pedal",
+  "params": {
+    "mode": "sostenuto"
+  }
+}

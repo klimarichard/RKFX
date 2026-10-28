@@ -28,6 +28,9 @@ set(RKBOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RoutingPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/AssignPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MidiLearn.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PitchDetector.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TunerPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/VolumePedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahPedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahEngine.cpp

@@ -64,6 +64,12 @@ void AssignPanel::Row::refresh()
     invertButton.setToggleState (info.invert, juce::dontSendNotification);
 }
 
+void AssignPanel::Row::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() && onMenu)
+        onMenu (slot, *this);
+}
+
 void AssignPanel::Row::rangeChanged()
 {
     board.setAssignmentRange (slot, (float) minSlider.getValue(), (float) maxSlider.getValue(), invertButton.getToggleState());
@@ -98,6 +104,7 @@ AssignPanel::AssignPanel (BoardProcessor& b) : board (b)
     for (int slot = 0; slot < BoardProcessor::kNumAssigns; ++slot)
     {
         rows.push_back (std::make_unique<Row> (board, slot));
+        rows.back()->onMenu = [this] (int s, juce::Component& row) { if (onRowMenu) onRowMenu (s, row); };
         addAndMakeVisible (*rows.back());
     }
 }

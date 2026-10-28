@@ -18,6 +18,9 @@ public:
     /** Shows the board's assignments (after any change). */
     void refresh();
 
+    /** Right-click on a row (the editor offers MIDI learn there). */
+    std::function<void (int slot, juce::Component& row)> onRowMenu;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -28,7 +31,9 @@ private:
         void refresh();
         void paint (juce::Graphics&) override;
         void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
 
+        std::function<void (int, juce::Component&)> onMenu;
         BoardProcessor& board;
         const int slot;
         juce::Label target;

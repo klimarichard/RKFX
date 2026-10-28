@@ -33,6 +33,6 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
     endif()
 endforeach()
 target_compile_definitions(RKFXSnapshot_RKBoard PRIVATE RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
-target_link_libraries(RKFXSnapshot_RKBoard PRIVATE rkboard_pedal_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
+target_link_libraries(RKFXSnapshot_RKBoard PRIVATE rkboard_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
                       PUBLIC juce::juce_recommended_config_flags)
 add_dependencies(RKFXSnapshots RKFXSnapshot_RKBoard)

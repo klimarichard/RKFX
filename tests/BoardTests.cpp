@@ -1,6 +1,7 @@
 // RKBoard: the board processor with real pedals (every RKFX plugin built in).
 
 #include "BoardEditor.h"
+#include "PitchDetector.h"
 #include "pedals/VolumeEngine.h"
 #include "pedals/WahEngine.h"
 
@@ -770,6 +771,182 @@ public:
                 expectEquals (board.getPresetName(), preset.name);
                 expect (! board.isPresetModified());
             }
+        }
+
+        beginTest ("Tap tempo and MIDI clock");
+        {
+            rkboard::TapTempo tap;
+            expect (! tap.tap (10.0).has_value());
+            expectWithinAbsoluteError (*tap.tap (10.5), 120.0, 0.01);
+            tap.tap (11.0);
+            expectWithinAbsoluteError (*tap.tap (11.5), 120.0, 0.01);
+            expect (! tap.tap (20.0).has_value(), "a long pause starts over");
+            expectWithinAbsoluteError (*tap.tap (20.4), 150.0, 0.01);
+
+            rkboard::MidiClockFollower clock;
+            const auto interval = 60.0 / (140.0 * 24.0);
+            for (int i = 0; i < 30; ++i)
+                clock.tick (i * interval);
+            expectWithinAbsoluteError (*clock.bpm (29 * interval), 140.0, 0.01);
+            expect (! clock.bpm (29 * interval + 1.0).has_value(), "clock stopped");
+        }
+
+        beginTest ("Tuner pitch detection and note names");
+        {
+            rkboard::PitchDetector detector;
+            detector.prepare (kRate, 4096);
+            std::vector<float> window (4096);
+            for (const auto hz : { 41.2, 82.41, 110.0, 196.0, 440.0, 1046.5 })
+            {
+                for (int i = 0; i < 4096; ++i)
+                    window[(size_t) i] = 0.3f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * hz * i / kRate);
+                const auto found = detector.detect (window.data());
+                expectWithinAbsoluteError (1200.0f * std::log2 (found / (float) hz), 0.0f, 1.0f, juce::String (hz) + " Hz");
+            }
+
+            std::fill (window.begin(), window.end(), 0.0f);
+            expectEquals (detector.detect (window.data()), 0.0f);
+
+            const auto a = rkboard::PitchDetector::noteFor (440.0f);
+            expect (a.name == "A" && a.octave == 4);
+            expectWithinAbsoluteError (a.cents, 0.0f, 0.01f);
+            const auto e = rkboard::PitchDetector::noteFor (82.41f);
+            expect (e.name == "E" && e.octave == 2, e.name + juce::String (e.octave));
+            expectWithinAbsoluteError (rkboard::PitchDetector::noteFor (445.0f).cents, 19.56f, 0.05f);
+            expectWithinAbsoluteError (rkboard::PitchDetector::noteFor (442.0f, 442.0f).cents, 0.0f, 0.01f);
+        }
+
+        beginTest ("MIDI map: one controller per target, saved and loaded");
+        {
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKBoardTests/midi-map.json");
+            file.deleteFile();
+            {
+                rkboard::MidiMap map (file);
+                map.set ({ rkboard::LearnTarget::firstAssign, 1, 11, false });
+                map.set ({ rkboard::LearnTarget::firstBypass + 2, 2, 64, true });
+                map.set ({ rkboard::LearnTarget::firstAssign + 1, 1, 11, false });   // takes CC 11 over
+                expect (! map.find (rkboard::LearnTarget::firstAssign).has_value());
+                expectEquals (map.lookup (1, 11), rkboard::LearnTarget::firstAssign + 1);
+                expectEquals (map.lookup (2, 64), rkboard::LearnTarget::firstBypass + 2 + 1000);
+                expectEquals (map.lookup (3, 64), -1);
+            }
+            rkboard::MidiMap loaded (file);
+            expectEquals ((int) loaded.getMappings().size(), 2);
+            expect (loaded.find (rkboard::LearnTarget::firstBypass + 2)->momentary);
+            file.getParentDirectory().deleteRecursively();
+        }
+
+        beginTest ("Standalone: MIDI learn, expression pedal, footswitches, scenes, tuner, clock");
+        {
+            const auto rig = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKBoardTests/rig");
+            rig.deleteRecursively();
+
+            BoardProcessor board;
+            board.setStandaloneForTesting (rig);
+            board.clearBoard();
+            const auto delay = board.addPedal ("RKDelay");
+            const auto drive = board.addPedal ("RKDistort");
+            board.assign (0, delay, "mix");
+            prepare (board);
+
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            const auto send = [&] (std::initializer_list<juce::MidiMessage> messages, int blocks = 1)
+            {
+                for (int b = 0; b < blocks; ++b)
+                {
+                    juce::MidiBuffer midi;
+                    if (b == 0)
+                        for (const auto& m : messages)
+                            midi.addEvent (m, 0);
+                    buffer.clear();
+                    board.processBlock (buffer, midi);
+                }
+            };
+
+            // Learn Assign 1 from CC 11.
+            board.startLearning (rkboard::LearnTarget::firstAssign);
+            send ({ juce::MidiMessage::controllerEvent (1, 11, 0) });
+            board.flushPendingUpdate();
+            expectEquals (board.getLearningTarget(), -1);
+            expectEquals (board.getMidiMap()->find (rkboard::LearnTarget::firstAssign)->cc, 11);
+            expect (rig.getChildFile ("midi-map.json").existsAsFile(), "saved");
+
+            // The expression pedal glides the knob (no 7-bit steps).
+            send ({ juce::MidiMessage::controllerEvent (1, 11, 127) }, 1);
+            const auto midway = board.getAssignParam (0).get();
+            expect (midway > 0.0f && midway < 1.0f, "gliding: " + juce::String (midway));
+            send ({}, 40);
+            expectWithinAbsoluteError (board.getAssignParam (0).get(), 1.0f, 1.0e-3f);
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("mix")->getValue(), 1.0f, 1.0e-3f);
+
+            // A toggling footswitch, then a momentary one.
+            board.getMidiMap()->set ({ rkboard::LearnTarget::firstBypass + drive - 1, 1, 20, false });
+            send ({ juce::MidiMessage::controllerEvent (1, 20, 127) });
+            expect (board.isPedalBypassed (drive));
+            send ({ juce::MidiMessage::controllerEvent (1, 20, 0) });
+            expect (board.isPedalBypassed (drive), "release does nothing");
+            send ({ juce::MidiMessage::controllerEvent (1, 20, 127) });
+            expect (! board.isPedalBypassed (drive));
+
+            board.getMidiMap()->set ({ rkboard::LearnTarget::firstBypass + drive - 1, 1, 20, true });
+            send ({ juce::MidiMessage::controllerEvent (1, 20, 0) });
+            expect (board.isPedalBypassed (drive), "momentary: off when released");
+            send ({ juce::MidiMessage::controllerEvent (1, 20, 127) });
+            expect (! board.isPedalBypassed (drive), "on while held");
+
+            // Scenes: a CC value picks one, program changes too.
+            board.getMidiMap()->set ({ rkboard::LearnTarget::scene, 1, 30, false });
+            send ({ juce::MidiMessage::controllerEvent (1, 30, 3) });
+            expectEquals (board.getScene(), 3);
+            send ({ juce::MidiMessage::programChange (1, 7) });
+            expectEquals (board.getScene(), 7);
+
+            // The tuner mutes the output (after a short fade) while it is on.
+            board.getMidiMap()->set ({ rkboard::LearnTarget::tuner, 1, 40, false });
+            send ({ juce::MidiMessage::controllerEvent (1, 40, 127) });
+            expect (board.isTunerActive());
+            {
+                juce::Random random (5);
+                juce::MidiBuffer midi;
+                for (int b = 0; b < 20; ++b)
+                {
+                    fillNoise (buffer, random);
+                    board.processBlock (buffer, midi);
+                }
+                expect (buffer.getMagnitude (0, kBlock) < 1.0e-6f, "muted while tuning");
+                std::vector<float> copy (1024);
+                board.copyTunerInput (copy.data(), 1024);
+                expect (juce::FloatVectorOperations::findMaximum (copy.data(), 1024) > 0.1f, "the tuner gets the input");
+            }
+            send ({ juce::MidiMessage::controllerEvent (1, 40, 0) });
+            send ({ juce::MidiMessage::controllerEvent (1, 40, 127) });
+            expect (! board.isTunerActive());
+
+            // MIDI clock sets the tempo while following it.
+            board.setFollowClock (true);
+            const auto samplesPerTick = kRate * 60.0 / (100.0 * 24.0);
+            double next = 0.0;
+            for (int b = 0; b < 200; ++b)
+            {
+                juce::MidiBuffer midi;
+                while (next < kBlock)
+                {
+                    midi.addEvent (juce::MidiMessage::midiClock(), (int) next);
+                    next += samplesPerTick;
+                }
+                next -= kBlock;
+                buffer.clear();
+                board.processBlock (buffer, midi);
+            }
+            expectWithinAbsoluteError (board.getTempo(), 100.0, 0.5);
+            board.setFollowClock (false);
+
+            board.setTempo (93.0);
+            BoardProcessor loaded;
+            loaded.fromVar (board.toVar (false), false);
+            expectWithinAbsoluteError (loaded.getTempo(), 93.0, 0.01);
+
+            rig.getParentDirectory().deleteRecursively();
         }
 
         beginTest ("Unknown pedals in a preset are skipped with a note");

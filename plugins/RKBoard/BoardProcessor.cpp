@@ -72,6 +72,17 @@ BoardProcessor::BoardProcessor()
     sceneParam->addListener (this);
 
     pedalMidi.ensureSize (4096);
+    tunerRing.setSize (1, kTunerBufferSize);
+    tunerRing.clear();
+
+    // MIDI learn, tempo and tuner are for the standalone app only.
+    standalone = wrapperType == wrapperType_Standalone;
+    if (standalone)
+    {
+        midiMap = std::make_unique<MidiMap>();
+        rigSettingsFile = RigSettings::defaultFile();
+        rig.load (rigSettingsFile);
+    }
 
     for (auto* p : routing.getParameters())
         p->addListener (&routingWatcher);
@@ -667,6 +678,182 @@ void BoardProcessor::updateLatency()
 void BoardProcessor::handleAsyncUpdate()
 {
     setLatencySamples (totalLatency.load());
+
+    // A controller was learned on the audio thread: store it (saves the file).
+    if (const auto target = learnedTarget.exchange (-1); target >= 0 && midiMap != nullptr)
+    {
+        MidiMapping m;
+        m.target = target;
+        m.channel = learnedChannel;
+        m.cc = learnedCC;
+        if (const auto previous = midiMap->find (target))
+            m.momentary = previous->momentary;
+        midiMap->set (m);
+        ++boardCounter;
+    }
+}
+
+//==============================================================================
+void BoardProcessor::setStandaloneForTesting (const juce::File& rigFolder)
+{
+    standalone = true;
+    midiMap = std::make_unique<MidiMap> (rigFolder.getChildFile ("midi-map.json"));
+    rigSettingsFile = rigFolder.getChildFile ("settings.json");
+    rig.load (rigSettingsFile);
+}
+
+void BoardProcessor::setTempo (double bpm)
+{
+    tempo = juce::jlimit (20.0, 300.0, bpm);
+    boardPlayHead.bpm = tempo.load();
+    markModified();
+    ++boardCounter;
+}
+
+void BoardProcessor::tapTempo()
+{
+    if (const auto bpm = tapper.tap (juce::Time::getMillisecondCounterHiRes() / 1000.0); bpm && ! rig.followClock)
+        setTempo (*bpm);
+}
+
+void BoardProcessor::setFollowClock (bool follow)
+{
+    rig.followClock = follow;
+    rig.save (rigSettingsFile);
+    ++boardCounter;
+}
+
+void BoardProcessor::setTunerOptions (float reference, bool mutes)
+{
+    rig.tunerReference = juce::jlimit (430.0f, 450.0f, reference);
+    rig.tunerMutes = mutes;
+    rig.save (rigSettingsFile);
+}
+
+void BoardProcessor::copyTunerInput (float* dest, int numSamples) const
+{
+    // Oldest first, ending at the latest sample written.
+    numSamples = juce::jmin (numSamples, kTunerBufferSize);
+    const auto* ring = tunerRing.getReadPointer (0);
+    const auto end = tunerWrite.load();
+    for (int i = 0; i < numSamples; ++i)
+        dest[i] = ring[(end - numSamples + i + kTunerBufferSize) % kTunerBufferSize];
+}
+
+void BoardProcessor::handleStandaloneMidi (const juce::MidiBuffer& midi, int numSamples)
+{
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+        const auto time = sampleTime + metadata.samplePosition / currentSampleRate;
+
+        if (message.isMidiClock())
+        {
+            clock.tick (time);
+        }
+        else if (message.isProgramChange())
+        {
+            // Program changes 0-15 recall scenes 1-16.
+            if (message.getProgramChangeNumber() < kNumScenes)
+                sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) message.getProgramChangeNumber() + 1.0f));
+        }
+        else if (message.isController())
+        {
+            const auto channel = message.getChannel(), cc = message.getControllerNumber();
+
+            // Learning: this controller is the one.
+            if (const auto target = learning.exchange (-1); target >= 0)
+            {
+                learnedChannel = channel;
+                learnedCC = cc;
+                learnedTarget = target;
+                triggerAsyncUpdate();
+                continue;
+            }
+
+            if (const auto code = midiMap->lookup (channel, cc); code >= 0)
+                applyController (code % 1000, code >= 1000, message.getControllerValue(), time);
+        }
+    }
+
+    sampleTime += numSamples / currentSampleRate;
+
+    if (rig.followClock)
+        if (const auto bpm = clock.bpm (sampleTime))
+        {
+            tempo = *bpm;
+            boardPlayHead.bpm = *bpm;
+        }
+}
+
+void BoardProcessor::applyController (int target, bool momentary, int value, double time)
+{
+    const auto pressed = value >= 64;
+    const auto wasPressed = target < (int) switchHeld.size() && switchHeld[(size_t) target];
+    if (target < (int) switchHeld.size())
+        switchHeld[(size_t) target] = pressed;
+    const auto pressEdge = pressed && ! wasPressed;
+
+    if (target >= LearnTarget::firstAssign && target < LearnTarget::firstAssign + kNumAssigns)
+    {
+        // An expression pedal: glide to it, so the 7-bit steps never zipper.
+        const auto slot = target - LearnTarget::firstAssign;
+        ccTargets[(size_t) slot] = (float) value / 127.0f;
+        ccGliding[(size_t) slot] = true;
+    }
+    else if (target >= LearnTarget::firstBypass && target < LearnTarget::firstBypass + kMaxPedals)
+    {
+        const auto id = target - LearnTarget::firstBypass + 1;
+        if (pedals[(size_t) id - 1] == nullptr)
+            return;
+
+        // Momentary: the pedal is on while the switch is held.
+        if (momentary)
+            setPedalBypassed (id, ! pressed);
+        else if (pressEdge)
+            setPedalBypassed (id, ! isPedalBypassed (id));
+    }
+    else if (target == LearnTarget::scene)
+    {
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) juce::jlimit (1, kNumScenes, value + 1)));
+    }
+    else if (target == LearnTarget::tap)
+    {
+        if (pressEdge && ! rig.followClock)
+            if (const auto bpm = tapper.tap (time))
+            {
+                tempo = *bpm;
+                boardPlayHead.bpm = *bpm;
+                ++boardCounter;
+            }
+    }
+    else if (target == LearnTarget::tuner)
+    {
+        if (momentary)
+            tunerActive = pressed;
+        else if (pressEdge)
+            tunerActive = ! tunerActive.load();
+        ++boardCounter;
+    }
+}
+
+void BoardProcessor::glideControllers (int numSamples)
+{
+    const auto amount = juce::jmin (1.0f, (float) numSamples / (float) (0.03 * currentSampleRate));   // ~30 ms
+
+    for (int slot = 0; slot < kNumAssigns; ++slot)
+    {
+        if (! ccGliding[(size_t) slot])
+            continue;
+
+        auto& param = *assignParams[(size_t) slot];
+        const auto target = ccTargets[(size_t) slot].load();
+        const auto now = param.get();
+        const auto next = std::abs (target - now) < 1.0e-4f ? target : now + amount * (target - now);
+        param.setValueNotifyingHost (next);
+        if (juce::exactlyEqual (next, target))
+            ccGliding[(size_t) slot] = false;
+    }
 }
 
 double BoardProcessor::getTailLengthSeconds() const
@@ -689,6 +876,7 @@ void BoardProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     inputGain.reset (sampleRate, 0.02);
     outputGain.reset (sampleRate, 0.02);
+    tunerMute.reset (sampleRate, 0.02);
     inputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inputParam->get()));
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputParam->get()));
 
@@ -769,7 +957,7 @@ void BoardProcessor::processSection (const SectionChain& section, juce::AudioBuf
     {
         auto* pedal = section.pedals[(size_t) i];
         const auto index = (size_t) section.ids[(size_t) i] - 1;
-        pedal->setPlayHead (getPlayHead());
+        pedal->setPlayHead (standalone ? &boardPlayHead : getPlayHead());
 
         // Each pedal gets the incoming MIDI (the vocoder plays its carrier from it).
         pedalMidi.clear();
@@ -904,15 +1092,27 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
 
     inputGain.applyGain (buffer, numSamples);
 
-    // Standalone: program changes 0-15 recall scenes 1-16 (in a host, the
-    // Scene parameter does this).
-    if (wrapperType == wrapperType_Standalone)
-        for (const auto metadata : midi)
+    // Standalone: MIDI learn mappings, program changes (scenes), MIDI clock,
+    // and the tuner's copy of the input. In a host, Gig Performer does these.
+    if (standalone)
+    {
+        handleStandaloneMidi (midi, numSamples);
+
+        // Before taking the chain lock: an Assign parameter takes it to move its knob.
+        glideControllers (numSamples);
+
+        if (tunerActive)
         {
-            const auto message = metadata.getMessage();
-            if (message.isProgramChange() && message.getProgramChangeNumber() < kNumScenes)
-                sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) message.getProgramChangeNumber() + 1.0f));
+            auto* ring = tunerRing.getWritePointer (0);
+            auto write = tunerWrite.load();
+            for (int i = 0; i < numSamples; ++i)
+            {
+                ring[write] = 0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i));
+                write = (write + 1) % kTunerBufferSize;
+            }
+            tunerWrite = write;
         }
+    }
 
     {
         const juce::SpinLock::ScopedLockType sl (chainLock);
@@ -932,6 +1132,15 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     }
 
     outputGain.applyGain (buffer, numSamples);
+
+    // The tuner can mute the output while tuning (with a short fade).
+    if (standalone)
+    {
+        boardPlayHead.advance (numSamples, currentSampleRate);
+        tunerMute.setTargetValue (tunerActive && rig.tunerMutes ? 0.0f : 1.0f);
+        tunerMute.applyGain (buffer, numSamples);
+    }
+
     midi.clear();
 }
 
@@ -1141,6 +1350,7 @@ juce::var BoardProcessor::toVar (bool fullState) const
     const auto level = [] (const juce::AudioParameterFloat& p) { return std::round ((double) p.get() * 10.0) / 10.0; };
     board->setProperty ("input", level (*inputParam));
     board->setProperty ("output", level (*outputParam));
+    board->setProperty ("tempo", std::round (tempo.load() * 10.0) / 10.0);
     root->setProperty ("board", juce::var (board));
     root->setProperty ("routing", routing.toVar (! fullState));
 
@@ -1281,6 +1491,13 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     };
     setLevel (*inputParam, board["input"]);
     setLevel (*outputParam, board["output"]);
+
+    // The board's tempo (standalone), unless MIDI clock sets it.
+    if (! rig.followClock)
+    {
+        tempo = board["tempo"].isVoid() ? 120.0 : juce::jlimit (20.0, 300.0, (double) board["tempo"]);
+        boardPlayHead.bpm = tempo.load();
+    }
 
     // Missing routing (older presets) = the defaults.
     notes.addArray (routing.fromVar (root["routing"]));

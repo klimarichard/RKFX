@@ -19,6 +19,10 @@ int main (int argc, char** argv)
     const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "snapshot.png");
     const auto scale = argc > 2 ? juce::String (argv[2]).getFloatValue() : 1.0f;
 
+    // RKFX_SNAPSHOT_STANDALONE=1: as the standalone app (RKBoard shows more there).
+    if (juce::SystemStats::getEnvironmentVariable ("RKFX_SNAPSHOT_STANDALONE", {}).isNotEmpty())
+        juce::AudioProcessor::setTypeOfNextNewPlugin (juce::AudioProcessor::wrapperType_Standalone);
+
     std::unique_ptr<juce::AudioProcessor> processor (createPluginFilter());
     processor->setPlayConfigDetails (2, 2, 48000.0, 512);
     processor->prepareToPlay (48000.0, 512);

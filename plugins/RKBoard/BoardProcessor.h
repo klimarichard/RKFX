@@ -2,7 +2,9 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "MidiLearn.h"
 #include "PedalRegistry.h"
+#include "Tempo.h"
 #include "Routing.h"
 #include "dsp/LinkwitzRiley4.h"
 #include "plugin/PresetLibrary.h"
@@ -156,13 +158,49 @@ public:
     bool getTrails (int pedalId) const;
     void setTrails (int pedalId, bool on);
 
+    //==============================================================================
+    // Standalone only (in a host, Gig Performer does these): tempo with tap
+    // and MIDI clock, MIDI learn, and the tuner.
+
+    bool isStandalone() const noexcept { return standalone; }
+
+    /** Tests: behave as the standalone app, with the rig's files in @p rigFolder. */
+    void setStandaloneForTesting (const juce::File& rigFolder);
+    /** Tests: runs a pending update now (what the message loop would do). */
+    void flushPendingUpdate() { handleUpdateNowIfNeeded(); }
+
+    /** The board's tempo (stored in board presets; the pedals' tempo in the
+        standalone app). Following MIDI clock replaces it. */
+    double getTempo() const noexcept { return tempo.load(); }
+    void setTempo (double bpm);
+    void tapTempo();
+
+    bool isFollowingClock() const noexcept { return rig.followClock; }
+    void setFollowClock (bool follow);
+
+    MidiMap* getMidiMap() noexcept { return midiMap.get(); }
+    /** The next MIDI controller moved is learned for @p target (a LearnTarget). */
+    void startLearning (int target) { learning = target; }
+    void cancelLearning() { learning = -1; }
+    int getLearningTarget() const noexcept { return learning.load(); }
+
+    bool isTunerActive() const noexcept { return tunerActive.load(); }
+    void setTunerActive (bool on) { tunerActive = on; ++boardCounter; }
+    float getTunerReference() const noexcept { return rig.tunerReference; }
+    bool getTunerMutes() const noexcept { return rig.tunerMutes; }
+    void setTunerOptions (float reference, bool mutes);
+
+    /** The latest @p numSamples of input (mono) for the tuner; message thread. */
+    void copyTunerInput (float* dest, int numSamples) const;
+    static constexpr int kTunerBufferSize = 8192;
+
     juce::RangedAudioParameter& getInputParam() const noexcept  { return *inputParam; }
     juce::RangedAudioParameter& getOutputParam() const noexcept { return *outputParam; }
 
     //==============================================================================
     // Board presets (message thread), same JSON conventions as plugin presets:
     //     { "plugin": "RKBoard", "version": 1, "name": ...,
-    //       "board": { "input": 0, "output": 0 },
+    //       "board": { "input": 0, "output": 0, "tempo": 120 },
     //       "routing": { "split": "frequency", "crossover": 800, ... },
     //       "assign": [ { "slot": 1, "pedal": 3, "param": "time", "min": 100, "max": 800, "invert": false } ],
     //       "scenes": { "current": 1, "bypass": [ [2, 5], [], ... one list of bypassed IDs per scene ],
@@ -300,6 +338,30 @@ private:
     std::array<bool, kMaxPedals> trailIdle {};              // audio thread
     std::array<int, kMaxPedals> trailSilence {};            // audio thread, samples
     juce::AudioBuffer<float> trailBuffer;
+
+    // Standalone
+    bool standalone = false;
+    std::unique_ptr<MidiMap> midiMap;
+    RigSettings rig;
+    juce::File rigSettingsFile;
+    std::atomic<double> tempo { 120.0 };
+    BoardPlayHead boardPlayHead;
+    TapTempo tapper;
+    MidiClockFollower clock;
+    double sampleTime = 0.0;                       // seconds of audio processed (MIDI timing)
+    std::atomic<int> learning { -1 };
+    std::atomic<int> learnedTarget { -1 }, learnedChannel { 0 }, learnedCC { 0 };
+    std::array<std::atomic<float>, kNumAssigns> ccTargets {};
+    std::array<std::atomic<bool>, kNumAssigns> ccGliding {};
+    std::array<bool, 256> switchHeld {};           // last state of each switch target (press edges)
+    std::atomic<bool> tunerActive { false };
+    juce::AudioBuffer<float> tunerRing;
+    std::atomic<int> tunerWrite { 0 };
+    juce::SmoothedValue<float> tunerMute { 1.0f };
+
+    void handleStandaloneMidi (const juce::MidiBuffer&, int numSamples);
+    void applyController (int target, bool momentary, int value, double time);
+    void glideControllers (int numSamples);
     static inline thread_local bool applyingAssign = false;   // this thread is moving a knob for an Assign parameter
 
     juce::RangedAudioParameter* assignTarget (int slot) const;      // under chainLock on the audio thread

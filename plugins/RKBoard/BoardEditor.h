@@ -6,6 +6,7 @@
 #include "BoardProcessor.h"
 #include "AssignPanel.h"
 #include "RoutingPanel.h"
+#include "TunerPanel.h"
 #include "gui/LookAndFeel.h"
 
 namespace rkboard
@@ -34,10 +35,16 @@ public:
     static constexpr int kSplitNode = -2;
     static constexpr int kMergeNode = -3;
     static constexpr int kAssignView = -4;      // not on the strip: the Assign button
+    static constexpr int kTunerView = -5;       // not on the strip: the tuner (standalone)
 
     int getSelected() const noexcept { return selected; }
     void setSelected (int item);
     std::function<void (int item)> onSelect;
+
+    /** Extra items for a tile's right-click menu (MIDI learn, standalone),
+        with IDs from 100; the result goes to onTileMenuResult. */
+    std::function<void (juce::PopupMenu&, int id)> addTileMenuItems;
+    std::function<void (int result, int id)> onTileMenuResult;
 
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -127,6 +134,13 @@ private:
     juce::TextButton assignButton { "Assign" };
     juce::Label sceneLabel;
     std::array<juce::TextButton, BoardProcessor::kNumScenes> sceneButtons;
+
+    // Standalone: tempo and tuner
+    juce::Label tempoField, tempoUnit;
+    juce::TextButton tapButton { "Tap" }, tunerButton { "Tuner" };
+    double shownTempo = -1.0;
+    int lastLearning = -1;
+    int viewBeforeTuner = 0;
     juce::Label noteLabel;
     juce::Label inputLabel, outputLabel;
     juce::Slider inputSlider, outputSlider;
@@ -139,6 +153,7 @@ private:
     std::unique_ptr<juce::AudioProcessorEditor> pedalEditor;
     std::unique_ptr<RoutingPanel> routingPanel;
     std::unique_ptr<AssignPanel> assignPanel;
+    std::unique_ptr<TunerPanel> tunerPanel;
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;
@@ -148,6 +163,14 @@ private:
     void closePedalEditor();
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
     void showSceneMenu (int scene);
+
+    /** MIDI learn items (standalone) for @p target, added to @p menu with IDs from @p base. */
+    void addLearnItems (juce::PopupMenu& menu, int target, int base) const;
+    /** Handles a result of addLearnItems(); false when it wasn't one of them. */
+    bool handleLearnResult (int result, int target, int base);
+    void showLearnMenu (int target, juce::Component& near);
+    void refreshTempo();
+    void syncTunerView();
     void refreshSceneButtons();
     void layoutPedalEditor();
 

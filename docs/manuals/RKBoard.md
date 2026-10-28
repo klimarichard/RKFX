@@ -87,6 +87,38 @@ Scenes can also be switched by the host parameter **Scene** (1 to 16, for a Gig 
 
 Delay and reverb pedals have a **Trails** option (right-click the tile). With trails on, bypassing the pedal stops it taking in new sound, but the echoes or reverb already playing ring out naturally, also when a scene switches the pedal off. With trails off, the sound stops as usual.
 
+## Standalone app
+
+The standalone app has a few things a host would otherwise provide. In the plugin they are hidden: Gig Performer handles controllers and tempo there.
+
+**Audio and MIDI settings** (Options at the top of the window) choose your audio interface and MIDI inputs. Use a small buffer size (64 or 128 samples) for a low delay through the interface.
+
+### Tempo
+
+The **BPM** field (20 to 300) and **Tap** sit at the left of the scene bar. Tap at least twice; RKBoard averages your last few taps, and a pause of two seconds starts over. Tempo-synced delays and modulation follow this tempo. Board presets store their tempo and apply it when loaded.
+
+Right-click **Tap** and tick **Follow MIDI clock** to take the tempo from incoming MIDI clock instead (a drum machine or a sequencer); the BPM field then shows it, dimmed.
+
+### MIDI learn
+
+Footswitches and expression pedals connect through MIDI learn. Right-click what you want to control, choose **MIDI learn**, then press the switch or move the pedal:
+
+| What | Where to right-click | How it reacts |
+| --- | --- | --- |
+| A pedal's bypass | its tile | a switch |
+| An assignable parameter | its row in the Assign view | an expression pedal: smoothed, so it never zippers |
+| Scene selector | a scene button | the controller's value picks the scene (0 = scene 1, up to 15 = scene 16) |
+| Tap tempo | **Tap** | a switch |
+| Tuner | **Tuner** | a switch |
+
+For switches, the same menu chooses **toggle** (each press switches on or off) or **momentary** (on while held). **Clear MIDI** removes the mapping. MIDI program changes 0 to 15 always select scenes 1 to 16.
+
+Mappings belong to your rig, not to a sound: they stay the same whatever board you load, and are kept in `~/Library/Application Support/RKFX/RKBoard/midi-map.json`.
+
+### Tuner
+
+Click **Tuner** (or a learned footswitch) to show the tuner: the note, its octave, and how many cents it is off (the marker turns green within 3 cents). Set the **Reference** pitch (430 to 450 Hz, A4) and whether the output is **muted while tuning**. The tuner listens to a copy of the input, so it never adds delay or changes the sound.
+
 ## Board-only pedals
 
 Two pedals exist only on the board, made for an expression pedal through an Assign parameter. You can place as many as you like.

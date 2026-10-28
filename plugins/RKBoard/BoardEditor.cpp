@@ -447,6 +447,8 @@ void BoardStrip::showTileMenu (int id)
         menu.addSeparator();
         menu.addItem (3, "Trails (echoes ring out when bypassed)", true, board.getTrails (id));
     }
+    if (addTileMenuItems)
+        addTileMenuItems (menu, id);
 
     juce::Component::SafePointer<BoardStrip> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
@@ -468,6 +470,10 @@ void BoardStrip::showTileMenu (int id)
                             else if (result == 3)
                             {
                                 safe->board.setTrails (id, ! safe->board.getTrails (id));
+                            }
+                            else if (result >= 100 && safe->onTileMenuResult)
+                            {
+                                safe->onTileMenuResult (result, id);
                             }
                             safe->repaint();
                         });
@@ -507,6 +513,28 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     }
     refreshSceneButtons();
 
+    // Standalone: tempo field, tap tempo, tuner (in a host, the host has these).
+    tempoField.setEditable (true);
+    tempoField.setJustificationType (juce::Justification::centred);
+    tempoField.setColour (juce::Label::backgroundColourId, Palette::background);
+    tempoField.setColour (juce::Label::outlineColourId, Palette::outline);
+    tempoField.setTooltip ("Tempo for the pedals (20 to 300 BPM). Right-click Tap to follow MIDI clock.");
+    tempoField.onTextChange = [this] { board.setTempo (tempoField.getText().getDoubleValue()); refreshTempo(); };
+    tempoUnit.setText ("BPM", juce::dontSendNotification);
+    tempoUnit.setFont (Fonts::regular (12.0f));
+    tempoUnit.setColour (juce::Label::textColourId, Palette::textDim);
+    tapButton.setTooltip ("Tap the tempo (right-click: MIDI learn, follow MIDI clock).");
+    tapButton.onClick = [this] { board.tapTempo(); refreshTempo(); };
+    tunerButton.setTooltip ("Tuner (right-click: MIDI learn).");
+    tunerButton.onClick = [this] { board.setTunerActive (! board.isTunerActive()); syncTunerView(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &tempoField, &tempoUnit, &tapButton, &tunerButton })
+    {
+        c->addMouseListener (this, false);   // right-click menus
+        addChildComponent (c);
+        c->setVisible (board.isStandalone());
+    }
+    refreshTempo();
+
     noteLabel.setFont (Fonts::regular (12.0f));
     noteLabel.setJustificationType (juce::Justification::centredRight);
     noteLabel.setMinimumHorizontalScale (0.7f);
@@ -532,6 +560,15 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     setUpLevel (outputLabel, "Out", outputSlider, board.getOutputParam(), outputAttachment);
 
     strip.onSelect = [this] (int id) { showPedal (id); };
+    strip.addTileMenuItems = [this] (juce::PopupMenu& menu, int id)
+    {
+        if (! board.isStandalone())
+            return;
+        menu.addSeparator();
+        menu.addSectionHeader ("Footswitch (Pedal " + juce::String (id) + " Bypass)");
+        addLearnItems (menu, LearnTarget::firstBypass + id - 1, 100);
+    };
+    strip.onTileMenuResult = [this] (int result, int id) { handleLearnResult (result, LearnTarget::firstBypass + id - 1, 100); };
     addAndMakeVisible (strip);
 
     // A pedal's editor must go before the pedal itself.
@@ -583,7 +620,7 @@ void BoardEditor::paint (juce::Graphics& g)
     g.drawText ("RKBoard", kMargin, 0, 120, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
-    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr)
+    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr)
     {
         drawPanel (g, panel, Palette::panel);
         g.setColour (Palette::textDim);
@@ -616,6 +653,11 @@ void BoardEditor::resized()
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
     const auto buttonWidth = 40;
+    tunerButton.setBounds (sceneBar.removeFromRight (70));
+    auto tempoArea = sceneBar.removeFromLeft (150);
+    tempoField.setBounds (tempoArea.removeFromLeft (56));
+    tempoUnit.setBounds (tempoArea.removeFromLeft (36));
+    tapButton.setBounds (tempoArea.removeFromLeft (50));
     sceneBar = sceneBar.withSizeKeepingCentre (54 + BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
     sceneLabel.setBounds (sceneBar.removeFromLeft (54));
     for (auto& button : sceneButtons)
@@ -627,14 +669,26 @@ void BoardEditor::resized()
 
 void BoardEditor::showPedal (int id)
 {
-    if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || assignPanel != nullptr || id == 0))
+    if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || assignPanel != nullptr
+                             || tunerPanel != nullptr || id == 0))
         return;
 
     closePedalEditor();
 
-    if (id == BoardStrip::kAssignView)
+    if (id == BoardStrip::kTunerView)
+    {
+        tunerPanel = std::make_unique<TunerPanel> (board);
+        shownPedal = id;
+        addAndMakeVisible (*tunerPanel);
+        layoutPedalEditor();
+    }
+    else if (id == BoardStrip::kAssignView)
     {
         assignPanel = std::make_unique<AssignPanel> (board);
+        assignPanel->onRowMenu = [this] (int slot, juce::Component& row)
+        {
+            showLearnMenu (LearnTarget::firstAssign + slot, row);
+        };
         shownPedal = id;
         addAndMakeVisible (*assignPanel);
         layoutPedalEditor();
@@ -676,6 +730,33 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
             showSceneMenu (i);
             return;
         }
+
+    if (e.originalComponent == &tapButton || e.originalComponent == &tempoField)
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "Follow MIDI clock", true, board.isFollowingClock());
+        menu.addSeparator();
+        addLearnItems (menu, LearnTarget::tap, 10);
+
+        juce::Component::SafePointer<BoardEditor> safe (this);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (tapButton), [safe] (int result)
+        {
+            if (safe == nullptr || result == 0)
+                return;
+            if (result == 1)
+                safe->board.setFollowClock (! safe->board.isFollowingClock());
+            else
+                safe->handleLearnResult (result, LearnTarget::tap, 10);
+            safe->refreshTempo();
+        });
+        return;
+    }
+
+    if (e.originalComponent == &tunerButton)
+    {
+        showLearnMenu (LearnTarget::tuner, tunerButton);
+        return;
+    }
 
     if (pedalEditor == nullptr)
         return;
@@ -745,17 +826,115 @@ void BoardEditor::showSceneMenu (int scene)
     juce::PopupMenu menu;
     menu.addSectionHeader ("Scene " + juce::String (scene + 1));
     menu.addSubMenu ("Copy to", copyTo);
+    if (board.isStandalone())
+    {
+        menu.addSeparator();
+        menu.addSectionHeader ("Scene selector (CC value 0-15 = scene 1-16)");
+        addLearnItems (menu, LearnTarget::scene, 100);
+    }
 
     juce::Component::SafePointer<BoardEditor> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sceneButtons[(size_t) scene]),
                         [safe, scene] (int result)
                         {
+                            if (safe != nullptr && safe->handleLearnResult (result, LearnTarget::scene, 100))
+                                return;
+
                             if (safe != nullptr && result > 0)
                             {
                                 safe->board.copyScene (scene, result - 1);
                                 safe->showNote ("Scene " + juce::String (scene + 1) + " copied to scene " + juce::String (result), false);
                             }
                         });
+}
+
+void BoardEditor::addLearnItems (juce::PopupMenu& menu, int target, int base) const
+{
+    auto* map = const_cast<BoardProcessor&> (board).getMidiMap();
+    if (! board.isStandalone() || map == nullptr)
+        return;
+
+    const auto mapping = map->find (target);
+    menu.addItem (base, board.getLearningTarget() == target ? "MIDI learn (move a controller...)" : "MIDI learn");
+    if (mapping)
+    {
+        menu.addItem (base + 1, "Clear MIDI (CC " + juce::String (mapping->cc) + ", channel " + juce::String (mapping->channel) + ")");
+        if (LearnTarget::isSwitch (target))
+        {
+            menu.addItem (base + 2, "Switch toggles", true, ! mapping->momentary);
+            menu.addItem (base + 3, "Switch momentary (on while held)", true, mapping->momentary);
+        }
+    }
+}
+
+bool BoardEditor::handleLearnResult (int result, int target, int base)
+{
+    auto* map = board.getMidiMap();
+    if (map == nullptr || result < base || result > base + 3)
+        return false;
+
+    if (result == base)
+    {
+        board.startLearning (target);
+        showNote ("MIDI learn: move a controller for " + LearnTarget::describe (target), false);
+    }
+    else if (result == base + 1)
+    {
+        map->clear (target);
+        showNote ({}, false);
+    }
+    else if (auto mapping = map->find (target))
+    {
+        mapping->momentary = result == base + 3;
+        map->set (*mapping);
+    }
+    return true;
+}
+
+void BoardEditor::showLearnMenu (int target, juce::Component& near)
+{
+    if (! board.isStandalone())
+        return;
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (LearnTarget::describe (target));
+    addLearnItems (menu, target, 1);
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (near), [safe, target] (int result)
+    {
+        if (safe != nullptr)
+            safe->handleLearnResult (result, target, 1);
+    });
+}
+
+void BoardEditor::syncTunerView()
+{
+    // The tuner opens and closes with its state (also from a footswitch).
+    if (board.isTunerActive() && shownPedal != BoardStrip::kTunerView)
+    {
+        viewBeforeTuner = shownPedal;
+        showPedal (BoardStrip::kTunerView);
+    }
+    else if (! board.isTunerActive() && shownPedal == BoardStrip::kTunerView)
+    {
+        showPedal (viewBeforeTuner);
+    }
+}
+
+void BoardEditor::refreshTempo()
+{
+    if (! board.isStandalone() || tempoField.isBeingEdited())
+        return;
+
+    const auto bpm = board.getTempo();
+    if (! juce::approximatelyEqual (bpm, shownTempo))
+    {
+        shownTempo = bpm;
+        tempoField.setText (juce::String (bpm, 1), juce::dontSendNotification);
+    }
+    tempoField.setColour (juce::Label::textColourId, board.isFollowingClock() ? Palette::textDim : Palette::text);
+    tapButton.setEnabled (! board.isFollowingClock());
 }
 
 void BoardEditor::refreshSceneButtons()
@@ -775,15 +954,27 @@ void BoardEditor::closePedalEditor()
     pedalEditor.reset();
     routingPanel.reset();
     assignPanel.reset();
+    tunerPanel.reset();
     shownPedal = 0;
 }
 
 void BoardEditor::layoutPedalEditor()
 {
+    // A panel built before it joined the window restyles with the board's look.
+    for (auto* panel : std::initializer_list<juce::Component*> { routingPanel.get(), assignPanel.get(), tunerPanel.get() })
+        if (panel != nullptr && &panel->getLookAndFeel() == &lookAndFeel && ! panel->getProperties().contains ("styled"))
+        {
+            panel->getProperties().set ("styled", true);
+            panel->sendLookAndFeelChange();
+        }
+
     if (routingPanel != nullptr)
         routingPanel->setBounds (panelArea());
     if (assignPanel != nullptr)
         assignPanel->setBounds (panelArea());
+    if (tunerPanel != nullptr)
+        tunerPanel->setBounds (panelArea().withHeight (juce::jmin (panelArea().getHeight(), 360)));
+    tunerButton.setToggleState (shownPedal == BoardStrip::kTunerView, juce::dontSendNotification);
     assignButton.setToggleState (shownPedal == BoardStrip::kAssignView, juce::dontSendNotification);
 
     if (pedalEditor == nullptr)
@@ -802,6 +993,19 @@ void BoardEditor::layoutPedalEditor()
 //==============================================================================
 void BoardEditor::timerCallback()
 {
+    // MIDI learn finished (the audio thread heard a controller).
+    if (const auto learning = board.getLearningTarget(); learning != lastLearning)
+    {
+        if (learning < 0 && lastLearning >= 0 && board.getMidiMap() != nullptr)
+            if (const auto m = board.getMidiMap()->find (lastLearning))
+                showNote (LearnTarget::describe (lastLearning) + ": CC " + juce::String (m->cc)
+                          + ", channel " + juce::String (m->channel), false);
+        lastLearning = learning;
+    }
+
+    if (board.isFollowingClock())
+        refreshTempo();
+
     if (board.getPresetStateCounter() != lastPresetCounter)
         refreshPresetButton();
 
@@ -813,8 +1017,11 @@ void BoardEditor::timerCallback()
         if (shownPedal > 0 && board.getPedal (shownPedal) == nullptr)
             showPedal (0);
 
+        syncTunerView();
+
         strip.repaint();
         refreshSceneButtons();
+        refreshTempo();
         repaint (panelArea());
         if (routingPanel != nullptr)
             routingPanel->repaint();

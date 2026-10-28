@@ -21,6 +21,7 @@
 #include "TransientEngine.h"
 #include "TremoloEngine.h"
 #include "VibratoEngine.h"
+#include "VocodeEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -56,7 +57,8 @@ namespace
         engine->prepare (kRate);
         return [engine] (juce::AudioBuffer<float>& b)
         {
-            if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
+            if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>
+                      || std::is_same_v<Engine, VocodeEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
@@ -350,6 +352,22 @@ int main (int argc, char** argv)
         { "RKVibrato", "default", []
           {
               return makeEngine<VibratoEngine> ([] (VibratoEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKVocode", "16 bands, fixed saw", []
+          {
+              return makeEngine<VocodeEngine> ([] (VocodeEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKVocode", "32 bands, 8 MIDI voices", []
+          {
+              return makeEngine<VocodeEngine> ([] (VocodeEngine& e)
+              {
+                  VocodeEngine::Settings s;
+                  s.bands = 32;
+                  s.pitchMode = VocodeEngine::PitchMode::midi;
+                  e.setSettings (s);
+                  for (int n = 0; n < 8; ++n)
+                      e.noteOn (48 + 3 * n, 1.0f);
+              });
           } },
     };
 

@@ -1,0 +1,9 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Parallel Snap",
+  "params": {
+    "attack": 100,
+    "mix": 50
+  }
+}

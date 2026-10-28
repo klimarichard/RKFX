@@ -1,0 +1,11 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Tighter Kick",
+  "params": {
+    "attack": 40,
+    "sustain": -50,
+    "sustain_time": 80,
+    "focus_lpf": 500
+  }
+}

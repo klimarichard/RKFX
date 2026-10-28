@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Snare Crack",
+  "params": {
+    "attack": 70,
+    "sustain": -20,
+    "focus_hpf": 200
+  }
+}

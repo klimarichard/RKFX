@@ -1,0 +1,9 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "In-Ear Protection",
+  "params": {
+    "ceiling": -6,
+    "release_auto": true
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "plugin": "RKRotary",
+  "version": 1,
+  "name": "Distant Room",
+  "params": {
+    "distance": 90,
+    "width": 60
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKRotary",
+  "version": 1,
+  "name": "Quick Spin-Up",
+  "params": {
+    "speed": "fast",
+    "horn_accel": 300,
+    "drum_accel": 1500
+  }
+}

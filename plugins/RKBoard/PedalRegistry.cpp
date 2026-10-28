@@ -31,6 +31,7 @@
 #include "../RKOctave/PluginProcessor.h"
 #include "../RKVibrato/PluginProcessor.h"
 #include "../RKVocode/PluginProcessor.h"
+#include "../RKVoice/PluginProcessor.h"
 
 // The board-only pedals.
 #include "pedals/VolumePedal.h"
@@ -68,6 +69,7 @@
     X (RKOctave) \
     X (RKVibrato) \
     X (RKVocode) \
+    X (RKVoice) \
     X (RKVolume) \
     X (RKWah)
 
@@ -89,6 +91,7 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKParaEQ() { return std::make_unique<RKParaEQProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKGraphEQ() { return std::make_unique<RKGraphEQProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVocode() { return std::make_unique<RKVocodeProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKVoice() { return std::make_unique<RKVoiceProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKCompress() { return std::make_unique<RKCompressProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKGate() { return std::make_unique<RKGateProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKLimit() { return std::make_unique<RKLimitProcessor>(); }
@@ -148,6 +151,7 @@ const std::vector<PedalType>& pedalTypes()
         { "RKOctave", "Octave", Family::modulation, makeRKOctave },
         { "RKSynth", "Synth", Family::modulation, makeRKSynth },
         { "RKRingMod", "RingMod", Family::modulation, makeRKRingMod },
+        { "RKVoice", "Voice", Family::modulation, makeRKVoice },
         { "RKDelay", "Delay", Family::delay, makeRKDelay, 10.0 },
         { "RKLoop", "Loop", Family::delay, makeRKLoop },
         { "RKVerb", "Verb", Family::reverb, makeRKVerb, 10.0 },

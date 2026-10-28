@@ -1,0 +1,15 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Octaves",
+  "params": {
+    "mode": "scale",
+    "v1_interval": "octave_above",
+    "v2_interval": "octave_below",
+    "v1_level": -9,
+    "v2_level": -6,
+    "v1_pan": 0,
+    "v2_pan": 0,
+    "detune": 3
+  }
+}

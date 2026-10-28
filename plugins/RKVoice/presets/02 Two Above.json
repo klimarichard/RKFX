@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Two Above",
+  "params": {
+    "v1_position": "above1",
+    "v2_position": "above2",
+    "v1_pan": -25,
+    "v2_pan": 25
+  }
+}

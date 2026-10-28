@@ -27,6 +27,7 @@
 #include "AcousticEngine.h"
 #include "PreampEngine.h"
 #include "SynthEngine.h"
+#include "VoiceEngine.h"
 #include "RingModEngine.h"
 #include "LoopEngine.h"
 
@@ -432,6 +433,20 @@ int main (int argc, char** argv)
                   s.sub = 0.5f;
                   s.resonance = 0.6f;
                   e.setSettings (s);
+              });
+          } },
+        { "RKVoice", "four voices, a held chord", []
+          {
+              return makeEngine<VoiceEngine> ([] (VoiceEngine& e)
+              {
+                  VoiceEngine::Settings s;
+                  s.voices[0].position = 1;
+                  s.voices[1].position = -1;
+                  s.voices[2].position = 2;
+                  s.voices[3].position = -2;
+                  e.setSettings (s);
+                  for (const auto note : { 60, 64, 67 })
+                      e.noteOn (note);
               });
           } },
         { "RKPreamp", "hot-rod (3 stages), 2x, large cab", []

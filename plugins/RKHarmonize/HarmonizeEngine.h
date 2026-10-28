@@ -2,6 +2,8 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "dsp/Scales.h"
+
 #include <array>
 
 /** The RKHarmonize MIDI processing: up to two harmony notes for every note
@@ -25,17 +27,13 @@
 class HarmonizeEngine
 {
 public:
-    enum class Scale
-    {
-        major, naturalMinor, harmonicMinor, melodicMinor, dorian, phrygian, lydian, mixolydian,
-        majorPentatonic, minorPentatonic, blues, chromatic
-    };
-    static constexpr int kNumScales = 12;
+    // The key and scale logic lives in core/dsp/Scales.h, shared with RKVoice.
+    using Scale = rkfx::scales::Scale;
+    static constexpr int kNumScales = rkfx::scales::kNumScales;
 
     /** Harmony intervals: off, then below and above. */
-    enum class Interval { off, octaveBelow, sixthBelow, fifthBelow, fourthBelow, thirdBelow,
-                          thirdAbove, fourthAbove, fifthAbove, sixthAbove, octaveAbove };
-    static constexpr int kNumIntervals = 11;
+    using Interval = rkfx::scales::Interval;
+    static constexpr int kNumIntervals = rkfx::scales::kNumIntervals;
 
     struct Settings
     {

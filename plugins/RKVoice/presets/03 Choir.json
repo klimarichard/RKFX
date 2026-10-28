@@ -1,0 +1,22 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Choir",
+  "params": {
+    "v1_position": "above1",
+    "v2_position": "below1",
+    "v3_position": "above2",
+    "v4_position": "below2",
+    "v1_level": -5,
+    "v2_level": -5,
+    "v3_level": -7,
+    "v4_level": -7,
+    "v1_pan": -35,
+    "v2_pan": 35,
+    "v3_pan": -70,
+    "v4_pan": 70,
+    "detune": 10,
+    "humanize": 6,
+    "glide": 50
+  }
+}

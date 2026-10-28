@@ -9,7 +9,7 @@ namespace rkfx
 {
 
 /** Zero-latency monophonic pitch tracking, as in analog octave dividers and
-    guitar synths (RKOctave, RKSynth).
+    guitar synths (RKOctave, RKSynth, RKVoice).
 
     The input is band-limited to the instrument's range: a high-pass below
     its lowest note, and a 24 dB/oct low-pass that follows the detected
@@ -27,7 +27,7 @@ namespace rkfx
 class PitchTracker
 {
 public:
-    enum class Range { bass, guitar, violin };
+    enum class Range { bass, guitar, violin, voice };   // voice: RKVoice (appended)
 
     struct Limits { float lowHz, highHz; };
 
@@ -39,6 +39,7 @@ public:
             case Range::bass:   return { 35.0f, 400.0f };     // B0 to the 20th fret of the G string
             case Range::guitar: return { 60.0f, 1100.0f };    // drop C (and cello) to the top frets
             case Range::violin: return { 125.0f, 2700.0f };   // C3 (5-string violin, viola) to E7
+            case Range::voice:  return { 65.0f, 1200.0f };    // a bass singer's C2 to above a soprano's C6
         }
         return { 60.0f, 1100.0f };
     }

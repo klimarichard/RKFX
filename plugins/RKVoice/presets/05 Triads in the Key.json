@@ -1,0 +1,12 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Triads in the Key",
+  "params": {
+    "mode": "scale",
+    "v1_interval": "3rd_above",
+    "v2_interval": "5th_above",
+    "v1_pan": -30,
+    "v2_pan": 30
+  }
+}

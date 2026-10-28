@@ -44,6 +44,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKSynth](docs/manuals/RKSynth.md) | Monophonic synth played by your bass, guitar or violin: saw, square, triangle, sub, resonant filter envelope | Available |
 | [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
 | [RKLoop](docs/manuals/RKLoop.md) | Live looper, eight loops as song parts or layers, synced to Loop 1: overdub, undo/redo, reverse, half speed, footswitch control | Available |
+| [RKVoice](docs/manuals/RKVoice.md) | Harmonizer: up to four harmony voices on a voice or instrument, placed by a held MIDI chord (1st, 2nd, 3rd above or below) or a key and scale; the dry signal untouched | Available |
 
 ### MIDI effects
 
@@ -128,6 +129,7 @@ plugins/RKBoard/   the pedalboard: hosts every plugin's processor as a pedal
 tests/             DSP and format tests, CPU benchmark
 tools/             snapshot tool: renders a plugin's window to PNG; icons/: the RKMusic icon renderer and its fonts
 docs/manuals/      user manuals
+docs/design/       designs written before building (RKVoice)
 benchmarks/        recorded CPU benchmark results
 ```
 

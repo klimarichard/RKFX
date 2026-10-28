@@ -30,6 +30,7 @@ set(RKFX_ENGINE_PLUGINS
     RKSynth/SynthEngine
     RKRingMod/RingModEngine
     RKLoop/LoopEngine
+    RKVoice/VoiceEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -84,6 +85,7 @@ target_sources(RKFXTests PRIVATE
     AcousticTests.cpp
     PreampTests.cpp
     SynthTests.cpp
+    VoiceTests.cpp
     RingModTests.cpp
     LoopTests.cpp
     HarmonizeTests.cpp

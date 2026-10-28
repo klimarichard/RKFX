@@ -1,3 +1,31 @@
+# Every plugin's GUI-free DSP engine, shared by the tests and the benchmark.
+# A new plugin adds one line here.
+set(RKFX_ENGINE_PLUGINS
+    RKFreqShift/FreqShiftEngine
+    RKFilter/FilterEngine
+    RKParaEQ/ParaEQEngine
+    RKGraphEQ/GraphEQEngine
+    RKCompress/CompressorEngine
+    RKGate/GateEngine
+    RKTremolo/TremoloEngine
+    RKChorus/ChorusEngine
+    RKDouble/DoubleEngine
+    RKFlange/FlangeEngine
+    RKPhase/PhaseEngine
+    RKDelay/DelayEngine
+    RKSaturate/SaturateEngine
+    RKDistort/DistortEngine
+    RKVerb/ReverbEngine
+)
+
+set(RKFX_ENGINE_SOURCES "")
+set(RKFX_ENGINE_DIRS "")
+foreach(engine IN LISTS RKFX_ENGINE_PLUGINS)
+    get_filename_component(engineDir "${engine}" DIRECTORY)
+    list(APPEND RKFX_ENGINE_SOURCES "${PROJECT_SOURCE_DIR}/plugins/${engine}.cpp")
+    list(APPEND RKFX_ENGINE_DIRS "${PROJECT_SOURCE_DIR}/plugins/${engineDir}")
+endforeach()
+
 # DSP and format tests in isolation. Links ONLY juce_core and
 # juce_audio_basics, which structurally keeps the DSP and preset code
 # decoupled from the plugin and GUI layers.
@@ -23,37 +51,11 @@ target_sources(RKFXTests PRIVATE
     DelayTests.cpp
     SaturateTests.cpp
     DistortTests.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ/ParaEQEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ/GraphEQEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKCompress/CompressorEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKGate/GateEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKTremolo/TremoloEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKChorus/ChorusEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase/PhaseEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDelay/DelayEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate/SaturateEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDistort/DistortEngine.cpp
+    VerbTests.cpp
+    ${RKFX_ENGINE_SOURCES}
 )
 
-target_include_directories(RKFXTests PRIVATE
-    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
-    ${PROJECT_SOURCE_DIR}/plugins/RKFilter
-    ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ
-    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ
-    ${PROJECT_SOURCE_DIR}/plugins/RKCompress
-    ${PROJECT_SOURCE_DIR}/plugins/RKGate
-    ${PROJECT_SOURCE_DIR}/plugins/RKTremolo
-    ${PROJECT_SOURCE_DIR}/plugins/RKChorus
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble
-    ${PROJECT_SOURCE_DIR}/plugins/RKFlange
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase
-    ${PROJECT_SOURCE_DIR}/plugins/RKDelay
-    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate
-    ${PROJECT_SOURCE_DIR}/plugins/RKDistort)
+target_include_directories(RKFXTests PRIVATE ${RKFX_ENGINE_DIRS})
 
 target_compile_definitions(RKFXTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 
@@ -74,36 +76,9 @@ add_test(NAME RKFXTests COMMAND RKFXTests)
 juce_add_console_app(RKFXBench PRODUCT_NAME "RKFXBench")
 target_sources(RKFXBench PRIVATE
     Benchmark.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift/FreqShiftEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFilter/FilterEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ/ParaEQEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ/GraphEQEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKCompress/CompressorEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKGate/GateEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKTremolo/TremoloEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKChorus/ChorusEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble/DoubleEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKFlange/FlangeEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase/PhaseEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDelay/DelayEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate/SaturateEngine.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKDistort/DistortEngine.cpp
+    ${RKFX_ENGINE_SOURCES}
 )
-target_include_directories(RKFXBench PRIVATE
-    ${PROJECT_SOURCE_DIR}/plugins/RKFreqShift
-    ${PROJECT_SOURCE_DIR}/plugins/RKFilter
-    ${PROJECT_SOURCE_DIR}/plugins/RKParaEQ
-    ${PROJECT_SOURCE_DIR}/plugins/RKGraphEQ
-    ${PROJECT_SOURCE_DIR}/plugins/RKCompress
-    ${PROJECT_SOURCE_DIR}/plugins/RKGate
-    ${PROJECT_SOURCE_DIR}/plugins/RKTremolo
-    ${PROJECT_SOURCE_DIR}/plugins/RKChorus
-    ${PROJECT_SOURCE_DIR}/plugins/RKDouble
-    ${PROJECT_SOURCE_DIR}/plugins/RKFlange
-    ${PROJECT_SOURCE_DIR}/plugins/RKPhase
-    ${PROJECT_SOURCE_DIR}/plugins/RKDelay
-    ${PROJECT_SOURCE_DIR}/plugins/RKSaturate
-    ${PROJECT_SOURCE_DIR}/plugins/RKDistort)
+target_include_directories(RKFXBench PRIVATE ${RKFX_ENGINE_DIRS})
 target_compile_definitions(RKFXBench PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(RKFXBench
     PRIVATE

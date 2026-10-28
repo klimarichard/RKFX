@@ -1,0 +1,8 @@
+{
+  "plugin": "RKUtility",
+  "version": 1,
+  "name": "Swap Sides",
+  "params": {
+    "swap": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKUtility",
+  "version": 1,
+  "name": "Mid-Side Encode",
+  "params": {
+    "channel_mode": "msencode"
+  }
+}

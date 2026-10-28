@@ -1,0 +1,13 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Snare Plate",
+  "params": {
+    "type": "plate",
+    "decay": 1200,
+    "size": 40,
+    "predelay": 10,
+    "damping": 30,
+    "lowcut": 250
+  }
+}

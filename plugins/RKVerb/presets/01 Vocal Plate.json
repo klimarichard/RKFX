@@ -1,0 +1,15 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Vocal Plate",
+  "params": {
+    "type": "plate",
+    "decay": 1800,
+    "size": 50,
+    "predelay": 40,
+    "damping": 40,
+    "lowcut": 200,
+    "highcut": 8000,
+    "mix": 20
+  }
+}

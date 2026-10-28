@@ -20,6 +20,7 @@ struct PluginConfig
     juce::String name;               // "RKFreqShift": plugin name, preset folder, "plugin" key in JSON
     int stateVersion = 1;            // bump when a migration is needed; never decrease
     bool hasMix = false;             // dry/wet only where musically meaningful
+    bool hasOutput = true;           // false when the plugin's own gain replaces Output (RKUtility)
     float mixDefault = 100.0f;       // percent
     bool monoToStereo = false;       // also accept mono in -> stereo out (chorus, reverb...)
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)

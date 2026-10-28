@@ -24,7 +24,8 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
     // Standard controls, after the plugin's own parameters.
     if (config.hasMix)
         builder.addPercent ("mix", "Dry/Wet", 0.0f, 100.0f, config.mixDefault);
-    builder.addDecibels ("output", "Output", -24.0f, 12.0f, 0.0f);
+    if (config.hasOutput)
+        builder.addDecibels ("output", "Output", -24.0f, 12.0f, 0.0f);
     builder.addBool ("bypass", "Bypass", false);
 
     for (auto& owned : builder.params)
@@ -110,7 +111,7 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     outputStage.prepare (sampleRate);
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
-    outputStage.setOutputDecibels (valueOf (outputParam));
+    outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
     outputStage.reset();
 
@@ -150,7 +151,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         return;
 
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
-    outputStage.setOutputDecibels (valueOf (outputParam));
+    outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
 
     updateTransport();

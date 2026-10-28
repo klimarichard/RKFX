@@ -1,0 +1,9 @@
+{
+  "plugin": "RKVibrato",
+  "version": 1,
+  "name": "Singer Vibrato",
+  "params": {
+    "depth": 60,
+    "rise": 600
+  }
+}

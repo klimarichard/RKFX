@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVibrato",
+  "version": 1,
+  "name": "Violin Vibrato",
+  "params": {
+    "rate": 5.5,
+    "depth": 25,
+    "rise": 400
+  }
+}

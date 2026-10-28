@@ -39,6 +39,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
+| [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
 
 ### RKBoard
 

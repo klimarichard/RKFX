@@ -2,6 +2,7 @@
 
 #include "dsp/EnvelopeFollower.h"
 #include "dsp/PitchTracker.h"
+#include "dsp/PolyBlep.h"
 #include "dsp/StateVariableFilter.h"
 #include "safety/Smoothing.h"
 
@@ -56,7 +57,7 @@ public:
     static float gateReleaseMs (Range) noexcept;
 
     /** PolyBLEP residual for a discontinuity at phase 0 (t in 0..1, dt = step). */
-    static float polyBlep (float t, float dt) noexcept;
+    static float polyBlep (float t, float dt) noexcept { return rkfx::polyBlep (t, dt); }
 
     void prepare (double sampleRate);
     void reset();

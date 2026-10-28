@@ -16,21 +16,6 @@ namespace
     float powerDb (float p) noexcept { return 10.0f * std::log10 (p + 1.0e-12f); }
 }
 
-float SynthEngine::polyBlep (float t, float dt) noexcept
-{
-    if (t < dt)
-    {
-        t /= dt;
-        return t + t - t * t - 1.0f;
-    }
-    if (t > 1.0f - dt)
-    {
-        t = (t - 1.0f) / dt;
-        return t * t + t + t + 1.0f;
-    }
-    return 0.0f;
-}
-
 void SynthEngine::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
@@ -128,11 +113,8 @@ float SynthEngine::oscillator (double hz) noexcept
             y = 2.0f * t - 1.0f - polyBlep (t, dt);
             break;
         case Wave::square:
-        {
-            const auto shifted = t + 0.5f >= 1.0f ? t - 0.5f : t + 0.5f;
-            y = (t < 0.5f ? 1.0f : -1.0f) + polyBlep (t, dt) - polyBlep (shifted, dt);
+            y = rkfx::polyBlepSquare (t, dt);
             break;
-        }
         case Wave::triangle:
             y = 4.0f * std::abs (t - 0.5f) - 1.0f;
             break;
@@ -140,9 +122,7 @@ float SynthEngine::oscillator (double hz) noexcept
 
     // Square one octave below.
     const auto subDt = 0.5f * dt;
-    const auto st = (float) subPhase;
-    const auto subShifted = st + 0.5f >= 1.0f ? st - 0.5f : st + 0.5f;
-    const auto subWave = (st < 0.5f ? 1.0f : -1.0f) + polyBlep (st, subDt) - polyBlep (subShifted, subDt);
+    const auto subWave = rkfx::polyBlepSquare ((float) subPhase, subDt);
 
     phase += dt;
     if (phase >= 1.0)

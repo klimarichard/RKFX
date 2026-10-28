@@ -46,6 +46,7 @@ add_subdirectory(plugins/RKVerb)
 add_subdirectory(plugins/RKLimit)
 add_subdirectory(plugins/RKTransient)
 add_subdirectory(plugins/RKDeEss)
+add_subdirectory(plugins/RKSwell)
 
 # ---------------------------------------------------------------------------
 # Tests

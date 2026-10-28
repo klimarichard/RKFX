@@ -1,0 +1,9 @@
+{
+  "plugin": "RKSwell",
+  "version": 1,
+  "name": "Every Note Swells",
+  "params": {
+    "time": 250,
+    "retrigger": 100
+  }
+}

@@ -93,6 +93,18 @@ RKConductEditor::RKConductEditor (RKConductProcessor& p)
     };
     addToCanvas (loadButton);
 
+    // The time signature: numerator / denominator.
+    for (int n = 1; n <= 16; ++n)
+        beatsPerBar.addItem (juce::String (n), n);
+    for (int i = 0; i < 4; ++i)
+        beatValue.addItem (juce::String (ConductParams::denominators[i]), i + 1);
+    beatsAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (param ("time_num"), beatsPerBar);
+    valueAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (param ("time_den"), beatValue);
+    beatsPerBar.setTooltip ("Beats per bar");
+    beatValue.setTooltip ("Beat value");
+    addToCanvas (beatsPerBar);
+    addToCanvas (beatValue);
+
     tap       = std::make_unique<Footswitch> (param ("tap"), "Tap");
     stop      = std::make_unique<Footswitch> (param ("stop"), "Stop");
     tapEvery  = std::make_unique<Knob> (param ("tap_every"), "Tap Every");
@@ -144,7 +156,11 @@ void RKConductEditor::layoutContent()
     {
         auto area = songArea().reduced (8, 0);
         area.removeFromTop (kTitleHeight);
-        loadButton.setBounds (area.removeFromTop (28).removeFromLeft (150));
+        auto top = area.removeFromTop (28);
+        loadButton.setBounds (top.removeFromLeft (150));
+        beatValue.setBounds (top.removeFromRight (56));
+        top.removeFromRight (18);   // "/", painted
+        beatsPerBar.setBounds (top.removeFromRight (56));
         area.removeFromTop (36);   // the song's name and length, painted
         for (auto& row : rows)
             row->setBounds (area.removeFromTop (kRowHeight));
@@ -181,6 +197,18 @@ void RKConductEditor::paintContent (juce::Graphics& g)
     drawSection (g, songArea(), "Song");
     drawSection (g, conductArea(), "Conduct");
 
+    // The time signature's label and slash.
+    {
+        auto top = songArea().reduced (8, 0).withTrimmedTop (kTitleHeight).removeFromTop (28);
+        top.removeFromRight (56);
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::bold (15.0f));
+        g.drawText ("/", top.removeFromRight (18), juce::Justification::centred);
+        top.removeFromRight (56);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        g.drawText ("Time", top.removeFromRight (40), juce::Justification::centredRight);
+    }
+
     // The song.
     auto info = songArea().reduced (8, 0).withTrimmedTop (kTitleHeight + 32).removeFromTop (30);
     g.setFont (rkfx::Fonts::bold (14.0f));
@@ -200,7 +228,7 @@ void RKConductEditor::paintContent (juce::Graphics& g)
         g.drawText (conductor.getSongName(), info, juce::Justification::centredLeft, true);
         g.setColour (rkfx::Palette::textDim);
         g.setFont (rkfx::Fonts::regular (12.0f));
-        g.drawText (juce::String (conductor.getSongLength() / 4.0, 1) + " bars", info, juce::Justification::centredRight);
+        g.drawText (juce::String (conductor.getSongLength() / conductor.getBarBeats(), 1) + " bars", info, juce::Justification::centredRight);
     }
 
     // Where it is, at what tempo.
@@ -213,8 +241,10 @@ void RKConductEditor::paintContent (juce::Graphics& g)
         text = engine.getTapsToStart() > 1 ? "Tap " + juce::String (engine.getTapsToStart()) + " times to start" : "Tap to start";
     else
     {
+        // Bar and beat in the time signature (a beat = the denominator's note).
         const auto pos = engine.getPosition();
-        text = "Bar " + juce::String ((int) (pos / 4.0) + 1) + ", beat " + juce::String ((int) std::fmod (pos, 4.0) + 1)
+        const auto bar = conductor.getBarBeats(), beatLength = 4.0 / conductor.getBeatValue();
+        text = "Bar " + juce::String ((int) (pos / bar) + 1) + ", beat " + juce::String ((int) (std::fmod (pos, bar) / beatLength + 1.0e-9) + 1)
              + (engine.isWaiting() ? "  (waiting for the tap)" : "");
     }
     g.setColour (engine.isPlaying() && ! engine.isWaiting() ? rkfx::Palette::text : rkfx::Palette::textDim);

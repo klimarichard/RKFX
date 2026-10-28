@@ -29,6 +29,11 @@ public:
 
     const ConductEngine& getEngine() const noexcept { return engine; }
 
+    /** The time signature (for counting bars; Tap Every "Bar"). */
+    int getBeatsPerBar() const noexcept;
+    int getBeatValue() const noexcept;
+    double getBarBeats() const noexcept;       // one bar in quarter notes
+
 protected:
     void prepareDsp (double sampleRate, int, int) override { engine.prepare (sampleRate); }
     void resetDsp() override                               { engine.stop(); }
@@ -40,7 +45,8 @@ protected:
     void setExtraState (const juce::var&) override;
 
 private:
-    juce::RangedAudioParameter *tapEvery, *tempo, *fileTempo, *countIn, *loop, *key1, *key2, *tapCC, *tapButton, *stopButton;
+    juce::RangedAudioParameter *tapEvery, *tempo, *fileTempo, *countIn, *loop, *key1, *key2, *tapCC, *tapButton, *stopButton,
+                               *timeNum, *timeDen;
     ConductEngine engine;
 
     juce::MemoryBlock songData;

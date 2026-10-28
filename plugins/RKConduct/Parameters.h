@@ -7,7 +7,12 @@
     (off to on) acts once. */
 namespace ConductParams
 {
-    inline constexpr double tapBeats[] = { 4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25 };
+    inline constexpr double tapBeats[] = { 4.0, 3.0, 2.0, 1.5, 1.0, 0.75, 0.5, 0.25 };   // then "Bar": the time signature's
+    inline constexpr int kBarChoice = 8;
+    inline constexpr int denominators[] = { 2, 4, 8, 16 };
+
+    /** One bar in quarter notes. */
+    inline double barBeats (int numerator, int denominator) { return numerator * 4.0 / denominator; }
 
     /** A MIDI note (or Off, below 0), shown as its name (C3 = 60). */
     inline void addNote (rkfx::ParamBuilder& p, const juce::String& id, const juce::String& name, float defaultNote)
@@ -29,8 +34,8 @@ namespace ConductParams
     {
         rkfx::ParamBuilder p;
 
-        p.addChoice ("tap_every", "Tap Every", { "1/1", "1/2 D", "1/2", "1/4 D", "1/4", "1/8 D", "1/8", "1/16" },
-                     { "1/1", "1/2d", "1/2", "1/4d", "1/4", "1/8d", "1/8", "1/16" }, 4);
+        p.addChoice ("tap_every", "Tap Every", { "1/1", "1/2 D", "1/2", "1/4 D", "1/4", "1/8 D", "1/8", "1/16", "Bar" },
+                     { "1/1", "1/2d", "1/2", "1/4d", "1/4", "1/8d", "1/8", "1/16", "bar" }, 4);
         p.addFloat  ("tempo", "Tempo", { 20.0f, 300.0f, 0.1f }, 120.0f,
                      [] (float v) { return juce::String (v, 1) + " BPM"; },
                      [] (const juce::String& t) { return juce::jlimit (20.0f, 300.0f, t.getFloatValue()); });
@@ -44,6 +49,8 @@ namespace ConductParams
                      [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("off") ? -1.0f : juce::jlimit (-1.0f, 127.0f, t.retainCharacters ("0123456789").getFloatValue()); });
         p.addBool   ("tap", "Tap", false);
         p.addBool   ("stop", "Stop", false);
+        p.addInt    ("time_num", "Beats per Bar", 1, 16, 4);
+        p.addChoice ("time_den", "Beat Value", { "2", "4", "8", "16" }, { "2", "4", "8", "16" }, 1);
 
         return p;
     }

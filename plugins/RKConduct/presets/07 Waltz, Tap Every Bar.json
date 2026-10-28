@@ -1,0 +1,10 @@
+{
+  "plugin": "RKConduct",
+  "version": 1,
+  "name": "Waltz, Tap Every Bar",
+  "params": {
+    "tap_every": "bar",
+    "time_num": 3,
+    "time_den": "4"
+  }
+}

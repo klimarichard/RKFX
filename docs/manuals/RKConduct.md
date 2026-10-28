@@ -23,6 +23,8 @@ There is no delay in RKConduct itself; the only thing that takes a tap to catch 
 
 Click **Load MIDI file** and choose a Standard MIDI file (.mid). The file is stored inside RKConduct's settings, so a saved Gig Performer gig always has it, wherever the file was.
 
+**Time** (next to the Load button) is the song's time signature, 4/4 unless you change it: beats per bar, and the beat's note value (3/4, 6/8, 7/8...). It sets how bars are counted in the display and how long a bar is for **Tap Every: Bar**. (RKConduct doesn't read it from the file.)
+
 Every track in the file is listed with its number of notes:
 
 | Control | What it does |
@@ -35,7 +37,7 @@ Every track in the file is listed with its number of notes:
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
 | **Tap / Stop** | | | Tap the beat with the mouse, or map a Gig Performer button or footswitch to the Tap and Stop parameters. **Stop** ends the notes and goes back to the beginning. |
-| **Tap Every** | 1/1, dotted 1/2, 1/2, dotted 1/4, 1/4, dotted 1/8, 1/8, 1/16 | 1/4 | How far apart your taps are in the music: tap every quarter note, every half note, or once a bar (1/1). Dotted quarters suit 6/8. |
+| **Tap Every** | 1/1, dotted 1/2, 1/2, dotted 1/4, 1/4, dotted 1/8, 1/8, 1/16, Bar | 1/4 | How far apart your taps are in the music: every quarter note, every half note, a whole note (1/1)... **Bar** taps once per bar of the Time setting (three quarter notes in 3/4). Dotted quarters suit 6/8. |
 | **File Tempo** | Off, on | On | Starts at the tempo stored in the MIDI file. Off: at the Tempo below. |
 | **Tempo** | 20 to 300 BPM | 120 | The starting tempo, until your taps give one. |
 | **Count-in** | 0 to 8 | 0 | Taps before the music starts; they set the tempo for the first beat. 4 = one bar of 4/4 counted in. |
@@ -57,9 +59,10 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Tap Eighths** | Tap every 1/8 |
 | **Count In a Bar** | Tap every 1/4, 4 count-in taps |
 | **Footswitch Taps** | Tap every 1/4, no tap keys, taps from CC 64 |
+| **Waltz, Tap Every Bar** | 3/4, tap once a bar |
 
 ## Notes
 
 - Choose tap keys you never need to play, at the bottom of the keyboard.
 - Tapping half notes or whole bars leaves your hands freer, but a tempo change then takes longer to follow; quarter notes are the best balance for most music.
-- The file's markers and time signature aren't used yet: bars are counted in 4/4 in the display.
+- The file's markers aren't used; set the time signature with Time.

@@ -34,6 +34,8 @@ private:
     };
 
     juce::TextButton loadButton { "Load MIDI file" };
+    juce::ComboBox beatsPerBar, beatValue;
+    std::unique_ptr<juce::ComboBoxParameterAttachment> beatsAttachment, valueAttachment;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::String note;
     std::vector<std::unique_ptr<TrackRow>> rows;

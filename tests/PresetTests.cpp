@@ -77,7 +77,7 @@ public:
             { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
             { "RKLoop", LoopParams::create, 8 },        { "RKHarmonize", HarmonizeParams::create, 6 },
             { "RKArpeggiate", ArpParams::create, 6 },    { "RKStrum", StrumParams::create, 5 },
-            { "RKSustain", SustainParams::create, 5 },   { "RKConduct", ConductParams::create, 6 },
+            { "RKSustain", SustainParams::create, 5 },   { "RKConduct", ConductParams::create, 7 },
         };
 
         for (const auto& plugin : plugins)

@@ -19,7 +19,8 @@ RKConductProcessor::RKConductProcessor()
     : rkfx::ProcessorBase (makeConfig(), ConductParams::create()),
       tapEvery (findParam ("tap_every")), tempo (findParam ("tempo")), fileTempo (findParam ("file_tempo")),
       countIn (findParam ("count_in")), loop (findParam ("loop")), key1 (findParam ("key1")), key2 (findParam ("key2")),
-      tapCC (findParam ("tap_cc")), tapButton (findParam ("tap")), stopButton (findParam ("stop"))
+      tapCC (findParam ("tap_cc")), tapButton (findParam ("tap")), stopButton (findParam ("stop")),
+      timeNum (findParam ("time_num")), timeDen (findParam ("time_den"))
 {
     for (auto& on : trackOn)
         on = true;
@@ -127,7 +128,8 @@ void RKConductProcessor::setExtraState (const juce::var& state)
 void RKConductProcessor::processMidi (juce::MidiBuffer& midi, int numSamples)
 {
     ConductEngine::Settings s;
-    s.tapBeats = ConductParams::tapBeats[juce::jlimit (0, 7, juce::roundToInt (valueOf (tapEvery)))];
+    const auto every = juce::jlimit (0, ConductParams::kBarChoice, juce::roundToInt (valueOf (tapEvery)));
+    s.tapBeats = every == ConductParams::kBarChoice ? getBarBeats() : ConductParams::tapBeats[every];
     s.tempoBpm = valueOf (fileTempo) >= 0.5f ? songTempo.load() : (double) valueOf (tempo);
     s.countIn = juce::roundToInt (valueOf (countIn));
     s.loop = valueOf (loop) >= 0.5f;
@@ -141,6 +143,21 @@ void RKConductProcessor::processMidi (juce::MidiBuffer& midi, int numSamples)
     }
     engine.setSettings (s);
     engine.process (midi, numSamples);
+}
+
+int RKConductProcessor::getBeatsPerBar() const noexcept
+{
+    return juce::jlimit (1, 16, juce::roundToInt (valueOf (timeNum)));
+}
+
+int RKConductProcessor::getBeatValue() const noexcept
+{
+    return ConductParams::denominators[juce::jlimit (0, 3, juce::roundToInt (valueOf (timeDen)))];
+}
+
+double RKConductProcessor::getBarBeats() const noexcept
+{
+    return ConductParams::barBeats (getBeatsPerBar(), getBeatValue());
 }
 
 juce::AudioProcessorEditor* RKConductProcessor::createEditor()

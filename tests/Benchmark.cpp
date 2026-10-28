@@ -28,6 +28,7 @@
 #include "PreampEngine.h"
 #include "SynthEngine.h"
 #include "RingModEngine.h"
+#include "LoopEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -385,6 +386,22 @@ int main (int argc, char** argv)
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
                   e.setSettings (s);
+              });
+          } },
+        { "RKLoop", "overdubbing", []
+          {
+              // A one-second loop, then overdubbing over it.
+              auto engine = std::make_shared<LoopEngine>();
+              engine->prepare (kRate);
+              engine->press (LoopEngine::Button::record);
+              juce::AudioBuffer<float> second (2, (int) kRate);
+              second.clear();
+              engine->process (second.getArrayOfWritePointers(), 2, second.getNumSamples());
+              engine->press (LoopEngine::Button::record);
+              engine->press (LoopEngine::Button::record);
+              return Processor ([engine] (juce::AudioBuffer<float>& b)
+              {
+                  engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
               });
           } },
         { "RKRingMod", "tracked, square, LFO", []

@@ -4,6 +4,7 @@
 #include "PitchDetector.h"
 #include "pedals/VolumeEngine.h"
 #include "pedals/WahEngine.h"
+#include "../RKLoop/PluginProcessor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -708,6 +709,54 @@ public:
             board.getPedal (verb)->getBypassParameter()->setValueNotifyingHost (1.0f);   // its editor's switch
             expect (board.isPedalBypassed (verb));
             expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f);
+        }
+
+        beginTest ("Every pedal's controls are tagged with real parameters (right-click assign)");
+        {
+            for (const auto& type : rkboard::pedalTypes())
+            {
+                auto pedal = type.create();
+                std::unique_ptr<juce::AudioProcessorEditor> editor (pedal->createEditorAndMakeActive());
+                int tagged = 0;
+                std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                {
+                    if (const auto id = rkfx::findTaggedParameter (&c, c.getParentComponent()); id.isNotEmpty())
+                    {
+                        ++tagged;
+                        expect (pedal->findParam (id) != nullptr, type.name + ": " + id);
+                    }
+                    for (auto* child : c.getChildren())
+                        walk (*child);
+                };
+                walk (*editor);
+                expect (tagged >= 3, type.name + " has tagged controls: " + juce::String (tagged));
+                pedal->editorBeingDeleted (editor.get());
+            }
+        }
+
+        beginTest ("A footswitch on an Assign slot runs RKLoop, also with a quick click");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            prepare (board);
+            const auto id = board.addPedal ("RKLoop");
+            auto* loop = dynamic_cast<RKLoopProcessor*> (board.getPedal (id));
+            expect (loop != nullptr);
+            board.assign (0, id, "record");
+
+            // Pressed and released before the next block: still one press.
+            auto& slot = board.getAssignParam (0);
+            slot.setValueNotifyingHost (1.0f);
+            slot.setValueNotifyingHost (0.0f);
+            run (board, 4);
+            expect (loop->getEngine().getState() == LoopEngine::State::recording, "recording");
+
+            slot.setValueNotifyingHost (1.0f);
+            run (board, 2);
+            slot.setValueNotifyingHost (0.0f);
+            run (board, 2);
+            expect (loop->getEngine().getState() == LoopEngine::State::playing, "playing");
+            expectEquals (loop->getEngine().getLength(), 4 * kBlock);
         }
 
         beginTest ("Volume pedal: taper and minimum level");

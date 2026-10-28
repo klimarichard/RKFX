@@ -29,6 +29,7 @@ set(RKFX_ENGINE_PLUGINS
     RKPreamp/PreampEngine
     RKSynth/SynthEngine
     RKRingMod/RingModEngine
+    RKLoop/LoopEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -79,6 +80,7 @@ target_sources(RKFXTests PRIVATE
     PreampTests.cpp
     SynthTests.cpp
     RingModTests.cpp
+    LoopTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

@@ -50,7 +50,7 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
         }
     }
 
-    factoryPresets = rkfx::getFactoryPresets();
+    factoryPresets = factoryPresetsFor (config.name);
 
     // New instances start from the user's Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile (config.name);

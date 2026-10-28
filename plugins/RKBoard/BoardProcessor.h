@@ -40,6 +40,7 @@ class BoardProcessor : public juce::AudioProcessor,
 {
 public:
     static constexpr int kMaxPedals = 12;
+    static constexpr int kNumAssigns = 32;
 
     BoardProcessor();
     ~BoardProcessor() override;
@@ -92,6 +93,37 @@ public:
         can cheaply poll for updates. */
     int getBoardCounter() const noexcept { return boardCounter.load(); }
 
+    //==============================================================================
+    // Assignable parameters (message thread): host parameters "Assign 1" to
+    // "Assign 32", each driving one knob of one pedal between a minimum and a
+    // maximum, optionally inverted (for expression pedals). Moving the knob
+    // itself moves its Assign parameter too, so a host widget stays in step.
+
+    struct AssignmentInfo
+    {
+        int pedal = 0;              // 0 = unassigned
+        juce::String paramId;
+        float min = 0.0f, max = 1.0f;   // normalised range of the target
+        bool invert = false;
+    };
+
+    AssignmentInfo getAssignment (int slot) const;    // slot 0..31
+
+    /** Assigns @p slot to a pedal's parameter (full range, not inverted). The
+        knob keeps its value: the Assign parameter is set to match. A knob has
+        at most one slot; assigning it again moves it. */
+    void assign (int slot, int pedalId, const juce::String& paramId);
+    void clearAssignment (int slot);
+    void setAssignmentRange (int slot, float min, float max, bool invert);
+
+    /** The slot driving this pedal parameter, or -1. */
+    int findAssignment (int pedalId, const juce::String& paramId) const;
+
+    /** "Delay: Time", or empty. */
+    juce::String describeAssignment (int slot) const;
+
+    juce::AudioParameterFloat& getAssignParam (int slot) const noexcept { return *assignParams[(size_t) slot]; }
+
     juce::RangedAudioParameter& getInputParam() const noexcept  { return *inputParam; }
     juce::RangedAudioParameter& getOutputParam() const noexcept { return *outputParam; }
 
@@ -100,6 +132,7 @@ public:
     //     { "plugin": "RKBoard", "version": 1, "name": ...,
     //       "board": { "input": 0, "output": 0 },
     //       "routing": { "split": "frequency", "crossover": 800, ... },
+    //       "assign": [ { "slot": 1, "pedal": 3, "param": "time", "min": 100, "max": 800, "invert": false } ],
     //       "pedals": [ { "id": 3, "section": "a", "bypass": false,
     //                     "preset": { "plugin": "RKChorus", "version": 1, "params": {...} } }, ... ] }
     // A pedal's "preset" is exactly a plugin preset, so one can be copied out
@@ -187,6 +220,24 @@ private:
     juce::SmoothedValue<float> mergeGains[2][2];        // [path][channel], pan and level and polarity folded in
     bool splitWasActive = false;
     std::array<juce::AudioParameterBool*, kMaxPedals> bypassParams {};
+
+    /** One slot, readable from any thread. */
+    struct Assignment
+    {
+        std::atomic<int> pedal { 0 };
+        std::atomic<int> paramIndex { -1 };    // in the pedal's getParameters()
+        std::atomic<float> min { 0.0f }, max { 1.0f };
+        std::atomic<bool> invert { false };
+    };
+    std::array<Assignment, kNumAssigns> assignments;
+    std::array<juce::AudioParameterFloat*, kNumAssigns> assignParams {};
+    std::atomic<bool> syncingAssign { false };
+    static inline thread_local bool applyingAssign = false;   // this thread is moving a knob for an Assign parameter
+
+    juce::RangedAudioParameter* assignTarget (int slot) const;      // under chainLock on the audio thread
+    void applyAssign (int slot, float value);                       // Assign parameter -> knob
+    void followTarget (int pedalId, int paramIndex, float value);   // knob -> Assign parameter
+    void clearAssignmentsOf (int pedalId);
     juce::AudioParameterFloat* inputParam = nullptr;
     juce::AudioParameterFloat* outputParam = nullptr;
     std::atomic<bool> syncingBypass { false };

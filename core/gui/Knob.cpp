@@ -108,6 +108,10 @@ void Knob::setNormalised (float newNormalised, bool asCompleteGesture)
 
 void Knob::mouseDown (const juce::MouseEvent& e)
 {
+    // Right-click is for context menus (RKBoard assigns knobs this way); never a drag.
+    if (e.mods.isPopupMenu())
+        return;
+
     if (valueArea.contains (e.getPosition()) && e.getNumberOfClicks() == 1 && ! e.mods.isPopupMenu())
     {
         showValueEditor();

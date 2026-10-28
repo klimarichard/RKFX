@@ -4,6 +4,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "BoardProcessor.h"
+#include "AssignPanel.h"
 #include "RoutingPanel.h"
 #include "gui/LookAndFeel.h"
 
@@ -32,6 +33,7 @@ public:
     /** What can be selected: a pedal ID, or one of the nodes. */
     static constexpr int kSplitNode = -2;
     static constexpr int kMergeNode = -3;
+    static constexpr int kAssignView = -4;      // not on the strip: the Assign button
 
     int getSelected() const noexcept { return selected; }
     void setSelected (int item);
@@ -100,8 +102,12 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    /** Opens a pedal's controls below the board, or the split's or merge's
-        settings (BoardStrip::kSplitNode / kMergeNode); 0 closes them. */
+    /** Right-click on a knob in the pedal's controls: the assign menu. */
+    void mouseDown (const juce::MouseEvent&) override;
+
+    /** Opens a pedal's controls below the board, the split's or merge's
+        settings (BoardStrip::kSplitNode / kMergeNode), or the assignable
+        parameters (BoardStrip::kAssignView); 0 closes them. */
     void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
@@ -117,6 +123,7 @@ private:
     rkfx::LookAndFeel lookAndFeel { rkfx::Palette::boardAccent };
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
+    juce::TextButton assignButton { "Assign" };
     juce::Label noteLabel;
     juce::Label inputLabel, outputLabel;
     juce::Slider inputSlider, outputSlider;
@@ -128,6 +135,7 @@ private:
     int shownPedal = 0;
     std::unique_ptr<juce::AudioProcessorEditor> pedalEditor;
     std::unique_ptr<RoutingPanel> routingPanel;
+    std::unique_ptr<AssignPanel> assignPanel;
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;
@@ -135,6 +143,7 @@ private:
 
     juce::Rectangle<int> panelArea() const;
     void closePedalEditor();
+    void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
     void layoutPedalEditor();
 
     void refreshPresetButton();

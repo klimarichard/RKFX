@@ -48,6 +48,25 @@ BoardProcessor::BoardProcessor()
     inputParam->addListener (this);
     outputParam->addListener (this);
 
+    for (int slot = 0; slot < kNumAssigns; ++slot)
+    {
+        auto attributes = juce::AudioParameterFloatAttributes().withStringFromValueFunction (
+            [this, slot] (float value, int) -> juce::String
+            {
+                // The target's own value text, e.g. "Delay Time: 350 ms".
+                const juce::SpinLock::ScopedLockType sl (chainLock);
+                if (auto* target = assignTarget (slot))
+                    return target->getCurrentValueAsText();
+                return juce::String (juce::roundToInt (value * 100.0f)) + " %";
+            });
+        auto* p = new juce::AudioParameterFloat (juce::ParameterID { "assign" + juce::String (slot + 1), hint++ },
+                                                 "Assign " + juce::String (slot + 1),
+                                                 juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f, attributes);
+        assignParams[(size_t) slot] = p;
+        addParameter (p);
+        p->addListener (this);
+    }
+
     pedalMidi.ensureSize (4096);
 
     for (auto* p : routing.getParameters())
@@ -66,6 +85,8 @@ BoardProcessor::~BoardProcessor()
         p->removeListener (this);
     inputParam->removeListener (this);
     outputParam->removeListener (this);
+    for (auto* p : assignParams)
+        p->removeListener (this);
     for (auto* p : routing.getParameters())
         p->removeListener (&routingWatcher);
 
@@ -158,6 +179,8 @@ std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
 
     if (pedalAboutToBeRemoved)
         pedalAboutToBeRemoved (id);
+
+    clearAssignmentsOf (id);
 
     for (auto& section : layout)
         section.erase (std::remove (section.begin(), section.end(), id), section.end());
@@ -323,8 +346,174 @@ void BoardProcessor::parameterValueChanged (int parameterIndex, float newValue)
         return;
     }
 
+    // Assign N -> its knob (may run on the audio thread).
+    if (const auto slot = parameterIndex - kMaxPedals - 2; slot >= 0 && slot < kNumAssigns)
+    {
+        if (! syncingAssign)
+            applyAssign (slot, newValue);
+        return;
+    }
+
     // Input / Output levels
     markModified();
+}
+
+//==============================================================================
+juce::RangedAudioParameter* BoardProcessor::assignTarget (int slot) const
+{
+    const auto& a = assignments[(size_t) slot];
+    const auto id = a.pedal.load();
+    if (id < 1 || id > kMaxPedals)
+        return nullptr;
+
+    auto* pedal = pedals[(size_t) id - 1].get();
+    const auto index = a.paramIndex.load();
+    if (pedal == nullptr || index < 0 || index >= pedal->getParameters().size())
+        return nullptr;
+
+    return dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[index]);
+}
+
+void BoardProcessor::applyAssign (int slot, float value)
+{
+    const auto& a = assignments[(size_t) slot];
+    const auto t = a.invert ? 1.0f - value : value;
+    const auto target = a.min + t * (a.max - a.min);
+
+    const juce::ScopedValueSetter<bool> busy (applyingAssign, true);
+    const juce::SpinLock::ScopedLockType sl (chainLock);
+    if (auto* param = assignTarget (slot))
+        param->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, target));
+}
+
+void BoardProcessor::followTarget (int pedalId, int paramIndex, float value)
+{
+    if (applyingAssign)
+        return;
+
+    for (int slot = 0; slot < kNumAssigns; ++slot)
+    {
+        const auto& a = assignments[(size_t) slot];
+        if (a.pedal != pedalId || a.paramIndex != paramIndex)
+            continue;
+
+        // Where the Assign parameter has to be for this value (clamped to the range).
+        const auto range = a.max - a.min;
+        auto t = std::abs (range) < 1.0e-6f ? 0.0f : juce::jlimit (0.0f, 1.0f, (value - a.min) / range);
+        if (a.invert)
+            t = 1.0f - t;
+
+        syncingAssign = true;
+        assignParams[(size_t) slot]->setValueNotifyingHost (t);
+        syncingAssign = false;
+    }
+}
+
+BoardProcessor::AssignmentInfo BoardProcessor::getAssignment (int slot) const
+{
+    AssignmentInfo info;
+    if (slot < 0 || slot >= kNumAssigns)
+        return info;
+
+    const auto& a = assignments[(size_t) slot];
+    if (auto* pedal = getPedal (a.pedal); pedal != nullptr && a.paramIndex >= 0)
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[a.paramIndex]))
+        {
+            info.pedal = a.pedal;
+            info.paramId = param->getParameterID();
+            info.min = a.min;
+            info.max = a.max;
+            info.invert = a.invert;
+        }
+    return info;
+}
+
+void BoardProcessor::assign (int slot, int pedalId, const juce::String& paramId)
+{
+    auto* pedal = getPedal (pedalId);
+    if (slot < 0 || slot >= kNumAssigns || pedal == nullptr)
+        return;
+
+    int index = -1;
+    for (int i = 0; i < pedal->getParameters().size(); ++i)
+        if (auto* p = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[i]); p != nullptr && p->getParameterID() == paramId)
+            index = i;
+    if (index < 0)
+        return;
+
+    // A knob has one slot.
+    if (const auto previous = findAssignment (pedalId, paramId); previous >= 0)
+        clearAssignment (previous);
+
+    auto& a = assignments[(size_t) slot];
+    a.pedal = 0;              // off while it changes
+    a.paramIndex = index;
+    a.min = 0.0f;
+    a.max = 1.0f;
+    a.invert = false;
+    a.pedal = pedalId;
+
+    followTarget (pedalId, index, pedal->getParameters()[index]->getValue());
+    boardChanged();
+}
+
+void BoardProcessor::clearAssignment (int slot)
+{
+    if (slot < 0 || slot >= kNumAssigns)
+        return;
+
+    assignments[(size_t) slot].pedal = 0;
+    assignments[(size_t) slot].paramIndex = -1;
+    boardChanged();
+}
+
+void BoardProcessor::clearAssignmentsOf (int pedalId)
+{
+    for (auto& a : assignments)
+        if (a.pedal == pedalId)
+        {
+            a.pedal = 0;
+            a.paramIndex = -1;
+        }
+}
+
+void BoardProcessor::setAssignmentRange (int slot, float min, float max, bool invert)
+{
+    if (slot < 0 || slot >= kNumAssigns)
+        return;
+
+    auto& a = assignments[(size_t) slot];
+    a.min = juce::jlimit (0.0f, 1.0f, min);
+    a.max = juce::jlimit (0.0f, 1.0f, max);
+    a.invert = invert;
+
+    // Keep the knob where it is; the Assign parameter moves to match.
+    if (auto* pedal = getPedal (a.pedal); pedal != nullptr && a.paramIndex >= 0)
+        followTarget (a.pedal, a.paramIndex, pedal->getParameters()[a.paramIndex]->getValue());
+
+    boardChanged();
+}
+
+int BoardProcessor::findAssignment (int pedalId, const juce::String& paramId) const
+{
+    for (int slot = 0; slot < kNumAssigns; ++slot)
+    {
+        const auto info = getAssignment (slot);
+        if (info.pedal == pedalId && info.paramId == paramId)
+            return slot;
+    }
+    return -1;
+}
+
+juce::String BoardProcessor::describeAssignment (int slot) const
+{
+    const auto info = getAssignment (slot);
+    auto* pedal = getPedal (info.pedal);
+    if (pedal == nullptr)
+        return {};
+
+    const auto* type = findPedalType (pedal->getConfig().name);
+    return (type != nullptr ? type->shortName : pedal->getConfig().name) + ": " + pedal->findParam (info.paramId)->getName (40);
 }
 
 void BoardProcessor::RoutingWatcher::parameterValueChanged (int, float)
@@ -382,6 +571,9 @@ void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float
         ++board.boardCounter;
         return;
     }
+
+    // An assigned knob moves its Assign parameter along.
+    board.followTarget (id, parameterIndex, newValue);
 
     // Like the plugins, bypass doesn't make a preset "modified"; values do.
     board.markModified();
@@ -664,6 +856,29 @@ juce::var BoardProcessor::toVar (bool fullState) const
     root->setProperty ("board", juce::var (board));
     root->setProperty ("routing", routing.toVar (! fullState));
 
+    // Assignments, with the range in the target's real units (like presets).
+    juce::Array<juce::var> assigns;
+    for (int slot = 0; slot < kNumAssigns; ++slot)
+    {
+        const auto info = getAssignment (slot);
+        if (info.pedal == 0)
+            continue;
+
+        auto* param = getPedal (info.pedal)->findParam (info.paramId);
+        const auto real = [param] (float normalised) { return (double) param->convertFrom0to1 (normalised); };
+
+        auto* entry = new juce::DynamicObject();
+        entry->setProperty ("slot", slot + 1);
+        entry->setProperty ("pedal", info.pedal);
+        entry->setProperty ("param", info.paramId);
+        entry->setProperty ("min", real (info.min));
+        entry->setProperty ("max", real (info.max));
+        entry->setProperty ("invert", info.invert);
+        assigns.add (juce::var (entry));
+    }
+    if (! assigns.isEmpty())
+        root->setProperty ("assign", assigns);
+
     juce::Array<juce::var> list;
     for (int s = 0; s < kNumSections; ++s)
         for (const auto id : layout[(size_t) s])
@@ -745,6 +960,33 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     // Missing routing (older presets) = the defaults.
     notes.addArray (routing.fromVar (root["routing"]));
     lastSplitMode = routing.getSplitMode();
+
+    for (auto& a : assignments)
+    {
+        a.pedal = 0;
+        a.paramIndex = -1;
+    }
+    if (const auto* list = root["assign"].getArray())
+        for (const auto& entry : *list)
+        {
+            const auto slot = (int) entry["slot"] - 1;
+            const auto pedalId = (int) entry["pedal"];
+            const auto paramId = entry["param"].toString();
+            auto* pedal = getPedal (pedalId);
+            auto* param = pedal != nullptr ? pedal->findParam (paramId) : nullptr;
+            if (slot < 0 || slot >= kNumAssigns || param == nullptr)
+            {
+                notes.add ("Assign " + juce::String (slot + 1) + ": no such knob, skipped");
+                continue;
+            }
+
+            assign (slot, pedalId, paramId);
+            const auto normalised = [param] (const juce::var& v, float fallback)
+            {
+                return v.isVoid() ? fallback : param->convertTo0to1 ((float) (double) v);
+            };
+            setAssignmentRange (slot, normalised (entry["min"], 0.0f), normalised (entry["max"], 1.0f), (bool) entry["invert"]);
+        }
 
     publishChain();
     ++boardCounter;

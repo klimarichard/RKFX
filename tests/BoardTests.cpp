@@ -416,6 +416,94 @@ public:
             expectWithinAbsoluteError (loaded.getRouting().value ("crossover"), 500.0f, 0.5f);
         }
 
+        beginTest ("Assign parameters drive a knob over its range, both ways");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto delay = board.addPedal ("RKDelay");
+            auto* time = board.getPedal (delay)->findParam ("time");
+            time->setValueNotifyingHost (0.3f);
+
+            board.assign (4, delay, "time");
+            auto& assign = board.getAssignParam (4);
+            expectWithinAbsoluteError (time->getValue(), 0.3f, 1.0e-6f, "assigning keeps the knob");
+            expectWithinAbsoluteError (assign.get(), 0.3f, 1.0e-6f, "Assign 5 shows the knob");
+            expectEquals (board.findAssignment (delay, "time"), 4);
+            expect (board.describeAssignment (4).startsWith ("Delay: "), board.describeAssignment (4));
+
+            board.setAssignmentRange (4, 0.2f, 0.6f, false);
+            assign.setValueNotifyingHost (0.0f);
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            assign.setValueNotifyingHost (1.0f);
+            expectWithinAbsoluteError (time->getValue(), 0.6f, 1.0e-6f);
+            assign.setValueNotifyingHost (0.5f);
+            expectWithinAbsoluteError (time->getValue(), 0.4f, 1.0e-6f);
+
+            board.setAssignmentRange (4, 0.2f, 0.6f, true);   // heel = max
+            assign.setValueNotifyingHost (0.0f);
+            expectWithinAbsoluteError (time->getValue(), 0.6f, 1.0e-6f);
+
+            // Turning the knob itself moves the Assign parameter (clamped to the range).
+            time->setValueNotifyingHost (0.5f);
+            expectWithinAbsoluteError (assign.get(), 0.25f, 1.0e-6f);
+            time->setValueNotifyingHost (0.9f);
+            expectWithinAbsoluteError (assign.get(), 0.0f, 1.0e-6f);
+        }
+
+        beginTest ("Assignments follow their pedal and go with it");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto chorus = board.addPedal ("RKChorus");
+            const auto delay = board.addPedal ("RKDelay");
+            board.assign (0, delay, "time");
+            board.movePedal (delay, Section::pathA, 0);
+            expectEquals (board.getAssignment (0).pedal, delay);
+
+            // One slot per knob: assigning it again moves it.
+            board.assign (7, delay, "time");
+            expectEquals (board.getAssignment (0).pedal, 0);
+            expectEquals (board.getAssignment (7).pedal, delay);
+
+            board.assign (1, chorus, "depth");
+            board.removePedal (delay);
+            expectEquals (board.getAssignment (7).pedal, 0);
+            expectEquals (board.getAssignment (1).pedal, chorus);
+
+            // A new pedal taking the old ID doesn't inherit anything.
+            expectEquals (board.addPedal ("RKVerb"), delay);
+            expectEquals (board.findAssignment (delay, "time"), -1);
+        }
+
+        beginTest ("Assignments round-trip, ranges in real units");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto delay = board.addPedal ("RKDelay");
+            auto* time = board.getPedal (delay)->findParam ("time");
+            board.assign (2, delay, "time");
+            board.setAssignmentRange (2, time->convertTo0to1 (100.0f), time->convertTo0to1 (800.0f), true);
+
+            const auto saved = board.toVar (false);
+            const auto& entry = (*saved["assign"].getArray())[0];
+            expectEquals ((int) entry["slot"], 3);
+            expectEquals (entry["param"].toString(), juce::String ("time"));
+            expectWithinAbsoluteError ((double) entry["min"], 100.0, 0.5);
+            expectWithinAbsoluteError ((double) entry["max"], 800.0, 0.5);
+
+            BoardProcessor loaded;
+            expect (loaded.fromVar (saved, false).ok);
+            const auto info = loaded.getAssignment (2);
+            expectEquals (info.pedal, delay);
+            expect (info.invert);
+            expectWithinAbsoluteError (info.min, time->convertTo0to1 (100.0f), 1.0e-4f);
+
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (stateJson (copy), json);
+        }
+
         beginTest ("Unknown pedals in a preset are skipped with a note");
         {
             const auto json = R"({ "plugin": "RKBoard", "version": 1, "pedals": [

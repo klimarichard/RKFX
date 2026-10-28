@@ -474,6 +474,11 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     addAndMakeVisible (saveButton);
     addAndMakeVisible (saveAsButton);
 
+    assignButton.setTooltip ("The assignable parameters (Assign 1 to 32) and what they drive.");
+    assignButton.setClickingTogglesState (false);
+    assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
+    addAndMakeVisible (assignButton);
+
     noteLabel.setFont (Fonts::regular (12.0f));
     noteLabel.setJustificationType (juce::Justification::centredRight);
     noteLabel.setMinimumHorizontalScale (0.7f);
@@ -550,7 +555,7 @@ void BoardEditor::paint (juce::Graphics& g)
     g.drawText ("RKBoard", kMargin, 0, 120, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
-    if (pedalEditor == nullptr && routingPanel == nullptr)
+    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr)
     {
         drawPanel (g, panel, Palette::panel);
         g.setColour (Palette::textDim);
@@ -570,6 +575,8 @@ void BoardEditor::resized()
     saveButton.setBounds (header.removeFromLeft (56));
     header.removeFromLeft (4);
     saveAsButton.setBounds (header.removeFromLeft (70));
+    header.removeFromLeft (12);
+    assignButton.setBounds (header.removeFromLeft (70));
 
     outputSlider.setBounds (header.removeFromRight (150));
     outputLabel.setBounds (header.removeFromRight (34));
@@ -585,12 +592,19 @@ void BoardEditor::resized()
 
 void BoardEditor::showPedal (int id)
 {
-    if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || id == 0))
+    if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || assignPanel != nullptr || id == 0))
         return;
 
     closePedalEditor();
 
-    if (id == BoardStrip::kSplitNode || id == BoardStrip::kMergeNode)
+    if (id == BoardStrip::kAssignView)
+    {
+        assignPanel = std::make_unique<AssignPanel> (board);
+        shownPedal = id;
+        addAndMakeVisible (*assignPanel);
+        layoutPedalEditor();
+    }
+    else if (id == BoardStrip::kSplitNode || id == BoardStrip::kMergeNode)
     {
         routingPanel = std::make_unique<RoutingPanel> (board, id == BoardStrip::kSplitNode ? RoutingPanel::Node::split
                                                                                            : RoutingPanel::Node::merge);
@@ -606,6 +620,7 @@ void BoardEditor::showPedal (int id)
             shownPedal = id;
             pedalBaseSize = pedalEditor->getLocalBounds();
             pedalEditor->setResizable (false, false);   // the board sizes it
+            pedalEditor->addMouseListener (this, true);   // right-click on a knob: assign
             addAndMakeVisible (*pedalEditor);
             layoutPedalEditor();
         }
@@ -613,6 +628,58 @@ void BoardEditor::showPedal (int id)
 
     strip.setSelected (shownPedal);
     repaint();
+}
+
+void BoardEditor::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu() || pedalEditor == nullptr || e.originalComponent == nullptr)
+        return;
+
+    auto* knob = dynamic_cast<rkfx::Knob*> (e.originalComponent);
+    if (knob == nullptr)
+        knob = e.originalComponent->findParentComponentOfClass<rkfx::Knob>();
+
+    if (knob != nullptr && pedalEditor->isParentOf (knob))
+        showAssignMenu (shownPedal, knob->getParameter());
+}
+
+void BoardEditor::showAssignMenu (int pedalId, juce::RangedAudioParameter& param)
+{
+    const auto paramId = param.getParameterID();
+    const auto current = board.findAssignment (pedalId, paramId);
+
+    juce::PopupMenu slots;
+    for (int slot = 0; slot < BoardProcessor::kNumAssigns; ++slot)
+    {
+        auto text = "Assign " + juce::String (slot + 1);
+        if (slot != current)
+            if (const auto used = board.describeAssignment (slot); used.isNotEmpty())
+                text << "   (" << used << ")";
+        slots.addItem (slot + 1, text, true, slot == current);
+    }
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (param.getName (40));
+    menu.addSubMenu ("Assign to", slots);
+    if (current >= 0)
+        menu.addItem (1000, "Remove Assign " + juce::String (current + 1));
+    menu.addSeparator();
+    menu.addItem (1001, "Show assignments");
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition(),
+                        [safe, pedalId, paramId, current] (int result)
+                        {
+                            if (safe == nullptr || result == 0)
+                                return;
+
+                            if (result == 1000)
+                                safe->board.clearAssignment (current);
+                            else if (result == 1001)
+                                safe->showPedal (BoardStrip::kAssignView);
+                            else if (result >= 1 && result <= BoardProcessor::kNumAssigns)
+                                safe->board.assign (result - 1, pedalId, paramId);
+                        });
 }
 
 void BoardEditor::closePedalEditor()
@@ -625,6 +692,7 @@ void BoardEditor::closePedalEditor()
 
     pedalEditor.reset();
     routingPanel.reset();
+    assignPanel.reset();
     shownPedal = 0;
 }
 
@@ -632,6 +700,9 @@ void BoardEditor::layoutPedalEditor()
 {
     if (routingPanel != nullptr)
         routingPanel->setBounds (panelArea());
+    if (assignPanel != nullptr)
+        assignPanel->setBounds (panelArea());
+    assignButton.setToggleState (shownPedal == BoardStrip::kAssignView, juce::dontSendNotification);
 
     if (pedalEditor == nullptr)
         return;
@@ -664,6 +735,8 @@ void BoardEditor::timerCallback()
         repaint (panelArea());
         if (routingPanel != nullptr)
             routingPanel->repaint();
+        if (assignPanel != nullptr)
+            assignPanel->refresh();
     }
 }
 

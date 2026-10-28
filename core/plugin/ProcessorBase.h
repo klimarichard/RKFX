@@ -168,6 +168,12 @@ protected:
     void reportLatency (int samples);
     static constexpr int kMaxLatency = 63;
 
+    /** State beyond the parameters (RKConduct's MIDI file): saved with the
+        host state (as "extra"), not in preset files. setExtraState() gets a
+        void var for a state without it. Message thread. */
+    virtual juce::var getExtraState() const { return {}; }
+    virtual void setExtraState (const juce::var&) {}
+
     /** Bring an older state's params object up to the current version. */
     virtual void migrateParams (juce::DynamicObject& /*params*/, int /*fromVersion*/) {}
 

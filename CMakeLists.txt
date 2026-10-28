@@ -74,6 +74,7 @@ set(RKFX_MIDI_PLUGINS
     RKArpeggiate
     RKStrum
     RKSustain
+    RKConduct
 )
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})

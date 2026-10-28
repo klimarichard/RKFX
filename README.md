@@ -55,6 +55,7 @@ The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controller
 | [RKArpeggiate](docs/manuals/RKArpeggiate.md) | Tempo-synced arpeggiator with latch, swing and octaves | Available |
 | [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
 | [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
+| [RKConduct](docs/manuals/RKConduct.md) | MIDI file player conducted by taps: tap the beats (or bars, in any time signature), the notes in between follow your tempo | Available |
 
 ### RKBoard
 

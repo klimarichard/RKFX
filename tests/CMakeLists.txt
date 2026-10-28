@@ -34,6 +34,7 @@ set(RKFX_ENGINE_PLUGINS
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
     RKSustain/SustainEngine
+    RKConduct/ConductEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -89,6 +90,7 @@ target_sources(RKFXTests PRIVATE
     ArpTests.cpp
     StrumTests.cpp
     SustainTests.cpp
+    ConductTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKConduct",
+  "version": 1,
+  "name": "Footswitch Taps",
+  "params": {
+    "tap_every": "1/4",
+    "key1": -1,
+    "key2": -1,
+    "tap_cc": 64
+  }
+}

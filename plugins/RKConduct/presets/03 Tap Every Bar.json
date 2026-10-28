@@ -1,0 +1,8 @@
+{
+  "plugin": "RKConduct",
+  "version": 1,
+  "name": "Tap Every Bar",
+  "params": {
+    "tap_every": "1/1"
+  }
+}

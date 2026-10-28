@@ -1,0 +1,70 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Wah and Volume",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKWah",
+        "version": 1,
+        "params": {
+          "auto_engage": true
+        }
+      }
+    },
+    {
+      "id": 2,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDistort",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 3,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKVolume",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 4,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDelay",
+        "version": 1,
+        "params": {
+          "mix": 20
+        }
+      },
+      "trails": true
+    }
+  ],
+  "assign": [
+    {
+      "slot": 1,
+      "pedal": 1,
+      "param": "position",
+      "min": 0,
+      "max": 100,
+      "invert": false
+    },
+    {
+      "slot": 2,
+      "pedal": 3,
+      "param": "position",
+      "min": 0,
+      "max": 100,
+      "invert": false
+    }
+  ]
+}

@@ -24,6 +24,7 @@ namespace
     enum MenuCommands
     {
         presetFileBase = 1,         // + file index (from addPresetMenuItems)
+        factoryBase = 50000,        // + factory preset index
         resetCommand = 100000,
         revealCommand
     };
@@ -844,9 +845,22 @@ void BoardEditor::showPresetMenu()
     auto files = std::make_shared<std::vector<juce::File>>();
 
     juce::PopupMenu menu;
+
+    // Factory presets first, in their own sub-menu (read-only).
+    const auto& factory = board.getFactoryPresets();
+    if (! factory.empty())
+    {
+        juce::PopupMenu factoryMenu;
+        for (int i = 0; i < (int) factory.size(); ++i)
+            factoryMenu.addItem (factoryBase + i, factory[(size_t) i].name, true,
+                                 board.getPresetFile() == juce::File() && board.getPresetName() == factory[(size_t) i].name);
+        menu.addSubMenu ("Factory", factoryMenu);
+        menu.addSeparator();
+    }
+
     addPresetMenuItems (menu, folder, *files, board.getPresetFile());
     if (files->empty())
-        menu.addItem (-1, "No board presets yet", false);
+        menu.addItem (-1, "No board presets of your own yet", false);
 
     menu.addSeparator();
     menu.addItem (resetCommand, "Empty board");
@@ -869,6 +883,14 @@ void BoardEditor::showPresetMenu()
                             {
                                 folder.createDirectory();
                                 folder.revealToUser();
+                            }
+                            else if (result >= factoryBase && result < resetCommand)
+                            {
+                                const auto r = self.board.loadFactoryPreset (result - factoryBase);
+                                self.showNote (r.message, ! r.ok);
+
+                                if (const auto chain = self.board.getChain(); ! chain.empty())
+                                    self.showPedal (chain.front());
                             }
                             else if (result >= presetFileBase && result <= (int) files->size())
                             {

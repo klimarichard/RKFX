@@ -1398,6 +1398,20 @@ BoardProcessor::PresetResult BoardProcessor::loadBoardPreset (const juce::File& 
     return r;
 }
 
+BoardProcessor::PresetResult BoardProcessor::loadFactoryPreset (int index)
+{
+    if (index < 0 || index >= (int) factoryPresets.size())
+        return { false, "No such factory preset" };
+
+    const auto& preset = factoryPresets[(size_t) index];
+    const auto r = fromVar (juce::JSON::parse (preset.json), false);
+
+    // No file: Save on a factory preset asks for a new name.
+    if (r.ok)
+        setPresetState (preset.name, {}, false);
+    return r;
+}
+
 BoardProcessor::PresetResult BoardProcessor::saveBoardPreset (const juce::File& file)
 {
     const auto json = juce::JSON::toString (toVar (false), false);

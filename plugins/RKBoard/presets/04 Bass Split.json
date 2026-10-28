@@ -1,0 +1,31 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Bass Split",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "a",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKCompress",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 2,
+      "section": "b",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDistort",
+        "version": 1,
+        "params": {}
+      }
+    }
+  ],
+  "routing": {
+    "split": "frequency",
+    "crossover": 250
+  }
+}

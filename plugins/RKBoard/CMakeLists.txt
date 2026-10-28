@@ -33,17 +33,23 @@ set(RKBOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahEngine.cpp
 )
 
-# Factory presets of the board-only pedals (pedals/presets/<Name>/*.json),
-# registered by name like every plugin's.
-add_library(rkboard_pedal_presets INTERFACE)
-foreach(pedal RKVolume RKWah)
-    file(GLOB pedalPresets CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/pedals/presets/${pedal}/*.json")
+# Factory presets, registered by name like every plugin's: the board's own
+# (presets/*.json, board presets) and the board-only pedals'
+# (pedals/presets/<Name>/*.json).
+add_library(rkboard_factory_presets INTERFACE)
+foreach(pedal RKBoard RKVolume RKWah)
+    if(pedal STREQUAL "RKBoard")
+        set(presetDir "${CMAKE_CURRENT_SOURCE_DIR}/presets")
+    else()
+        set(presetDir "${CMAKE_CURRENT_SOURCE_DIR}/pedals/presets/${pedal}")
+    endif()
+    file(GLOB pedalPresets CONFIGURE_DEPENDS "${presetDir}/*.json")
     list(SORT pedalPresets)
     juce_add_binary_data(${pedal}_FactoryPresets
         HEADER_NAME ${pedal}FactoryPresetData.h
         NAMESPACE   ${pedal}FactoryPresetData
         SOURCES     ${pedalPresets})
-    target_link_libraries(rkboard_pedal_presets INTERFACE ${pedal}_FactoryPresets)
+    target_link_libraries(rkboard_factory_presets INTERFACE ${pedal}_FactoryPresets)
 
     set(PLUGIN ${pedal})
     configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in"
@@ -77,7 +83,7 @@ target_compile_definitions(RKBoard
 
 target_link_libraries(RKBoard
     PRIVATE
-        rkboard_pedal_presets
+        rkboard_factory_presets
         rkfx_core
         juce::juce_audio_processors
         juce::juce_audio_utils          # Standalone wrapper (device settings)

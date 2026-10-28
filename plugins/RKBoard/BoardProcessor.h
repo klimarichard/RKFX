@@ -178,6 +178,10 @@ public:
     };
 
     PresetResult loadBoardPreset (const juce::File&);
+
+    /** The built-in board presets (read-only, like the plugins' factory presets). */
+    const std::vector<rkfx::FactoryPreset>& getFactoryPresets() const noexcept { return factoryPresets; }
+    PresetResult loadFactoryPreset (int index);
     PresetResult saveBoardPreset (const juce::File&);
     void resetBoard();
 
@@ -238,6 +242,7 @@ private:
     };
 
     rkfx::PresetLibrary library;
+    std::vector<rkfx::FactoryPreset> factoryPresets { rkfx::factoryPresetsFor ("RKBoard") };
     RoutingSettings routing;
 
     // Pedals by ID - 1. Written on the message thread only; the audio thread

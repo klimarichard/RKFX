@@ -754,6 +754,24 @@ public:
             expect (! wah.isEngaged(), "off after half a second");
         }
 
+        beginTest ("Factory board presets all load cleanly");
+        {
+            BoardProcessor board;
+            const auto dir = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins/RKBoard/presets");
+            expectEquals ((int) board.getFactoryPresets().size(), dir.findChildFiles (juce::File::findFiles, false, "*.json").size());
+            expect (board.getFactoryPresets().size() >= 6);
+
+            for (int i = 0; i < (int) board.getFactoryPresets().size(); ++i)
+            {
+                const auto& preset = board.getFactoryPresets()[(size_t) i];
+                const auto r = board.loadFactoryPreset (i);
+                expect (r.ok && r.message.isEmpty(), preset.name + ": " + r.message);
+                expect (! board.getChain().empty(), preset.name + " has pedals");
+                expectEquals (board.getPresetName(), preset.name);
+                expect (! board.isPresetModified());
+            }
+        }
+
         beginTest ("Unknown pedals in a preset are skipped with a note");
         {
             const auto json = R"({ "plugin": "RKBoard", "version": 1, "pedals": [

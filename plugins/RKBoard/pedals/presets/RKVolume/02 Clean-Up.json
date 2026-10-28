@@ -1,0 +1,8 @@
+{
+  "plugin": "RKVolume",
+  "version": 1,
+  "name": "Clean-Up",
+  "params": {
+    "min_level": -30
+  }
+}

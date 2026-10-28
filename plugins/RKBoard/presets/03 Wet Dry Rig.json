@@ -1,0 +1,56 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Wet Dry Rig",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKCompress",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 2,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDistort",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 3,
+      "section": "b",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDelay",
+        "version": 1,
+        "params": {
+          "mix": 100
+        }
+      },
+      "trails": true
+    },
+    {
+      "id": 4,
+      "section": "b",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKVerb",
+        "version": 1,
+        "params": {
+          "mix": 100
+        }
+      },
+      "trails": true
+    }
+  ],
+  "routing": {
+    "level_b": -6
+  }
+}

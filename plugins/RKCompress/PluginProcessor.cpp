@@ -85,7 +85,10 @@ juce::AudioProcessorEditor* RKCompressProcessor::createEditor()
     return new RKCompressEditor (*this);
 }
 
+// The plugin's entry point; RKBoard holds every plugin and has its own.
+#if ! RKFX_BOARD
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new RKCompressProcessor();
 }
+#endif

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKWah",
+  "version": 1,
+  "name": "Auto Engage",
+  "params": {
+    "auto_engage": true
+  }
+}

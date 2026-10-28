@@ -9,7 +9,7 @@ Goals, in priority order:
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
 
-Each effect is its own plugin, so a rackspace loads only what it uses.
+Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard** puts them all together on one pedalboard, as a plugin or a standalone app.
 
 ## Plugins
 
@@ -39,6 +39,10 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
 
+### RKBoard
+
+[RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding up to 12 of the plugins above as pedals (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain or split into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets and expression pedals, 16 scenes, and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app.
+
 ## Documentation
 
 - [Common Controls](docs/manuals/Common%20Controls.md): layout, knobs, Dry/Wet, Output, Bypass, presets and Gig Performer use, shared by every plugin.
@@ -46,7 +50,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses.
 
 ## Formats and requirements
 
-- macOS, AU and VST3.
+- macOS, AU and VST3; RKBoard also as a standalone app.
 - Mono and stereo; sample rates 44.1 to 192 kHz.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).
@@ -89,7 +93,7 @@ To check a GUI without a host, `cmake --build build --target RKFXSnapshots` buil
 CMakeLists.txt     top level: fetches JUCE, adds core, plugins, tests and tools
 core/              shared code for every plugin
   dsp/             filters (state-variable, cascades, matched bell/shelf),
-                   crossover, tone tilt, Hilbert transformer, oscillators, LFO,
+                   crossover, Linkwitz-Riley split, tone tilt, Hilbert transformer, oscillators, LFO,
                    random modulator, envelope follower, modulated delay line,
                    2x/4x oversampler,
                    dynamics (level detection, gain computer, gain smoothing)
@@ -99,6 +103,8 @@ core/              shared code for every plugin
                    (standalone target, also used by RKTracks)
   plugin/          base processor and editor, parameters, presets, output stage
 plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
+plugins/RKBoard/   the pedalboard: hosts every plugin's processor as a pedal
+                   (pedals/ holds the board-only Wah and Volume)
 tests/             DSP and format tests, CPU benchmark
 tools/             snapshot tool: renders a plugin's window to PNG
 docs/manuals/      user manuals

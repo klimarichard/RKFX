@@ -21,6 +21,8 @@ public:
     Knob (juce::RangedAudioParameter& parameter, const juce::String& label = {});
     ~Knob() override;
 
+    juce::RangedAudioParameter& getParameter() const noexcept { return param; }
+
     /** Dims the knob (for controls inactive in the current mode). It stays usable. */
     void setDimmed (bool shouldBeDimmed);
 

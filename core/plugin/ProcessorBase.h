@@ -77,6 +77,15 @@ public:
     PresetResult savePreset (const juce::File& file);
     void resetToDefaults();
 
+    /** The preset as a JSON object. With @p fullState, what the host state
+        holds (every value, bypass, name, modified flag, file); otherwise what a
+        preset file holds (only non-default values, no bypass). RKBoard stores
+        its pedals this way. */
+    juce::var getPresetVar (bool fullState) const;
+
+    /** Loads an object made by getPresetVar() (the same @p fullState). */
+    PresetResult loadPresetVar (const juce::var& preset, bool fullState);
+
     juce::String getPresetName() const;
     juce::File getPresetFile() const;
     bool isPresetModified() const noexcept { return presetModified.load(); }

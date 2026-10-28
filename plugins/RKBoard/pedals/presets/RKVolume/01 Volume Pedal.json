@@ -1,0 +1,6 @@
+{
+  "plugin": "RKVolume",
+  "version": 1,
+  "name": "Volume Pedal",
+  "params": {}
+}

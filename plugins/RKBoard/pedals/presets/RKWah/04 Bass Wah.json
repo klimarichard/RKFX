@@ -1,0 +1,11 @@
+{
+  "plugin": "RKWah",
+  "version": 1,
+  "name": "Bass Wah",
+  "params": {
+    "character": "bass",
+    "freq_low": 250,
+    "freq_high": 1600,
+    "resonance": 50
+  }
+}

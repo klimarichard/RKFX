@@ -41,6 +41,9 @@ namespace Palette
         families, so a tool never looks like an effect. */
     const juce::Colour toolAccent { 0xff8a8a8a };
 
+    /** Accent for RKBoard: warm white, so the pedals' family colours stand out. */
+    const juce::Colour boardAccent { 0xffe6e2d8 };
+
     /** How strongly the family colour tints the background and the panels. */
     inline constexpr float kBackgroundTint = 0.06f;
     inline constexpr float kPanelTint = 0.09f;

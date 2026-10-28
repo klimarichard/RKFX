@@ -1,0 +1,9 @@
+{
+  "plugin": "RKWah",
+  "version": 1,
+  "name": "Vocal Wah",
+  "params": {
+    "character": "vocal",
+    "resonance": 45
+  }
+}

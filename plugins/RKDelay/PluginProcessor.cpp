@@ -67,7 +67,10 @@ juce::AudioProcessorEditor* RKDelayProcessor::createEditor()
     return new RKDelayEditor (*this);
 }
 
+// The plugin's entry point; RKBoard holds every plugin and has its own.
+#if ! RKFX_BOARD
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new RKDelayProcessor();
 }
+#endif

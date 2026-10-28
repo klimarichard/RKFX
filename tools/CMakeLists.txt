@@ -20,3 +20,19 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
                           PUBLIC juce::juce_recommended_config_flags)
     add_dependencies(RKFXSnapshots ${tool})
 endforeach()
+
+# RKBoard: the board with every plugin's sources.
+juce_add_console_app(RKFXSnapshot_RKBoard PRODUCT_NAME "RKFXSnapshot_RKBoard")
+set_target_properties(RKFXSnapshot_RKBoard PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKFXSnapshot_RKBoard PRIVATE Snapshot.cpp
+    ${RKBOARD_SOURCES}
+    ${RKBOARD_PEDAL_SOURCES})
+foreach(plugin IN LISTS RKFX_PLUGINS)
+    if(TARGET ${plugin}_FactoryPresets)
+        target_link_libraries(RKFXSnapshot_RKBoard PRIVATE ${plugin}_FactoryPresets)
+    endif()
+endforeach()
+target_compile_definitions(RKFXSnapshot_RKBoard PRIVATE RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(RKFXSnapshot_RKBoard PRIVATE rkboard_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
+                      PUBLIC juce::juce_recommended_config_flags)
+add_dependencies(RKFXSnapshots RKFXSnapshot_RKBoard)

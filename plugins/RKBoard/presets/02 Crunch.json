@@ -1,0 +1,50 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Crunch",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKGate",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 2,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKSaturate",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 3,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDistort",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 4,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDelay",
+        "version": 1,
+        "params": {
+          "mix": 15
+        }
+      },
+      "trails": true
+    }
+  ]
+}

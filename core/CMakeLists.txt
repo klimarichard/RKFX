@@ -75,19 +75,21 @@ function(rkfx_add_plugin name)
     list(SORT presetFiles)
     set(presetList "${CMAKE_CURRENT_BINARY_DIR}/FactoryPresetList.cpp")
 
+    set(PLUGIN ${name})
     if(presetFiles)
         juce_add_binary_data(${name}_FactoryPresets
-            HEADER_NAME FactoryPresetData.h
-            NAMESPACE   FactoryPresetData
+            HEADER_NAME ${name}FactoryPresetData.h
+            NAMESPACE   ${name}FactoryPresetData
             SOURCES     ${presetFiles})
         target_link_libraries(${name} PRIVATE ${name}_FactoryPresets)
 
-        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in" "${presetList}" COPYONLY)
+        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in" "${presetList}" @ONLY)
     else()
-        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetListEmpty.cpp.in" "${presetList}" COPYONLY)
+        configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetListEmpty.cpp.in" "${presetList}" @ONLY)
     endif()
 
     target_sources(${name} PRIVATE "${presetList}")
+    target_compile_definitions(${name} PRIVATE RKFX_FACTORY_PRESET_LIST=factoryPresetList_${name})
 
     target_compile_definitions(${name}
         PUBLIC

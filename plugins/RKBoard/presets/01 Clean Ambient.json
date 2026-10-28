@@ -1,0 +1,55 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Clean Ambient",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKCompress",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 2,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKChorus",
+        "version": 1,
+        "params": {
+          "mix": 35
+        }
+      }
+    },
+    {
+      "id": 3,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDelay",
+        "version": 1,
+        "params": {
+          "mix": 25
+        }
+      },
+      "trails": true
+    },
+    {
+      "id": 4,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKVerb",
+        "version": 1,
+        "params": {
+          "mix": 30
+        }
+      },
+      "trails": true
+    }
+  ]
+}

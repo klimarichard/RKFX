@@ -42,6 +42,7 @@ juce_add_console_app(RKFXTests PRODUCT_NAME "RKFXTests")
 target_sources(RKFXTests PRIVATE
     TestMain.cpp
     SafetyTests.cpp
+    LinkwitzRileyTests.cpp
     OutputStageTests.cpp
     PresetFormatTests.cpp
     PresetLibraryTests.cpp
@@ -128,3 +129,32 @@ target_link_libraries(RKFXPresetTests
         juce::juce_recommended_warning_flags
 )
 add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)
+
+# RKBoard: the board processor with every plugin as a pedal. Compiles all
+# plugin sources (like the RKBoard target itself).
+juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
+target_sources(RKBoardTests PRIVATE
+    BoardTests.cpp
+    ${RKBOARD_SOURCES}
+    ${RKBOARD_PEDAL_SOURCES}
+)
+target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard)
+foreach(plugin IN LISTS RKFX_PLUGINS)
+    if(TARGET ${plugin}_FactoryPresets)
+        target_link_libraries(RKBoardTests PRIVATE ${plugin}_FactoryPresets)
+    endif()
+endforeach()
+target_compile_definitions(RKBoardTests PRIVATE
+    RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(RKBoardTests
+    PRIVATE
+        rkboard_factory_presets
+        rkfx_core
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKBoardTests COMMAND RKBoardTests)

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKVolume",
+  "version": 1,
+  "name": "Linear Taper",
+  "params": {
+    "taper": "linear"
+  }
+}

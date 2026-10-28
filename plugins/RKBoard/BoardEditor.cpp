@@ -393,7 +393,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
 BoardEditor::~BoardEditor()
 {
     board.pedalAboutToBeRemoved = nullptr;
-    pedalEditor.reset();
+    closePedalEditor();
     setLookAndFeel (nullptr);
 }
 
@@ -457,8 +457,7 @@ void BoardEditor::showPedal (int id)
     if (id == shownPedal && (pedalEditor != nullptr || id == 0))
         return;
 
-    pedalEditor.reset();
-    shownPedal = 0;
+    closePedalEditor();
 
     if (auto* pedal = board.getPedal (id))
     {
@@ -475,6 +474,18 @@ void BoardEditor::showPedal (int id)
 
     strip.setSelected (shownPedal);
     repaint();
+}
+
+void BoardEditor::closePedalEditor()
+{
+    // As a host does: the pedal forgets its editor before it is deleted, or it
+    // refuses to make a new one.
+    if (pedalEditor != nullptr)
+        if (auto* pedal = board.getPedal (shownPedal))
+            pedal->editorBeingDeleted (pedalEditor.get());
+
+    pedalEditor.reset();
+    shownPedal = 0;
 }
 
 void BoardEditor::layoutPedalEditor()

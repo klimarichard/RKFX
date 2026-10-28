@@ -73,6 +73,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    /** Opens pedal @p id's controls below the board (0 closes them). */
+    void showPedal (int id);
+    int getShownPedal() const noexcept { return shownPedal; }
+
     static constexpr int kWidth = 960;
     static constexpr int kHeight = 800;
     static constexpr int kHeaderHeight = 44;
@@ -101,7 +105,7 @@ private:
     int lastBoardCounter = -1;
 
     juce::Rectangle<int> panelArea() const;
-    void showPedal (int id);
+    void closePedalEditor();
     void layoutPedalEditor();
 
     void refreshPresetButton();

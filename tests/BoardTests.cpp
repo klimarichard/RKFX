@@ -1,6 +1,6 @@
 // RKBoard: the board processor with real pedals (every RKFX plugin built in).
 
-#include "BoardProcessor.h"
+#include "BoardEditor.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -236,6 +236,35 @@ public:
             expect (! loaded.isPresetModified());
 
             dir.deleteRecursively();
+        }
+
+        beginTest ("The editor switches between pedals' controls, again and again");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto a = board.addPedal ("RKChorus");
+            const auto b = board.addPedal ("RKDelay");
+
+            {
+                rkboard::BoardEditor editor (board);
+                expectEquals (editor.getShownPedal(), a);
+                for (int i = 0; i < 3; ++i)
+                {
+                    editor.showPedal (b);
+                    expectEquals (editor.getShownPedal(), b);
+                    editor.showPedal (a);
+                    expectEquals (editor.getShownPedal(), a);
+                }
+
+                // Removing the shown pedal closes its controls.
+                board.removePedal (a);
+                expectEquals (editor.getShownPedal(), 0);
+                editor.showPedal (b);
+            }
+
+            // Closing the board's window lets the pedals make new editors later.
+            rkboard::BoardEditor reopened (board);
+            expectEquals (reopened.getShownPedal(), b);
         }
 
         beginTest ("Unknown pedals in a preset are skipped with a note");

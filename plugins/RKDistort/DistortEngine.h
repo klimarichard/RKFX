@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/CabFilter.h"
 #include "dsp/FilterCascade.h"
 #include "dsp/MatchedBiquad.h"
 #include "dsp/Oversampler.h"
@@ -31,7 +32,7 @@ public:
     static constexpr int kMaxChannels = 2;
 
     enum class Type { overdrive, distortion, fuzz };
-    enum class Cab { off, small, medium, large, bass };
+    using Cab = rkfx::CabType;
 
     struct Settings
     {
@@ -50,25 +51,8 @@ public:
     /** The clipping curve of a type (after gain, before post-shaping). */
     static float clip (Type, float x) noexcept;
 
-    /** A cabinet: high-pass, up to three resonance bells, low-pass. */
-    class CabFilter
-    {
-    public:
-        void configure (Cab, double sampleRate);
-        void reset();
-        float process (int channel, float x) noexcept;
-        bool isOff() const noexcept { return off; }
-
-        /** Response in dB (for tests and documentation). */
-        double magnitudeDb (double hz, double sampleRate) const;
-
-    private:
-        bool off = true;
-        rkfx::FilterCascade highPass, lowPass;
-        float highPassG = 0.0f, lowPassG = 0.0f;
-        std::array<rkfx::Biquad, 3> bells;
-        std::array<rkfx::BiquadCoefficients, 3> bellCoefs;
-    };
+    /** The cabinets are shared with RKPreamp (core/dsp/CabFilter.h). */
+    using CabFilter = rkfx::CabFilter;
 
     void prepare (double sampleRate);
     void reset();

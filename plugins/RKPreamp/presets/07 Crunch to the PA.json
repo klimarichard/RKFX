@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Crunch to the PA",
+  "params": {
+    "voicing": "crunch",
+    "gain": 6,
+    "middle": 6,
+    "treble": 5.5,
+    "cab": "large"
+  }
+}

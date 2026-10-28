@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Classic Crunch",
+  "params": {
+    "voicing": "crunch",
+    "gain": 5,
+    "middle": 6.5,
+    "treble": 6,
+    "presence": 6
+  }
+}

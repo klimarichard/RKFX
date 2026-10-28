@@ -17,7 +17,7 @@ namespace
 juce::String LearnTarget::key (int target)
 {
     if (target >= firstAssign && target < firstAssign + 32)  return "assign" + juce::String (target - firstAssign + 1);
-    if (target >= firstBypass && target < firstBypass + 12)  return "bypass" + juce::String (target - firstBypass + 1);
+    if (target >= firstBypass && target < firstBypass + numBypass)  return "bypass" + juce::String (target - firstBypass + 1);
     if (target == scene) return "scene";
     if (target == tap)   return "tap";
     if (target == tuner) return "tuner";
@@ -30,7 +30,7 @@ int LearnTarget::fromKey (const juce::String& k)
         if (const auto n = k.substring (6).getIntValue(); n >= 1 && n <= 32)
             return firstAssign + n - 1;
     if (k.startsWith ("bypass"))
-        if (const auto n = k.substring (6).getIntValue(); n >= 1 && n <= 12)
+        if (const auto n = k.substring (6).getIntValue(); n >= 1 && n <= numBypass)
             return firstBypass + n - 1;
     if (k == "scene") return scene;
     if (k == "tap")   return tap;
@@ -41,7 +41,7 @@ int LearnTarget::fromKey (const juce::String& k)
 juce::String LearnTarget::describe (int target)
 {
     if (target >= firstAssign && target < firstAssign + 32)  return "Assign " + juce::String (target - firstAssign + 1);
-    if (target >= firstBypass && target < firstBypass + 12)  return "Pedal " + juce::String (target - firstBypass + 1) + " Bypass";
+    if (target >= firstBypass && target < firstBypass + numBypass)  return "Pedal " + juce::String (target - firstBypass + 1) + " On/Off";
     if (target == scene) return "Scene";
     if (target == tap)   return "Tap Tempo";
     if (target == tuner) return "Tuner";
@@ -50,7 +50,7 @@ juce::String LearnTarget::describe (int target)
 
 bool LearnTarget::isSwitch (int target)
 {
-    return (target >= firstBypass && target < firstBypass + 12) || target == tap || target == tuner;
+    return (target >= firstBypass && target < firstBypass + numBypass) || target == tap || target == tuner;
 }
 
 //==============================================================================

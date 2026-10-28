@@ -17,14 +17,17 @@ namespace rkboard
         [pre] -> SPLIT -+- [path A] -+- MERGE -> [post]
                         +- [path B] -+
 
-    One tile per pedal, a "+" at the end of each section while there is room,
-    and the split and merge as narrow nodes. Painted as one component (no
-    child per tile), so dragging a tile anywhere is simple.
+    One tile per pedal, a "+" at the end of each section, and the split and
+    merge as narrow nodes. Like text, the board wraps onto further rows when
+    it doesn't fit, with a cable from the end of one row to the start of the
+    next; the split with both paths and the merge stay together on one row.
+    Painted as one component (no child per tile), so dragging a tile
+    anywhere is simple.
 
     - click a tile: open its controls below; click a node: its settings;
     - click a tile's footswitch: bypass on / off;
-    - drag a tile: move the pedal, also to another section;
-    - right-click a tile: duplicate or remove;
+    - drag a tile: move the pedal, also to another section or row;
+    - right-click a tile: duplicate, remove, trails, assign its switch;
     - click a "+": add a pedal there, from a menu grouped by family. */
 class BoardStrip : public juce::Component
 {
@@ -53,10 +56,14 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
+    /** The height the board needs at @p width (it grows a row at a time). */
+    int getPreferredHeight (int width) const;
+
+    static constexpr int kTileWidth = 66;
     static constexpr int kTileHeight = 84;
     static constexpr int kLaneGap = 8;
+    static constexpr int kRowGap = 22;     // between rows, for the cable
     static constexpr int kPadding = 10;
-    static constexpr int kHeight = 2 * kTileHeight + kLaneGap + 2 * kPadding;
 
 private:
     struct Item
@@ -68,10 +75,24 @@ private:
         juce::Rectangle<int> bounds;
     };
 
+    /** One row of the wrapped board. */
+    struct Row { int top = 0, height = 0; };
+
+    struct Layout
+    {
+        std::vector<Item> items;
+        std::vector<int> flow;            // indices into items, in signal order, without the paths' items
+        std::vector<Row> rows;
+        std::vector<int> rowOf;           // per item
+        int height = 0;
+    };
+
     BoardProcessor& board;
     int selected = 0;
     int hoverKey = 0;                     // keyOf() the item under the mouse
-    std::vector<Item> items;              // rebuilt by layoutItems()
+    Layout layout;                        // rebuilt by layoutItems()
+
+    Layout computeLayout (int width) const;
 
     int pressedId = 0;          // pedal under the mouse at mouseDown
     bool dragging = false;
@@ -118,8 +139,8 @@ public:
     void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
-    static constexpr int kWidth = 960;
-    static constexpr int kHeight = 856;
+    static constexpr int kWidth = 1100;
+    static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
     static constexpr int kSceneBarHeight = 36;
     static constexpr int kMargin = 12;
@@ -160,6 +181,8 @@ private:
     int lastBoardCounter = -1;
 
     juce::Rectangle<int> panelArea() const;
+    int stripHeight() const;
+    void updateSize();
     void closePedalEditor();
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
     void showSceneMenu (int scene);

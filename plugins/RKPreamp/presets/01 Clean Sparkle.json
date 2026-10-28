@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Clean Sparkle",
+  "params": {
+    "voicing": "clean",
+    "gain": 3,
+    "middle": 4,
+    "treble": 6.5,
+    "bright": true
+  }
+}

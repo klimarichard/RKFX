@@ -46,10 +46,15 @@ void AssignPanel::Row::refresh()
     target.setText (assigned ? board.describeAssignment (slot) : juce::String::fromUTF8 ("\xe2\x80\x94"), juce::dontSendNotification);
     target.setColour (juce::Label::textColourId, assigned ? Palette::text : Palette::textDim);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &minSlider, &maxSlider, &invertButton, &clearButton })
+    // A pedal's on/off switch has no range, only invert.
+    const auto isSwitch = assigned && board.isSwitchAssignment (slot);
+    for (auto* c : std::initializer_list<juce::Component*> { &minSlider, &maxSlider })
+        c->setVisible (assigned && ! isSwitch);
+    for (auto* c : std::initializer_list<juce::Component*> { &invertButton, &clearButton })
         c->setVisible (assigned);
+    invertButton.setTooltip (isSwitch ? "Off at 100% and on at 0%." : "Swap the two ends.");
 
-    if (! assigned)
+    if (! assigned || isSwitch)
         return;
 
     // Value text in the knob's own units.
@@ -121,7 +126,7 @@ void AssignPanel::paint (juce::Graphics& g)
 
     g.setColour (Palette::textDim);
     g.setFont (Fonts::regular (13.0f));
-    g.drawText ("Right-click a knob in a pedal to assign it. Host parameters Assign 1 to 32 then move it between Min and Max.",
+    g.drawText ("Right-click a knob (or a pedal on the board, for its on/off switch) to assign it. Assign 1 to 32 then move it between Min and Max.",
                 getLocalBounds().reduced (12, 0).removeFromBottom (30), juce::Justification::centredLeft);
 
     // Column headings

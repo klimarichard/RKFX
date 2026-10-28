@@ -1,0 +1,12 @@
+{
+  "plugin": "RKOctave",
+  "version": 1,
+  "name": "Synth Sub",
+  "params": {
+    "range": "guitar",
+    "voice": "synth",
+    "direct": 100,
+    "octave1": 70,
+    "tone": 600
+  }
+}

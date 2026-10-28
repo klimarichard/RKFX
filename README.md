@@ -4,7 +4,7 @@ A suite of separate, lightweight audio effect plugins by RKMusic, built for live
 
 Goals, in priority order:
 
-1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate, RKDistort, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host).
+1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate, RKDistort, RKPreamp, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host).
 2. **Lightweight.** Minimal CPU and memory, fast loading, no heavy graphics.
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
@@ -38,10 +38,13 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong and ducking | Available |
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
+| [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
+| [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
+| [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
 
 ### RKBoard
 
-[RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding up to 12 of the plugins above as pedals (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain or split into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets and expression pedals, 16 scenes, and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app.
+[RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding the plugins above as pedals, as many as you like (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain or split into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets, expression pedals and footswitches (knobs or pedal on/off), 16 scenes, and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app.
 
 ## Documentation
 

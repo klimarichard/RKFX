@@ -24,6 +24,9 @@ set(RKFX_ENGINE_PLUGINS
     RKVibrato/VibratoEngine
     RKVocode/VocodeEngine
     RKUtility/UtilityEngine
+    RKOctave/OctaveEngine
+    RKAcoustic/AcousticEngine
+    RKPreamp/PreampEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -69,6 +72,9 @@ target_sources(RKFXTests PRIVATE
     VibratoTests.cpp
     VocodeTests.cpp
     UtilityTests.cpp
+    OctaveTests.cpp
+    AcousticTests.cpp
+    PreampTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

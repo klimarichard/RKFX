@@ -1,0 +1,13 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Warm Viola",
+  "params": {
+    "voicing": "viola",
+    "body": 65,
+    "quack": 35,
+    "highpass": 70,
+    "treble": -1,
+    "compress": 20
+  }
+}

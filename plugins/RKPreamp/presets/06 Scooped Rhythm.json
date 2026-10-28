@@ -1,0 +1,13 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Scooped Rhythm",
+  "params": {
+    "voicing": "hotrod",
+    "gain": 6,
+    "bass": 6.5,
+    "middle": 2.5,
+    "treble": 6.5,
+    "presence": 6
+  }
+}

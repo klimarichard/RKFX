@@ -1,0 +1,12 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Upright Bass",
+  "params": {
+    "voicing": "bass",
+    "body": 60,
+    "quack": 40,
+    "highpass": 35,
+    "compress": 30
+  }
+}

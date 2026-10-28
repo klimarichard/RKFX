@@ -1,0 +1,13 @@
+{
+  "plugin": "RKAcoustic",
+  "version": 1,
+  "name": "Violin into Effects",
+  "params": {
+    "voicing": "violin",
+    "body": 40,
+    "quack": 50,
+    "highpass": 120,
+    "air": 3,
+    "compress": 40
+  }
+}

@@ -2,6 +2,9 @@
 
 #include "plugin/EditorBase.h"
 
+#include <limits>
+#include <tuple>
+
 namespace rkboard
 {
 
@@ -56,54 +59,156 @@ int BoardStrip::keyOf (const Item& item)
     return 0;
 }
 
-void BoardStrip::layoutItems()
+BoardStrip::Layout BoardStrip::computeLayout (int width) const
 {
-    constexpr int gap = 6, addWidth = 30, nodeWidth = 34, margin = 12;
+    constexpr int gap = 6, addWidth = 30, nodeWidth = 34, margin = 12, minTileWidth = 44;
+    constexpr int tallHeight = 2 * kTileHeight + kLaneGap;
+    const auto maxRowWidth = juce::jmax (200, width - 2 * margin);
 
-    const auto& pre = board.getSection (Section::pre);
-    const auto& pathA = board.getSection (Section::pathA);
-    const auto& pathB = board.getSection (Section::pathB);
-    const auto& post = board.getSection (Section::post);
-    const auto lanes = (int) juce::jmax (pathA.size(), pathB.size());
-    const auto columns = (int) pre.size() + lanes + (int) post.size();
-
-    // Tiles shrink (down to 44 px) so twelve pedals and the fixed parts fit.
-    const auto fixed = 3 * (addWidth + gap) + 2 * (nodeWidth + gap);
-    const auto tileWidth = columns > 0 ? juce::jlimit (44, 70, (getWidth() - 2 * margin - fixed) / columns - gap) : 70;
-    const auto total = columns * (tileWidth + gap) + fixed - gap;
-
-    const auto laneA = kPadding, laneB = kPadding + kTileHeight + kLaneGap;
-    const auto middle = (getHeight() - kTileHeight) / 2;
-    auto x = (getWidth() - total) / 2;
-
-    items.clear();
-    const auto addSection = [&] (const std::vector<int>& ids, Section section, int startX, int y)
+    // Blocks flow like words: a pedal, a "+", or the split with both paths
+    // and the merge (which stays together).
+    struct Block
     {
-        auto tx = startX;
-        for (int i = 0; i < (int) ids.size(); ++i, tx += tileWidth + gap)
-            items.push_back ({ Item::Kind::pedal, ids[(size_t) i], section, i, { tx, y, tileWidth, kTileHeight } });
-        items.push_back ({ Item::Kind::add, 0, section, (int) ids.size(), { tx, y, addWidth, kTileHeight } });
+        std::vector<Item> items;     // positioned relative to the block
+        std::vector<bool> inFlow;
+        int width = 0;
+        bool tall = false;
+    };
+    std::vector<Block> blocks;
+
+    const auto addSingles = [&] (const std::vector<int>& ids, Section section)
+    {
+        for (int i = 0; i < (int) ids.size(); ++i)
+            blocks.push_back ({ { { Item::Kind::pedal, ids[(size_t) i], section, i, { 0, 0, kTileWidth, kTileHeight } } }, { true }, kTileWidth, false });
+        blocks.push_back ({ { { Item::Kind::add, 0, section, (int) ids.size(), { 0, 0, addWidth, kTileHeight } } }, { true }, addWidth, false });
     };
 
-    addSection (pre, Section::pre, x, middle);
-    x += (int) pre.size() * (tileWidth + gap) + addWidth + gap;
+    addSingles (board.getSection (Section::pre), Section::pre);
 
-    items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { x, laneA, nodeWidth, laneB + kTileHeight - laneA } });
-    x += nodeWidth + gap;
+    {
+        const auto& pathA = board.getSection (Section::pathA);
+        const auto& pathB = board.getSection (Section::pathB);
+        const auto lanes = (int) juce::jmax (pathA.size(), pathB.size());
 
-    addSection (pathA, Section::pathA, x, laneA);
-    addSection (pathB, Section::pathB, x, laneB);
-    x += lanes * (tileWidth + gap) + addWidth + gap;
+        // Paths too long for one row: their tiles get narrower.
+        const auto laneRoom = maxRowWidth - 2 * (nodeWidth + gap) - (addWidth + gap);
+        const auto tileWidth = lanes > 0 ? juce::jlimit (minTileWidth, kTileWidth, laneRoom / lanes - gap) : kTileWidth;
 
-    items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { x, laneA, nodeWidth, laneB + kTileHeight - laneA } });
-    x += nodeWidth + gap;
+        // With both paths empty, the split is compact: one tile high, a
+        // small "+" per path.
+        Block block;
+        block.tall = lanes > 0;
+        const auto laneHeight = block.tall ? kTileHeight : (kTileHeight - kLaneGap) / 2;
+        const auto nodeHeight = 2 * laneHeight + kLaneGap;
+        block.items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { 0, 0, nodeWidth, nodeHeight } });
+        block.inFlow.push_back (true);
 
-    addSection (post, Section::post, x, middle);
+        const auto x = nodeWidth + gap;
+        for (const auto& [ids, section, y] : { std::tuple { &pathA, Section::pathA, 0 },
+                                               std::tuple { &pathB, Section::pathB, laneHeight + kLaneGap } })
+        {
+            for (int i = 0; i < (int) ids->size(); ++i)
+            {
+                block.items.push_back ({ Item::Kind::pedal, (*ids)[(size_t) i], section, i, { x + i * (tileWidth + gap), y, tileWidth, kTileHeight } });
+                block.inFlow.push_back (false);
+            }
+            block.items.push_back ({ Item::Kind::add, 0, section, (int) ids->size(), { x + (int) ids->size() * (tileWidth + gap), y, addWidth, laneHeight } });
+            block.inFlow.push_back (false);
+        }
+
+        const auto mergeX = x + lanes * (tileWidth + gap) + addWidth + gap;
+        block.items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { mergeX, 0, nodeWidth, nodeHeight } });
+        block.inFlow.push_back (true);
+        block.width = mergeX + nodeWidth;
+        blocks.push_back (std::move (block));
+    }
+
+    addSingles (board.getSection (Section::post), Section::post);
+
+    // Into rows. A "+" never starts a row on its own: the block before it
+    // comes along.
+    std::vector<std::vector<int>> rows (1);
+    const auto widthOf = [&] (const std::vector<int>& row)
+    {
+        auto w = 0;
+        for (const auto b : row)
+            w += (w > 0 ? gap : 0) + blocks[(size_t) b].width;
+        return w;
+    };
+
+    for (int b = 0; b < (int) blocks.size(); ++b)
+    {
+        auto& row = rows.back();
+        const auto fits = row.empty() || widthOf (row) + gap + blocks[(size_t) b].width <= maxRowWidth;
+        if (fits)
+        {
+            row.push_back (b);
+            continue;
+        }
+
+        const auto isAdd = blocks[(size_t) b].items.front().kind == Item::Kind::add;
+        std::vector<int> next;
+        if (isAdd && row.size() > 1)
+        {
+            next.push_back (row.back());
+            row.pop_back();
+        }
+        next.push_back (b);
+        rows.push_back (std::move (next));
+    }
+
+    std::vector<int> rowWidths;
+    for (const auto& row : rows)
+        rowWidths.push_back (widthOf (row));
+
+    // Positions: one row is centred, several start at the left margin.
+    Layout result;
+    auto y = kPadding;
+    for (int r = 0; r < (int) rows.size(); ++r)
+    {
+        auto tall = false;
+        for (const auto b : rows[(size_t) r])
+            tall = tall || blocks[(size_t) b].tall;
+
+        const Row row { y, tall ? tallHeight : kTileHeight };
+        result.rows.push_back (row);
+
+        auto x = rows.size() == 1 ? (width - rowWidths[0]) / 2 : margin;
+        for (const auto b : rows[(size_t) r])
+        {
+            const auto& block = blocks[(size_t) b];
+            const auto blockY = row.top + (row.height - (block.tall ? tallHeight : kTileHeight)) / 2;   // a compact split is one tile high
+            for (size_t i = 0; i < block.items.size(); ++i)
+            {
+                auto item = block.items[i];
+                item.bounds.translate (x, blockY);
+                if (block.inFlow[i])
+                    result.flow.push_back ((int) result.items.size());
+                result.items.push_back (item);
+                result.rowOf.push_back (r);
+            }
+            x += block.width + gap;
+        }
+
+        y += row.height + kRowGap;
+    }
+    result.height = y - kRowGap + kPadding;
+    return result;
+}
+
+int BoardStrip::getPreferredHeight (int width) const
+{
+    return computeLayout (width).height;
+}
+
+void BoardStrip::layoutItems()
+{
+    layout = computeLayout (getWidth());
 }
 
 const BoardStrip::Item* BoardStrip::itemAt (juce::Point<int> pos) const
 {
-    for (const auto& item : items)
+    for (const auto& item : layout.items)
         if (item.bounds.contains (pos))
             return &item;
     return nullptr;
@@ -111,7 +216,7 @@ const BoardStrip::Item* BoardStrip::itemAt (juce::Point<int> pos) const
 
 const BoardStrip::Item* BoardStrip::find (Item::Kind kind, int id) const
 {
-    for (const auto& item : items)
+    for (const auto& item : layout.items)
         if (item.kind == kind && item.id == id)
             return &item;
     return nullptr;
@@ -124,46 +229,80 @@ juce::Rectangle<int> BoardStrip::footswitchBounds (juce::Rectangle<int> tile) co
 
 BoardStrip::Drop BoardStrip::dropAt (juce::Point<int> pos) const
 {
-    const auto* split = find (Item::Kind::split);
-    const auto* merge = find (Item::Kind::merge);
-    const auto laneBTop = kPadding + kTileHeight + kLaneGap / 2;
+    // The nearest gap before or after a tile (or before a "+"), on the row
+    // and path the mouse is over.
+    Drop best { Section::pre, 0, {} };
+    auto bestScore = std::numeric_limits<int>::max();
 
-    auto section = Section::pre;
-    if (pos.x >= merge->bounds.getX())
-        section = Section::post;
-    else if (pos.x >= split->bounds.getRight())
-        section = pos.y < laneBTop ? Section::pathA : Section::pathB;
-
-    // Before the first tile of the section whose centre is right of the mouse,
-    // else just before the section's "+".
-    for (const auto& item : items)
-        if (item.section == section && (item.kind == Item::Kind::pedal || item.kind == Item::Kind::add)
-            && (item.kind == Item::Kind::add || item.bounds.getCentreX() > pos.x))
+    const auto consider = [&] (const Item& item, int index, int x)
+    {
+        const auto vertical = item.bounds.expanded (0, kLaneGap / 2);
+        const auto dy = pos.y < vertical.getY() ? vertical.getY() - pos.y
+                      : pos.y > vertical.getBottom() ? pos.y - vertical.getBottom() : 0;
+        const auto score = dy * 1000 + std::abs (pos.x - x);
+        if (score < bestScore)
         {
-            const auto marker = juce::Rectangle<int> (item.bounds.getX() - 5, item.bounds.getY(), 3, kTileHeight);
-            return { section, item.index, marker };
+            bestScore = score;
+            best = { item.section, index, { x - 1, item.bounds.getY(), 3, item.bounds.getHeight() } };
         }
+    };
 
-    return { section, 0, {} };
+    for (const auto& item : layout.items)
+    {
+        if (item.kind != Item::Kind::pedal && item.kind != Item::Kind::add)
+            continue;
+        consider (item, item.index, item.bounds.getX() - 3);
+        if (item.kind == Item::Kind::pedal)
+            consider (item, item.index + 1, item.bounds.getRight() + 3);
+    }
+
+    return best;
 }
 
 void BoardStrip::paint (juce::Graphics& g)
 {
     layoutItems();
+    const auto& items = layout.items;
 
-    // Signal lines (under the tiles): into the split, through each lane, out of the merge.
-    const auto* split = find (Item::Kind::split);
-    const auto* merge = find (Item::Kind::merge);
+    // Signal lines (under the tiles): along each row, through both paths,
+    // and a cable from the end of a row to the start of the next.
     const auto active = board.isSplitActive();
-    const auto middle = getHeight() / 2;
-    const auto laneA = kPadding + kTileHeight / 2, laneB = kPadding + kTileHeight + kLaneGap + kTileHeight / 2;
+    for (size_t k = 0; k + 1 < layout.flow.size(); ++k)
+    {
+        const auto& a = items[(size_t) layout.flow[k]];
+        const auto& b = items[(size_t) layout.flow[k + 1]];
 
-    g.setColour (Palette::outline);
-    g.fillRect (items.front().bounds.getX(), middle - 1, split->bounds.getX() - items.front().bounds.getX(), 2);
-    g.fillRect (merge->bounds.getRight(), middle - 1, items.back().bounds.getRight() - merge->bounds.getRight(), 2);
-    g.setColour (active ? Palette::outline : Palette::outline.withAlpha (0.4f));
-    for (const auto y : { laneA, laneB })
-        g.fillRect (split->bounds.getRight(), y - 1, merge->bounds.getX() - split->bounds.getRight(), 2);
+        if (a.kind == Item::Kind::split && b.kind == Item::Kind::merge)
+        {
+            g.setColour (active ? Palette::outline : Palette::outline.withAlpha (0.4f));
+            const auto laneHeight = (a.bounds.getHeight() - kLaneGap) / 2;
+            for (const auto y : { a.bounds.getY() + laneHeight / 2, a.bounds.getY() + laneHeight + kLaneGap + laneHeight / 2 })
+                g.fillRect (a.bounds.getRight(), y - 1, b.bounds.getX() - a.bounds.getRight(), 2);
+            continue;
+        }
+
+        g.setColour (Palette::outline);
+        const auto rowA = layout.rowOf[(size_t) layout.flow[k]], rowB = layout.rowOf[(size_t) layout.flow[k + 1]];
+        if (rowA == rowB)
+        {
+            g.fillRect (a.bounds.getRight(), a.bounds.getCentreY() - 1, b.bounds.getX() - a.bounds.getRight(), 2);
+        }
+        else
+        {
+            const auto& row = layout.rows[(size_t) rowA];
+            const auto between = (float) (row.top + row.height + kRowGap / 2);
+            const auto out = (float) a.bounds.getRight() + 8.0f, in = (float) b.bounds.getX() - 8.0f;
+
+            juce::Path cable;
+            cable.startNewSubPath ((float) a.bounds.getRight(), (float) a.bounds.getCentreY());
+            cable.lineTo (out, (float) a.bounds.getCentreY());
+            cable.lineTo (out, between);
+            cable.lineTo (in, between);
+            cable.lineTo (in, (float) b.bounds.getCentreY());
+            cable.lineTo ((float) b.bounds.getX(), (float) b.bounds.getCentreY());
+            g.strokePath (cable.createPathWithRoundedCorners (6.0f), juce::PathStrokeType (2.0f));
+        }
+    }
 
     const auto full = (int) board.getChain().size() >= BoardProcessor::kMaxPedals;
 
@@ -291,7 +430,7 @@ void BoardStrip::paintNode (juce::Graphics& g, const Item& item) const
 
     // Name written upwards, and the split mode under it.
     juce::String text = isSplit ? "SPLIT" : "MERGE";
-    if (isSplit)
+    if (isSplit && item.bounds.getHeight() > kTileHeight)   // no room in the compact split
         switch (board.getRouting().getSplitMode())
         {
             case SplitMode::full:      break;
@@ -447,6 +586,24 @@ void BoardStrip::showTileMenu (int id)
         menu.addSeparator();
         menu.addItem (3, "Trails (echoes ring out when bypassed)", true, board.getTrails (id));
     }
+
+    // The footswitch on an Assign slot (a host widget or footswitch).
+    constexpr int assignBase = 1000, removeAssign = 1100;
+    const auto current = board.findAssignment (id, "bypass");
+    juce::PopupMenu slots;
+    for (int slot = 0; slot < BoardProcessor::kNumAssigns; ++slot)
+    {
+        auto text = "Assign " + juce::String (slot + 1);
+        if (slot != current)
+            if (const auto used = board.describeAssignment (slot); used.isNotEmpty())
+                text << "   (" << used << ")";
+        slots.addItem (assignBase + slot, text, true, slot == current);
+    }
+    menu.addSeparator();
+    menu.addSubMenu ("Assign On/Off to", slots);
+    if (current >= 0)
+        menu.addItem (removeAssign, "Remove Assign " + juce::String (current + 1));
+
     if (addTileMenuItems)
         addTileMenuItems (menu, id);
 
@@ -470,6 +627,14 @@ void BoardStrip::showTileMenu (int id)
                             else if (result == 3)
                             {
                                 safe->board.setTrails (id, ! safe->board.getTrails (id));
+                            }
+                            else if (result >= assignBase && result < assignBase + BoardProcessor::kNumAssigns)
+                            {
+                                safe->board.assign (result - assignBase, id, "bypass");
+                            }
+                            else if (result == removeAssign)
+                            {
+                                safe->board.clearAssignment (safe->board.findAssignment (id, "bypass"));
                             }
                             else if (result >= 100 && safe->onTileMenuResult)
                             {
@@ -565,7 +730,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         if (! board.isStandalone())
             return;
         menu.addSeparator();
-        menu.addSectionHeader ("Footswitch (Pedal " + juce::String (id) + " Bypass)");
+        menu.addSectionHeader ("MIDI footswitch (pedal on / off)");
         addLearnItems (menu, LearnTarget::firstBypass + id - 1, 100);
     };
     strip.onTileMenuResult = [this] (int result, int id) { handleLearnResult (result, LearnTarget::firstBypass + id - 1, 100); };
@@ -581,7 +746,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     // Last, so every child added above gets the change.
     setLookAndFeel (&lookAndFeel);
 
-    setSize (kWidth, kHeight);
+    updateSize();
 
     // Start with the first pedal open, if any.
     if (const auto chain = board.getChain(); ! chain.empty())
@@ -600,7 +765,26 @@ BoardEditor::~BoardEditor()
 
 juce::Rectangle<int> BoardEditor::panelArea() const
 {
-    return getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight + BoardStrip::kHeight + 8).reduced (kMargin, 0).withTrimmedBottom (kMargin);
+    return getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight + stripHeight() + 8).reduced (kMargin, 0).withTrimmedBottom (kMargin);
+}
+
+int BoardEditor::stripHeight() const
+{
+    return strip.getPreferredHeight (kWidth);
+}
+
+void BoardEditor::updateSize()
+{
+    // Taller by a row as the board wraps; on a screen too small for that,
+    // the pedal's controls get less room (they scale down).
+    auto height = kHeaderHeight + kSceneBarHeight + stripHeight() + 8 + kPanelHeight + kMargin;
+    if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        height = juce::jmin (height, juce::jmax (640, (int) display->userBounds.getHeight() - 60));
+
+    if (getWidth() != kWidth || getHeight() != height)
+        setSize (kWidth, height);
+    else
+        resized();
 }
 
 void BoardEditor::paint (juce::Graphics& g)
@@ -663,7 +847,7 @@ void BoardEditor::resized()
     for (auto& button : sceneButtons)
         button.setBounds (sceneBar.removeFromLeft (buttonWidth));
 
-    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (BoardStrip::kHeight));
+    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (stripHeight()));
     layoutPedalEditor();
 }
 
@@ -1018,6 +1202,10 @@ void BoardEditor::timerCallback()
             showPedal (0);
 
         syncTunerView();
+
+        // A row more or less: the window follows.
+        if (strip.getHeight() != stripHeight())
+            updateSize();
 
         strip.repaint();
         refreshSceneButtons();

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Chimey Top Boost",
+  "params": {
+    "voicing": "topboost",
+    "gain": 5,
+    "bass": 4.5,
+    "treble": 6.5,
+    "bright": true
+  }
+}

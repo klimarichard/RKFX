@@ -23,6 +23,9 @@
 #include "UtilityEngine.h"
 #include "VibratoEngine.h"
 #include "VocodeEngine.h"
+#include "OctaveEngine.h"
+#include "AcousticEngine.h"
+#include "PreampEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -379,6 +382,53 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPreamp", "hot-rod (3 stages), 2x, large cab", []
+          {
+              return makeEngine<PreampEngine> ([] (PreampEngine& e)
+              {
+                  PreampEngine::Settings s;
+                  s.voicing = PreampEngine::Voicing::hotRod;
+                  s.bright = true;
+                  s.cab = rkfx::CabType::large;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPreamp", "hot-rod (3 stages), 4x, large cab", []
+          {
+              return makeEngine<PreampEngine> ([] (PreampEngine& e)
+              {
+                  PreampEngine::Settings s;
+                  s.voicing = PreampEngine::Voicing::hotRod;
+                  s.cab = rkfx::CabType::large;
+                  s.oversampling = 4;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKAcoustic", "violin, every band, notch, compressor", []
+          {
+              return makeEngine<AcousticEngine> ([] (AcousticEngine& e)
+              {
+                  AcousticEngine::Settings s;
+                  s.voicing = AcousticEngine::Voicing::violin;
+                  s.highPassHz = 80.0f;
+                  s.lowDb = 2.0f;
+                  s.midDb = -3.0f;
+                  s.trebleDb = 1.0f;
+                  s.airDb = 3.0f;
+                  s.notchHz = 300.0f;
+                  s.compress = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKOctave", "both octaves, natural", []
+          {
+              return makeEngine<OctaveEngine> ([] (OctaveEngine& e)
+              {
+                  OctaveEngine::Settings s;
+                  s.octave2 = 0.5f;
                   e.setSettings (s);
               });
           } },

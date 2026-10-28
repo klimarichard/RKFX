@@ -134,11 +134,11 @@ public:
             expect (identical (in, out));
         }
 
-        beginTest ("Board is full at 12 pedals");
+        beginTest ("Board is full at 64 pedals");
         {
             BoardProcessor board;
             board.clearBoard();
-            for (int i = 0; i < 12; ++i)
+            for (int i = 0; i < BoardProcessor::kMaxPedals; ++i)
                 expect (board.addPedal ("RKUtility") == i + 1);
             expectEquals (board.addPedal ("RKUtility"), 0);
             expectEquals (board.duplicatePedal (1), 0);
@@ -176,25 +176,68 @@ public:
             expectEquals (board.addPedal ("RKGate"), b);
         }
 
-        beginTest ("Bypass parameters follow the pedal ID both ways");
+        beginTest ("An Assign slot switches a pedal on and off, both ways");
         {
             BoardProcessor board;
             board.clearBoard();
-            board.addPedal ("RKChorus");
+            expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 1, "In, Out, Assign 1-32, Scene");
+
+            const auto chorus = board.addPedal ("RKChorus");
             const auto delay = board.addPedal ("RKDelay");
             board.movePedal (delay, Section::pre, 0);
 
-            auto* hostBypass = board.getParameters()[delay - 1];
-            hostBypass->setValueNotifyingHost (1.0f);
+            board.assign (2, delay, "bypass");
+            expect (board.isSwitchAssignment (2));
+            expectEquals (board.describeAssignment (2), juce::String ("Delay: On/Off"));
+            auto& slot = board.getAssignParam (2);
+            expectEquals (slot.get(), 1.0f, "at 100% while the pedal is on");
+
+            slot.setValueNotifyingHost (0.0f);
             expect (board.isPedalBypassed (delay));
-            expect (! board.isPedalBypassed (1));
+            expect (! board.isPedalBypassed (chorus));
+            slot.setValueNotifyingHost (1.0f);
+            expect (! board.isPedalBypassed (delay));
 
-            // The pedal's own switch (its editor) shows on the host parameter.
+            // The footswitch on the tile, and the pedal's own switch, move the slot.
+            board.setPedalBypassed (delay, true);
+            expectEquals (slot.get(), 0.0f);
             board.getPedal (delay)->getBypassParameter()->setValueNotifyingHost (0.0f);
-            expectEquals (hostBypass->getValue(), 0.0f);
+            expect (! board.isPedalBypassed (delay));
+            expectEquals (slot.get(), 1.0f);
 
-            board.setPedalBypassed (1, true);
-            expectEquals (board.getParameters()[0]->getValue(), 1.0f);
+            // Inverted: on at 0%.
+            board.setAssignmentRange (2, 0.0f, 1.0f, true);
+            expectEquals (slot.get(), 0.0f);
+            slot.setValueNotifyingHost (1.0f);
+            expect (board.isPedalBypassed (delay));
+            board.setAssignmentRange (2, 0.0f, 1.0f, false);
+
+            // A scene switching the pedal moves the slot too.
+            board.setPedalBypassed (delay, false);
+            board.setScene (1);
+            board.setPedalBypassed (delay, true);
+            board.setScene (0);
+            expectEquals (slot.get(), 1.0f);
+            board.setScene (1);
+            expectEquals (slot.get(), 0.0f);
+            board.setScene (0);
+
+            // A trails pedal switches on and off through its slot as well.
+            const auto verb = board.addPedal ("RKVerb");
+            board.setTrails (verb, true);
+            board.assign (3, verb, "bypass");
+            board.getAssignParam (3).setValueNotifyingHost (0.0f);
+            expect (board.isPedalBypassed (verb));
+            expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f, "rings out");
+            board.getAssignParam (3).setValueNotifyingHost (1.0f);
+            expect (! board.isPedalBypassed (verb));
+
+            // Stored with the board.
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expect (copy.isSwitchAssignment (2) && copy.isSwitchAssignment (3));
+            expectEquals (stateJson (copy), json);
         }
 
         beginTest ("Host state round-trips exactly");
@@ -665,7 +708,6 @@ public:
             board.getPedal (verb)->getBypassParameter()->setValueNotifyingHost (1.0f);   // its editor's switch
             expect (board.isPedalBypassed (verb));
             expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f);
-            expectEquals (board.getParameters()[verb - 1]->getValue(), 1.0f);
         }
 
         beginTest ("Volume pedal: taper and minimum level");

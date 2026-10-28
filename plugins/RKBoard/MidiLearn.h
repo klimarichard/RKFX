@@ -14,14 +14,15 @@ namespace rkboard
 namespace LearnTarget
 {
     constexpr int firstAssign = 0;       // + slot (0..31): continuous
-    constexpr int firstBypass = 100;     // + pedal ID - 1 (0..11): switch
+    constexpr int firstBypass = 100;     // + pedal ID - 1: switch
+    constexpr int numBypass = 64;        // = BoardProcessor::kMaxPedals
     constexpr int scene = 200;           // the CC value picks the scene (0..15)
     constexpr int tap = 201;             // switch: tap tempo
     constexpr int tuner = 202;           // switch: tuner on / off
 
     juce::String key (int target);                 // "assign3", "bypass5", "scene", "tap", "tuner"
     int fromKey (const juce::String&);             // -1 when unknown
-    juce::String describe (int target);            // "Assign 3", "Pedal 5 Bypass", ...
+    juce::String describe (int target);            // "Assign 3", "Pedal 5 On/Off", ...
     bool isSwitch (int target);
 }
 

@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Edge of Breakup",
+  "params": {
+    "voicing": "clean",
+    "gain": 7,
+    "treble": 6,
+    "presence": 5.5
+  }
+}

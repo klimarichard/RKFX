@@ -95,13 +95,18 @@ void LookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& butto
     g.setColour (fill.withMultipliedAlpha (alpha));
     g.fillRoundedRectangle (box, Style::kCornerRadius - 1.0f);
 
-    if (on)
+    if (! on)
+    {
+        g.setColour (Palette::knobTrack.withMultipliedAlpha (alpha));
+        g.drawRoundedRectangle (box.reduced (0.5f), Style::kCornerRadius - 1.0f, Style::kLineWidth);
+    }
+    else
     {
         juce::Path tick;
         tick.startNewSubPath (box.getX() + boxSize * 0.25f, box.getCentreY());
         tick.lineTo (box.getX() + boxSize * 0.43f, box.getY() + boxSize * 0.70f);
         tick.lineTo (box.getRight() - boxSize * 0.22f, box.getY() + boxSize * 0.30f);
-        g.setColour (Palette::onAccent (accent).withMultipliedAlpha (alpha));
+        g.setColour (button.findColour (juce::ToggleButton::tickColourId).withMultipliedAlpha (alpha));
         g.strokePath (tick, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 

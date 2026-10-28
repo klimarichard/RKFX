@@ -15,6 +15,7 @@
 #include "PhaseEngine.h"
 #include "ReverbEngine.h"
 #include "SaturateEngine.h"
+#include "TransientEngine.h"
 #include "TremoloEngine.h"
 
 #include <cstdio>
@@ -299,6 +300,18 @@ int main (int argc, char** argv)
                   s.inputDb = 12.0f;
                   s.autoRelease = true;
                   s.oversampling = 4;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKTransient", "attack + sustain, focus filters", []
+          {
+              return makeEngine<TransientEngine> ([] (TransientEngine& e)
+              {
+                  TransientEngine::Settings s;
+                  s.attack = 0.5f;
+                  s.sustain = -0.3f;
+                  s.focusHighPassHz = 100.0f;
+                  s.focusLowPassHz = 8000.0f;
                   e.setSettings (s);
               });
           } },

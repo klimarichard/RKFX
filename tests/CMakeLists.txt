@@ -17,6 +17,7 @@ set(RKFX_ENGINE_PLUGINS
     RKDistort/DistortEngine
     RKVerb/ReverbEngine
     RKLimit/LimitEngine
+    RKTransient/TransientEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -54,6 +55,7 @@ target_sources(RKFXTests PRIVATE
     DistortTests.cpp
     VerbTests.cpp
     LimitTests.cpp
+    TransientTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

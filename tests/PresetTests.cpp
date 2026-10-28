@@ -20,6 +20,7 @@
 #include "../plugins/RKDistort/Parameters.h"
 #include "../plugins/RKVerb/Parameters.h"
 #include "../plugins/RKLimit/Parameters.h"
+#include "../plugins/RKTransient/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -51,6 +52,7 @@ public:
             { "RKPhase", PhaseParams::create, 6 },         { "RKDelay", DelayParams::create, 7 },
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
             { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
+            { "RKTransient", TransientParams::create, 7 },
         };
 
         for (const auto& plugin : plugins)

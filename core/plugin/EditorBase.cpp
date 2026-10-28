@@ -3,41 +3,39 @@
 namespace rkfx
 {
 
+void addPresetMenuItems (juce::PopupMenu& menu, const juce::File& folder, std::vector<juce::File>& files,
+                         const juce::File& current)
+{
+    auto entries = folder.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles,
+                                          false, "*");
+    std::sort (entries.begin(), entries.end(), [] (const juce::File& a, const juce::File& b)
+               { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+
+    for (const auto& f : entries)
+    {
+        if (f.isDirectory())
+        {
+            juce::PopupMenu sub;
+            addPresetMenuItems (sub, f, files, current);
+            if (sub.getNumItems() > 0)
+                menu.addSubMenu (f.getFileName(), sub);
+        }
+    }
+
+    for (const auto& f : entries)
+    {
+        if (f.existsAsFile() && f.hasFileExtension ("json"))
+        {
+            files.push_back (f);
+            menu.addItem ((int) files.size(), f.getFileNameWithoutExtension(), true, f == current);
+        }
+    }
+}
+
 namespace
 {
     constexpr int kUtilityKnobWidth = 72;
     constexpr int kBypassWidth = 76;
-
-    /** Adds the .json files and sub-folders of @p folder to @p menu, sub-folders
-        as sub-menus. Item IDs index into @p files. */
-    void addPresetItems (juce::PopupMenu& menu, const juce::File& folder, std::vector<juce::File>& files,
-                         const juce::File& current)
-    {
-        auto entries = folder.findChildFiles (juce::File::findFilesAndDirectories | juce::File::ignoreHiddenFiles,
-                                              false, "*");
-        std::sort (entries.begin(), entries.end(), [] (const juce::File& a, const juce::File& b)
-                   { return a.getFileName().compareNatural (b.getFileName()) < 0; });
-
-        for (const auto& f : entries)
-        {
-            if (f.isDirectory())
-            {
-                juce::PopupMenu sub;
-                addPresetItems (sub, f, files, current);
-                if (sub.getNumItems() > 0)
-                    menu.addSubMenu (f.getFileName(), sub);
-            }
-        }
-
-        for (const auto& f : entries)
-        {
-            if (f.existsAsFile() && f.hasFileExtension ("json"))
-            {
-                files.push_back (f);
-                menu.addItem ((int) files.size(), f.getFileNameWithoutExtension(), true, f == current);
-            }
-        }
-    }
 
     enum MenuCommands
     {
@@ -244,7 +242,7 @@ void EditorBase::showPresetMenu()
         menu.addSeparator();
     }
 
-    addPresetItems (menu, folder, *files, proc.getPresetFile());
+    addPresetMenuItems (menu, folder, *files, proc.getPresetFile());
 
     if (files->empty())
         menu.addItem (-1, "No presets of your own yet", false);

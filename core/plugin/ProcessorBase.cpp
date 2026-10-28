@@ -384,8 +384,11 @@ void ProcessorBase::resetToDefaults()
 }
 
 //==============================================================================
-void ProcessorBase::getStateInformation (juce::MemoryBlock& destData)
+juce::var ProcessorBase::getPresetVar (bool fullState) const
 {
+    if (! fullState)
+        return PresetFormat::toVar (config.name, config.stateVersion, getPresetName(), presetInfos, currentValues(), true);
+
     // Self-contained: every value (bypass included) plus the preset name, so
     // a gig never depends on a preset file existing.
     auto state = PresetFormat::toVar (config.name, config.stateVersion, getPresetName(),
@@ -396,27 +399,43 @@ void ProcessorBase::getStateInformation (juce::MemoryBlock& destData)
     if (const auto file = getPresetFile(); file != juce::File())
         root->setProperty ("file", file.getFullPathName());
 
-    const auto json = PresetFormat::toJson (state);
+    return state;
+}
+
+ProcessorBase::PresetResult ProcessorBase::loadPresetVar (const juce::var& preset, bool fullState)
+{
+    const auto r = readPreset (PresetFormat::toJson (preset), fullState ? stateInfos : presetInfos);
+    if (! r.ok)
+        return { false, r.error };
+
+    applyValues (r.values);
+
+    if (fullState)
+    {
+        const auto path = preset["file"].toString();
+        setPresetState (r.name.isNotEmpty() ? r.name : "Default",
+                        juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File(),
+                        r.modified);
+    }
+    else
+    {
+        setPresetState (r.name.isNotEmpty() ? r.name : "Default", {}, false);
+    }
+
+    return { true, r.notes.joinIntoString ("; ") };
+}
+
+void ProcessorBase::getStateInformation (juce::MemoryBlock& destData)
+{
+    const auto json = PresetFormat::toJson (getPresetVar (true));
     destData.replaceAll (json.toRawUTF8(), json.getNumBytesAsUTF8());
 }
 
 void ProcessorBase::setStateInformation (const void* data, int sizeInBytes)
 {
-    const auto json = juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes);
-
-    const auto r = readPreset (json, stateInfos);
-    if (! r.ok)
-        return;
-
-    applyValues (r.values);
-
     juce::var root;
-    juce::JSON::parse (json, root);
-    const auto path = root["file"].toString();
-
-    setPresetState (r.name.isNotEmpty() ? r.name : "Default",
-                    juce::File::isAbsolutePath (path) ? juce::File (path) : juce::File(),
-                    r.modified);
+    if (juce::JSON::parse (juce::String::fromUTF8 (static_cast<const char*> (data), sizeInBytes), root).wasOk())
+        loadPresetVar (root, true);
 }
 
 } // namespace rkfx

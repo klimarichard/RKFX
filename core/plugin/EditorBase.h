@@ -11,6 +11,11 @@
 namespace rkfx
 {
 
+/** Adds the .json files and sub-folders of @p folder to @p menu, sub-folders
+    as sub-menus. Item IDs (from 1) index into @p files. */
+void addPresetMenuItems (juce::PopupMenu& menu, const juce::File& folder, std::vector<juce::File>& files,
+                         const juce::File& current);
+
 /** The base every RKFX editor derives from. Lays out what every plugin
     shares, in the same place every time:
 

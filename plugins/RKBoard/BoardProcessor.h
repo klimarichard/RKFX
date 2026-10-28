@@ -15,16 +15,18 @@
 namespace rkboard
 {
 
-/** The RKFX pedalboard: up to 12 built-in RKFX pedals, placed anywhere in
-    four sections (see Section): pre, two parallel paths between a split and
-    a merge, and post.
+/** The RKFX pedalboard: built-in RKFX pedals (up to kMaxPedals, a safety
+    cap for the fixed-size audio thread structures, not a design limit),
+    placed anywhere in four sections (see Section): pre, two parallel paths
+    between a split and a merge, and post.
 
     Each pedal is the plugin's own processor (same DSP, parameters, presets
     and editor as the standalone plugin), called directly by the board.
 
-    Pedals have an ID from 1 to 12 that stays with the pedal when it moves;
-    the host parameter "Pedal N Bypass" belongs to pedal ID N, so a mapping
-    follows its pedal. Each section is a list of IDs in signal order.
+    Pedals have an ID that stays with the pedal when it moves (assignments,
+    scenes and MIDI learn refer to it). Each section is a list of IDs in
+    signal order. A pedal's bypass is the board's: scenes store it, trails
+    pedals keep running while bypassed, and an Assign slot can switch it.
 
     The split sends both paths the full signal, a 4th-order Linkwitz-Riley
     band split (lows to A, highs to B), or left to A and right to B. The
@@ -41,7 +43,7 @@ class BoardProcessor : public juce::AudioProcessor,
                        private juce::AsyncUpdater
 {
 public:
-    static constexpr int kMaxPedals = 12;
+    static constexpr int kMaxPedals = 64;
     static constexpr int kNumAssigns = 32;
     static constexpr int kNumScenes = 16;
     static constexpr int kMaxSceneKnobs = 48;
@@ -100,8 +102,10 @@ public:
     //==============================================================================
     // Assignable parameters (message thread): host parameters "Assign 1" to
     // "Assign 32", each driving one knob of one pedal between a minimum and a
-    // maximum, optionally inverted (for expression pedals). Moving the knob
-    // itself moves its Assign parameter too, so a host widget stays in step.
+    // maximum, optionally inverted (for expression pedals), or a pedal's
+    // on/off switch (paramId "bypass"; at 50% and above the pedal is on, the
+    // range is ignored). Moving the knob or switch itself moves its Assign
+    // parameter too, so a host widget stays in step.
 
     struct AssignmentInfo
     {
@@ -123,8 +127,11 @@ public:
     /** The slot driving this pedal parameter, or -1. */
     int findAssignment (int pedalId, const juce::String& paramId) const;
 
-    /** "Delay: Time", or empty. */
+    /** "Delay: Time" or "Delay: On/Off", or empty. */
     juce::String describeAssignment (int slot) const;
+
+    /** True when @p slot switches a pedal on and off. */
+    bool isSwitchAssignment (int slot) const;
 
     juce::AudioParameterFloat& getAssignParam (int slot) const noexcept { return *assignParams[(size_t) slot]; }
 
@@ -274,7 +281,7 @@ private:
     {
         void prepare (int numChannels) { ring.setSize (numChannels, kSize); ring.clear(); write = 0; }
         void process (juce::AudioBuffer<float>& buffer, int numSamples, int delay) noexcept;
-        static constexpr int kSize = 1024;   // > 12 pedals x the most latency one pedal reports
+        static constexpr int kSize = 1024;   // > kMaxPedals x the most latency one pedal reports
         juce::AudioBuffer<float> ring;
         int write = 0;
     };
@@ -297,7 +304,10 @@ private:
     std::array<rkfx::LinkwitzRiley4, 2> crossovers;      // per channel
     juce::SmoothedValue<float> mergeGains[2][2];        // [path][channel], pan and level and polarity folded in
     bool splitWasActive = false;
-    std::array<juce::AudioParameterBool*, kMaxPedals> bypassParams {};
+
+    // Each pedal's bypass, as the board sees it (a trails pedal's own bypass
+    // stays off while it rings out). Any thread.
+    std::array<std::atomic<bool>, kMaxPedals> bypassState {};
 
     /** One slot, readable from any thread. */
     struct Assignment
@@ -366,7 +376,9 @@ private:
 
     juce::RangedAudioParameter* assignTarget (int slot) const;      // under chainLock on the audio thread
     void applyAssign (int slot, float value);                       // Assign parameter -> knob
-    void followTarget (int pedalId, int paramIndex, float value);   // knob -> Assign parameter
+    void followTarget (int pedalId, int paramIndex, float value);   // knob or switch -> Assign parameter
+    bool isBypassIndex (int pedalId, int paramIndex) const;
+    float targetValue (int pedalId, int paramIndex) const;          // normalised; a switch reads its bypass
     void clearAssignmentsOf (int pedalId);
     juce::AudioParameterFloat* inputParam = nullptr;
     juce::AudioParameterFloat* outputParam = nullptr;
@@ -388,8 +400,8 @@ private:
     std::atomic<int> boardCounter { 0 };
     std::atomic<bool> loadingBoard { false };
 
-    /** Listens to every parameter of one pedal: its bypass is mirrored to the
-        board's "Pedal N Bypass" parameter, any other change marks the board
+    /** Listens to every parameter of one pedal: its own bypass switch (in its
+        editor) bypasses it on the board, any other change marks the board
         preset modified. */
     struct PedalLink : public juce::AudioProcessorParameter::Listener
     {

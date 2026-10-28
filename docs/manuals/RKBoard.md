@@ -2,7 +2,7 @@
 
 **Pedalboard** · every RKFX effect built in · plugin (AU, VST3) and standalone app
 
-RKBoard puts up to 12 RKFX effects on one board, like pedals: in a chain, or split into two parallel paths that are mixed back together. Each pedal is exactly the RKFX plugin of the same name (same sound, same controls, same presets), so a sound shaped in a single plugin moves to the board unchanged. Use it inside Gig Performer for gigs, or as a standalone app to shape your tone at home; board presets are the same files in both.
+RKBoard puts RKFX effects on one board, like pedals (as many as you like, up to 64): in a chain, or split into two parallel paths that are mixed back together. Each pedal is exactly the RKFX plugin of the same name (same sound, same controls, same presets), so a sound shaped in a single plugin moves to the board unchanged. Use it inside Gig Performer for gigs, or as a standalone app to shape your tone at home; board presets are the same files in both.
 
 For knobs, presets and the standard controls inside each pedal, see [Common Controls](Common%20Controls.md).
 
@@ -10,7 +10,7 @@ For knobs, presets and the standard controls inside each pedal, see [Common Cont
 
 - **Header (top):** the board preset (name, menu, Save, Save as), the **Assign** button, and the board's **In** and **Out** levels (-24 to +12 dB).
 - **Scene bar:** scenes 1 to 16 (see Scenes).
-- **The board:** the pedals, flowing left to right.
+- **The board:** the pedals, flowing left to right. A board too long for one row continues on the next, like text, with a cable from the end of one row to the start of the next; the window grows by a row. The split, both paths and the merge always stay together on one row.
 - **Below the board:** the controls of the selected pedal (its own plugin window), the split's or merge's settings, or the assignable parameters.
 
 ## The board
@@ -20,7 +20,7 @@ In -> [pre] -> SPLIT -+- [path A] -+- MERGE -> [post] -> Out
                       +- [path B] -+
 ```
 
-Pedals can go anywhere: before the split (**pre**), on **path A** or **path B**, or after the merge (**post**). All 12 can also form one plain chain. The split and merge only take part while path A or path B holds a pedal; with both paths empty, the board is a simple chain and the signal passes the split untouched.
+Pedals can go anywhere: before the split (**pre**), on **path A** or **path B**, or after the merge (**post**). All of them can also form one plain chain. The split and merge only take part while path A or path B holds a pedal; with both paths empty, the board is a simple chain and the signal passes the split untouched.
 
 Each pedal is a tile in its family color, with its name, an LED and a footswitch:
 
@@ -29,7 +29,7 @@ Each pedal is a tile in its family color, with its name, an LED and a footswitch
 | Click the tile | Shows the pedal's controls below the board |
 | Click the footswitch | Bypass on / off (the LED is off while bypassed) |
 | Drag the tile | Moves the pedal: within its section, or to another section or path |
-| Right-click the tile | Duplicate (a copy with the same settings, right after it), Remove, and Trails (delay and reverb) |
+| Right-click the tile | Duplicate (a copy with the same settings, right after it), Remove, Trails (delay and reverb), and **Assign On/Off to** (see Assignable parameters) |
 | Click a **+** | Adds a pedal at the end of that section, from a menu grouped by family |
 | Click SPLIT or MERGE | Shows its settings below the board |
 
@@ -57,17 +57,18 @@ An empty path passes its signal through. If one path is slower than the other (a
 
 ## Assignable parameters
 
-RKBoard has 32 host parameters, **Assign 1** to **Assign 32**, for Gig Performer widgets and expression pedals. Each one turns one knob of one pedal.
+RKBoard has 32 host parameters, **Assign 1** to **Assign 32**, for Gig Performer widgets, expression pedals and footswitches. Each one turns one knob of one pedal, or switches one pedal on and off.
 
 - **To assign a knob:** right-click it in a pedal's controls, choose **Assign to**, then a number. The menu shows what the other numbers already drive.
-- **To remove it:** right-click the knob again and choose **Remove**.
+- **To assign a pedal's on/off switch:** right-click the pedal on the board, choose **Assign On/Off to**, then a number. The pedal is on while the parameter is at 50% or more (a Gig Performer button: lit = on), and the parameter follows when the pedal is switched another way (the footswitch on the tile, a scene).
+- **To remove it:** right-click the knob or the pedal again and choose **Remove**.
 - Click **Assign** in the header to see all 32, each with:
 
 | Control | What it does |
 | --- | --- |
 | **Min** | The knob's value with the parameter at 0 (heel). |
 | **Max** | The knob's value with the parameter at 100% (toe). |
-| **Inv** | Swaps the two ends. |
+| **Inv** | Swaps the two ends. For an on/off switch (no Min and Max): the pedal is on at 0% and off at 100%. |
 | **×** | Removes the assignment. |
 
 Assigning a knob never moves it. Turning the knob yourself moves its Assign parameter too, so a Gig Performer widget stays in step. Each knob has one Assign number; an assignment follows its pedal when you move the pedal, and goes away when you remove it.
@@ -105,7 +106,7 @@ Footswitches and expression pedals connect through MIDI learn. Right-click what 
 
 | What | Where to right-click | How it reacts |
 | --- | --- | --- |
-| A pedal's bypass | its tile | a switch |
+| A pedal on / off | its tile | a switch |
 | An assignable parameter | its row in the Assign view | an expression pedal: smoothed, so it never zippers |
 | Scene selector | a scene button | the controller's value picks the scene (0 = scene 1, up to 15 = scene 16) |
 | Tap tempo | **Tap** | a switch |
@@ -181,13 +182,12 @@ Each pedal also keeps its own preset menu, so you can load any RKFX preset or fa
 
 | Parameters | What they do |
 | --- | --- |
-| **Pedal 1 Bypass** to **Pedal 12 Bypass** | Bypass of each pedal. They belong to pedals, not places: a mapping follows its pedal when you move it. A new pedal takes the lowest free number. |
 | **Input**, **Output** | The board's In and Out levels. |
-| **Assign 1** to **Assign 32** | See Assignable parameters. |
+| **Assign 1** to **Assign 32** | Knobs and on/off switches, see Assignable parameters. An assignment belongs to a pedal, not a place: it follows the pedal when you move it. |
 | **Scene** | 1 to 16. |
 
 ## Notes
 
 - RKBoard adds no latency, except a few samples when a drive pedal uses oversampling (as in the single plugins).
 - To use the vocoder pedal, send MIDI into RKBoard: its carrier synth plays from it.
-- Gig Performer tip: map an expression pedal to an Assign parameter driving a Wah or Volume pedal, and footswitches to the Pedal Bypass parameters or the Scene parameter.
+- Gig Performer tip: map an expression pedal to an Assign parameter driving a Wah or Volume pedal, and footswitches to Assign parameters switching pedals on and off, or to the Scene parameter.

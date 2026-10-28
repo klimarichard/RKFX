@@ -6,11 +6,12 @@
 namespace rkboard
 {
 
+static_assert (LearnTarget::numBypass == BoardProcessor::kMaxPedals);
+static_assert (LearnTarget::firstBypass + BoardProcessor::kMaxPedals <= LearnTarget::scene);
+
 namespace
 {
     constexpr int kStateVersion = 1;
-
-    juce::String bypassId (int id) { return "bypass" + juce::String (id); }
 
     /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
     struct LoadingScope
@@ -28,16 +29,9 @@ BoardProcessor::BoardProcessor()
                                 .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
     // Host parameters, append-only; the version hint is the position, so AU
-    // hosts list them in this order.
-    int hint = 1;
-    for (int id = 1; id <= kMaxPedals; ++id)
-    {
-        auto* p = new juce::AudioParameterBool (juce::ParameterID { bypassId (id), hint++ },
-                                                "Pedal " + juce::String (id) + " Bypass", false);
-        bypassParams[(size_t) id - 1] = p;
-        addParameter (p);
-        p->addListener (this);
-    }
+    // hosts list them in this order. Hints 1 to 12 were per-pedal bypass
+    // parameters (removed: an Assign slot switches a pedal instead).
+    int hint = 13;
 
     const auto levelRange = juce::NormalisableRange<float> (-24.0f, 12.0f, 0.1f);
     const auto levelAttributes = juce::AudioParameterFloatAttributes().withLabel ("dB");
@@ -96,8 +90,6 @@ BoardProcessor::BoardProcessor()
 
 BoardProcessor::~BoardProcessor()
 {
-    for (auto* p : bypassParams)
-        p->removeListener (this);
     inputParam->removeListener (this);
     outputParam->removeListener (this);
     for (auto* p : assignParams)
@@ -178,16 +170,13 @@ void BoardProcessor::attachPedal (int id, std::unique_ptr<rkfx::ProcessorBase> p
     for (auto* p : pedal->getParameters())
         p->addListener (links[(size_t) id - 1].get());
 
-    // The board's bypass parameter shows the pedal's state, in every scene.
+    // The pedal's own bypass is its state on the board, in every scene.
     trails[(size_t) id - 1] = false;
     trailBypassed[(size_t) id - 1] = false;
     const auto bypassed = pedal->getBypassParameter()->getValue() >= 0.5f;
+    bypassState[(size_t) id - 1] = bypassed;
     for (auto& scene : sceneBypass)
         scene[(size_t) id - 1] = bypassed;
-
-    syncingBypass = true;
-    bypassParams[(size_t) id - 1]->setValueNotifyingHost (bypassed ? 1.0f : 0.0f);
-    syncingBypass = false;
 
     // Not in the chain yet, so the audio thread can't see it.
     const juce::SpinLock::ScopedLockType sl (chainLock);
@@ -334,10 +323,7 @@ void BoardProcessor::clearBoard()
 
 bool BoardProcessor::isPedalBypassed (int id) const
 {
-    if (auto* pedal = getPedal (id))
-        return trails[(size_t) id - 1] ? trailBypassed[(size_t) id - 1].load()
-                                       : pedal->getBypassParameter()->getValue() >= 0.5f;
-    return false;
+    return getPedal (id) != nullptr && bypassState[(size_t) id - 1];
 }
 
 void BoardProcessor::setPedalOwnBypass (int id, bool bypassed)
@@ -350,8 +336,30 @@ void BoardProcessor::setPedalOwnBypass (int id, bool bypassed)
 
 void BoardProcessor::setPedalBypassed (int id, bool bypassed)
 {
-    if (id >= 1 && id <= kMaxPedals && getPedal (id) != nullptr)
-        bypassParams[(size_t) id - 1]->setValueNotifyingHost (bypassed ? 1.0f : 0.0f);
+    // Any thread (the footswitch, an Assign slot, a scene, MIDI), but never
+    // under chainLock: the pedal's own bypass is set under it.
+    if (getPedal (id) == nullptr)
+        return;
+
+    // An edit (not a scene recall) goes into the current scene.
+    if (! applyingScene)
+        sceneBypass[(size_t) currentScene.load()][(size_t) id - 1] = bypassed;
+    bypassState[(size_t) id - 1] = bypassed;
+
+    // A trails pedal keeps running (the board feeds it silence); the
+    // pedal's change mustn't come back here.
+    if (! syncingBypass.exchange (true))
+    {
+        trailBypassed[(size_t) id - 1] = trails[(size_t) id - 1] && bypassed;
+        setPedalOwnBypass (id, ! trails[(size_t) id - 1] && bypassed);
+        syncingBypass = false;
+    }
+
+    // An Assign slot switching this pedal follows.
+    if (auto* pedal = getPedal (id))
+        followTarget (id, pedal->getBypassParameter()->getParameterIndex(), bypassed ? 1.0f : 0.0f);
+
+    ++boardCounter;
 }
 
 void BoardProcessor::boardChanged()
@@ -369,43 +377,15 @@ void BoardProcessor::markModified()
 //==============================================================================
 void BoardProcessor::parameterValueChanged (int parameterIndex, float newValue)
 {
-    // Board bypass parameter -> its pedal (may run on the audio thread).
-    if (parameterIndex >= 0 && parameterIndex < kMaxPedals)
-    {
-        const auto bypassed = newValue >= 0.5f;
-
-        // An edit (not a scene recall) goes into the current scene.
-        if (! applyingScene)
-            sceneBypass[(size_t) currentScene.load()][(size_t) parameterIndex] = bypassed;
-
-        if (syncingBypass.exchange (true))
-            return;
-
-        if (trails[(size_t) parameterIndex])
-        {
-            // The board owns a trails pedal's bypass; the pedal itself keeps running.
-            trailBypassed[(size_t) parameterIndex] = bypassed;
-            setPedalOwnBypass (parameterIndex + 1, false);
-        }
-        else
-        {
-            setPedalOwnBypass (parameterIndex + 1, bypassed);
-        }
-
-        syncingBypass = false;
-        ++boardCounter;
-        return;
-    }
-
     // Scene (host parameter, scene buttons, program change).
-    if (parameterIndex == kMaxPedals + 2 + kNumAssigns)
+    if (parameterIndex == sceneParam->getParameterIndex())
     {
         recallScene (juce::jlimit (0, kNumScenes - 1, sceneParam->get() - 1));
         return;
     }
 
-    // Assign N -> its knob (may run on the audio thread).
-    if (const auto slot = parameterIndex - kMaxPedals - 2; slot >= 0 && slot < kNumAssigns)
+    // Assign N -> its knob or switch (may run on the audio thread).
+    if (const auto slot = parameterIndex - assignParams[0]->getParameterIndex(); slot >= 0 && slot < kNumAssigns)
     {
         if (! syncingAssign)
             applyAssign (slot, newValue);
@@ -439,9 +419,35 @@ void BoardProcessor::applyAssign (int slot, float value)
     const auto target = a.min + t * (a.max - a.min);
 
     const juce::ScopedValueSetter<bool> busy (applyingAssign, true);
-    const juce::SpinLock::ScopedLockType sl (chainLock);
-    if (auto* param = assignTarget (slot))
-        param->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, target));
+    int switchedPedal = 0;
+    {
+        const juce::SpinLock::ScopedLockType sl (chainLock);
+        if (auto* param = assignTarget (slot))
+        {
+            if (isBypassIndex (a.pedal, a.paramIndex))
+                switchedPedal = a.pedal;   // switched below, outside the lock
+            else
+                param->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, target));
+        }
+    }
+
+    // A pedal's switch: on from 50%.
+    if (switchedPedal > 0)
+        setPedalBypassed (switchedPedal, t < 0.5f);
+}
+
+bool BoardProcessor::isBypassIndex (int pedalId, int paramIndex) const
+{
+    const auto* pedal = pedalId >= 1 && pedalId <= kMaxPedals ? pedals[(size_t) pedalId - 1].get() : nullptr;
+    return pedal != nullptr && paramIndex == pedal->getBypassParameter()->getParameterIndex();
+}
+
+float BoardProcessor::targetValue (int pedalId, int paramIndex) const
+{
+    if (isBypassIndex (pedalId, paramIndex))
+        return isPedalBypassed (pedalId) ? 1.0f : 0.0f;
+    auto* pedal = getPedal (pedalId);
+    return pedal != nullptr && paramIndex >= 0 ? pedal->getParameters()[paramIndex]->getValue() : 0.0f;
 }
 
 void BoardProcessor::followTarget (int pedalId, int paramIndex, float value)
@@ -449,15 +455,19 @@ void BoardProcessor::followTarget (int pedalId, int paramIndex, float value)
     if (applyingAssign)
         return;
 
+    const auto isSwitch = isBypassIndex (pedalId, paramIndex);
+
     for (int slot = 0; slot < kNumAssigns; ++slot)
     {
         const auto& a = assignments[(size_t) slot];
         if (a.pedal != pedalId || a.paramIndex != paramIndex)
             continue;
 
-        // Where the Assign parameter has to be for this value (clamped to the range).
+        // Where the Assign parameter has to be for this value (clamped to the
+        // range); a switch is at 100% while its pedal is on (value = bypassed).
         const auto range = a.max - a.min;
-        auto t = std::abs (range) < 1.0e-6f ? 0.0f : juce::jlimit (0.0f, 1.0f, (value - a.min) / range);
+        auto t = isSwitch ? (value >= 0.5f ? 0.0f : 1.0f)
+                          : std::abs (range) < 1.0e-6f ? 0.0f : juce::jlimit (0.0f, 1.0f, (value - a.min) / range);
         if (a.invert)
             t = 1.0f - t;
 
@@ -511,7 +521,7 @@ void BoardProcessor::assign (int slot, int pedalId, const juce::String& paramId)
     a.invert = false;
     a.pedal = pedalId;
 
-    followTarget (pedalId, index, pedal->getParameters()[index]->getValue());
+    followTarget (pedalId, index, targetValue (pedalId, index));
     boardChanged();
 }
 
@@ -546,8 +556,8 @@ void BoardProcessor::setAssignmentRange (int slot, float min, float max, bool in
     a.invert = invert;
 
     // Keep the knob where it is; the Assign parameter moves to match.
-    if (auto* pedal = getPedal (a.pedal); pedal != nullptr && a.paramIndex >= 0)
-        followTarget (a.pedal, a.paramIndex, pedal->getParameters()[a.paramIndex]->getValue());
+    if (getPedal (a.pedal) != nullptr && a.paramIndex >= 0)
+        followTarget (a.pedal, a.paramIndex, targetValue (a.pedal, a.paramIndex));
 
     boardChanged();
 }
@@ -571,7 +581,14 @@ juce::String BoardProcessor::describeAssignment (int slot) const
         return {};
 
     const auto* type = findPedalType (pedal->getConfig().name);
-    return (type != nullptr ? type->shortName : pedal->getConfig().name) + ": " + pedal->findParam (info.paramId)->getName (40);
+    const auto what = isSwitchAssignment (slot) ? juce::String ("On/Off") : pedal->findParam (info.paramId)->getName (40);
+    return (type != nullptr ? type->shortName : pedal->getConfig().name) + ": " + what;
+}
+
+bool BoardProcessor::isSwitchAssignment (int slot) const
+{
+    return slot >= 0 && slot < kNumAssigns
+        && isBypassIndex (assignments[(size_t) slot].pedal, assignments[(size_t) slot].paramIndex);
 }
 
 void BoardProcessor::RoutingWatcher::parameterValueChanged (int, float)
@@ -620,22 +637,11 @@ void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float
     auto* param = pedal->getParameters()[parameterIndex];
     if (param == pedal->getBypassParameter())
     {
-        // Pedal bypass (its editor's switch) -> the board's parameter.
-        if (! board.syncingBypass.exchange (true))
-        {
-            if (board.trails[(size_t) id - 1] && newValue >= 0.5f)
-            {
-                // With trails on, the switch bypasses with trails: the pedal keeps running.
-                pedal->getBypassParameter()->setValueNotifyingHost (0.0f);
-                board.trailBypassed[(size_t) id - 1] = true;
-                board.bypassParams[(size_t) id - 1]->setValueNotifyingHost (1.0f);
-            }
-            else if (! board.trails[(size_t) id - 1])
-            {
-                board.bypassParams[(size_t) id - 1]->setValueNotifyingHost (newValue);
-            }
-            board.syncingBypass = false;
-        }
+        // The pedal's own switch (its editor) bypasses it on the board; with
+        // trails on that bypasses with trails, so the pedal keeps running.
+        // Changes the board makes itself (syncingBypass) don't come back.
+        if (! board.syncingBypass && (newValue >= 0.5f || ! board.trails[(size_t) id - 1]))
+            board.setPedalBypassed (id, newValue >= 0.5f);
         ++board.boardCounter;
         return;
     }
@@ -1162,8 +1168,8 @@ void BoardProcessor::recallScene (int index)
         if (pedals[(size_t) id - 1] != nullptr)
         {
             const auto bypassed = sceneBypass[(size_t) index][(size_t) id - 1].load();
-            if (bypassed != (bypassParams[(size_t) id - 1]->get()))
-                bypassParams[(size_t) id - 1]->setValueNotifyingHost (bypassed ? 1.0f : 0.0f);
+            if (bypassed != bypassState[(size_t) id - 1])
+                setPedalBypassed (id, bypassed);
         }
 
     for (auto& k : sceneKnobs)
@@ -1463,7 +1469,7 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
             if (r.message.isNotEmpty())
                 notes.add (pedal->getConfig().name + ": " + r.message);
 
-            // Keep the stored ID (host mappings follow it) when it is valid and free.
+            // Keep the stored ID (assignments, scenes and MIDI learn refer to it) when it is valid and free.
             auto id = (int) entry["id"];
             if (id < 1 || id > kMaxPedals || pedals[(size_t) id - 1] != nullptr)
                 id = freeId();
@@ -1475,13 +1481,6 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
             layout[(size_t) sectionFromKey (entry["section"].toString())].push_back (id);
         }
     }
-
-    // Free IDs: their bypass parameters rest at "on" (not bypassed).
-    syncingBypass = true;
-    for (int id = 1; id <= kMaxPedals; ++id)
-        if (pedals[(size_t) id - 1] == nullptr)
-            bypassParams[(size_t) id - 1]->setValueNotifyingHost (0.0f);
-    syncingBypass = false;
 
     const auto board = root["board"];
     const auto setLevel = [] (juce::RangedAudioParameter& p, const juce::var& v)

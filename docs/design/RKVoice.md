@@ -1,17 +1,17 @@
-# RKVoices: design
+# RKVoice: design
 
 **Harmonizer (audio, steered by MIDI)** · Modulation family · dry signal at zero latency
 
-Working name; to be settled before the first build. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
+Working name (RK + a verb, as every RKFX plugin: to *voice* a harmony); to be settled before the first build. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
 
 ## What it does
 
-RKVoices adds up to four harmony voices to a single voice or instrument (singing, violin, sax, a single guitar line). Each voice is a pitch-shifted copy of the input, so it sounds like the player, not like a synth. Where the harmony goes is set in one of two ways:
+RKVoice adds up to four harmony voices to a single voice or instrument (singing, violin, sax, a single guitar line). Each voice is a pitch-shifted copy of the input, so it sounds like the player, not like a synth. Where the harmony goes is set in one of two ways:
 
 - **Chord mode** (the reason it takes MIDI): hold a chord on a keyboard, or let RKTracks play one from a MIDI file, and each voice takes a chord tone chosen by its position relative to the note you sing: *1st above*, *2nd above*, *1st below* and so on.
 - **Scale mode**: a key and scale, as in RKHarmonize, and each voice sits a diatonic interval away (a 3rd above, a 5th below). No MIDI needed.
 
-The dry signal passes through untouched, so for the player RKVoices has no latency at all; the harmony voices trail it by a few milliseconds (see [Latency](#latency)).
+The dry signal passes through untouched, so for the player RKVoice has no latency at all; the harmony voices trail it by a few milliseconds (see [Latency](#latency)).
 
 ## Signal flow
 
@@ -88,7 +88,7 @@ The same key, scale and voice logic as RKHarmonize (`HarmonizeEngine::harmonyNot
 
 ## Latency
 
-RKVoices reports **zero latency** to the host: the dry signal isn't delayed, and nothing looks ahead. Each harmony voice trails the dry signal by the time PSOLA needs to collect a grain, about **one to two periods of the sung note**:
+RKVoice reports **zero latency** to the host: the dry signal isn't delayed, and nothing looks ahead. Each harmony voice trails the dry signal by the time PSOLA needs to collect a grain, about **one to two periods of the sung note**:
 
 | Sung note | Period | Harmony delay |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Plus the RKFX common controls (presets, Output, Bypass). No Dry/Wet: Dry and the
 
 - **Gig Performer**: an audio effect with a MIDI input, like RKVocode: put it after the vocal or violin input and connect a MIDI In (a keyboard, or RKTracks' MIDI out for chords from the song) to it.
 - **RKBoard**: a pedal like the others, played from the board's MIDI input.
-- **With RKHarmonize**: both share the scale logic, so a keyboard part through RKHarmonize and a voice through RKVoices in Scale mode harmonize the same way.
+- **With RKHarmonize**: both share the scale logic, so a keyboard part through RKHarmonize and a voice through RKVoice in Scale mode harmonize the same way.
 
 ## Limits (v1)
 
@@ -154,6 +154,6 @@ Plus the RKFX common controls (presets, Output, Bypass). No Dry/Wet: Dry and the
 
 ## Open questions
 
-- The name (RKVoices, RKChoir, RKHarmony …).
+- The name: RKVoice, or another verb (RKSing, RKAccompany, RKBack as in backing vocals). RKHarmonize is taken by the MIDI plugin.
 - Whether Range needs a separate *Voice* entry, or the *Guitar* range (60 Hz to 1.1 kHz) covers singing well enough.
 - Whether four voices are right, or two are enough for most songs (each voice is a column on the screen and a few host parameters).

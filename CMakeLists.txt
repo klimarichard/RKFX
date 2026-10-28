@@ -50,6 +50,7 @@ add_subdirectory(plugins/RKSwell)
 add_subdirectory(plugins/RKRotary)
 add_subdirectory(plugins/RKVibrato)
 add_subdirectory(plugins/RKVocode)
+add_subdirectory(plugins/RKUtility)
 
 # ---------------------------------------------------------------------------
 # Tests

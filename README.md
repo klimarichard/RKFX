@@ -42,6 +42,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
 | [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
 | [RKSynth](docs/manuals/RKSynth.md) | Monophonic synth played by your bass, guitar or violin: saw, square, triangle, sub, resonant filter envelope | Available |
+| [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
 
 ### RKBoard
 

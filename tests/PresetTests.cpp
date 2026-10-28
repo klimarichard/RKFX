@@ -30,6 +30,7 @@
 #include "../plugins/RKOctave/Parameters.h"
 #include "../plugins/RKAcoustic/Parameters.h"
 #include "../plugins/RKPreamp/Parameters.h"
+#include "../plugins/RKSynth/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -66,6 +67,7 @@ public:
             { "RKVibrato", VibratoParams::create, 6 },   { "RKVocode", VocodeParams::create, 7 },
             { "RKUtility", UtilityParams::create, 7 },   { "RKOctave", OctaveParams::create, 6 },
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
+            { "RKSynth", SynthParams::create, 6 },
         };
 
         for (const auto& plugin : plugins)

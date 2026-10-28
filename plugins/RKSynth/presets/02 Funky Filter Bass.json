@@ -1,0 +1,14 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Funky Filter Bass",
+  "params": {
+    "range": "bass",
+    "wave": "square",
+    "cutoff": 250,
+    "resonance": 60,
+    "env_amount": 90,
+    "decay": 150,
+    "dynamics": 50
+  }
+}

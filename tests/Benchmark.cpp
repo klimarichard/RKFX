@@ -26,6 +26,7 @@
 #include "OctaveEngine.h"
 #include "AcousticEngine.h"
 #include "PreampEngine.h"
+#include "SynthEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -382,6 +383,16 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKSynth", "saw + sub, resonant filter", []
+          {
+              return makeEngine<SynthEngine> ([] (SynthEngine& e)
+              {
+                  SynthEngine::Settings s;
+                  s.sub = 0.5f;
+                  s.resonance = 0.6f;
                   e.setSettings (s);
               });
           } },

@@ -1,0 +1,14 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Synth Bass",
+  "params": {
+    "range": "bass",
+    "wave": "saw",
+    "sub": 50,
+    "cutoff": 400,
+    "resonance": 40,
+    "env_amount": 60,
+    "decay": 250
+  }
+}

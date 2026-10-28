@@ -1,0 +1,15 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Deep Sub Bass",
+  "params": {
+    "range": "bass",
+    "wave": "triangle",
+    "octave": "-1",
+    "sub": 30,
+    "cutoff": 300,
+    "resonance": 10,
+    "env_amount": 10,
+    "dynamics": 40
+  }
+}

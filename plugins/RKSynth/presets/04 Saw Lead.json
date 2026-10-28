@@ -1,0 +1,14 @@
+{
+  "plugin": "RKSynth",
+  "version": 1,
+  "name": "Saw Lead",
+  "params": {
+    "range": "guitar",
+    "wave": "saw",
+    "glide": 30,
+    "cutoff": 1500,
+    "resonance": 35,
+    "env_amount": 50,
+    "decay": 400
+  }
+}

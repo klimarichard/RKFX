@@ -27,6 +27,7 @@ set(RKFX_ENGINE_PLUGINS
     RKOctave/OctaveEngine
     RKAcoustic/AcousticEngine
     RKPreamp/PreampEngine
+    RKSynth/SynthEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -75,6 +76,7 @@ target_sources(RKFXTests PRIVATE
     OctaveTests.cpp
     AcousticTests.cpp
     PreampTests.cpp
+    SynthTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

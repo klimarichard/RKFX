@@ -57,6 +57,10 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})
 endforeach()
 
+# The pedalboard, holding every plugin above (after them: it uses their
+# factory preset lists).
+add_subdirectory(plugins/RKBoard)
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------

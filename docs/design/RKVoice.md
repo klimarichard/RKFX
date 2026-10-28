@@ -32,7 +32,8 @@ input (mono sum) ──► pitch tracker ──► sung note (quantized, with hy
 - The shared **`core/dsp/PitchTracker`** (zero latency, one report per cycle, as in RKOctave and RKSynth). Its cycle marks are also the grain positions the shifter needs, so tracking and shifting share one analysis.
 - A new **`Range::voice`** (about 70 Hz to 1.1 kHz: a low male voice to a soprano's top) next to bass, guitar and violin. The plugin's **Range** control picks one.
 - **Sung note**: the tracked frequency rounded to the nearest semitone (A4 = 440 Hz, from the host's tuning where available), with **hysteresis**: the note changes only once the pitch has been more than 70 cents from the current note for 40 ms. Vibrato and scoops then don't make the voices jump between chord tones.
-- **No pitch** (silence, breath, s and t sounds, a note too noisy to track): the voices fade out over 20 ms and fade back in when the pitch is found again. The dry signal is never touched.
+- **No pitch** (below the **Threshold**, silence, breath, s and t sounds, a note too noisy to track): the voices fade out over 20 ms and fade back in when the pitch is found again. The dry signal is never touched.
+- **As built**: the period is the time between two of the tracker's cycles, trusted once two in a row agree within 6% (three after silence, as a note's onset rings at the wrong pitch for a cycle or two); moves of more than 2 semitones switch the sung note at once, smaller ones wait for the hysteresis. Pitch counts as lost after 2.5 periods without a cycle. Measured: voices enter 15 to 30 ms into a sung or bowed note (up to about 100 ms on an instant, full-level attack).
 
 ## Chord mode
 
@@ -118,6 +119,7 @@ The MIDI chord adds no latency: a chord change applies from the next sample, wit
 | Humanize | 0 to 10 ms | 3 ms |
 | Glide | 0 to 200 ms | 30 ms |
 | Dry | −60 to +6 dB | 0 dB |
+| Threshold | −70 to −20 dB | −50 dB |
 
 Plus the RKFX common controls (presets, Output, Bypass). No Dry/Wet: Dry and the voice levels are the mix, as in RKOctave. Every control is a host parameter, with permanent IDs.
 

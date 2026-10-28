@@ -1,0 +1,12 @@
+{
+  "plugin": "RKOctave",
+  "version": 1,
+  "name": "Violin to Viola",
+  "params": {
+    "range": "violin",
+    "voice": "natural",
+    "direct": 100,
+    "octave1": 70,
+    "tone": 2500
+  }
+}

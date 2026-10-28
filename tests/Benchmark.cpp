@@ -23,6 +23,7 @@
 #include "UtilityEngine.h"
 #include "VibratoEngine.h"
 #include "VocodeEngine.h"
+#include "OctaveEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -379,6 +380,15 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKOctave", "both octaves, natural", []
+          {
+              return makeEngine<OctaveEngine> ([] (OctaveEngine& e)
+              {
+                  OctaveEngine::Settings s;
+                  s.octave2 = 0.5f;
                   e.setSettings (s);
               });
           } },

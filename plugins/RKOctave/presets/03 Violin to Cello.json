@@ -1,0 +1,13 @@
+{
+  "plugin": "RKOctave",
+  "version": 1,
+  "name": "Violin to Cello",
+  "params": {
+    "range": "violin",
+    "voice": "natural",
+    "direct": 70,
+    "octave1": 70,
+    "octave2": 50,
+    "tone": 1200
+  }
+}

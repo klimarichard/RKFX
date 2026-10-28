@@ -1,0 +1,11 @@
+{
+  "plugin": "RKOctave",
+  "version": 1,
+  "name": "Classic Octave",
+  "params": {
+    "range": "guitar",
+    "voice": "natural",
+    "direct": 100,
+    "octave1": 80
+  }
+}

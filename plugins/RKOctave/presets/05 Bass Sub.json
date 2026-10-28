@@ -1,0 +1,12 @@
+{
+  "plugin": "RKOctave",
+  "version": 1,
+  "name": "Bass Sub",
+  "params": {
+    "range": "bass",
+    "voice": "synth",
+    "direct": 100,
+    "octave1": 60,
+    "tone": 300
+  }
+}

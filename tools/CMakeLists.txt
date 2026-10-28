@@ -15,7 +15,8 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
         target_link_libraries(${tool} PRIVATE ${plugin}_FactoryPresets)
     endif()
 
-    target_compile_definitions(${tool} PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+    target_compile_definitions(${tool} PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0
+                                           RKFX_FACTORY_PRESET_LIST=factoryPresetList_${plugin})
     target_link_libraries(${tool} PRIVATE rkfx_core juce::juce_audio_processors juce::juce_gui_basics
                           PUBLIC juce::juce_recommended_config_flags)
     add_dependencies(RKFXSnapshots ${tool})

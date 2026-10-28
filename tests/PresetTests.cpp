@@ -26,6 +26,7 @@
 #include "../plugins/RKRotary/Parameters.h"
 #include "../plugins/RKVibrato/Parameters.h"
 #include "../plugins/RKVocode/Parameters.h"
+#include "../plugins/RKUtility/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -60,6 +61,7 @@ public:
             { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },
             { "RKSwell", SwellParams::create, 6 },       { "RKRotary", RotaryParams::create, 7 },
             { "RKVibrato", VibratoParams::create, 6 },   { "RKVocode", VocodeParams::create, 7 },
+            { "RKUtility", UtilityParams::create, 7 },
         };
 
         for (const auto& plugin : plugins)

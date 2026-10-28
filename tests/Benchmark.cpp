@@ -20,6 +20,7 @@
 #include "SwellEngine.h"
 #include "TransientEngine.h"
 #include "TremoloEngine.h"
+#include "UtilityEngine.h"
 #include "VibratoEngine.h"
 #include "VocodeEngine.h"
 
@@ -367,6 +368,18 @@ int main (int argc, char** argv)
                   e.setSettings (s);
                   for (int n = 0; n < 8; ++n)
                       e.noteOn (48 + 3 * n, 1.0f);
+              });
+          } },
+        { "RKUtility", "width, bass mono, delay, balance", []
+          {
+              return makeEngine<UtilityEngine> ([] (UtilityEngine& e)
+              {
+                  UtilityEngine::Settings s;
+                  s.width = 1.4f;
+                  s.bassMonoHz = 120.0f;
+                  s.delayLeftMs = 1.2f;
+                  s.pan = 0.2f;
+                  e.setSettings (s);
               });
           } },
     };

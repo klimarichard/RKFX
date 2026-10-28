@@ -25,6 +25,7 @@
 #include "VocodeEngine.h"
 #include "OctaveEngine.h"
 #include "AcousticEngine.h"
+#include "PreampEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -381,6 +382,28 @@ int main (int argc, char** argv)
                   s.bassMonoHz = 120.0f;
                   s.delayLeftMs = 1.2f;
                   s.pan = 0.2f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPreamp", "hot-rod (3 stages), 2x, large cab", []
+          {
+              return makeEngine<PreampEngine> ([] (PreampEngine& e)
+              {
+                  PreampEngine::Settings s;
+                  s.voicing = PreampEngine::Voicing::hotRod;
+                  s.bright = true;
+                  s.cab = rkfx::CabType::large;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPreamp", "hot-rod (3 stages), 4x, large cab", []
+          {
+              return makeEngine<PreampEngine> ([] (PreampEngine& e)
+              {
+                  PreampEngine::Settings s;
+                  s.voicing = PreampEngine::Voicing::hotRod;
+                  s.cab = rkfx::CabType::large;
+                  s.oversampling = 4;
                   e.setSettings (s);
               });
           } },

@@ -17,6 +17,7 @@
 #include "../RKLimit/PluginProcessor.h"
 #include "../RKParaEQ/PluginProcessor.h"
 #include "../RKPhase/PluginProcessor.h"
+#include "../RKPreamp/PluginProcessor.h"
 #include "../RKRotary/PluginProcessor.h"
 #include "../RKSaturate/PluginProcessor.h"
 #include "../RKSwell/PluginProcessor.h"
@@ -50,6 +51,7 @@
     X (RKLimit) \
     X (RKParaEQ) \
     X (RKPhase) \
+    X (RKPreamp) \
     X (RKRotary) \
     X (RKSaturate) \
     X (RKSwell) \
@@ -95,6 +97,7 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKPhase() { return std::make_unique<RKPhaseProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKTremolo() { return std::make_unique<RKTremoloProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKAcoustic() { return std::make_unique<RKAcousticProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKPreamp() { return std::make_unique<RKPreampProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKOctave() { return std::make_unique<RKOctaveProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVibrato() { return std::make_unique<RKVibratoProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKRotary() { return std::make_unique<RKRotaryProcessor>(); }
@@ -124,6 +127,7 @@ const std::vector<PedalType>& pedalTypes()
         { "RKSwell", "Swell", Family::dynamics, makeRKSwell },
         { "RKSaturate", "Saturate", Family::drive, makeRKSaturate },
         { "RKDistort", "Distort", Family::drive, makeRKDistort },
+        { "RKPreamp", "Preamp", Family::drive, makeRKPreamp },
         { "RKChorus", "Chorus", Family::modulation, makeRKChorus },
         { "RKDouble", "Double", Family::modulation, makeRKDouble },
         { "RKFlange", "Flange", Family::modulation, makeRKFlange },

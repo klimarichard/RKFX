@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPreamp",
+  "version": 1,
+  "name": "Hot-Rod Lead",
+  "params": {
+    "voicing": "hotrod",
+    "gain": 7,
+    "middle": 6,
+    "treble": 6,
+    "presence": 6
+  }
+}

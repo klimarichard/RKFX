@@ -54,6 +54,7 @@ set(RKFX_PLUGINS
     RKUtility
     RKOctave
     RKAcoustic
+    RKPreamp
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})

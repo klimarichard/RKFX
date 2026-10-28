@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVibrato",
+  "version": 1,
+  "name": "Synced Pitch Wobble",
+  "params": {
+    "sync": true,
+    "division": "1/8",
+    "depth": 50
+  }
+}

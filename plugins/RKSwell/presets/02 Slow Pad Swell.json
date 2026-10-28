@@ -1,0 +1,9 @@
+{
+  "plugin": "RKSwell",
+  "version": 1,
+  "name": "Slow Pad Swell",
+  "params": {
+    "time": 1500,
+    "retrigger": 30
+  }
+}

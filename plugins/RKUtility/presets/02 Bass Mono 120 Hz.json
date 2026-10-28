@@ -1,0 +1,8 @@
+{
+  "plugin": "RKUtility",
+  "version": 1,
+  "name": "Bass Mono 120 Hz",
+  "params": {
+    "bass_mono": 120
+  }
+}

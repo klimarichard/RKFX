@@ -1,0 +1,9 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Softer Picking",
+  "params": {
+    "attack": -50,
+    "attack_time": 15
+  }
+}

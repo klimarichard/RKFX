@@ -1,0 +1,9 @@
+{
+  "plugin": "RKSwell",
+  "version": 1,
+  "name": "Attack Softener",
+  "params": {
+    "time": 60,
+    "retrigger": 80
+  }
+}

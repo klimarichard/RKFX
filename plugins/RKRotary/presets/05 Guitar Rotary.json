@@ -1,0 +1,10 @@
+{
+  "plugin": "RKRotary",
+  "version": 1,
+  "name": "Guitar Rotary",
+  "params": {
+    "slow_rate": 1.0,
+    "balance": 40,
+    "drive": 15
+  }
+}

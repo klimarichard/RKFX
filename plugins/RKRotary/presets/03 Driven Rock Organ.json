@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRotary",
+  "version": 1,
+  "name": "Driven Rock Organ",
+  "params": {
+    "speed": "fast",
+    "drive": 40,
+    "distance": 30,
+    "width": 90
+  }
+}

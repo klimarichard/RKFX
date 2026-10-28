@@ -1,0 +1,9 @@
+{
+  "plugin": "RKUtility",
+  "version": 1,
+  "name": "Flip Polarity",
+  "params": {
+    "pol_left": "inverted",
+    "pol_right": "inverted"
+  }
+}

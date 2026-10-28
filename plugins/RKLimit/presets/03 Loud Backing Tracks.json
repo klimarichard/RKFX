@@ -1,0 +1,9 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "Loud Backing Tracks",
+  "params": {
+    "input": 6,
+    "release": 80
+  }
+}

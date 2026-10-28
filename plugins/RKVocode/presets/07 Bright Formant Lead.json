@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Bright Formant Lead",
+  "params": {
+    "osc_mode": "midi",
+    "osc_voices": 1,
+    "osc_glide": 60,
+    "formant": 7
+  }
+}

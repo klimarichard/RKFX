@@ -19,6 +19,14 @@
 #include "../plugins/RKSaturate/Parameters.h"
 #include "../plugins/RKDistort/Parameters.h"
 #include "../plugins/RKVerb/Parameters.h"
+#include "../plugins/RKLimit/Parameters.h"
+#include "../plugins/RKTransient/Parameters.h"
+#include "../plugins/RKDeEss/Parameters.h"
+#include "../plugins/RKSwell/Parameters.h"
+#include "../plugins/RKRotary/Parameters.h"
+#include "../plugins/RKVibrato/Parameters.h"
+#include "../plugins/RKVocode/Parameters.h"
+#include "../plugins/RKUtility/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -49,7 +57,11 @@ public:
             { "RKDouble", DoubleParams::create, 5 },       { "RKFlange", FlangeParams::create, 6 },
             { "RKPhase", PhaseParams::create, 6 },         { "RKDelay", DelayParams::create, 7 },
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
-            { "RKVerb", VerbParams::create, 8 },
+            { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
+            { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },
+            { "RKSwell", SwellParams::create, 6 },       { "RKRotary", RotaryParams::create, 7 },
+            { "RKVibrato", VibratoParams::create, 6 },   { "RKVocode", VocodeParams::create, 7 },
+            { "RKUtility", UtilityParams::create, 7 },
         };
 
         for (const auto& plugin : plugins)

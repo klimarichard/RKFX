@@ -1,0 +1,10 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Harsh Sibilance Fix",
+  "params": {
+    "freq": 6500,
+    "threshold_rel": -6,
+    "range": 14
+  }
+}

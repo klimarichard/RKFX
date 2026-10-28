@@ -1,0 +1,9 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Classic Wideband",
+  "params": {
+    "mode": "wide",
+    "range": 6
+  }
+}

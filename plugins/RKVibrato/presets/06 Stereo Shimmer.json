@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVibrato",
+  "version": 1,
+  "name": "Stereo Shimmer",
+  "params": {
+    "rate": 6,
+    "depth": 20,
+    "phase": 180
+  }
+}

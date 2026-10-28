@@ -1,0 +1,10 @@
+{
+  "plugin": "RKSwell",
+  "version": 1,
+  "name": "Ambient Guitar Swells",
+  "params": {
+    "curve": "exponential",
+    "time": 1200,
+    "retrigger": 60
+  }
+}

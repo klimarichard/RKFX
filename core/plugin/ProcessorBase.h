@@ -20,9 +20,11 @@ struct PluginConfig
     juce::String name;               // "RKFreqShift": plugin name, preset folder, "plugin" key in JSON
     int stateVersion = 1;            // bump when a migration is needed; never decrease
     bool hasMix = false;             // dry/wet only where musically meaningful
+    bool hasOutput = true;           // false when the plugin's own gain replaces Output (RKUtility)
     float mixDefault = 100.0f;       // percent
     bool monoToStereo = false;       // also accept mono in -> stereo out (chorus, reverb...)
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
+    bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     juce::Colour accent;             // per-plugin family tint (active toggles only)
 };
 
@@ -92,7 +94,7 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override;
 
     const juce::String getName() const override { return config.name; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return config.midiInput; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
@@ -126,6 +128,13 @@ protected:
         Unconnected inputs are silent. Valid inside processDsp only. */
     const juce::AudioBuffer<float>* getSidechain() const noexcept { return hasSidechain ? &sidechain : nullptr; }
 
+    /** MIDI arriving with the buffer handed to processDsp(): events at
+        positions getChunkStart() .. getChunkStart() + numSamples belong to it
+        (subtract getChunkStart() for the position in the buffer). Valid
+        inside processDsp only; nullptr for plugins without MIDI input. */
+    const juce::MidiBuffer* getMidi() const noexcept { return config.midiInput ? midiIn : nullptr; }
+    int getChunkStart() const noexcept { return chunkStart; }
+
     /** Declares the latency the plugin's DSP adds (oversampling only; every
         other plugin reports 0). Safe from any thread: the dry signal (used by
         dry/wet and bypass) is delayed to match from the next block on, and
@@ -152,6 +161,8 @@ private:
     Transport transport;
     juce::AudioBuffer<float> sidechain;   // view into the host buffer, no allocation
     bool hasSidechain = false;
+    const juce::MidiBuffer* midiIn = nullptr;
+    int chunkStart = 0;
 
     // Dry-path delay matching the reported latency (ring buffer, 64 samples per channel).
     std::atomic<int> latency { 0 };

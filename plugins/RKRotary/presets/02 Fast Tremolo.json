@@ -1,0 +1,8 @@
+{
+  "plugin": "RKRotary",
+  "version": 1,
+  "name": "Fast Tremolo",
+  "params": {
+    "speed": "fast"
+  }
+}

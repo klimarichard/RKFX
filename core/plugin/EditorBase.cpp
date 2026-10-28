@@ -79,8 +79,11 @@ EditorBase::EditorBase (ProcessorBase& p, int width, int height)
         canvas.addAndMakeVisible (*mixKnob);
     }
 
-    outputKnob = std::make_unique<Knob> (*proc.findParam ("output"), "Output");
-    canvas.addAndMakeVisible (*outputKnob);
+    if (auto* output = proc.findParam ("output"))
+    {
+        outputKnob = std::make_unique<Knob> (*output, "Output");
+        canvas.addAndMakeVisible (*outputKnob);
+    }
 
     bypassSwitch = std::make_unique<ToggleSwitch> (*proc.findParam ("bypass"), accent(), "Bypass");
     canvas.addAndMakeVisible (*bypassSwitch);
@@ -118,7 +121,8 @@ juce::Rectangle<int> EditorBase::contentArea() const
 juce::Rectangle<int> EditorBase::globalArea() const
 {
     auto row = juce::Rectangle<int> (0, baseHeight - kBottomHeight, baseWidth, kBottomHeight).reduced (kMargin, 8);
-    const auto utilityWidth = (mixKnob != nullptr ? 2 : 1) * kUtilityKnobWidth + kBypassWidth + 2 * kMargin;
+    const auto knobs = (mixKnob != nullptr ? 1 : 0) + (outputKnob != nullptr ? 1 : 0);
+    const auto utilityWidth = knobs * (kUtilityKnobWidth + kMargin) + kBypassWidth + kMargin;
     return row.withTrimmedRight (utilityWidth + kMargin);
 }
 
@@ -139,7 +143,8 @@ void EditorBase::layoutBase()
     auto row = juce::Rectangle<int> (0, baseHeight - kBottomHeight, baseWidth, kBottomHeight).reduced (kMargin, 8);
     bypassSwitch->setBounds (row.removeFromRight (kBypassWidth).withSizeKeepingCentre (kBypassWidth, 30));
     row.removeFromRight (kMargin);
-    outputKnob->setBounds (row.removeFromRight (kUtilityKnobWidth).withSizeKeepingCentre (kUtilityKnobWidth, Knob::kDefaultHeight));
+    if (outputKnob != nullptr)
+        outputKnob->setBounds (row.removeFromRight (kUtilityKnobWidth).withSizeKeepingCentre (kUtilityKnobWidth, Knob::kDefaultHeight));
     if (mixKnob != nullptr)
     {
         row.removeFromRight (kMargin);

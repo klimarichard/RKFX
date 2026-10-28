@@ -1,0 +1,9 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Roomier Drums",
+  "params": {
+    "sustain": 60,
+    "sustain_time": 200
+  }
+}

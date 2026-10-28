@@ -1,0 +1,8 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "PA Safety Net",
+  "params": {
+    "release_auto": true
+  }
+}

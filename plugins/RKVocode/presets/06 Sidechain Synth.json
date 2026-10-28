@@ -1,0 +1,9 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Sidechain Synth",
+  "params": {
+    "carrier": "sidechain",
+    "bands": "32"
+  }
+}

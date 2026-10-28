@@ -1,0 +1,9 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Dry Up a Room Mic",
+  "params": {
+    "sustain": -70,
+    "sustain_time": 150
+  }
+}

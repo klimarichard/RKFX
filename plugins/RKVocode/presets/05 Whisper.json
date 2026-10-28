@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Whisper",
+  "params": {
+    "osc_wave": "noise",
+    "bands": "24",
+    "unvoiced": 60
+  }
+}

@@ -225,3 +225,269 @@ date,plugin,case,us_per_64_block,percent_realtime
 20261028T010006.004+0100,RKDistort,"default (overdrive, 4x)",2.146,0.161
 20261028T010006.162+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.164,0.237
 20261028T010006.473+0100,RKVerb,"default (hall)",6.222,0.467
+20261028T010742.484+0100,RKFreqShift,"default (1 shift)",1.366,0.102
+20261028T010742.676+0100,RKFreqShift,"4 shifts, feedback, spread",3.812,0.286
+20261028T010742.719+0100,RKFilter,"default (LP 12, static)",0.861,0.065
+20261028T010742.852+0100,RKFilter,"48 dB, envelope + LFO",2.655,0.199
+20261028T010742.871+0100,RKParaEQ,"default (transparent)",0.379,0.028
+20261028T010742.963+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.850,0.139
+20261028T010742.993+0100,RKGraphEQ,"default (transparent)",0.593,0.044
+20261028T010743.164+0100,RKGraphEQ,"31 bands, all active",3.422,0.257
+20261028T010743.204+0100,RKCompress,"default (RMS, internal)",0.790,0.059
+20261028T010743.266+0100,RKCompress,"peak, auto release, sidechain HPF",1.240,0.093
+20261028T010743.299+0100,RKGate,"default (gate, linked)",0.661,0.050
+20261028T010743.342+0100,RKGate,"expander, unlinked, key filters",0.860,0.065
+20261028T010743.360+0100,RKTremolo,"default (classic sine)",0.357,0.027
+20261028T010743.383+0100,RKTremolo,"harmonic, square, stereo phase",0.442,0.033
+20261028T010743.433+0100,RKChorus,"default (1 voice)",1.011,0.076
+20261028T010743.591+0100,RKChorus,"4 voices, tone, width",3.144,0.236
+20261028T010743.607+0100,RKDouble,"default",0.330,0.025
+20261028T010743.682+0100,RKFlange,"default",1.483,0.111
+20261028T010743.818+0100,RKPhase,"default (4 stages)",2.729,0.205
+20261028T010744.008+0100,RKPhase,"12 stages, envelope",3.790,0.284
+20261028T010744.176+0100,RKDelay,"default (digital, stereo)",3.360,0.252
+20261028T010744.291+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.287,0.172
+20261028T010744.399+0100,RKSaturate,"default (tape, 2x)",2.168,0.163
+20261028T010744.528+0100,RKSaturate,"transformer, 4x",2.572,0.193
+20261028T010744.640+0100,RKDistort,"default (overdrive, 4x)",2.245,0.168
+20261028T010744.806+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.316,0.249
+20261028T010745.130+0100,RKVerb,"default (hall)",6.461,0.485
+20261028T010745.150+0100,RKLimit,"default",0.412,0.031
+20261028T010745.296+0100,RKLimit,"+12 dB input, auto release, 4x",2.906,0.218
+20261028T011805.337+0100,RKFreqShift,"default (1 shift)",1.307,0.098
+20261028T011805.520+0100,RKFreqShift,"4 shifts, feedback, spread",3.622,0.272
+20261028T011805.561+0100,RKFilter,"default (LP 12, static)",0.822,0.062
+20261028T011805.686+0100,RKFilter,"48 dB, envelope + LFO",2.511,0.188
+20261028T011805.705+0100,RKParaEQ,"default (transparent)",0.376,0.028
+20261028T011805.794+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.759,0.132
+20261028T011805.821+0100,RKGraphEQ,"default (transparent)",0.557,0.042
+20261028T011805.985+0100,RKGraphEQ,"31 bands, all active",3.278,0.246
+20261028T011806.022+0100,RKCompress,"default (RMS, internal)",0.737,0.055
+20261028T011806.081+0100,RKCompress,"peak, auto release, sidechain HPF",1.161,0.087
+20261028T011806.113+0100,RKGate,"default (gate, linked)",0.637,0.048
+20261028T011806.153+0100,RKGate,"expander, unlinked, key filters",0.813,0.061
+20261028T011806.171+0100,RKTremolo,"default (classic sine)",0.342,0.026
+20261028T011806.192+0100,RKTremolo,"harmonic, square, stereo phase",0.424,0.032
+20261028T011806.240+0100,RKChorus,"default (1 voice)",0.959,0.072
+20261028T011806.396+0100,RKChorus,"4 voices, tone, width",3.115,0.234
+20261028T011806.412+0100,RKDouble,"default",0.318,0.024
+20261028T011806.483+0100,RKFlange,"default",1.424,0.107
+20261028T011806.617+0100,RKPhase,"default (4 stages)",2.680,0.201
+20261028T011806.797+0100,RKPhase,"12 stages, envelope",3.600,0.270
+20261028T011806.958+0100,RKDelay,"default (digital, stereo)",3.198,0.240
+20261028T011807.067+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.187,0.164
+20261028T011807.154+0100,RKSaturate,"default (tape, 2x)",1.736,0.130
+20261028T011807.277+0100,RKSaturate,"transformer, 4x",2.442,0.183
+20261028T011807.384+0100,RKDistort,"default (overdrive, 4x)",2.151,0.161
+20261028T011807.542+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.158,0.237
+20261028T011807.855+0100,RKVerb,"default (hall)",6.251,0.469
+20261028T011807.875+0100,RKLimit,"default",0.393,0.029
+20261028T011808.013+0100,RKLimit,"+12 dB input, auto release, 4x",2.763,0.207
+20261028T011808.055+0100,RKTransient,"attack + sustain, focus filters",0.832,0.062
+20261028T012512.073+0100,RKFreqShift,"default (1 shift)",1.341,0.101
+20261028T012512.259+0100,RKFreqShift,"4 shifts, feedback, spread",3.682,0.276
+20261028T012512.302+0100,RKFilter,"default (LP 12, static)",0.854,0.064
+20261028T012512.430+0100,RKFilter,"48 dB, envelope + LFO",2.559,0.192
+20261028T012512.449+0100,RKParaEQ,"default (transparent)",0.382,0.029
+20261028T012512.538+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.779,0.133
+20261028T012512.569+0100,RKGraphEQ,"default (transparent)",0.611,0.046
+20261028T012512.734+0100,RKGraphEQ,"31 bands, all active",3.294,0.247
+20261028T012512.771+0100,RKCompress,"default (RMS, internal)",0.739,0.055
+20261028T012512.830+0100,RKCompress,"peak, auto release, sidechain HPF",1.180,0.089
+20261028T012512.862+0100,RKGate,"default (gate, linked)",0.635,0.048
+20261028T012512.903+0100,RKGate,"expander, unlinked, key filters",0.813,0.061
+20261028T012512.920+0100,RKTremolo,"default (classic sine)",0.347,0.026
+20261028T012512.942+0100,RKTremolo,"harmonic, square, stereo phase",0.434,0.033
+20261028T012512.991+0100,RKChorus,"default (1 voice)",0.969,0.073
+20261028T012513.141+0100,RKChorus,"4 voices, tone, width",3.005,0.225
+20261028T012513.157+0100,RKDouble,"default",0.319,0.024
+20261028T012513.236+0100,RKFlange,"default",1.587,0.119
+20261028T012513.368+0100,RKPhase,"default (4 stages)",2.624,0.197
+20261028T012513.550+0100,RKPhase,"12 stages, envelope",3.632,0.272
+20261028T012513.722+0100,RKDelay,"default (digital, stereo)",3.440,0.258
+20261028T012513.834+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.240,0.168
+20261028T012513.923+0100,RKSaturate,"default (tape, 2x)",1.763,0.132
+20261028T012514.047+0100,RKSaturate,"transformer, 4x",2.481,0.186
+20261028T012514.155+0100,RKDistort,"default (overdrive, 4x)",2.160,0.162
+20261028T012514.316+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.204,0.240
+20261028T012514.630+0100,RKVerb,"default (hall)",6.284,0.471
+20261028T012514.650+0100,RKLimit,"default",0.408,0.031
+20261028T012514.791+0100,RKLimit,"+12 dB input, auto release, 4x",2.804,0.210
+20261028T012514.833+0100,RKTransient,"attack + sustain, focus filters",0.837,0.063
+20261028T012514.878+0100,RKDeEss,"default (relative, split)",0.901,0.068
+20261028T013310.358+0100,RKFreqShift,"default (1 shift)",1.333,0.100
+20261028T013310.548+0100,RKFreqShift,"4 shifts, feedback, spread",3.766,0.282
+20261028T013310.592+0100,RKFilter,"default (LP 12, static)",0.882,0.066
+20261028T013310.723+0100,RKFilter,"48 dB, envelope + LFO",2.609,0.196
+20261028T013310.742+0100,RKParaEQ,"default (transparent)",0.381,0.029
+20261028T013310.832+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.806,0.135
+20261028T013310.861+0100,RKGraphEQ,"default (transparent)",0.572,0.043
+20261028T013311.027+0100,RKGraphEQ,"31 bands, all active",3.316,0.249
+20261028T013311.067+0100,RKCompress,"default (RMS, internal)",0.784,0.059
+20261028T013311.126+0100,RKCompress,"peak, auto release, sidechain HPF",1.181,0.089
+20261028T013311.159+0100,RKGate,"default (gate, linked)",0.654,0.049
+20261028T013311.199+0100,RKGate,"expander, unlinked, key filters",0.805,0.060
+20261028T013311.218+0100,RKTremolo,"default (classic sine)",0.384,0.029
+20261028T013311.240+0100,RKTremolo,"harmonic, square, stereo phase",0.435,0.033
+20261028T013311.289+0100,RKChorus,"default (1 voice)",0.979,0.073
+20261028T013311.463+0100,RKChorus,"4 voices, tone, width",3.463,0.260
+20261028T013311.479+0100,RKDouble,"default",0.323,0.024
+20261028T013311.552+0100,RKFlange,"default",1.454,0.109
+20261028T013311.684+0100,RKPhase,"default (4 stages)",2.645,0.198
+20261028T013311.869+0100,RKPhase,"12 stages, envelope",3.689,0.277
+20261028T013312.032+0100,RKDelay,"default (digital, stereo)",3.242,0.243
+20261028T013312.143+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.225,0.167
+20261028T013312.232+0100,RKSaturate,"default (tape, 2x)",1.766,0.132
+20261028T013312.361+0100,RKSaturate,"transformer, 4x",2.590,0.194
+20261028T013312.471+0100,RKDistort,"default (overdrive, 4x)",2.198,0.165
+20261028T013312.634+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.243,0.243
+20261028T013312.955+0100,RKVerb,"default (hall)",6.416,0.481
+20261028T013312.975+0100,RKLimit,"default",0.399,0.030
+20261028T013313.132+0100,RKLimit,"+12 dB input, auto release, 4x",3.135,0.235
+20261028T013313.216+0100,RKTransient,"attack + sustain, focus filters",1.684,0.126
+20261028T013313.266+0100,RKDeEss,"default (relative, split)",1.005,0.075
+20261028T013313.297+0100,RKSwell,"default",0.601,0.045
+20261028T014028.147+0100,RKFreqShift,"default (1 shift)",3.032,0.227
+20261028T014028.554+0100,RKFreqShift,"4 shifts, feedback, spread",8.119,0.609
+20261028T014028.643+0100,RKFilter,"default (LP 12, static)",1.761,0.132
+20261028T014029.024+0100,RKFilter,"48 dB, envelope + LFO",7.614,0.571
+20261028T014029.054+0100,RKParaEQ,"default (transparent)",0.603,0.045
+20261028T014029.297+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",4.852,0.364
+20261028T014029.350+0100,RKGraphEQ,"default (transparent)",1.058,0.079
+20261028T014029.681+0100,RKGraphEQ,"31 bands, all active",6.612,0.496
+20261028T014029.769+0100,RKCompress,"default (RMS, internal)",1.745,0.131
+20261028T014029.903+0100,RKCompress,"peak, auto release, sidechain HPF",2.692,0.202
+20261028T014029.983+0100,RKGate,"default (gate, linked)",1.596,0.120
+20261028T014030.084+0100,RKGate,"expander, unlinked, key filters",2.014,0.151
+20261028T014030.129+0100,RKTremolo,"default (classic sine)",0.899,0.067
+20261028T014030.164+0100,RKTremolo,"harmonic, square, stereo phase",0.683,0.051
+20261028T014030.281+0100,RKChorus,"default (1 voice)",2.331,0.175
+20261028T014030.680+0100,RKChorus,"4 voices, tone, width",7.973,0.598
+20261028T014030.712+0100,RKDouble,"default",0.635,0.048
+20261028T014030.911+0100,RKFlange,"default",3.976,0.298
+20261028T014031.219+0100,RKPhase,"default (4 stages)",6.120,0.459
+20261028T014031.696+0100,RKPhase,"12 stages, envelope",9.539,0.715
+20261028T014032.062+0100,RKDelay,"default (digital, stereo)",7.283,0.546
+20261028T014032.366+0100,RKDelay,"tape, ping-pong, modulation, ducking",6.068,0.455
+20261028T014032.556+0100,RKSaturate,"default (tape, 2x)",3.799,0.285
+20261028T014032.807+0100,RKSaturate,"transformer, 4x",5.009,0.376
+20261028T014033.034+0100,RKDistort,"default (overdrive, 4x)",4.534,0.340
+20261028T014033.373+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",6.775,0.508
+20261028T014034.151+0100,RKVerb,"default (hall)",15.552,1.166
+20261028T014034.195+0100,RKLimit,"default",0.877,0.066
+20261028T014034.500+0100,RKLimit,"+12 dB input, auto release, 4x",6.085,0.456
+20261028T014034.608+0100,RKTransient,"attack + sustain, focus filters",2.163,0.162
+20261028T014034.710+0100,RKDeEss,"default (relative, split)",2.042,0.153
+20261028T014034.761+0100,RKSwell,"default",1.014,0.076
+20261028T014034.962+0100,RKRotary,"fast, no drive",4.011,0.301
+20261028T014035.258+0100,RKRotary,"fast, drive 50%, 2x",5.921,0.444
+20261028T014809.761+0100,RKFreqShift,"default (1 shift)",1.422,0.107
+20261028T014809.946+0100,RKFreqShift,"4 shifts, feedback, spread",3.672,0.275
+20261028T014809.989+0100,RKFilter,"default (LP 12, static)",0.842,0.063
+20261028T014810.117+0100,RKFilter,"48 dB, envelope + LFO",2.553,0.191
+20261028T014810.135+0100,RKParaEQ,"default (transparent)",0.359,0.027
+20261028T014810.223+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.770,0.133
+20261028T014810.251+0100,RKGraphEQ,"default (transparent)",0.548,0.041
+20261028T014810.420+0100,RKGraphEQ,"31 bands, all active",3.381,0.254
+20261028T014810.458+0100,RKCompress,"default (RMS, internal)",0.747,0.056
+20261028T014810.516+0100,RKCompress,"peak, auto release, sidechain HPF",1.172,0.088
+20261028T014810.550+0100,RKGate,"default (gate, linked)",0.669,0.050
+20261028T014810.591+0100,RKGate,"expander, unlinked, key filters",0.822,0.062
+20261028T014810.609+0100,RKTremolo,"default (classic sine)",0.349,0.026
+20261028T014810.630+0100,RKTremolo,"harmonic, square, stereo phase",0.426,0.032
+20261028T014810.679+0100,RKChorus,"default (1 voice)",0.971,0.073
+20261028T014810.829+0100,RKChorus,"4 voices, tone, width",3.005,0.225
+20261028T014810.846+0100,RKDouble,"default",0.318,0.024
+20261028T014810.919+0100,RKFlange,"default",1.470,0.110
+20261028T014811.050+0100,RKPhase,"default (4 stages)",2.605,0.195
+20261028T014811.233+0100,RKPhase,"12 stages, envelope",3.663,0.275
+20261028T014811.397+0100,RKDelay,"default (digital, stereo)",3.277,0.246
+20261028T014811.511+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.264,0.170
+20261028T014811.600+0100,RKSaturate,"default (tape, 2x)",1.777,0.133
+20261028T014811.727+0100,RKSaturate,"transformer, 4x",2.541,0.191
+20261028T014811.837+0100,RKDistort,"default (overdrive, 4x)",2.189,0.164
+20261028T014811.998+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.231,0.242
+20261028T014812.318+0100,RKVerb,"default (hall)",6.384,0.479
+20261028T014812.338+0100,RKLimit,"default",0.407,0.031
+20261028T014812.487+0100,RKLimit,"+12 dB input, auto release, 4x",2.974,0.223
+20261028T014812.530+0100,RKTransient,"attack + sustain, focus filters",0.856,0.064
+20261028T014812.575+0100,RKDeEss,"default (relative, split)",0.891,0.067
+20261028T014812.608+0100,RKSwell,"default",0.660,0.049
+20261028T014812.694+0100,RKRotary,"fast, no drive",1.726,0.129
+20261028T014812.811+0100,RKRotary,"fast, drive 50%, 2x",2.340,0.176
+20261028T014812.870+0100,RKVibrato,"default",1.176,0.088
+20261028T020145.090+0100,RKFreqShift,"default (1 shift)",1.323,0.099
+20261028T020145.278+0100,RKFreqShift,"4 shifts, feedback, spread",3.738,0.280
+20261028T020145.320+0100,RKFilter,"default (LP 12, static)",0.849,0.064
+20261028T020145.450+0100,RKFilter,"48 dB, envelope + LFO",2.593,0.194
+20261028T020145.469+0100,RKParaEQ,"default (transparent)",0.373,0.028
+20261028T020145.559+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.800,0.135
+20261028T020145.589+0100,RKGraphEQ,"default (transparent)",0.587,0.044
+20261028T020145.755+0100,RKGraphEQ,"31 bands, all active",3.319,0.249
+20261028T020145.793+0100,RKCompress,"default (RMS, internal)",0.764,0.057
+20261028T020145.858+0100,RKCompress,"peak, auto release, sidechain HPF",1.280,0.096
+20261028T020145.891+0100,RKGate,"default (gate, linked)",0.660,0.050
+20261028T020145.932+0100,RKGate,"expander, unlinked, key filters",0.817,0.061
+20261028T020145.949+0100,RKTremolo,"default (classic sine)",0.351,0.026
+20261028T020145.971+0100,RKTremolo,"harmonic, square, stereo phase",0.430,0.032
+20261028T020146.020+0100,RKChorus,"default (1 voice)",0.978,0.073
+20261028T020146.173+0100,RKChorus,"4 voices, tone, width",3.049,0.229
+20261028T020146.189+0100,RKDouble,"default",0.324,0.024
+20261028T020146.262+0100,RKFlange,"default",1.451,0.109
+20261028T020146.397+0100,RKPhase,"default (4 stages)",2.701,0.203
+20261028T020146.582+0100,RKPhase,"12 stages, envelope",3.689,0.277
+20261028T020146.747+0100,RKDelay,"default (digital, stereo)",3.298,0.247
+20261028T020146.860+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.243,0.168
+20261028T020146.949+0100,RKSaturate,"default (tape, 2x)",1.787,0.134
+20261028T020147.075+0100,RKSaturate,"transformer, 4x",2.516,0.189
+20261028T020147.186+0100,RKDistort,"default (overdrive, 4x)",2.206,0.165
+20261028T020147.350+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.273,0.245
+20261028T020147.670+0100,RKVerb,"default (hall)",6.392,0.479
+20261028T020147.690+0100,RKLimit,"default",0.404,0.030
+20261028T020147.832+0100,RKLimit,"+12 dB input, auto release, 4x",2.825,0.212
+20261028T020147.874+0100,RKTransient,"attack + sustain, focus filters",0.845,0.063
+20261028T020147.919+0100,RKDeEss,"default (relative, split)",0.894,0.067
+20261028T020147.946+0100,RKSwell,"default",0.530,0.040
+20261028T020148.020+0100,RKRotary,"fast, no drive",1.491,0.112
+20261028T020148.139+0100,RKRotary,"fast, drive 50%, 2x",2.379,0.178
+20261028T020148.198+0100,RKVibrato,"default",1.161,0.087
+20261028T020148.422+0100,RKVocode,"16 bands, fixed saw",4.479,0.336
+20261028T020148.840+0100,RKVocode,"32 bands, 8 MIDI voices",8.355,0.627
+20261028T021322.767+0100,RKFreqShift,"default (1 shift)",1.336,0.100
+20261028T021322.956+0100,RKFreqShift,"4 shifts, feedback, spread",3.749,0.281
+20261028T021322.999+0100,RKFilter,"default (LP 12, static)",0.852,0.064
+20261028T021323.130+0100,RKFilter,"48 dB, envelope + LFO",2.628,0.197
+20261028T021323.150+0100,RKParaEQ,"default (transparent)",0.389,0.029
+20261028T021323.241+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",1.826,0.137
+20261028T021323.270+0100,RKGraphEQ,"default (transparent)",0.569,0.043
+20261028T021323.438+0100,RKGraphEQ,"31 bands, all active",3.364,0.252
+20261028T021323.477+0100,RKCompress,"default (RMS, internal)",0.766,0.057
+20261028T021323.537+0100,RKCompress,"peak, auto release, sidechain HPF",1.192,0.089
+20261028T021323.571+0100,RKGate,"default (gate, linked)",0.671,0.050
+20261028T021323.612+0100,RKGate,"expander, unlinked, key filters",0.820,0.062
+20261028T021323.632+0100,RKTremolo,"default (classic sine)",0.396,0.030
+20261028T021323.656+0100,RKTremolo,"harmonic, square, stereo phase",0.475,0.036
+20261028T021323.705+0100,RKChorus,"default (1 voice)",0.994,0.075
+20261028T021323.862+0100,RKChorus,"4 voices, tone, width",3.120,0.234
+20261028T021323.882+0100,RKDouble,"default",0.401,0.030
+20261028T021323.956+0100,RKFlange,"default",1.474,0.111
+20261028T021324.089+0100,RKPhase,"default (4 stages)",2.670,0.200
+20261028T021324.293+0100,RKPhase,"12 stages, envelope",4.074,0.306
+20261028T021324.458+0100,RKDelay,"default (digital, stereo)",3.283,0.246
+20261028T021324.571+0100,RKDelay,"tape, ping-pong, modulation, ducking",2.255,0.169
+20261028T021324.660+0100,RKSaturate,"default (tape, 2x)",1.788,0.134
+20261028T021324.788+0100,RKSaturate,"transformer, 4x",2.550,0.191
+20261028T021324.898+0100,RKDistort,"default (overdrive, 4x)",2.193,0.164
+20261028T021325.061+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",3.260,0.245
+20261028T021325.380+0100,RKVerb,"default (hall)",6.376,0.478
+20261028T021325.400+0100,RKLimit,"default",0.402,0.030
+20261028T021325.543+0100,RKLimit,"+12 dB input, auto release, 4x",2.847,0.214
+20261028T021325.585+0100,RKTransient,"attack + sustain, focus filters",0.848,0.064
+20261028T021325.632+0100,RKDeEss,"default (relative, split)",0.936,0.070
+20261028T021325.660+0100,RKSwell,"default",0.557,0.042
+20261028T021325.738+0100,RKRotary,"fast, no drive",1.557,0.117
+20261028T021325.857+0100,RKRotary,"fast, drive 50%, 2x",2.372,0.178
+20261028T021325.915+0100,RKVibrato,"default",1.160,0.087
+20261028T021326.140+0100,RKVocode,"16 bands, fixed saw",4.480,0.336
+20261028T021326.562+0100,RKVocode,"32 bands, 8 MIDI voices",8.449,0.634
+20261028T021326.584+0100,RKUtility,"width, bass mono, delay, balance",0.442,0.033

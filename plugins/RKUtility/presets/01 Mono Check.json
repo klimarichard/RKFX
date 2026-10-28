@@ -1,0 +1,8 @@
+{
+  "plugin": "RKUtility",
+  "version": 1,
+  "name": "Mono Check",
+  "params": {
+    "width": 0
+  }
+}

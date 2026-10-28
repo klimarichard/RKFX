@@ -1,0 +1,10 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "Transparent Peak Catcher",
+  "params": {
+    "ceiling": -0.3,
+    "release": 20,
+    "oversampling": "4x"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKTransient",
+  "version": 1,
+  "name": "Punchier Drums",
+  "params": {
+    "attack": 60
+  }
+}

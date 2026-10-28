@@ -2,19 +2,27 @@
 
 #include "ChorusEngine.h"
 #include "CompressorEngine.h"
+#include "DeEssEngine.h"
 #include "DelayEngine.h"
 #include "DistortEngine.h"
 #include "DoubleEngine.h"
 #include "FilterEngine.h"
 #include "FlangeEngine.h"
 #include "GateEngine.h"
+#include "LimitEngine.h"
 #include "FreqShiftEngine.h"
 #include "GraphEQEngine.h"
 #include "ParaEQEngine.h"
 #include "PhaseEngine.h"
 #include "ReverbEngine.h"
+#include "RotaryEngine.h"
 #include "SaturateEngine.h"
+#include "SwellEngine.h"
+#include "TransientEngine.h"
 #include "TremoloEngine.h"
+#include "UtilityEngine.h"
+#include "VibratoEngine.h"
+#include "VocodeEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -50,11 +58,13 @@ namespace
         engine->prepare (kRate);
         return [engine] (juce::AudioBuffer<float>& b)
         {
-            if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>)
+            if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>
+                      || std::is_same_v<Engine, VocodeEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
-                               || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>)
+                               || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>
+                               || std::is_same_v<Engine, VibratoEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
@@ -285,6 +295,92 @@ int main (int argc, char** argv)
         { "RKVerb", "default (hall)", []
           {
               return makeEngine<ReverbEngine> ([] (ReverbEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKLimit", "default", []
+          {
+              return makeEngine<LimitEngine> ([] (LimitEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKLimit", "+12 dB input, auto release, 4x", []
+          {
+              return makeEngine<LimitEngine> ([] (LimitEngine& e)
+              {
+                  LimitEngine::Settings s;
+                  s.inputDb = 12.0f;
+                  s.autoRelease = true;
+                  s.oversampling = 4;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKTransient", "attack + sustain, focus filters", []
+          {
+              return makeEngine<TransientEngine> ([] (TransientEngine& e)
+              {
+                  TransientEngine::Settings s;
+                  s.attack = 0.5f;
+                  s.sustain = -0.3f;
+                  s.focusHighPassHz = 100.0f;
+                  s.focusLowPassHz = 8000.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKDeEss", "default (relative, split)", []
+          {
+              return makeEngine<DeEssEngine> ([] (DeEssEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKSwell", "default", []
+          {
+              return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKRotary", "fast, no drive", []
+          {
+              return makeEngine<RotaryEngine> ([] (RotaryEngine& e)
+              {
+                  RotaryEngine::Settings s;
+                  s.speed = RotaryEngine::Speed::fast;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKRotary", "fast, drive 50%, 2x", []
+          {
+              return makeEngine<RotaryEngine> ([] (RotaryEngine& e)
+              {
+                  RotaryEngine::Settings s;
+                  s.speed = RotaryEngine::Speed::fast;
+                  s.drive = 0.5f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKVibrato", "default", []
+          {
+              return makeEngine<VibratoEngine> ([] (VibratoEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKVocode", "16 bands, fixed saw", []
+          {
+              return makeEngine<VocodeEngine> ([] (VocodeEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKVocode", "32 bands, 8 MIDI voices", []
+          {
+              return makeEngine<VocodeEngine> ([] (VocodeEngine& e)
+              {
+                  VocodeEngine::Settings s;
+                  s.bands = 32;
+                  s.pitchMode = VocodeEngine::PitchMode::midi;
+                  e.setSettings (s);
+                  for (int n = 0; n < 8; ++n)
+                      e.noteOn (48 + 3 * n, 1.0f);
+              });
+          } },
+        { "RKUtility", "width, bass mono, delay, balance", []
+          {
+              return makeEngine<UtilityEngine> ([] (UtilityEngine& e)
+              {
+                  UtilityEngine::Settings s;
+                  s.width = 1.4f;
+                  s.bassMonoHz = 120.0f;
+                  s.delayLeftMs = 1.2f;
+                  s.pan = 0.2f;
+                  e.setSettings (s);
+              });
           } },
     };
 

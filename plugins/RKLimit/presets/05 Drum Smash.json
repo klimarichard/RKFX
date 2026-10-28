@@ -1,0 +1,11 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "Drum Smash",
+  "params": {
+    "input": 12,
+    "ceiling": -2,
+    "release": 10,
+    "link": 50
+  }
+}

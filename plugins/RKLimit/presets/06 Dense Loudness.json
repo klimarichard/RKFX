@@ -1,0 +1,10 @@
+{
+  "plugin": "RKLimit",
+  "version": 1,
+  "name": "Dense Loudness",
+  "params": {
+    "input": 8,
+    "release_auto": true,
+    "oversampling": "4x"
+  }
+}

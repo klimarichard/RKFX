@@ -16,6 +16,14 @@ set(RKFX_ENGINE_PLUGINS
     RKSaturate/SaturateEngine
     RKDistort/DistortEngine
     RKVerb/ReverbEngine
+    RKLimit/LimitEngine
+    RKTransient/TransientEngine
+    RKDeEss/DeEssEngine
+    RKSwell/SwellEngine
+    RKRotary/RotaryEngine
+    RKVibrato/VibratoEngine
+    RKVocode/VocodeEngine
+    RKUtility/UtilityEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -52,6 +60,14 @@ target_sources(RKFXTests PRIVATE
     SaturateTests.cpp
     DistortTests.cpp
     VerbTests.cpp
+    LimitTests.cpp
+    TransientTests.cpp
+    DeEssTests.cpp
+    SwellTests.cpp
+    RotaryTests.cpp
+    VibratoTests.cpp
+    VocodeTests.cpp
+    UtilityTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

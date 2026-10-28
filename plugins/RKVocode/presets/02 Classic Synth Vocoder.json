@@ -1,0 +1,9 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Classic Synth Vocoder",
+  "params": {
+    "osc_mode": "midi",
+    "unvoiced": 40
+  }
+}

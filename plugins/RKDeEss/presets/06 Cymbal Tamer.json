@@ -1,0 +1,10 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Cymbal Tamer",
+  "params": {
+    "freq": 9000,
+    "threshold_rel": -6,
+    "range": 6
+  }
+}

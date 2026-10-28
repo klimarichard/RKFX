@@ -24,7 +24,8 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
     // Standard controls, after the plugin's own parameters.
     if (config.hasMix)
         builder.addPercent ("mix", "Dry/Wet", 0.0f, 100.0f, config.mixDefault);
-    builder.addDecibels ("output", "Output", -24.0f, 12.0f, 0.0f);
+    if (config.hasOutput)
+        builder.addDecibels ("output", "Output", -24.0f, 12.0f, 0.0f);
     builder.addBool ("bypass", "Bypass", false);
 
     for (auto& owned : builder.params)
@@ -110,7 +111,7 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     outputStage.prepare (sampleRate);
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
-    outputStage.setOutputDecibels (valueOf (outputParam));
+    outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
     outputStage.reset();
 
@@ -119,8 +120,9 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     wetWasIdle = false;
 }
 
-void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
+    midiIn = &midi;
     juce::ScopedNoDenormals noDenormals;
 
     const auto numIn  = getMainBusNumInputChannels();
@@ -149,7 +151,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         return;
 
     outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
-    outputStage.setOutputDecibels (valueOf (outputParam));
+    outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
 
     updateTransport();
@@ -160,6 +162,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     for (int start = 0; start < numSamples; start += maxBlock)
     {
         transport.ppq = blockPpq + start * quartersPerSample;
+        chunkStart = start;
 
         const auto length = juce::jmin (maxBlock, numSamples - start);
         juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), numOut, start, length);
@@ -170,6 +173,9 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
         processChunk (chunk);
     }
+
+    // Effects never pass MIDI on.
+    midi.clear();
 }
 
 void ProcessorBase::updateTransport()

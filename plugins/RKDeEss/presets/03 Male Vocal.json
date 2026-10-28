@@ -1,0 +1,8 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Male Vocal",
+  "params": {
+    "freq": 5000
+  }
+}

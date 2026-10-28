@@ -1,0 +1,10 @@
+{
+  "plugin": "RKSwell",
+  "version": 1,
+  "name": "Volume Pedal",
+  "params": {
+    "curve": "linear",
+    "time": 800,
+    "retrigger": 0
+  }
+}

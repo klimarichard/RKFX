@@ -1,0 +1,11 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Vocoder Choir",
+  "params": {
+    "osc_mode": "midi",
+    "osc_wave": "sawnoise",
+    "bands": "24",
+    "release": 150
+  }
+}

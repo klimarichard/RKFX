@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVibrato",
+  "version": 1,
+  "name": "Warped Tape",
+  "params": {
+    "shape": "triangle",
+    "rate": 1.2,
+    "depth": 40
+  }
+}

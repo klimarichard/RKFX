@@ -94,26 +94,30 @@ BoardStrip::Layout BoardStrip::computeLayout (int width) const
         const auto laneRoom = maxRowWidth - 2 * (nodeWidth + gap) - (addWidth + gap);
         const auto tileWidth = lanes > 0 ? juce::jlimit (minTileWidth, kTileWidth, laneRoom / lanes - gap) : kTileWidth;
 
+        // With both paths empty, the split is compact: one tile high, a
+        // small "+" per path.
         Block block;
-        block.tall = true;
-        block.items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { 0, 0, nodeWidth, tallHeight } });
+        block.tall = lanes > 0;
+        const auto laneHeight = block.tall ? kTileHeight : (kTileHeight - kLaneGap) / 2;
+        const auto nodeHeight = 2 * laneHeight + kLaneGap;
+        block.items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { 0, 0, nodeWidth, nodeHeight } });
         block.inFlow.push_back (true);
 
         const auto x = nodeWidth + gap;
         for (const auto& [ids, section, y] : { std::tuple { &pathA, Section::pathA, 0 },
-                                               std::tuple { &pathB, Section::pathB, kTileHeight + kLaneGap } })
+                                               std::tuple { &pathB, Section::pathB, laneHeight + kLaneGap } })
         {
             for (int i = 0; i < (int) ids->size(); ++i)
             {
                 block.items.push_back ({ Item::Kind::pedal, (*ids)[(size_t) i], section, i, { x + i * (tileWidth + gap), y, tileWidth, kTileHeight } });
                 block.inFlow.push_back (false);
             }
-            block.items.push_back ({ Item::Kind::add, 0, section, (int) ids->size(), { x + (int) ids->size() * (tileWidth + gap), y, addWidth, kTileHeight } });
+            block.items.push_back ({ Item::Kind::add, 0, section, (int) ids->size(), { x + (int) ids->size() * (tileWidth + gap), y, addWidth, laneHeight } });
             block.inFlow.push_back (false);
         }
 
         const auto mergeX = x + lanes * (tileWidth + gap) + addWidth + gap;
-        block.items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { mergeX, 0, nodeWidth, tallHeight } });
+        block.items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { mergeX, 0, nodeWidth, nodeHeight } });
         block.inFlow.push_back (true);
         block.width = mergeX + nodeWidth;
         blocks.push_back (std::move (block));
@@ -173,7 +177,7 @@ BoardStrip::Layout BoardStrip::computeLayout (int width) const
         for (const auto b : rows[(size_t) r])
         {
             const auto& block = blocks[(size_t) b];
-            const auto blockY = row.top + (row.height - (block.tall ? tallHeight : kTileHeight)) / 2;
+            const auto blockY = row.top + (row.height - (block.tall ? tallHeight : kTileHeight)) / 2;   // a compact split is one tile high
             for (size_t i = 0; i < block.items.size(); ++i)
             {
                 auto item = block.items[i];
@@ -239,7 +243,7 @@ BoardStrip::Drop BoardStrip::dropAt (juce::Point<int> pos) const
         if (score < bestScore)
         {
             bestScore = score;
-            best = { item.section, index, { x - 1, item.bounds.getY(), 3, kTileHeight } };
+            best = { item.section, index, { x - 1, item.bounds.getY(), 3, item.bounds.getHeight() } };
         }
     };
 
@@ -271,7 +275,8 @@ void BoardStrip::paint (juce::Graphics& g)
         if (a.kind == Item::Kind::split && b.kind == Item::Kind::merge)
         {
             g.setColour (active ? Palette::outline : Palette::outline.withAlpha (0.4f));
-            for (const auto y : { a.bounds.getY() + kTileHeight / 2, a.bounds.getY() + kTileHeight + kLaneGap + kTileHeight / 2 })
+            const auto laneHeight = (a.bounds.getHeight() - kLaneGap) / 2;
+            for (const auto y : { a.bounds.getY() + laneHeight / 2, a.bounds.getY() + laneHeight + kLaneGap + laneHeight / 2 })
                 g.fillRect (a.bounds.getRight(), y - 1, b.bounds.getX() - a.bounds.getRight(), 2);
             continue;
         }
@@ -425,7 +430,7 @@ void BoardStrip::paintNode (juce::Graphics& g, const Item& item) const
 
     // Name written upwards, and the split mode under it.
     juce::String text = isSplit ? "SPLIT" : "MERGE";
-    if (isSplit)
+    if (isSplit && item.bounds.getHeight() > kTileHeight)   // no room in the compact split
         switch (board.getRouting().getSplitMode())
         {
             case SplitMode::full:      break;

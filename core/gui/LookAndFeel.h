@@ -37,9 +37,16 @@ namespace Palette
         return juce::Colour (0xffb4b4b4);
     }
 
+    /** Accent for playback tools (RKTracks): a neutral gray outside the effect
+        families, so a tool never looks like an effect. */
+    const juce::Colour toolAccent { 0xff8a8a8a };
+
     /** How strongly the family colour tints the background and the panels. */
     inline constexpr float kBackgroundTint = 0.06f;
     inline constexpr float kPanelTint = 0.09f;
+
+    inline juce::Colour tintedBackground (juce::Colour tint) { return background.interpolatedWith (tint, kBackgroundTint); }
+    inline juce::Colour tintedPanel (juce::Colour tint)      { return panel.interpolatedWith (tint, kPanelTint); }
 
     /** Text drawn on top of an accent fill (dark on light tints, light on dark). */
     inline juce::Colour onAccent (juce::Colour accent)
@@ -54,8 +61,20 @@ namespace Fonts
     inline juce::Font bold (float height)    { return juce::Font (juce::FontOptions (height, juce::Font::bold)); }
 }
 
+/** Corner radii and line widths, so hand-painted components match the widgets. */
+namespace Style
+{
+    inline constexpr float kCornerRadius = 4.0f;   // buttons, switches, fields
+    inline constexpr float kPanelRadius = 6.0f;    // sections and panels
+    inline constexpr float kLineWidth = 1.0f;      // outlines and separators
+}
+
+/** A section panel: rounded fill, optional dim uppercase title at the top left. */
+void drawPanel (juce::Graphics&, juce::Rectangle<int> area, juce::Colour fill, const juce::String& title = {});
+
 /** Shared look and feel: colours for the stock widgets (popup menus, alert
-    windows, text editors, buttons) and flat drawing for buttons. */
+    windows, text editors, labels, lists, combo boxes, sliders, scroll bars)
+    and flat drawing for buttons, toggle buttons, combo boxes and sliders. */
 class LookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -67,6 +86,22 @@ public:
                                bool isMouseOverButton, bool isButtonDown) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
     juce::Font getPopupMenuFont() override;
+
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool isMouseOverButton, bool isButtonDown) override;
+
+    void drawComboBox (juce::Graphics&, int width, int height, bool isButtonDown,
+                       int buttonX, int buttonY, int buttonW, int buttonH, juce::ComboBox&) override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
+    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
+
+    void drawLinearSlider (juce::Graphics&, int x, int y, int width, int height,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           juce::Slider::SliderStyle, juce::Slider&) override;
+
+    void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
+                        bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
+                        bool isMouseOver, bool isMouseDown) override;
+    int getDefaultScrollbarWidth() override { return 10; }
 
 private:
     juce::Colour accent;

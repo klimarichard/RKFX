@@ -10,8 +10,11 @@ namespace rkfx { std::vector<FactoryPreset> RKFX_FACTORY_PRESET_LIST(); }
 namespace rkfx
 {
 
-juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain)
+juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain, bool midiEffect)
 {
+    if (midiEffect)
+        return BusesProperties();   // MIDI only
+
     auto buses = BusesProperties()
                      .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
@@ -23,9 +26,13 @@ juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidecha
 }
 
 ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
-    : juce::AudioProcessor (makeBuses (cfg.sidechain)),
+    : juce::AudioProcessor (makeBuses (cfg.sidechain, cfg.midiEffect)),
       config (std::move (cfg))
 {
+    // A MIDI effect has no audio to mix or level.
+    if (config.midiEffect)
+        config.hasMix = config.hasOutput = false;
+
     // Standard controls, after the plugin's own parameters.
     if (config.hasMix)
         builder.addPercent ("mix", "Dry/Wet", 0.0f, 100.0f, config.mixDefault);
@@ -84,6 +91,9 @@ juce::RangedAudioParameter* ProcessorBase::findParam (const juce::String& id) co
 //==============================================================================
 bool ProcessorBase::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
+    if (config.midiEffect)
+        return layouts.getMainInputChannelSet().isDisabled() && layouts.getMainOutputChannelSet().isDisabled();
+
     const auto in  = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
 
@@ -132,6 +142,21 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 {
     midiIn = &midi;
     juce::ScopedNoDenormals noDenormals;
+
+    // A MIDI effect: bypassed, MIDI passes unchanged (after releasing what
+    // the effect was sounding as bypass engages).
+    if (config.midiEffect)
+    {
+        buffer.clear();
+        updateTransport();
+        const auto bypassed = valueOf (bypassParam) >= 0.5f;
+        if (bypassed && ! midiBypassed)
+            releaseMidi (midi);
+        midiBypassed = bypassed;
+        if (! bypassed && maxBlock > 0)
+            processMidi (midi, buffer.getNumSamples());
+        return;
+    }
 
     const auto numIn  = getMainBusNumInputChannels();
     const auto numOut = getMainBusNumOutputChannels();

@@ -188,6 +188,7 @@ juce::String familyName (rkfx::Palette::Family family)
         case rkfx::Palette::Family::delay:      return "Delay";
         case rkfx::Palette::Family::reverb:     return "Reverb";
         case rkfx::Palette::Family::utility:    return "Utility";
+        case rkfx::Palette::Family::midi:       return "MIDI";
     }
     return {};
 }

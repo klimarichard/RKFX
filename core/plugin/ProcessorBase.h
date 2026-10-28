@@ -26,6 +26,7 @@ struct PluginConfig
     bool monoToStereo = false;       // also accept mono in -> stereo out (chorus, reverb...)
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
+    bool midiEffect = false;         // MIDI in, MIDI out, no audio (no dry/wet, no output); also needs MIDI_EFFECT in CMake
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };
@@ -42,7 +43,13 @@ struct PluginConfig
 
     A plugin implements prepareDsp(), resetDsp() and processDsp(), which
     receives the wet signal in place, never more than the prepared block
-    size, and is skipped entirely while fully bypassed. */
+    size, and is skipped entirely while fully bypassed.
+
+    A MIDI effect (config.midiEffect) has no audio: it implements
+    processMidi() instead, which transforms the block's MIDI in place.
+    Bypassed, MIDI passes through unchanged; as bypass engages, releaseMidi()
+    first ends every note the effect started, so nothing hangs. An effect
+    should pass on note-offs it doesn't know (notes played while bypassed). */
 class ProcessorBase : public juce::AudioProcessor,
                       private juce::AudioProcessorParameter::Listener
 {
@@ -105,9 +112,9 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override;
 
     const juce::String getName() const override { return config.name; }
-    bool acceptsMidi() const override { return config.midiInput; }
-    bool producesMidi() const override { return false; }
-    bool isMidiEffect() const override { return false; }
+    bool acceptsMidi() const override { return config.midiInput || config.midiEffect; }
+    bool producesMidi() const override { return config.midiEffect; }
+    bool isMidiEffect() const override { return config.midiEffect; }
     double getTailLengthSeconds() const override { return 0.0; }
     bool hasEditor() const override { return true; }
 
@@ -129,6 +136,14 @@ protected:
 
     /** Process the wet signal in place. @p buffer holds the input. */
     virtual void processDsp (juce::AudioBuffer<float>& buffer) = 0;
+
+    /** MIDI effects: transform one block's MIDI in place (events at sample
+        positions 0 .. @p numSamples - 1). Not called while bypassed. */
+    virtual void processMidi (juce::MidiBuffer& /*midi*/, int /*numSamples*/) {}
+
+    /** MIDI effects: add note-offs (at position 0) for every note the effect
+        is sounding, and forget them. Called as bypass engages. */
+    virtual void releaseMidi (juce::MidiBuffer& /*midi*/) {}
 
     /** Host tempo and beat position at the start of the buffer handed to
         processDsp() (valid inside processDsp only). */
@@ -199,7 +214,9 @@ private:
     std::atomic<int> presetStateCounter { 0 };
     std::atomic<bool> applyingValues { false };
 
-    static BusesProperties makeBuses (bool withSidechain);
+    bool midiBypassed = false;
+
+    static BusesProperties makeBuses (bool withSidechain, bool midiEffect);
     void processChunk (juce::AudioBuffer<float>& chunk);
     void delayDry (int numChannels, int numSamples) noexcept;
     void updateTransport();

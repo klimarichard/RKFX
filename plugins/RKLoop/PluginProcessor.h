@@ -7,7 +7,7 @@
 
 #include <array>
 
-/** RKLoop: a live looper (record, overdub, undo, reverse, half speed). */
+/** RKLoop: a live looper with eight loops (parts and layers, synced). */
 class RKLoopProcessor : public rkfx::ProcessorBase
 {
 public:
@@ -24,10 +24,12 @@ protected:
     void processDsp (juce::AudioBuffer<float>&) override;
 
 private:
-    static constexpr int kButtons = 4;
+    static constexpr int kButtons = 6;
     std::array<juce::RangedAudioParameter*, kButtons> buttons {};
-    juce::RangedAudioParameter *reverse, *halfSpeed, *level;
+    std::array<juce::RangedAudioParameter*, LoopEngine::kLoops> roles {};
+    juce::RangedAudioParameter *reverse, *halfSpeed, *level, *loop, *sync;
     LoopEngine engine;
+    int shownLoop = -1;                   // the Loop parameter as last applied (1..8)
 
     // Footswitch presses, counted when the parameter changes (so a quick
     // click between two audio blocks is never missed).

@@ -1,0 +1,16 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Synced Layers",
+  "params": {
+    "sync": true,
+    "role1": "layer",
+    "role2": "layer",
+    "role3": "layer",
+    "role4": "layer",
+    "role5": "layer",
+    "role6": "layer",
+    "role7": "layer",
+    "role8": "layer"
+  }
+}

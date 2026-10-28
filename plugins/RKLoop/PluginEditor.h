@@ -21,15 +21,33 @@ private:
         juce::RangedAudioParameter& param;
     };
 
-    std::array<std::unique_ptr<Footswitch>, 4> footswitches;
-    std::unique_ptr<rkfx::ToggleSwitch> reverse, halfSpeed;
-    std::unique_ptr<rkfx::Knob> level;
+    /** One loop: its number, role, state and progress; a click selects it. */
+    struct Tile : public juce::Component
+    {
+        Tile (RKLoopEditor&, int index);
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        RKLoopEditor& owner;
+        const int index;
+    };
 
-    juce::Rectangle<int> loopArea() const;
+    std::array<std::unique_ptr<Footswitch>, 6> footswitches;
+    std::array<std::unique_ptr<Tile>, 8> tiles;
+    std::unique_ptr<rkfx::ToggleSwitch> sync, reverse, halfSpeed;
+    std::unique_ptr<rkfx::SegmentedSwitch> role;    // of the selected loop
+    std::unique_ptr<rkfx::Knob> level;
+    int roleFor = -1;
+    bool blink = false;
+    int blinkCounter = 0;
+
+    juce::Rectangle<int> loopsArea() const;
+    juce::Rectangle<int> controlArea() const;
     juce::Rectangle<int> statusArea() const;
+    void showRoleSwitch (int loop);
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;
+
     void refresh();
     juce::TimedCallback refresher { [this] { refresh(); } };
 

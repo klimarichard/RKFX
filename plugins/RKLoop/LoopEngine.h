@@ -4,49 +4,66 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include <array>
 #include <atomic>
 
-/** The RKLoop DSP: a live looper, one loop, zero latency.
+/** The RKLoop DSP: a live looper with eight loops, zero latency.
 
-    One footswitch runs it like a classic looper pedal:
+    Each loop is a Part or a Layer:
+    - Parts are song sections: one plays at a time. Choosing another part
+      while one plays switches at the end of the playing part's loop.
+    - Layers play on top of the part (and of each other), each on or off.
+
+    The footswitches act on the selected loop, like a looper pedal:
 
         empty --Rec--> recording --Rec--> playing <--Rec--> overdubbing
                                    |                          |
                                    +---Stop--> stopped <------+   (Rec in stopped: play from the start)
 
-    - Recording sets the loop's length; the first loop gets 5 ms fades at
-      both ends, so its seam never clicks. Reaching the maximum length
-      closes the loop and plays it.
-    - Overdubbing adds the input to the loop. Before a sample is first
-      changed in an overdub session, its old value is saved, so Undo can
-      swap the session out again (and Redo back in). The swap runs a few
-      hundred samples per audio sample (about 0.2 s for a full minute), so
-      no block ever stalls.
-    - Reverse plays (and overdubs) backwards; Half Speed plays an octave
-      down at half speed (overdubbing is off while it is on).
-    - Stop and Clear fade out over 5 ms; playing fades in.
-    - The input always passes through; the loop is added at Loop Level.
+    Stop on a part stops everything (the song); on a layer, only the layer.
 
-    Memory for the maximum length is allocated in prepare() (never while
-    processing); a prepare() at the same sample rate keeps the loop. The
-    loop's audio is not part of the saved state. */
+    Sync (on by default): Loop 1 sets the length. While anything plays,
+    other loops start recording or playing on Loop 1's next downbeat, and a
+    recording ends at the nearest 1/4, 1/2, 1, 2, 3... times Loop 1's
+    length (it keeps recording until then, or drops what went past it), so
+    every loop stays in step. Without sync, or before Loop 1 exists, loops
+    are free: they start at once and are as long as played.
+
+    Per loop, as in a single looper: 5 ms fades at the seam of a new
+    recording and on play, stop and clear; overdubbing saves each changed
+    sample once per session, so Undo swaps the session out again (and Redo
+    back in), a few hundred samples per audio sample. Reverse plays and
+    overdubs backwards; Half Speed plays an octave down (no overdubbing).
+    The input always passes through; the loops are added at Loop Level.
+
+    Memory for every loop at its maximum length is allocated in prepare()
+    (never while processing); a prepare() at the same rate keeps the loops.
+    The loops' audio is not part of the saved state. */
 class LoopEngine
 {
 public:
+    static constexpr int kLoops = 8;
     static constexpr int kMaxChannels = 2;
-    static constexpr double kMaxSeconds = 60.0;
+    static constexpr double kMaxSeconds = 30.0;
     static constexpr double kFadeMs = 5.0;
     static constexpr int kSwapPerSample = 256;
 
     enum class State { empty, recording, playing, overdubbing, stopped };
-    enum class Button { record, stop, undo, clear };
+    enum class Role { part, layer };
+    enum class Button { record, stop, undo, clear, next, previous };
+
+    /** The synced length nearest to @p recorded samples: 1/4, 1/2 or a
+        whole multiple of @p master, at most @p maxLength. */
+    static int syncedLength (int recorded, int master, int maxLength) noexcept;
 
     void prepare (double sampleRate);
-    void reset();                         // stops playback (keeps the loop)
+    void reset();                         // stops playback (keeps the loops)
 
-    /** A footswitch press (call from the audio thread, before process()). */
-    void press (Button) noexcept;
-
+    // Audio thread, before process().
+    void press (Button) noexcept;         // acts on the selected loop
+    void select (int index) noexcept;     // 0..7; choosing a part while one plays queues the switch
+    void setRole (int index, Role) noexcept;
+    void setSync (bool on) noexcept       { sync = on; }
     void setReverse (bool on) noexcept    { reverse = on; }
     void setHalfSpeed (bool on) noexcept  { halfSpeed = on; }
     void setLevel (float gain) noexcept   { level.setTargetValue (gain); }
@@ -54,39 +71,76 @@ public:
     void process (float* const* io, int numChannels, int numSamples) noexcept;
 
     // For the display and tests (any thread).
-    State getState() const noexcept            { return state.load(); }
-    int getLength() const noexcept             { return length.load(); }
-    double getPosition() const noexcept        { return displayPosition.load(); }
-    int getRecordedLength() const noexcept     { return state == State::recording ? writeIndex.load() : length.load(); }
-    bool canUndo() const noexcept              { return undoCount.load() > 0 && ! undone.load(); }
-    bool canRedo() const noexcept              { return undoCount.load() > 0 && undone.load(); }
-    int getMaxLength() const noexcept          { return maxLength; }
+    int getSelected() const noexcept                 { return selected.load(); }
+    State getState (int i) const noexcept            { return loops[(size_t) i].state.load(); }
+    State getState() const noexcept                  { return getState (getSelected()); }
+    int getLength (int i) const noexcept             { return loops[(size_t) i].length.load(); }
+    int getLength() const noexcept                   { return getLength (getSelected()); }
+    int getRecordedLength (int i) const noexcept     { return getState (i) == State::recording ? loops[(size_t) i].written.load() : getLength (i); }
+    int getRecordedLength() const noexcept           { return getRecordedLength (getSelected()); }
+    double getPosition (int i) const noexcept        { return loops[(size_t) i].shownPosition.load(); }
+    double getPosition() const noexcept              { return getPosition (getSelected()); }
+    bool isQueued (int i) const noexcept             { return loops[(size_t) i].queued.load(); }
+    bool canUndo (int i) const noexcept              { return loops[(size_t) i].undoCount.load() > 0 && ! loops[(size_t) i].undone.load(); }
+    bool canRedo (int i) const noexcept              { return loops[(size_t) i].undoCount.load() > 0 && loops[(size_t) i].undone.load(); }
+    bool canUndo() const noexcept                    { return canUndo (getSelected()); }
+    bool canRedo() const noexcept                    { return canRedo (getSelected()); }
+    Role getRole (int i) const noexcept              { return loops[(size_t) i].role.load(); }
+    int getMaxLength() const noexcept                { return maxLength; }
+
+    /** Loop 1's length while sync is on (0 = no sync reference). */
+    int getMasterLength() const noexcept;
 
 private:
+    enum class AfterFade { nothing, stop, clear };
+
+    struct Loop
+    {
+        juce::AudioBuffer<float> audio, undo;
+        std::atomic<State> state { State::empty };
+        std::atomic<Role> role { Role::part };
+        std::atomic<int> length { 0 }, written { 0 };
+        std::atomic<double> shownPosition { 0.0 };
+        std::atomic<bool> queued { false };      // waiting to start (record or play)
+        bool queuedRecord = false;
+        int recordTarget = -1;                   // synced recording: closes here...
+        bool stopAfterRecording = false;         // ...and then stops (else plays)
+        double position = 0.0;
+        rkfx::Smoothed gain;
+        AfterFade afterFade = AfterFade::nothing;
+
+        int undoStart = 0, sessionSaved = 0, swapCursor = -1;
+        std::atomic<int> undoCount { 0 };
+        std::atomic<bool> undone { false };
+    };
+
     double sampleRate = 0.0;
     int maxLength = 0, fadeLength = 240;
-    juce::AudioBuffer<float> loop, undoBuffer;
+    std::array<Loop, kLoops> loops;
 
-    std::atomic<State> state { State::empty };
-    std::atomic<int> length { 0 }, writeIndex { 0 };
-    std::atomic<double> displayPosition { 0.0 };
-    double position = 0.0;
-    bool reverse = false, halfSpeed = false;
+    std::atomic<int> selected { 0 };
+    bool sync = true, reverse = false, halfSpeed = false;
+    rkfx::Smoothed level { 1.0f };
 
-    // Fades: playback gain (5 ms), and what to do once it is silent.
-    rkfx::Smoothed playGain, level { 1.0f };
-    enum class AfterFade { nothing, stop, clear } afterFade = AfterFade::nothing;
+    // Sync clock: Loop 1's position while anything runs; it wraps on the downbeat.
+    double clock = 0.0;
+    bool clockRunning = false;
+    int currentPart = -1, pendingPart = -1;
 
-    // Undo: the samples an overdub session changed, by position.
-    int undoStart = 0, sessionSaved = 0;
-    std::atomic<int> undoCount { 0 };
-    std::atomic<bool> undone { false };
-    int swapCursor = -1;                  // >= 0 while swapping
+    bool isRunning (int i) const noexcept;
+    bool anyRunning() const noexcept;
+    bool startsOnDownbeat (int i) const noexcept;
 
-    void closeRecording() noexcept;
-    void startPlaying (bool fromStart) noexcept;
-    void startOverdub() noexcept;
-    void continueSwap() noexcept;
-    float read (int channel, double pos) const noexcept;
-    int wrap (int index) const noexcept { return (index % length + length) % length; }
+    void beginRecording (int i) noexcept;
+    void endRecording (int i, bool thenPlay) noexcept;
+    void closeRecording (int i, int newLength) noexcept;
+    void playFrom (int i, int offset) noexcept;   // plays, @p offset samples into the loop
+    void startPlaying (int i) noexcept;
+    void requestRecording (int i) noexcept;
+    void requestPlaying (int i) noexcept;
+    void startOverdub (int i) noexcept;
+    void fadeOut (int i, AfterFade) noexcept;
+    void stopOtherParts (int except) noexcept;
+    void continueSwap (int i) noexcept;
+    float read (const Loop&, int channel, double pos) const noexcept;
 };

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Song Parts",
+  "params": {
+    "sync": true
+  }
+}

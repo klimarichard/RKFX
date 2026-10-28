@@ -17,8 +17,12 @@ namespace
 
 RKLoopProcessor::RKLoopProcessor()
     : rkfx::ProcessorBase (makeConfig(), LoopParams::create()),
-      reverse (findParam ("reverse")), halfSpeed (findParam ("half_speed")), level (findParam ("level"))
+      reverse (findParam ("reverse")), halfSpeed (findParam ("half_speed")), level (findParam ("level")),
+      loop (findParam ("loop")), sync (findParam ("sync"))
 {
+    for (int i = 0; i < LoopEngine::kLoops; ++i)
+        roles[(size_t) i] = findParam (LoopParams::roleId (i));
+
     for (int b = 0; b < kButtons; ++b)
     {
         buttons[(size_t) b] = findParam (LoopParams::buttonIds[b]);
@@ -57,9 +61,27 @@ void RKLoopProcessor::resetDsp()
 
 void RKLoopProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
+    for (int i = 0; i < LoopEngine::kLoops; ++i)
+        engine.setRole (i, valueOf (roles[(size_t) i]) >= 0.5f ? LoopEngine::Role::layer : LoopEngine::Role::part);
+    engine.setSync (valueOf (sync) >= 0.5f);
+
+    // The Loop parameter selects (a host widget), before the footswitches act.
+    if (const auto wanted = juce::roundToInt (valueOf (loop)); wanted != shownLoop)
+    {
+        shownLoop = wanted;
+        engine.select (wanted - 1);
+    }
+
     for (int b = 0; b < kButtons; ++b)
         for (auto n = presses[(size_t) b].exchange (0); n > 0; --n)
             engine.press ((LoopEngine::Button) b);
+
+    // Next / Previous moved the selection: the parameter follows.
+    if (const auto selected = engine.getSelected() + 1; selected != shownLoop)
+    {
+        shownLoop = selected;
+        loop->setValueNotifyingHost (loop->convertTo0to1 ((float) selected));
+    }
 
     engine.setReverse (valueOf (reverse) >= 0.5f);
     engine.setHalfSpeed (valueOf (halfSpeed) >= 0.5f);

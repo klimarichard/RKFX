@@ -1,0 +1,12 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Parts and Layers",
+  "params": {
+    "sync": true,
+    "role5": "layer",
+    "role6": "layer",
+    "role7": "layer",
+    "role8": "layer"
+  }
+}

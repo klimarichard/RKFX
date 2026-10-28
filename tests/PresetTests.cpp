@@ -70,7 +70,7 @@ public:
             { "RKUtility", UtilityParams::create, 7 },   { "RKOctave", OctaveParams::create, 6 },
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
             { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
-            { "RKLoop", LoopParams::create, 4 },
+            { "RKLoop", LoopParams::create, 8 },
         };
 
         for (const auto& plugin : plugins)

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKLoop",
+  "version": 1,
+  "name": "Free Loops",
+  "params": {
+    "sync": false
+  }
+}

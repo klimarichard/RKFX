@@ -142,6 +142,139 @@ public:
             juce::ignoreUnused (recorded);
         }
 
+        beginTest ("Synced lengths: quarters, halves and whole multiples of Loop 1");
+        {
+            const auto max = 1440000;
+            expectEquals (LoopEngine::syncedLength (11000, 12000, max), 12000);
+            expectEquals (LoopEngine::syncedLength (2600, 12000, max), 3000);
+            expectEquals (LoopEngine::syncedLength (5500, 12000, max), 6000);
+            expectEquals (LoopEngine::syncedLength (25000, 12000, max), 24000);
+            expectEquals (LoopEngine::syncedLength (40000, 12000, max), 36000);
+            expectEquals (LoopEngine::syncedLength (2000000, 12000, max), 1440000, "never longer than the maximum");
+        }
+
+        beginTest ("Parts: a new part records on the downbeat, closes on a multiple, switches at the end");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            recordLoop (e, 440.0, 12000);                 // Loop 1: the sync reference
+            expectEquals (e.getMasterLength(), 12000);
+
+            e.select (1);
+            e.press (Button::record);                     // Loop 2: waits for Loop 1's downbeat
+            expect (e.isQueued (1) && e.getState (1) == State::empty);
+            silenceFor (e, 6000);
+            expect (e.getState (0) == State::playing, "Loop 1 still plays until then");
+            silenceFor (e, 6100);
+            expect (e.getState (1) == State::recording, "recording from the downbeat");
+            silenceFor (e, 600);
+            expect (e.getState (0) == State::stopped, "the other part stopped");
+
+            silenceFor (e, 22000);                        // about 1.9 x Loop 1 so far
+            e.press (Button::record);
+            expect (e.getState (1) == State::recording, "keeps recording up to 2 x");
+            silenceFor (e, 3000);
+            expectEquals (e.getLength (1), 24000);
+            expect (e.getState (1) == State::playing);
+
+            e.select (0);                                 // back to Loop 1: at the end of Loop 2
+            expect (e.isQueued (0));
+            const auto left = 24000 - (int) e.getPosition (1);
+            silenceFor (e, left - 200);
+            expect (e.getState (1) == State::playing && e.getState (0) == State::stopped, "not yet");
+            silenceFor (e, 600);
+            expect (e.getState (0) == State::playing, "switched at the end of Loop 2");
+            silenceFor (e, 600);
+            expect (e.getState (1) == State::stopped);
+        }
+
+        beginTest ("Synced: a quarter of Loop 1, and going past a multiple keeps the loops in step");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            recordLoop (e, 440.0, 12000);
+            e.select (1);
+            e.press (Button::record);
+            silenceFor (e, 12000 - (int) e.getPosition (0) + 10);
+            expect (e.getState (1) == State::recording);
+            silenceFor (e, 2600 - 10);
+            e.press (Button::record);
+            silenceFor (e, 600);
+            expectEquals (e.getLength (1), 3000, "a quarter");
+
+            // Nothing plays after the clear: the recording starts at once
+            // (and is the downbeat), still in multiples of Loop 1.
+            e.press (Button::clear);
+            silenceFor (e, 600);
+            e.press (Button::record);
+            expect (e.getState (1) == State::recording);
+            silenceFor (e, 26000);                        // 2000 past 2 x
+            e.press (Button::record);
+            expectEquals (e.getLength (1), 24000);
+            silenceFor (e, 1);                            // the shown position follows each block
+            expectWithinAbsoluteError (e.getPosition (1), 2001.0, 1.0, "plays on from where that puts it");
+        }
+
+        beginTest ("Layers play on top; Stop on a layer stops only it, on a part everything");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            e.setRole (1, LoopEngine::Role::layer);
+            recordLoop (e, 440.0, 12000);
+
+            e.select (1);
+            e.press (Button::record);
+            silenceFor (e, 12000 - (int) e.getPosition (0) + 1);
+            auto layer = tone (660.0, 0.5f, 11000);
+            process (e, layer);
+            e.press (Button::record);
+            silenceFor (e, 1500);
+            expect (e.getState (0) == State::playing && e.getState (1) == State::playing, "both play");
+
+            auto out = silence (12000);
+            process (e, out);
+            expect (amplitude (out, 440.0) > 0.2 && amplitude (out, 660.0) > 0.2, "both heard");
+
+            e.press (Button::stop);                       // the layer
+            silenceFor (e, 600);
+            expect (e.getState (1) == State::stopped && e.getState (0) == State::playing);
+
+            e.press (Button::record);                     // back on, on the downbeat
+            expect (e.isQueued (1));
+            silenceFor (e, 12100);
+            expect (e.getState (1) == State::playing);
+
+            e.select (0);
+            e.press (Button::stop);                       // a part: the song stops
+            silenceFor (e, 600);
+            expect (e.getState (0) == State::stopped && e.getState (1) == State::stopped);
+        }
+
+        beginTest ("Sync off: loops start at once and are as long as played");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            e.setSync (false);
+            recordLoop (e, 440.0, 12000);
+            e.select (1);
+            e.press (Button::record);
+            expect (e.getState (1) == State::recording, "at once");
+            silenceFor (e, 7777);
+            e.press (Button::record);
+            expectEquals (e.getLength (1), 7777);
+        }
+
+        beginTest ("Next and Previous move the selection around the eight loops");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            e.press (Button::next);
+            expectEquals (e.getSelected(), 1);
+            e.press (Button::previous);
+            e.press (Button::previous);
+            expectEquals (e.getSelected(), 7);
+        }
+
         beginTest ("A new prepare at the same rate keeps the loop");
         {
             LoopEngine e;
@@ -165,6 +298,32 @@ private:
             b.setSample (1, i, x);
         }
         return b;
+    }
+
+    static juce::AudioBuffer<float> tone (double hz, float amplitude, int n) { return sine (hz, amplitude, n); }
+
+    static void silenceFor (LoopEngine& e, int n)
+    {
+        auto b = silence (juce::jmax (1, n));
+        process (e, b);
+    }
+
+    /** Amplitude at @p hz over the whole buffer, channel 0 (Goertzel, Hann window). */
+    static double amplitude (const juce::AudioBuffer<float>& b, double hz)
+    {
+        const auto n = b.getNumSamples();
+        const auto* data = b.getReadPointer (0);
+        const auto w = 2.0 * juce::MathConstants<double>::pi * hz / 48000.0;
+        const auto coeff = 2.0 * std::cos (w);
+        double s1 = 0.0, s2 = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            const auto win = 0.5 - 0.5 * std::cos (2.0 * juce::MathConstants<double>::pi * i / (n - 1));
+            const auto s0 = data[i] * win + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        return 2.0 * std::sqrt (juce::jmax (0.0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / (n * 0.5);
     }
 
     static juce::AudioBuffer<float> silence (int n)

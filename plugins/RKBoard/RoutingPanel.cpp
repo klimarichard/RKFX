@@ -5,9 +5,9 @@ namespace rkboard
 
 using namespace rkfx;
 
-RoutingPanel::RoutingPanel (BoardProcessor& b, Node n) : board (b), node (n)
+RoutingPanel::RoutingPanel (BoardProcessor& b, int s, Node n) : board (b), split (s), node (n)
 {
-    auto& routing = board.getRouting();
+    auto& routing = board.getRouting (split);
     const auto accent = Palette::boardAccent;
 
     if (node == Node::split)
@@ -29,8 +29,20 @@ RoutingPanel::RoutingPanel (BoardProcessor& b, Node n) : board (b), node (n)
             addAndMakeVisible (c);
     }
 
+    removeButton.setTooltip ("Its paths' pedals (A, then B) join the chain in its place.");
+    removeButton.onClick = [this] { if (onRemove) onRemove(); };
+    addAndMakeVisible (removeButton);
+
     timerCallback();
     startTimerHz (10);
+}
+
+juce::String RoutingPanel::title() const
+{
+    auto text = juce::String (node == Node::split ? "Split" : "Merge");
+    if (board.getNumSplits() > 1)
+        text << " " << (split + 1);
+    return text;
 }
 
 juce::Rectangle<int> RoutingPanel::card() const
@@ -40,13 +52,13 @@ juce::Rectangle<int> RoutingPanel::card() const
 
 juce::String RoutingPanel::explanation() const
 {
-    if (! board.isSplitActive())
+    if (! board.isSplitActive (split))
         return "Not in use: put a pedal on path A or B (drag one between the split and the merge) to split the signal.";
 
     if (node == Node::merge)
         return "Paths A and B are added back together here. An empty path passes its signal through.";
 
-    switch (board.getRouting().getSplitMode())
+    switch (board.getRouting (split).getSplitMode())
     {
         case SplitMode::full:      return "Both paths get the full signal.";
         case SplitMode::frequency: return "Lows go to path A, highs to path B (24 dB/octave, they add back flat).";
@@ -58,7 +70,7 @@ juce::String RoutingPanel::explanation() const
 void RoutingPanel::paint (juce::Graphics& g)
 {
     const auto area = card();
-    drawPanel (g, area, Palette::panel, node == Node::split ? "Split" : "Merge");
+    drawPanel (g, area, Palette::panel, title());
 
     if (node == Node::merge)
     {
@@ -70,13 +82,14 @@ void RoutingPanel::paint (juce::Graphics& g)
         g.drawText ("PATH B", inner.removeFromTop (18), juce::Justification::centred);
     }
 
-    g.setColour (board.isSplitActive() ? Palette::textDim : Palette::warning);
+    g.setColour (board.isSplitActive (split) ? Palette::textDim : Palette::warning);
     g.setFont (Fonts::regular (13.0f));
     g.drawFittedText (explanation(), area.reduced (16, 0).removeFromBottom (34), juce::Justification::centred, 2);
 }
 
 void RoutingPanel::resized()
 {
+    removeButton.setBounds (card().removeFromTop (30).removeFromRight (140).reduced (4, 4));
     auto area = card().reduced (16, 30).withTrimmedBottom (34);
 
     if (node == Node::split)
@@ -105,7 +118,7 @@ void RoutingPanel::resized()
 void RoutingPanel::timerCallback()
 {
     if (crossoverKnob != nullptr)
-        crossoverKnob->setDimmed (board.getRouting().getSplitMode() != SplitMode::frequency);
+        crossoverKnob->setDimmed (board.getRouting (split).getSplitMode() != SplitMode::frequency);
     repaint (card().removeFromBottom (40));
 }
 

@@ -7,21 +7,31 @@ namespace rkboard
 
 juce::String sectionKey (Section s)
 {
-    switch (s)
-    {
-        case Section::pre:   return "pre";
-        case Section::pathA: return "a";
-        case Section::pathB: return "b";
-        case Section::post:  return "post";
-    }
-    return "pre";
+    if (! isPath (s))
+        return "chain" + juce::String (chainOf (s));
+    return juce::String (pathOf (s) == 0 ? "a" : "b") + juce::String (splitOf (s) + 1);
 }
 
 Section sectionFromKey (const juce::String& key)
 {
-    for (const auto s : { Section::pre, Section::pathA, Section::pathB, Section::post })
-        if (sectionKey (s) == key)
-            return s;
+    // Boards from before several splits: one split.
+    if (key == "pre")  return Section::pre;
+    if (key == "a")    return Section::pathA;
+    if (key == "b")    return Section::pathB;
+    if (key == "post") return Section::post;
+
+    if (key.startsWith ("chain"))
+    {
+        const auto k = key.substring (5).getIntValue();
+        if (k >= 0 && k <= kMaxSplits)
+            return chainSection (k);
+    }
+    else if ((key.startsWith ("a") || key.startsWith ("b")) && key.length() > 1)
+    {
+        const auto split = key.substring (1).getIntValue() - 1;
+        if (split >= 0 && split < kMaxSplits)
+            return pathSection (split, key[0] == 'a' ? 0 : 1);
+    }
     return Section::pre;
 }
 

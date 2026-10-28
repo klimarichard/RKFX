@@ -7,18 +7,32 @@
 namespace rkboard
 {
 
-/** Where a pedal sits:
+/** Where a pedal sits. A board is a chain with up to kMaxSplits splits in
+    series; each split sends the signal down two paths, and its merge adds
+    them back:
 
-        Input -> [pre] -> split -+- [path A] -+- merge -> [post] -> Output
-                                 +- [path B] -+
+        In -> [chain 0] -> split 1 -+- [1A] -+- merge 1 -> [chain 1] -> split 2 ... -> [chain n] -> Out
+                                    +- [1B] -+
 
-    The split and merge only take part while path A or B holds a pedal; with
-    both empty the board is a plain serial chain (pre, then post). */
-enum class Section { pre, pathA, pathB, post };
-constexpr int kNumSections = 4;
+    Sections are numbered in signal order: chain k is 3k, and split k's
+    paths (k from 0) are 3k + 1 (A) and 3k + 2 (B). So pre, pathA, pathB
+    and post name chain 0, the first split's paths and chain 1, as on a
+    board with one split. A split only takes part while one of its paths
+    holds a pedal; with both empty the signal passes it untouched. */
+enum class Section : int { pre = 0, pathA = 1, pathB = 2, post = 3 };
 
-juce::String sectionKey (Section);                       // "pre", "a", "b", "post"
-Section sectionFromKey (const juce::String&);            // unknown -> pre
+constexpr int kMaxSplits = 4;
+constexpr int kMaxSections = 3 * kMaxSplits + 1;
+
+constexpr Section chainSection (int k) noexcept           { return (Section) (3 * k); }
+constexpr Section pathSection (int split, int path) noexcept { return (Section) (3 * split + 1 + path); }
+constexpr bool isPath (Section s) noexcept               { return (int) s % 3 != 0; }
+constexpr int splitOf (Section s) noexcept               { return (int) s / 3; }       // a path's split
+constexpr int pathOf (Section s) noexcept                { return (int) s % 3 - 1; }   // 0 = A, 1 = B
+constexpr int chainOf (Section s) noexcept               { return (int) s / 3; }       // a chain's number
+
+juce::String sectionKey (Section);                       // "chain0", "a1", "b1", "chain1", ...
+Section sectionFromKey (const juce::String&);            // also the older "pre", "a", "b", "post"; unknown -> chain 0
 
 enum class SplitMode { full, frequency, stereo };
 

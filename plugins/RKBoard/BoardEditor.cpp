@@ -53,8 +53,8 @@ int BoardStrip::keyOf (const Item& item)
     {
         case Item::Kind::pedal: return item.id;
         case Item::Kind::add:   return 100 + (int) item.section;
-        case Item::Kind::split: return kSplitNode;
-        case Item::Kind::merge: return kMergeNode;
+        case Item::Kind::split: return splitNode (item.id);
+        case Item::Kind::merge: return mergeNode (item.id);
     }
     return 0;
 }
@@ -83,11 +83,13 @@ BoardStrip::Layout BoardStrip::computeLayout (int width) const
         blocks.push_back ({ { { Item::Kind::add, 0, section, (int) ids.size(), { 0, 0, addWidth, kTileHeight } } }, { true }, addWidth, false });
     };
 
-    addSingles (board.getSection (Section::pre), Section::pre);
+    // Chain 0, then each split (with its paths and merge) and the chain after it.
+    addSingles (board.getSection (chainSection (0)), chainSection (0));
 
+    for (int k = 0; k < board.getNumSplits(); ++k)
     {
-        const auto& pathA = board.getSection (Section::pathA);
-        const auto& pathB = board.getSection (Section::pathB);
+        const auto& pathA = board.getSection (pathSection (k, 0));
+        const auto& pathB = board.getSection (pathSection (k, 1));
         const auto lanes = (int) juce::jmax (pathA.size(), pathB.size());
 
         // Paths too long for one row: their tiles get narrower.
@@ -100,12 +102,12 @@ BoardStrip::Layout BoardStrip::computeLayout (int width) const
         block.tall = lanes > 0;
         const auto laneHeight = block.tall ? kTileHeight : (kTileHeight - kLaneGap) / 2;
         const auto nodeHeight = 2 * laneHeight + kLaneGap;
-        block.items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { 0, 0, nodeWidth, nodeHeight } });
+        block.items.push_back ({ Item::Kind::split, k, chainSection (k), 0, { 0, 0, nodeWidth, nodeHeight } });
         block.inFlow.push_back (true);
 
         const auto x = nodeWidth + gap;
-        for (const auto& [ids, section, y] : { std::tuple { &pathA, Section::pathA, 0 },
-                                               std::tuple { &pathB, Section::pathB, laneHeight + kLaneGap } })
+        for (const auto& [ids, section, y] : { std::tuple { &pathA, pathSection (k, 0), 0 },
+                                               std::tuple { &pathB, pathSection (k, 1), laneHeight + kLaneGap } })
         {
             for (int i = 0; i < (int) ids->size(); ++i)
             {
@@ -117,13 +119,13 @@ BoardStrip::Layout BoardStrip::computeLayout (int width) const
         }
 
         const auto mergeX = x + lanes * (tileWidth + gap) + addWidth + gap;
-        block.items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { mergeX, 0, nodeWidth, nodeHeight } });
+        block.items.push_back ({ Item::Kind::merge, k, chainSection (k + 1), 0, { mergeX, 0, nodeWidth, nodeHeight } });
         block.inFlow.push_back (true);
         block.width = mergeX + nodeWidth;
         blocks.push_back (std::move (block));
-    }
 
-    addSingles (board.getSection (Section::post), Section::post);
+        addSingles (board.getSection (chainSection (k + 1)), chainSection (k + 1));
+    }
 
     // Into rows. A "+" never starts a row on its own: the block before it
     // comes along.
@@ -266,7 +268,6 @@ void BoardStrip::paint (juce::Graphics& g)
 
     // Signal lines (under the tiles): along each row, through both paths,
     // and a cable from the end of a row to the start of the next.
-    const auto active = board.isSplitActive();
     for (size_t k = 0; k + 1 < layout.flow.size(); ++k)
     {
         const auto& a = items[(size_t) layout.flow[k]];
@@ -274,7 +275,7 @@ void BoardStrip::paint (juce::Graphics& g)
 
         if (a.kind == Item::Kind::split && b.kind == Item::Kind::merge)
         {
-            g.setColour (active ? Palette::outline : Palette::outline.withAlpha (0.4f));
+            g.setColour (board.isSplitActive (a.id) ? Palette::outline : Palette::outline.withAlpha (0.4f));
             const auto laneHeight = (a.bounds.getHeight() - kLaneGap) / 2;
             for (const auto y : { a.bounds.getY() + laneHeight / 2, a.bounds.getY() + laneHeight + kLaneGap + laneHeight / 2 })
                 g.fillRect (a.bounds.getRight(), y - 1, b.bounds.getX() - a.bounds.getRight(), 2);
@@ -419,7 +420,7 @@ void BoardStrip::paintAddTile (juce::Graphics& g, const Item& item) const
 
 void BoardStrip::paintNode (juce::Graphics& g, const Item& item) const
 {
-    const auto active = board.isSplitActive();
+    const auto active = board.isSplitActive (item.id);
     const auto node = item.bounds.toFloat();
     const auto isSplit = item.kind == Item::Kind::split;
 
@@ -430,8 +431,10 @@ void BoardStrip::paintNode (juce::Graphics& g, const Item& item) const
 
     // Name written upwards, and the split mode under it.
     juce::String text = isSplit ? "SPLIT" : "MERGE";
+    if (board.getNumSplits() > 1)
+        text << " " << (item.id + 1);
     if (isSplit && item.bounds.getHeight() > kTileHeight)   // no room in the compact split
-        switch (board.getRouting().getSplitMode())
+        switch (board.getRouting (item.id).getSplitMode())
         {
             case SplitMode::full:      break;
             case SplitMode::frequency: text << "  " << juce::String::fromUTF8 ("\xc2\xb7") << "  FREQ"; break;
@@ -482,13 +485,14 @@ void BoardStrip::mouseDown (const juce::MouseEvent& e)
     switch (item->kind)
     {
         case Item::Kind::add:
-            if ((int) board.getChain().size() < BoardProcessor::kMaxPedals)
-                showAddMenu (item->section, item->bounds);
+            showAddMenu (item->section, item->bounds);
             break;
 
         case Item::Kind::split:
         case Item::Kind::merge:
-            if (onSelect)
+            if (e.mods.isPopupMenu())
+                showNodeMenu (item->id);
+            else if (onSelect)
                 onSelect (keyOf (*item));
             break;
 
@@ -547,8 +551,10 @@ void BoardStrip::mouseUp (const juce::MouseEvent& e)
 
 void BoardStrip::showAddMenu (Section section, juce::Rectangle<int> target)
 {
+    constexpr int insertSplit = 10000;
     juce::PopupMenu menu;
     const auto& types = pedalTypes();
+    const auto full = (int) board.getChain().size() >= BoardProcessor::kMaxPedals;
 
     std::optional<Palette::Family> family;
     for (int i = 0; i < (int) types.size(); ++i)
@@ -558,7 +564,14 @@ void BoardStrip::showAddMenu (Section section, juce::Rectangle<int> target)
             family = types[(size_t) i].family;
             menu.addSectionHeader (familyName (*family));
         }
-        menu.addItem (i + 1, types[(size_t) i].shortName);
+        menu.addItem (i + 1, types[(size_t) i].shortName, ! full);
+    }
+
+    // On a chain: a new split at its end.
+    if (! isPath (section))
+    {
+        menu.addSeparator();
+        menu.addItem (insertSplit, "Insert a split here", board.getNumSplits() < kMaxSplits);
     }
 
     juce::Component::SafePointer<BoardStrip> safe (this);
@@ -567,6 +580,15 @@ void BoardStrip::showAddMenu (Section section, juce::Rectangle<int> target)
                         {
                             if (safe == nullptr || result <= 0)
                                 return;
+
+                            if (result == insertSplit)
+                            {
+                                const auto split = safe->board.insertSplit (section, (int) safe->board.getSection (section).size());
+                                if (split >= 0 && safe->onSelect)
+                                    safe->onSelect (splitNode (split));
+                                safe->repaint();
+                                return;
+                            }
 
                             const auto id = safe->board.addPedal (pedalTypes()[(size_t) result - 1].name, section);
                             if (id > 0 && safe->onSelect)
@@ -604,6 +626,15 @@ void BoardStrip::showTileMenu (int id)
     if (current >= 0)
         menu.addItem (removeAssign, "Remove Assign " + juce::String (current + 1));
 
+    // On a chain: a new split right after this pedal.
+    constexpr int insertSplit = 1200;
+    const auto section = board.sectionOf (id);
+    if (! isPath (section))
+    {
+        menu.addSeparator();
+        menu.addItem (insertSplit, "Insert a split after it", board.getNumSplits() < kMaxSplits);
+    }
+
     if (addTileMenuItems)
         addTileMenuItems (menu, id);
 
@@ -636,11 +667,35 @@ void BoardStrip::showTileMenu (int id)
                             {
                                 safe->board.clearAssignment (safe->board.findAssignment (id, "bypass"));
                             }
+                            else if (result == insertSplit)
+                            {
+                                const auto chain = safe->board.sectionOf (id);
+                                const auto& ids = safe->board.getSection (chain);
+                                const auto at = (int) std::distance (ids.begin(), std::find (ids.begin(), ids.end(), id)) + 1;
+                                const auto split = safe->board.insertSplit (chain, at);
+                                if (split >= 0 && safe->onSelect)
+                                    safe->onSelect (splitNode (split));
+                            }
                             else if (result >= 100 && safe->onTileMenuResult)
                             {
                                 safe->onTileMenuResult (result, id);
                             }
                             safe->repaint();
+                        });
+}
+
+void BoardStrip::showNodeMenu (int split)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Split " + juce::String (split + 1));
+    menu.addItem (1, "Remove this split (its paths join the chain)");
+
+    juce::Component::SafePointer<BoardStrip> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
+                        [safe, split] (int result)
+                        {
+                            if (safe != nullptr && result == 1 && safe->onRemoveSplit)
+                                safe->onRemoveSplit (split);
                         });
 }
 
@@ -725,6 +780,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     setUpLevel (outputLabel, "Out", outputSlider, board.getOutputParam(), outputAttachment);
 
     strip.onSelect = [this] (int id) { showPedal (id); };
+    strip.onRemoveSplit = [this] (int split) { removeSplit (split); };
     strip.addTileMenuItems = [this] (juce::PopupMenu& menu, int id)
     {
         if (! board.isStandalone())
@@ -877,10 +933,13 @@ void BoardEditor::showPedal (int id)
         addAndMakeVisible (*assignPanel);
         layoutPedalEditor();
     }
-    else if (id == BoardStrip::kSplitNode || id == BoardStrip::kMergeNode)
+    else if (BoardStrip::isNode (id) && BoardStrip::nodeSplit (id) < board.getNumSplits())
     {
-        routingPanel = std::make_unique<RoutingPanel> (board, id == BoardStrip::kSplitNode ? RoutingPanel::Node::split
-                                                                                           : RoutingPanel::Node::merge);
+        const auto split = BoardStrip::nodeSplit (id);
+        routingPanel = std::make_unique<RoutingPanel> (board, split, BoardStrip::isMergeNode (id) ? RoutingPanel::Node::merge
+                                                                                                 : RoutingPanel::Node::split);
+        routingPanel->onRemove = [this, split] { removeSplit (split); };
+        routingPanel->addMouseListener (this, true);   // right-click on a knob: assign, scene control
         shownPedal = id;
         addAndMakeVisible (*routingPanel);
         layoutPedalEditor();
@@ -942,6 +1001,16 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
+    // A split's or merge's knob: assigned and scene-controlled like a pedal's.
+    if (routingPanel != nullptr && routingPanel->isParentOf (e.originalComponent))
+    {
+        const auto owner = BoardProcessor::routingOwner (routingPanel->getSplit());
+        if (const auto id = rkfx::findTaggedParameter (e.originalComponent, routingPanel.get()); id.isNotEmpty())
+            if (auto* param = board.findOwnerParam (owner, id))
+                showAssignMenu (owner, *param);
+        return;
+    }
+
     if (pedalEditor == nullptr || ! pedalEditor->isParentOf (e.originalComponent))
         return;
 
@@ -998,6 +1067,15 @@ void BoardEditor::showAssignMenu (int pedalId, juce::RangedAudioParameter& param
                             else if (result >= 1 && result <= BoardProcessor::kNumAssigns)
                                 safe->board.assign (result - 1, pedalId, paramId);
                         });
+}
+
+void BoardEditor::removeSplit (int split)
+{
+    if (routingPanel != nullptr)
+        showPedal (0);
+    board.removeSplit (split);
+    lastNumSplits = board.getNumSplits();
+    strip.repaint();
 }
 
 void BoardEditor::showSceneMenu (int scene)
@@ -1196,9 +1274,16 @@ void BoardEditor::timerCallback()
     {
         lastBoardCounter = board.getBoardCounter();
 
-        // The shown pedal may have gone (a board preset or host state loaded).
+        // The shown pedal may have gone (a board preset or host state loaded),
+        // and splits may have moved.
         if (shownPedal > 0 && board.getPedal (shownPedal) == nullptr)
             showPedal (0);
+        if (board.getNumSplits() != lastNumSplits)
+        {
+            lastNumSplits = board.getNumSplits();
+            if (routingPanel != nullptr)
+                showPedal (0);
+        }
 
         syncTunerView();
 

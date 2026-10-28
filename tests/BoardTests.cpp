@@ -12,6 +12,8 @@
 
 using rkboard::BoardProcessor;
 using rkboard::Section;
+using rkboard::chainSection;
+using rkboard::pathSection;
 
 namespace
 {
@@ -458,7 +460,8 @@ public:
             crossover.setValueNotifyingHost (crossover.convertTo0to1 (1200.0f));
 
             const auto saved = board.toVar (false);
-            expectEquals (saved["routing"].getDynamicObject()->getProperties().size(), 1);
+            expectEquals (saved["splits"].size(), 1);
+            expectEquals (saved["splits"][0].getDynamicObject()->getProperties().size(), 1);
 
             BoardProcessor loaded;
             expect (loaded.fromVar (saved, false).ok);
@@ -473,6 +476,91 @@ public:
             expect (loaded.fromVar (juce::JSON::parse (old), false).ok);
             expect (loaded.getSection (Section::pre) == std::vector<int> { 1 });
             expectWithinAbsoluteError (loaded.getRouting().value ("crossover"), 500.0f, 0.5f);
+
+            // Boards from before several splits: "routing" and pre / a / b / post.
+            const auto oneSplit = R"({ "plugin": "RKBoard", "version": 1, "routing": { "crossover": 900 }, "pedals": [
+                                         { "id": 1, "section": "a", "preset": { "plugin": "RKChorus", "version": 1, "params": {} } },
+                                         { "id": 2, "section": "post", "preset": { "plugin": "RKVerb", "version": 1, "params": {} } } ] })";
+            expect (loaded.fromVar (juce::JSON::parse (oneSplit), false).ok);
+            expectEquals (loaded.getNumSplits(), 1);
+            expect (loaded.getSection (Section::pathA) == std::vector<int> { 1 });
+            expect (loaded.getSection (Section::post) == std::vector<int> { 2 });
+            expectWithinAbsoluteError (loaded.getRouting().value ("crossover"), 900.0f, 0.5f);
+        }
+
+        beginTest ("Several splits: insert, process in series, remove, round-trip");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            prepare (board);
+            const auto drive = board.addPedal ("RKUtility", Section::pre);
+            const auto chorus = board.addPedal ("RKUtility", Section::pre);
+            const auto verb = board.addPedal ("RKUtility", Section::post);
+
+            // A split after the first pedal: chain 0 = [drive], then split 1,
+            // chain 1 = [chorus], then the old split (now 2), chain 2 = [verb].
+            expectEquals (board.insertSplit (Section::pre, 1), 0);
+            expectEquals (board.getNumSplits(), 2);
+            expect (board.getSection (chainSection (0)) == std::vector<int> { drive });
+            expect (board.getSection (chainSection (1)) == std::vector<int> { chorus });
+            expect (board.getSection (chainSection (2)) == std::vector<int> { verb });
+
+            // The old split's settings moved with it, and so did what was assigned to them.
+            auto& levelB = board.getRouting (1).param ("level_b");
+            board.assign (0, BoardProcessor::routingOwner (1), "level_b");
+            expectEquals (board.describeAssignment (0), juce::String ("Split 2: Level B"));
+            board.insertSplit (Section::pre, 0);       // another one at the very start
+            expectEquals (board.getNumSplits(), 3);
+            expect (&board.getRouting (2).param ("level_b") == &levelB, "settings move with their split");
+            expectEquals (board.getAssignment (0).pedal, BoardProcessor::routingOwner (2));
+
+            // Pedals on the paths of different splits: audio passes, each split works.
+            board.movePedal (chorus, pathSection (1, 0), 0);
+            board.addPedal ("RKUtility", pathSection (2, 1));
+            expect (board.isSplitActive (1) && board.isSplitActive (2) && ! board.isSplitActive (0));
+            const auto [in, out] = run (board, 8);
+            expect (allFinite (out));
+            expect (out.getMagnitude (0, kBlock) > 0.1f, "signal through every section");
+
+            // The merge level is a scene knob like any other.
+            expect (board.setSceneControlled (BoardProcessor::routingOwner (2), "level_a", true));
+            auto& levelA = board.getRouting (2).param ("level_a");
+            levelA.setValueNotifyingHost (levelA.convertTo0to1 (-12.0f));
+            board.setScene (1);
+            levelA.setValueNotifyingHost (levelA.convertTo0to1 (0.0f));
+            board.setScene (0);
+            run (board, 40);
+            expectWithinAbsoluteError (board.getRouting (2).value ("level_a"), -12.0f, 0.2f, "recalled in scene 1");
+
+            // Round trip.
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (copy.getNumSplits(), 3);
+            expect (copy.getSection (pathSection (1, 0)) == std::vector<int> { chorus });
+            expectEquals (copy.getAssignment (0).pedal, BoardProcessor::routingOwner (2));
+            expect (copy.isSceneControlled (BoardProcessor::routingOwner (2), "level_a"));
+            expectEquals (stateJson (copy), json);
+
+            // Removing split 2: its paths join the chain, A before B, then the chain after it.
+            board.removeSplit (1);
+            expectEquals (board.getNumSplits(), 2);
+            expect (board.getSection (chainSection (1)) == std::vector<int> { drive, chorus },
+                    "chain 1, then split 2's path A (its path B and the chain after it were empty)");
+            expectEquals (board.getAssignment (0).pedal, BoardProcessor::routingOwner (1), "the next split moved down");
+
+            // The Assign view shows a split's assignment like a knob's.
+            {
+                rkboard::AssignPanel panel (board);
+                panel.setSize (800, 500);
+                panel.refresh();
+            }
+
+            // At most four.
+            board.insertSplit (Section::pre, 0);
+            board.insertSplit (Section::pre, 0);
+            expectEquals (board.insertSplit (Section::pre, 0), -1);
+            expectEquals (board.getNumSplits(), 4);
         }
 
         beginTest ("Assign parameters drive a knob over its range, both ways");

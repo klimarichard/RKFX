@@ -14,11 +14,11 @@ namespace rkboard
 
 /** The board, flowing left to right:
 
-        [pre] -> SPLIT -+- [path A] -+- MERGE -> [post]
-                        +- [path B] -+
+        [chain] -> SPLIT -+- [path A] -+- MERGE -> [chain] -> SPLIT ... -> [chain]
+                          +- [path B] -+
 
-    One tile per pedal, a "+" at the end of each section, and the split and
-    merge as narrow nodes. Like text, the board wraps onto further rows when
+    One tile per pedal, a "+" at the end of each section, and each split and
+    merge as narrow nodes (numbered when there are several). Like text, the board wraps onto further rows when
     it doesn't fit, with a cable from the end of one row to the start of the
     next; the split with both paths and the merge stay together on one row.
     Painted as one component (no child per tile), so dragging a tile
@@ -27,16 +27,24 @@ namespace rkboard
     - click a tile: open its controls below; click a node: its settings;
     - click a tile's footswitch: bypass on / off;
     - drag a tile: move the pedal, also to another section or row;
-    - right-click a tile: duplicate, remove, trails, assign its switch;
-    - click a "+": add a pedal there, from a menu grouped by family. */
+    - right-click a tile: duplicate, remove, trails, assign its switch,
+      insert a split after it;
+    - click a "+": add a pedal there, from a menu grouped by family (on a
+      chain also: insert a split there);
+    - right-click a split or merge node: remove that split. */
 class BoardStrip : public juce::Component
 {
 public:
     explicit BoardStrip (BoardProcessor&);
 
-    /** What can be selected: a pedal ID, or one of the nodes. */
-    static constexpr int kSplitNode = -2;
-    static constexpr int kMergeNode = -3;
+    /** What can be selected: a pedal ID, a split's or merge's node, or a view. */
+    static constexpr int splitNode (int split) noexcept { return -100 - 2 * split; }
+    static constexpr int mergeNode (int split) noexcept { return -101 - 2 * split; }
+    static constexpr bool isNode (int key) noexcept     { return key <= -100 && key > -100 - 2 * kMaxSplits; }
+    static constexpr int nodeSplit (int key) noexcept   { return (-100 - key) / 2; }
+    static constexpr bool isMergeNode (int key) noexcept { return isNode (key) && (-100 - key) % 2 == 1; }
+    static constexpr int kSplitNode = -100;      // splitNode (0)
+    static constexpr int kMergeNode = -101;      // mergeNode (0)
     static constexpr int kAssignView = -4;      // not on the strip: the Assign button
     static constexpr int kTunerView = -5;       // not on the strip: the tuner (standalone)
 
@@ -48,6 +56,9 @@ public:
         with IDs from 100; the result goes to onTileMenuResult. */
     std::function<void (juce::PopupMenu&, int id)> addTileMenuItems;
     std::function<void (int result, int id)> onTileMenuResult;
+
+    /** "Remove this split" on a node's menu (the editor closes its panel first). */
+    std::function<void (int split)> onRemoveSplit;
 
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -69,7 +80,7 @@ private:
     struct Item
     {
         enum class Kind { pedal, add, split, merge } kind;
-        int id = 0;                        // pedals
+        int id = 0;                        // pedals; the split's index for nodes
         Section section = Section::pre;    // pedals and "+"
         int index = 0;                     // position in its section
         juce::Rectangle<int> bounds;
@@ -114,6 +125,7 @@ private:
 
     void showAddMenu (Section, juce::Rectangle<int> target);
     void showTileMenu (int id);
+    void showNodeMenu (int split);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardStrip)
 };
@@ -178,6 +190,7 @@ private:
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;
+    int lastNumSplits = -1;
     int lastBoardCounter = -1;
 
     juce::Rectangle<int> panelArea() const;
@@ -185,6 +198,7 @@ private:
     void updateSize();
     void closePedalEditor();
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
+    void removeSplit (int split);
     void showSceneMenu (int scene);
 
     /** MIDI learn items (standalone) for @p target, added to @p menu with IDs from @p base. */

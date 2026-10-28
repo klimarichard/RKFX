@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVocode",
+  "version": 1,
+  "name": "Deep Robot",
+  "params": {
+    "osc_wave": "pulse",
+    "osc_note": 48,
+    "formant": -3
+  }
+}

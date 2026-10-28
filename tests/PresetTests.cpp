@@ -23,6 +23,7 @@
 #include "../plugins/RKTransient/Parameters.h"
 #include "../plugins/RKDeEss/Parameters.h"
 #include "../plugins/RKSwell/Parameters.h"
+#include "../plugins/RKRotary/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -55,7 +56,7 @@ public:
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
             { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
             { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },
-            { "RKSwell", SwellParams::create, 6 },
+            { "RKSwell", SwellParams::create, 6 },       { "RKRotary", RotaryParams::create, 7 },
         };
 
         for (const auto& plugin : plugins)

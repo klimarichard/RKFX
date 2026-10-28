@@ -15,6 +15,7 @@
 #include "ParaEQEngine.h"
 #include "PhaseEngine.h"
 #include "ReverbEngine.h"
+#include "RotaryEngine.h"
 #include "SaturateEngine.h"
 #include "SwellEngine.h"
 #include "TransientEngine.h"
@@ -324,6 +325,25 @@ int main (int argc, char** argv)
         { "RKSwell", "default", []
           {
               return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKRotary", "fast, no drive", []
+          {
+              return makeEngine<RotaryEngine> ([] (RotaryEngine& e)
+              {
+                  RotaryEngine::Settings s;
+                  s.speed = RotaryEngine::Speed::fast;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKRotary", "fast, drive 50%, 2x", []
+          {
+              return makeEngine<RotaryEngine> ([] (RotaryEngine& e)
+              {
+                  RotaryEngine::Settings s;
+                  s.speed = RotaryEngine::Speed::fast;
+                  s.drive = 0.5f;
+                  e.setSettings (s);
+              });
           } },
     };
 

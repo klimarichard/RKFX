@@ -347,3 +347,37 @@ date,plugin,case,us_per_64_block,percent_realtime
 20261028T013313.216+0100,RKTransient,"attack + sustain, focus filters",1.684,0.126
 20261028T013313.266+0100,RKDeEss,"default (relative, split)",1.005,0.075
 20261028T013313.297+0100,RKSwell,"default",0.601,0.045
+20261028T014028.147+0100,RKFreqShift,"default (1 shift)",3.032,0.227
+20261028T014028.554+0100,RKFreqShift,"4 shifts, feedback, spread",8.119,0.609
+20261028T014028.643+0100,RKFilter,"default (LP 12, static)",1.761,0.132
+20261028T014029.024+0100,RKFilter,"48 dB, envelope + LFO",7.614,0.571
+20261028T014029.054+0100,RKParaEQ,"default (transparent)",0.603,0.045
+20261028T014029.297+0100,RKParaEQ,"all 7 bands active, 48 dB cuts",4.852,0.364
+20261028T014029.350+0100,RKGraphEQ,"default (transparent)",1.058,0.079
+20261028T014029.681+0100,RKGraphEQ,"31 bands, all active",6.612,0.496
+20261028T014029.769+0100,RKCompress,"default (RMS, internal)",1.745,0.131
+20261028T014029.903+0100,RKCompress,"peak, auto release, sidechain HPF",2.692,0.202
+20261028T014029.983+0100,RKGate,"default (gate, linked)",1.596,0.120
+20261028T014030.084+0100,RKGate,"expander, unlinked, key filters",2.014,0.151
+20261028T014030.129+0100,RKTremolo,"default (classic sine)",0.899,0.067
+20261028T014030.164+0100,RKTremolo,"harmonic, square, stereo phase",0.683,0.051
+20261028T014030.281+0100,RKChorus,"default (1 voice)",2.331,0.175
+20261028T014030.680+0100,RKChorus,"4 voices, tone, width",7.973,0.598
+20261028T014030.712+0100,RKDouble,"default",0.635,0.048
+20261028T014030.911+0100,RKFlange,"default",3.976,0.298
+20261028T014031.219+0100,RKPhase,"default (4 stages)",6.120,0.459
+20261028T014031.696+0100,RKPhase,"12 stages, envelope",9.539,0.715
+20261028T014032.062+0100,RKDelay,"default (digital, stereo)",7.283,0.546
+20261028T014032.366+0100,RKDelay,"tape, ping-pong, modulation, ducking",6.068,0.455
+20261028T014032.556+0100,RKSaturate,"default (tape, 2x)",3.799,0.285
+20261028T014032.807+0100,RKSaturate,"transformer, 4x",5.009,0.376
+20261028T014033.034+0100,RKDistort,"default (overdrive, 4x)",4.534,0.340
+20261028T014033.373+0100,RKDistort,"fuzz, tight, mid, 4x12 cab, 4x",6.775,0.508
+20261028T014034.151+0100,RKVerb,"default (hall)",15.552,1.166
+20261028T014034.195+0100,RKLimit,"default",0.877,0.066
+20261028T014034.500+0100,RKLimit,"+12 dB input, auto release, 4x",6.085,0.456
+20261028T014034.608+0100,RKTransient,"attack + sustain, focus filters",2.163,0.162
+20261028T014034.710+0100,RKDeEss,"default (relative, split)",2.042,0.153
+20261028T014034.761+0100,RKSwell,"default",1.014,0.076
+20261028T014034.962+0100,RKRotary,"fast, no drive",4.011,0.301
+20261028T014035.258+0100,RKRotary,"fast, drive 50%, 2x",5.921,0.444

@@ -37,3 +37,12 @@ target_compile_definitions(RKFXSnapshot_RKBoard PRIVATE RKFX_BOARD=1 JUCE_USE_CU
 target_link_libraries(RKFXSnapshot_RKBoard PRIVATE rkboard_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
                       PUBLIC juce::juce_recommended_config_flags)
 add_dependencies(RKFXSnapshots RKFXSnapshot_RKBoard)
+
+# The RKMusic plugin icons (tools/icons): renders each plugin's icon_big.png
+# and icon_small.png. Not built by default; see tools/icons/RenderIcons.cpp.
+juce_add_console_app(RKIconRender PRODUCT_NAME "RKIconRender")
+set_target_properties(RKIconRender PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKIconRender PRIVATE icons/RenderIcons.cpp)
+target_compile_definitions(RKIconRender PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+target_link_libraries(RKIconRender PRIVATE juce::juce_graphics juce::juce_events
+                      PUBLIC juce::juce_recommended_config_flags)

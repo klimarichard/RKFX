@@ -9,6 +9,8 @@ juce_add_plugin(RKBoard
     PLUGIN_CODE              Brd1
     BUNDLE_ID                com.rkmusic.rkboard
     PRODUCT_NAME             "RKBoard"
+    ICON_BIG                 "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_big.png"    # RKMusic icon: RK over the name strip
+    ICON_SMALL               "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_small.png"  # the small-size version
     FORMATS                  AU VST3 Standalone
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         TRUE      # vocoder carrier, scenes and MIDI learn (later)

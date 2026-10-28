@@ -1,0 +1,10 @@
+{
+  "plugin": "RKWah",
+  "version": 1,
+  "name": "Narrow Sweep",
+  "params": {
+    "freq_low": 500,
+    "freq_high": 1500,
+    "resonance": 80
+  }
+}

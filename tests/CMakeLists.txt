@@ -149,6 +149,7 @@ target_compile_definitions(RKBoardTests PRIVATE
     RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(RKBoardTests
     PRIVATE
+        rkboard_pedal_presets
         rkfx_core
         juce::juce_audio_processors
         juce::juce_gui_basics

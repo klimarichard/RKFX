@@ -1,6 +1,8 @@
 // RKBoard: the board processor with real pedals (every RKFX plugin built in).
 
 #include "BoardEditor.h"
+#include "pedals/VolumeEngine.h"
+#include "pedals/WahEngine.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -100,9 +102,21 @@ public:
                 const auto [in, out] = run (board, 40);
                 expect (allFinite (out), type.name + " output is finite");
 
-                const auto presetDir = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins/" + type.name + "/presets");
+                // Plugins keep theirs in plugins/<Name>/presets, board-only pedals in
+                // plugins/RKBoard/pedals/presets/<Name>.
+                const auto source = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins");
+                auto presetDir = source.getChildFile (type.name + "/presets");
+                if (! presetDir.isDirectory())
+                    presetDir = source.getChildFile ("RKBoard/pedals/presets/" + type.name);
                 const auto files = presetDir.findChildFiles (juce::File::findFiles, false, "*.json");
+                expect (! files.isEmpty(), type.name + " has factory presets");
                 expectEquals ((int) pedal->getFactoryPresets().size(), files.size(), type.name + " factory presets");
+
+                for (int i = 0; i < (int) pedal->getFactoryPresets().size(); ++i)
+                {
+                    const auto r = pedal->loadFactoryPreset (i);
+                    expect (r.ok && r.message.isEmpty(), type.name + " preset " + juce::String (i) + ": " + r.message);
+                }
             }
         }
 
@@ -651,6 +665,93 @@ public:
             expect (board.isPedalBypassed (verb));
             expect (board.getPedal (verb)->getBypassParameter()->getValue() < 0.5f);
             expectEquals (board.getParameters()[verb - 1]->getValue(), 1.0f);
+        }
+
+        beginTest ("Volume pedal: taper and minimum level");
+        {
+            VolumeEngine::Settings s;
+            s.position = 0.0f;
+            expectEquals (VolumeEngine::gainFor (s), 0.0f);
+            s.position = 1.0f;
+            expectEquals (VolumeEngine::gainFor (s), 1.0f);
+            s.position = 0.5f;
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (VolumeEngine::gainFor (s)), -18.06f, 0.05f);
+            s.audioTaper = false;
+            expectWithinAbsoluteError (VolumeEngine::gainFor (s), 0.5f, 1.0e-6f);
+            s.position = 0.0f;
+            s.minLevelDb = -30.0f;
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (VolumeEngine::gainFor (s)), -30.0f, 0.01f);
+        }
+
+        beginTest ("Wah: the heel favours the low frequency, the toe the high one");
+        {
+            const auto gainAt = [] (float position, float hz, WahEngine::Character character)
+            {
+                WahEngine::Settings s;
+                s.position = position;
+                s.character = character;
+                WahEngine wah;
+                wah.prepare (kRate, 2);
+                wah.reset (s);
+
+                juce::AudioBuffer<float> buffer (2, 4800);
+                double in2 = 0.0, out2 = 0.0;
+                for (int block = 0; block < 10; ++block)
+                {
+                    for (int i = 0; i < buffer.getNumSamples(); ++i)
+                        for (int ch = 0; ch < 2; ++ch)
+                            buffer.setSample (ch, i, (float) std::sin (2.0 * juce::MathConstants<double>::pi * hz * (block * 4800 + i) / kRate));
+                    const auto inLevel = buffer.getRMSLevel (0, 0, buffer.getNumSamples());
+                    wah.process (buffer, s);
+                    if (block >= 5)
+                    {
+                        in2 += inLevel * inLevel;
+                        out2 += buffer.getRMSLevel (0, 0, buffer.getNumSamples()) * buffer.getRMSLevel (0, 0, buffer.getNumSamples());
+                    }
+                }
+                return std::sqrt (out2 / in2);
+            };
+
+            for (const auto character : { WahEngine::Character::classic, WahEngine::Character::vocal })
+            {
+                expect (gainAt (0.0f, 400.0f, character) > 3.0 * gainAt (0.0f, 2200.0f, character), "heel");
+                expect (gainAt (1.0f, 2200.0f, character) > 3.0 * gainAt (1.0f, 400.0f, character), "toe");
+            }
+            // At the peak, the band-pass passes about unity.
+            expectWithinAbsoluteError (gainAt (0.0f, 400.0f, WahEngine::Character::classic), 1.0, 0.1);
+            // Bass keeps the lows.
+            expect (gainAt (1.0f, 60.0f, WahEngine::Character::bass) > 0.7, "bass lows");
+        }
+
+        beginTest ("Wah auto engage: on when the pedal moves, off after resting at the heel");
+        {
+            WahEngine::Settings s;
+            s.autoEngage = true;
+            s.position = 0.0f;
+            WahEngine wah;
+            wah.prepare (kRate, 2);
+            wah.reset (s);
+            expect (! wah.isEngaged());
+
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::Random random (11);
+            fillNoise (buffer, random);
+            juce::AudioBuffer<float> dry;
+            dry.makeCopyOf (buffer);
+            wah.process (buffer, s);
+            expect (identical (buffer, dry), "dry while disengaged");
+
+            s.position = 0.4f;
+            wah.process (buffer, s);
+            expect (wah.isEngaged());
+
+            s.position = 0.0f;
+            for (int b = 0; b < (int) (0.4 * kRate) / kBlock; ++b)
+                wah.process (buffer, s);
+            expect (wah.isEngaged(), "still on after 0.4 s at the heel");
+            for (int b = 0; b < (int) (0.2 * kRate) / kBlock; ++b)
+                wah.process (buffer, s);
+            expect (! wah.isEngaged(), "off after half a second");
         }
 
         beginTest ("Unknown pedals in a preset are skipped with a note");

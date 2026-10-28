@@ -26,11 +26,17 @@
 #include "../RKVibrato/PluginProcessor.h"
 #include "../RKVocode/PluginProcessor.h"
 
+// The board-only pedals.
+#include "pedals/VolumePedal.h"
+#include "pedals/WahPedal.h"
+
 namespace rkboard
 {
 
 namespace
 {
+    std::unique_ptr<rkfx::ProcessorBase> makeRKWah() { return std::make_unique<RKWahProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKVolume() { return std::make_unique<RKVolumeProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKFilter() { return std::make_unique<RKFilterProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKParaEQ() { return std::make_unique<RKParaEQProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKGraphEQ() { return std::make_unique<RKGraphEQProcessor>(); }
@@ -60,6 +66,7 @@ const std::vector<PedalType>& pedalTypes()
 {
     using Family = rkfx::Palette::Family;
     static const std::vector<PedalType> types {
+        { "RKWah", "Wah", Family::filterEQ, makeRKWah },
         { "RKFilter", "Filter", Family::filterEQ, makeRKFilter },
         { "RKParaEQ", "ParaEQ", Family::filterEQ, makeRKParaEQ },
         { "RKGraphEQ", "GraphEQ", Family::filterEQ, makeRKGraphEQ },
@@ -82,6 +89,7 @@ const std::vector<PedalType>& pedalTypes()
         { "RKFreqShift", "FreqShift", Family::modulation, makeRKFreqShift },
         { "RKDelay", "Delay", Family::delay, makeRKDelay, 10.0 },
         { "RKVerb", "Verb", Family::reverb, makeRKVerb, 10.0 },
+        { "RKVolume", "Volume", Family::utility, makeRKVolume },
         { "RKUtility", "Utility", Family::utility, makeRKUtility }
     };
     return types;

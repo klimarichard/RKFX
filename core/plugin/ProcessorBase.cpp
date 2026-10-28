@@ -2,6 +2,11 @@
 
 #include "safety/NanGuard.h"
 
+// A single plugin's factory preset list (rkfx_add_plugin() names it).
+#ifdef RKFX_FACTORY_PRESET_LIST
+namespace rkfx { std::vector<FactoryPreset> RKFX_FACTORY_PRESET_LIST(); }
+#endif
+
 namespace rkfx
 {
 
@@ -50,6 +55,9 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
         }
     }
 
+   #ifdef RKFX_FACTORY_PRESET_LIST
+    registerFactoryPresets (config.name, &RKFX_FACTORY_PRESET_LIST);
+   #endif
     factoryPresets = factoryPresetsFor (config.name);
 
     // New instances start from the user's Default.json, if there is one.

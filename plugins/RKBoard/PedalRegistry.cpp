@@ -30,6 +30,42 @@
 #include "pedals/VolumePedal.h"
 #include "pedals/WahPedal.h"
 
+// Every factory preset list in the board (generated, one per plugin).
+#define RKBOARD_PRESET_LISTS(X) \
+    X (RKBoard) \
+    X (RKChorus) \
+    X (RKCompress) \
+    X (RKDeEss) \
+    X (RKDelay) \
+    X (RKDistort) \
+    X (RKDouble) \
+    X (RKFilter) \
+    X (RKFlange) \
+    X (RKFreqShift) \
+    X (RKGate) \
+    X (RKGraphEQ) \
+    X (RKLimit) \
+    X (RKParaEQ) \
+    X (RKPhase) \
+    X (RKRotary) \
+    X (RKSaturate) \
+    X (RKSwell) \
+    X (RKTransient) \
+    X (RKTremolo) \
+    X (RKUtility) \
+    X (RKVerb) \
+    X (RKVibrato) \
+    X (RKVocode) \
+    X (RKVolume) \
+    X (RKWah)
+
+namespace rkfx
+{
+   #define RKBOARD_DECLARE_LIST(name) std::vector<FactoryPreset> factoryPresetList_##name();
+    RKBOARD_PRESET_LISTS (RKBOARD_DECLARE_LIST)
+   #undef RKBOARD_DECLARE_LIST
+}
+
 namespace rkboard
 {
 
@@ -64,6 +100,8 @@ namespace
 
 const std::vector<PedalType>& pedalTypes()
 {
+    registerFactoryPresets();   // every pedal is created through a type
+
     using Family = rkfx::Palette::Family;
     static const std::vector<PedalType> types {
         { "RKWah", "Wah", Family::filterEQ, makeRKWah },
@@ -93,6 +131,18 @@ const std::vector<PedalType>& pedalTypes()
         { "RKUtility", "Utility", Family::utility, makeRKUtility }
     };
     return types;
+}
+
+void registerFactoryPresets()
+{
+    static const bool registered = []
+    {
+       #define RKBOARD_REGISTER_LIST(name) rkfx::registerFactoryPresets (#name, &rkfx::factoryPresetList_##name);
+        RKBOARD_PRESET_LISTS (RKBOARD_REGISTER_LIST)
+       #undef RKBOARD_REGISTER_LIST
+        return true;
+    }();
+    juce::ignoreUnused (registered);
 }
 
 const PedalType* findPedalType (const juce::String& name)

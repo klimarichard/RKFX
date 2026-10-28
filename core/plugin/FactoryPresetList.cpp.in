@@ -2,20 +2,17 @@
 #include "plugin/FactoryPresets.h"
 #include "@PLUGIN@FactoryPresetData.h"
 
-namespace
-{
-    std::vector<rkfx::FactoryPreset> load()
-    {
-        std::vector<rkfx::FactoryPreset> list;
-        for (int i = 0; i < @PLUGIN@FactoryPresetData::namedResourceListSize; ++i)
-        {
-            int size = 0;
-            const auto* data = @PLUGIN@FactoryPresetData::getNamedResource (@PLUGIN@FactoryPresetData::namedResourceList[i], size);
-            list.push_back ({ rkfx::factoryPresetName (@PLUGIN@FactoryPresetData::originalFilenames[i]),
-                              juce::String::fromUTF8 (data, size) });
-        }
-        return list;
-    }
+namespace rkfx { std::vector<FactoryPreset> factoryPresetList_@PLUGIN@(); }
 
-    const bool registered = rkfx::registerFactoryPresets ("@PLUGIN@", load);
+std::vector<rkfx::FactoryPreset> rkfx::factoryPresetList_@PLUGIN@()
+{
+    std::vector<FactoryPreset> list;
+    for (int i = 0; i < @PLUGIN@FactoryPresetData::namedResourceListSize; ++i)
+    {
+        int size = 0;
+        const auto* data = @PLUGIN@FactoryPresetData::getNamedResource (@PLUGIN@FactoryPresetData::namedResourceList[i], size);
+        list.push_back ({ factoryPresetName (@PLUGIN@FactoryPresetData::originalFilenames[i]),
+                          juce::String::fromUTF8 (data, size) });
+    }
+    return list;
 }

@@ -89,6 +89,7 @@ function(rkfx_add_plugin name)
     endif()
 
     target_sources(${name} PRIVATE "${presetList}")
+    target_compile_definitions(${name} PRIVATE RKFX_FACTORY_PRESET_LIST=factoryPresetList_${name})
 
     target_compile_definitions(${name}
         PUBLIC

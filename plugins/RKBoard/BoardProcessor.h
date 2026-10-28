@@ -280,7 +280,7 @@ private:
     };
 
     rkfx::PresetLibrary library;
-    std::vector<rkfx::FactoryPreset> factoryPresets { rkfx::factoryPresetsFor ("RKBoard") };
+    std::vector<rkfx::FactoryPreset> factoryPresets { (rkboard::registerFactoryPresets(), rkfx::factoryPresetsFor ("RKBoard")) };
     RoutingSettings routing;
 
     // Pedals by ID - 1. Written on the message thread only; the audio thread

@@ -21,6 +21,11 @@ struct PedalType
 /** Every pedal type, grouped by family in menu order. */
 const std::vector<PedalType>& pedalTypes();
 
+/** Registers the factory presets of every pedal type and of the board
+    itself. Call it before creating a pedal or reading the board's presets;
+    calls after the first do nothing. */
+void registerFactoryPresets();
+
 /** The type called @p name, or nullptr. */
 const PedalType* findPedalType (const juce::String& name);
 

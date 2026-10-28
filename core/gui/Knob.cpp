@@ -1,4 +1,5 @@
 #include "Knob.h"
+#include "Switches.h"
 
 #include "LookAndFeel.h"
 
@@ -23,6 +24,7 @@ Knob::Knob (juce::RangedAudioParameter& p, const juce::String& labelText)
                       repaint();
                   })
 {
+    tagParameter (*this, p.getParameterID());
     setRepaintsOnMouseActivity (false);
 
     valueEditor.setJustification (juce::Justification::centred);

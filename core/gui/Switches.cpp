@@ -14,6 +14,7 @@ ToggleSwitch::ToggleSwitch (juce::RangedAudioParameter& p, juce::Colour accentCo
                       repaint();
                   })
 {
+    tagParameter (*this, p.getParameterID());
     attachment.sendInitialUpdate();
 }
 
@@ -29,8 +30,10 @@ void ToggleSwitch::paint (juce::Graphics& g)
     g.drawFittedText (text, getLocalBounds().reduced (4, 0), juce::Justification::centred, 1);
 }
 
-void ToggleSwitch::mouseDown (const juce::MouseEvent&)
+void ToggleSwitch::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.mods.isPopupMenu())
+        return;   // a right-click belongs to the host (e.g. RKBoard's assign menu)
     attachment.setValueAsCompleteGesture (on ? 0.0f : 1.0f);
 }
 
@@ -50,6 +53,7 @@ SegmentedSwitch::SegmentedSwitch (juce::RangedAudioParameter& p, juce::Colour ac
         if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (&p))
             labels = choice->choices;
 
+    tagParameter (*this, p.getParameterID());
     attachment.sendInitialUpdate();
 }
 
@@ -101,6 +105,9 @@ void SegmentedSwitch::paint (juce::Graphics& g)
 
 void SegmentedSwitch::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.mods.isPopupMenu())
+        return;   // a right-click belongs to the host (e.g. RKBoard's assign menu)
+
     const auto area = segmentArea();
     if (labels.isEmpty() || ! area.contains (e.getPosition()))
         return;

@@ -59,7 +59,7 @@ An empty path passes its signal through. If one path is slower than the other (a
 
 RKBoard has 32 host parameters, **Assign 1** to **Assign 32**, for Gig Performer widgets, expression pedals and footswitches. Each one turns one knob of one pedal, or switches one pedal on and off.
 
-- **To assign a knob:** right-click it in a pedal's controls, choose **Assign to**, then a number. The menu shows what the other numbers already drive.
+- **To assign a knob:** right-click it in a pedal's controls, choose **Assign to**, then a number. The menu shows what the other numbers already drive. Switches and buttons in a pedal's controls (an on/off switch, a mode switch, RKLoop's footswitches) are assigned the same way.
 - **To assign a pedal's on/off switch:** right-click the pedal on the board, choose **Assign On/Off to**, then a number. The pedal is on while the parameter is at 50% or more (a Gig Performer button: lit = on), and the parameter follows when the pedal is switched another way (the footswitch on the tile, a scene).
 - **To remove it:** right-click the knob or the pedal again and choose **Remove**.
 - Click **Assign** in the header to see all 32, each with:

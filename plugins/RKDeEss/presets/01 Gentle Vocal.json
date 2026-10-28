@@ -1,0 +1,8 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Gentle Vocal",
+  "params": {
+    "range": 6
+  }
+}

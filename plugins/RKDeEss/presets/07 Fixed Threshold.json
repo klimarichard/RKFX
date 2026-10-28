@@ -1,0 +1,9 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Fixed Threshold",
+  "params": {
+    "detect": "absolute",
+    "threshold": -30
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "plugin": "RKDeEss",
+  "version": 1,
+  "name": "Bright Female Vocal",
+  "params": {
+    "freq": 7500,
+    "threshold_rel": -3
+  }
+}

@@ -38,6 +38,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong and ducking | Available |
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
+| [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 
 ### RKBoard
 

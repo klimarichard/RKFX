@@ -58,7 +58,9 @@ void AssignPanel::Row::refresh()
         return;
 
     // Value text in the knob's own units.
-    auto* param = board.getPedal (info.pedal)->findParam (info.paramId);
+    auto* param = board.findOwnerParam (info.pedal, info.paramId);   // a pedal's knob, or a split's
+    if (param == nullptr)
+        return;
     for (auto* slider : { &minSlider, &maxSlider })
         slider->textFromValueFunction = [param] (double v) { return param->getText ((float) v, 12); };
 

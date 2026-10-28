@@ -16,10 +16,28 @@ namespace
     /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
     struct LoadingScope
     {
-        explicit LoadingScope (std::atomic<bool>& f) : flag (f) { flag = true; }
-        ~LoadingScope() { flag = false; }
+        explicit LoadingScope (std::atomic<bool>& f) : flag (f), previous (f.exchange (true)) {}
+        ~LoadingScope() { flag = previous; }
         std::atomic<bool>& flag;
+        const bool previous;
     };
+
+    /** An assignment's or scene knob's owner in a board preset: "pedal": id,
+        or "split": n (1 and up) for a split's settings. */
+    void writeOwner (juce::DynamicObject& entry, int owner)
+    {
+        if (owner >= 1)
+            entry.setProperty ("pedal", owner);
+        else
+            entry.setProperty ("split", -owner);
+    }
+
+    int readOwner (const juce::var& entry)
+    {
+        if (entry.hasProperty ("split"))
+            return rkboard::BoardProcessor::routingOwner ((int) entry["split"] - 1);
+        return (int) entry["pedal"];
+    }
 }
 
 //==============================================================================
@@ -78,9 +96,13 @@ BoardProcessor::BoardProcessor()
         rig.load (rigSettingsFile);
     }
 
-    for (auto* p : routing.getParameters())
-        p->addListener (&routingWatcher);
-    lastSplitMode = routing.getSplitMode();
+    for (int k = 0; k < kMaxSplits; ++k)
+    {
+        splits[(size_t) k] = std::make_unique<Split> (*this, k);
+        for (auto* p : splits[(size_t) k]->settings.getParameters())
+            p->addListener (&splits[(size_t) k]->watcher);
+    }
+    publishChain();
 
     // New instances start from the user's board Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile ("RKBoard");
@@ -95,8 +117,9 @@ BoardProcessor::~BoardProcessor()
     for (auto* p : assignParams)
         p->removeListener (this);
     sceneParam->removeListener (this);
-    for (auto* p : routing.getParameters())
-        p->removeListener (&routingWatcher);
+    for (auto& split : splits)
+        for (auto* p : split->settings.getParameters())
+            p->removeListener (&split->watcher);
 
     for (int id = 1; id <= kMaxPedals; ++id)
         detachPedal (id);
@@ -106,22 +129,132 @@ BoardProcessor::~BoardProcessor()
 std::vector<int> BoardProcessor::getChain() const
 {
     std::vector<int> all;
-    for (const auto& section : layout)
-        all.insert (all.end(), section.begin(), section.end());
+    for (int s = 0; s < getNumSections(); ++s)
+        all.insert (all.end(), layout[(size_t) s].begin(), layout[(size_t) s].end());
     return all;
 }
 
 Section BoardProcessor::sectionOf (int id) const
 {
-    for (int s = 0; s < kNumSections; ++s)
+    for (int s = 0; s < getNumSections(); ++s)
         if (std::find (layout[(size_t) s].begin(), layout[(size_t) s].end(), id) != layout[(size_t) s].end())
             return (Section) s;
     return Section::pre;
 }
 
-bool BoardProcessor::isSplitActive() const
+bool BoardProcessor::isSplitActive (int split) const
 {
-    return ! getSection (Section::pathA).empty() || ! getSection (Section::pathB).empty();
+    return split >= 0 && split < numSplits
+        && (! getSection (pathSection (split, 0)).empty() || ! getSection (pathSection (split, 1)).empty());
+}
+
+juce::AudioProcessor* BoardProcessor::ownerProcessor (int owner) const
+{
+    if (owner >= 1)
+        return getPedal (owner);
+    const auto split = -owner - 1;
+    return split >= 0 && split < numSplits ? &splits[(size_t) split]->settings : nullptr;
+}
+
+juce::RangedAudioParameter* BoardProcessor::findOwnerParam (int owner, const juce::String& paramId) const
+{
+    if (auto* processor = ownerProcessor (owner))
+        for (auto* p : processor->getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && ranged->getParameterID() == paramId)
+                return ranged;
+    return nullptr;
+}
+
+void BoardProcessor::remapOwner (int from, int to)
+{
+    for (auto& a : assignments)
+        if (a.pedal == from)
+            a.pedal = to;
+    for (auto& k : sceneKnobs)
+        if (k.pedal == from)
+            k.pedal = to;
+}
+
+void BoardProcessor::resetSplitSettings (Split& split)
+{
+    const LoadingScope loading (loadingBoard);
+    split.settings.fromVar ({});
+    split.lastMode = split.settings.getSplitMode();
+}
+
+int BoardProcessor::insertSplit (Section chainSection, int position)
+{
+    if (numSplits >= kMaxSplits || isPath (chainSection) || (int) chainSection >= getNumSections())
+        return -1;
+
+    const auto k = chainOf (chainSection);   // the new split follows chain k
+
+    // Later splits move up by one, keeping their settings (and what is
+    // assigned to them or scene-controlled); the new one starts at defaults.
+    for (int j = numSplits - 1; j >= k; --j)
+        remapOwner (routingOwner (j), routingOwner (j + 1));
+    clearAssignmentsOf (routingOwner (k));
+    clearSceneKnobsOf (routingOwner (k));
+    {
+        const juce::SpinLock::ScopedLockType sl (chainLock);
+        std::rotate (splits.begin() + k, splits.begin() + numSplits, splits.begin() + numSplits + 1);
+        for (int j = 0; j < kMaxSplits; ++j)
+            splits[(size_t) j]->index = j;
+    }
+    resetSplitSettings (*splits[(size_t) k]);
+
+    // Sections after chain k move up by three: the new paths and the new chain.
+    auto& pedalsBefore = layout[(size_t) chainSection];
+    position = juce::jlimit (0, (int) pedalsBefore.size(), position);
+    std::vector<int> tail (pedalsBefore.begin() + position, pedalsBefore.end());
+    pedalsBefore.erase (pedalsBefore.begin() + position, pedalsBefore.end());
+
+    for (int s = getNumSections() - 1; s > (int) chainSection; --s)
+        layout[(size_t) s + 3] = std::move (layout[(size_t) s]);
+    layout[(size_t) chainSection + 1].clear();
+    layout[(size_t) chainSection + 2].clear();
+    layout[(size_t) chainSection + 3] = std::move (tail);
+
+    ++numSplits;
+    publishChain();
+    boardChanged();
+    return k;
+}
+
+void BoardProcessor::removeSplit (int split)
+{
+    if (split < 0 || split >= numSplits)
+        return;
+
+    // Path A, then path B, then the chain after the merge join the chain before.
+    const auto before = (int) chainSection (split);
+    auto& joined = layout[(size_t) before];
+    for (const auto s : { before + 1, before + 2, before + 3 })
+    {
+        joined.insert (joined.end(), layout[(size_t) s].begin(), layout[(size_t) s].end());
+        layout[(size_t) s].clear();
+    }
+    for (int s = before + 4; s < getNumSections(); ++s)
+        layout[(size_t) s - 3] = std::move (layout[(size_t) s]);
+    for (int s = getNumSections() - 3; s < getNumSections(); ++s)
+        layout[(size_t) s].clear();
+
+    // Its settings go (with what was assigned to them); later splits move down.
+    clearAssignmentsOf (routingOwner (split));
+    clearSceneKnobsOf (routingOwner (split));
+    for (int j = split + 1; j < numSplits; ++j)
+        remapOwner (routingOwner (j), routingOwner (j - 1));
+    {
+        const juce::SpinLock::ScopedLockType sl (chainLock);
+        std::rotate (splits.begin() + split, splits.begin() + split + 1, splits.begin() + numSplits);
+        for (int j = 0; j < kMaxSplits; ++j)
+            splits[(size_t) j]->index = j;
+    }
+    resetSplitSettings (*splits[(size_t) numSplits - 1]);
+
+    --numSplits;
+    publishChain();
+    boardChanged();
 }
 
 rkfx::ProcessorBase* BoardProcessor::getPedal (int id) const
@@ -218,11 +351,15 @@ void BoardProcessor::publishChain()
     Chain next;
     double tail = 0.0;
 
-    for (int s = 0; s < kNumSections; ++s)
+    next.numSplits = numSplits;
+    for (int k = 0; k < kMaxSplits; ++k)
+        next.routing[(size_t) k] = &splits[(size_t) k]->settings;
+
+    for (int s = 0; s < getNumSections(); ++s)
         for (const auto id : layout[(size_t) s])
             if (auto* pedal = getPedal (id))
             {
-                auto& section = next[(size_t) s];
+                auto& section = next.sections[(size_t) s];
                 section.ids[(size_t) section.size] = id;
                 section.pedals[(size_t) section.size++] = pedal;
                 if (const auto* type = findPedalType (pedal->getConfig().name))
@@ -401,15 +538,12 @@ juce::RangedAudioParameter* BoardProcessor::assignTarget (int slot) const
 {
     const auto& a = assignments[(size_t) slot];
     const auto id = a.pedal.load();
-    if (id < 1 || id > kMaxPedals)
-        return nullptr;
-
-    auto* pedal = pedals[(size_t) id - 1].get();
+    auto* owner = id != 0 ? ownerProcessor (id) : nullptr;
     const auto index = a.paramIndex.load();
-    if (pedal == nullptr || index < 0 || index >= pedal->getParameters().size())
+    if (owner == nullptr || index < 0 || index >= owner->getParameters().size())
         return nullptr;
 
-    return dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[index]);
+    return dynamic_cast<juce::RangedAudioParameter*> (owner->getParameters()[index]);
 }
 
 void BoardProcessor::applyAssign (int slot, float value)
@@ -446,8 +580,8 @@ float BoardProcessor::targetValue (int pedalId, int paramIndex) const
 {
     if (isBypassIndex (pedalId, paramIndex))
         return isPedalBypassed (pedalId) ? 1.0f : 0.0f;
-    auto* pedal = getPedal (pedalId);
-    return pedal != nullptr && paramIndex >= 0 ? pedal->getParameters()[paramIndex]->getValue() : 0.0f;
+    auto* owner = ownerProcessor (pedalId);
+    return owner != nullptr && paramIndex >= 0 ? owner->getParameters()[paramIndex]->getValue() : 0.0f;
 }
 
 void BoardProcessor::followTarget (int pedalId, int paramIndex, float value)
@@ -484,8 +618,8 @@ BoardProcessor::AssignmentInfo BoardProcessor::getAssignment (int slot) const
         return info;
 
     const auto& a = assignments[(size_t) slot];
-    if (auto* pedal = getPedal (a.pedal); pedal != nullptr && a.paramIndex >= 0)
-        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[a.paramIndex]))
+    if (auto* owner = a.pedal != 0 ? ownerProcessor (a.pedal) : nullptr; owner != nullptr && a.paramIndex >= 0)
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (owner->getParameters()[a.paramIndex]))
         {
             info.pedal = a.pedal;
             info.paramId = param->getParameterID();
@@ -498,14 +632,9 @@ BoardProcessor::AssignmentInfo BoardProcessor::getAssignment (int slot) const
 
 void BoardProcessor::assign (int slot, int pedalId, const juce::String& paramId)
 {
-    auto* pedal = getPedal (pedalId);
-    if (slot < 0 || slot >= kNumAssigns || pedal == nullptr)
+    if (slot < 0 || slot >= kNumAssigns)
         return;
-
-    int index = -1;
-    for (int i = 0; i < pedal->getParameters().size(); ++i)
-        if (auto* p = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[i]); p != nullptr && p->getParameterID() == paramId)
-            index = i;
+    const auto index = paramIndexOf (pedalId, paramId);
     if (index < 0)
         return;
 
@@ -556,7 +685,7 @@ void BoardProcessor::setAssignmentRange (int slot, float min, float max, bool in
     a.invert = invert;
 
     // Keep the knob where it is; the Assign parameter moves to match.
-    if (getPedal (a.pedal) != nullptr && a.paramIndex >= 0)
+    if (a.pedal != 0 && ownerProcessor (a.pedal) != nullptr && a.paramIndex >= 0)
         followTarget (a.pedal, a.paramIndex, targetValue (a.pedal, a.paramIndex));
 
     boardChanged();
@@ -576,6 +705,10 @@ int BoardProcessor::findAssignment (int pedalId, const juce::String& paramId) co
 juce::String BoardProcessor::describeAssignment (int slot) const
 {
     const auto info = getAssignment (slot);
+    if (info.pedal < 0)
+        if (auto* param = findOwnerParam (info.pedal, info.paramId))
+            return "Split " + juce::String (-info.pedal) + ": " + param->getName (40);
+
     auto* pedal = getPedal (info.pedal);
     if (pedal == nullptr)
         return {};
@@ -591,31 +724,40 @@ bool BoardProcessor::isSwitchAssignment (int slot) const
         && isBypassIndex (assignments[(size_t) slot].pedal, assignments[(size_t) slot].paramIndex);
 }
 
-void BoardProcessor::RoutingWatcher::parameterValueChanged (int, float)
+void BoardProcessor::RoutingWatcher::parameterValueChanged (int parameterIndex, float newValue)
 {
-    board.markModified();
+    // Like a knob: assignments follow, a scene-controlled one goes into the
+    // current scene, and an edit marks the board modified.
+    const auto owner = routingOwner (split.index);
+    board.followTarget (owner, parameterIndex, newValue);
+    if (! applyingScene)
+    {
+        if (const auto k = board.findSceneKnob (owner, parameterIndex); k >= 0)
+            board.sceneKnobs[(size_t) k].values[(size_t) board.currentScene.load()] = newValue;
+        board.markModified();
+    }
     ++board.boardCounter;
 
-    // Message thread only (the split mode is never automated).
-    const auto mode = board.routing.getSplitMode();
-    if (mode == board.lastSplitMode || board.loadingBoard)
+    auto& routing = split.settings;
+    const auto mode = routing.getSplitMode();
+    if (mode == split.lastMode || board.loadingBoard)
     {
-        board.lastSplitMode = mode;
+        split.lastMode = mode;
         return;
     }
 
-    auto& panA = board.routing.param ("pan_a");
-    auto& panB = board.routing.param ("pan_b");
+    auto& panA = routing.param ("pan_a");
+    auto& panB = routing.param ("pan_b");
     const auto set = [] (juce::RangedAudioParameter& p, float pct) { p.setValueNotifyingHost (p.convertTo0to1 (pct)); };
 
-    const auto centred = juce::approximatelyEqual (board.routing.value ("pan_a"), 0.0f)
-                      && juce::approximatelyEqual (board.routing.value ("pan_b"), 0.0f);
-    const auto hardLR = juce::approximatelyEqual (board.routing.value ("pan_a"), -100.0f)
-                     && juce::approximatelyEqual (board.routing.value ("pan_b"), 100.0f);
+    const auto centred = juce::approximatelyEqual (routing.value ("pan_a"), 0.0f)
+                      && juce::approximatelyEqual (routing.value ("pan_b"), 0.0f);
+    const auto hardLR = juce::approximatelyEqual (routing.value ("pan_a"), -100.0f)
+                     && juce::approximatelyEqual (routing.value ("pan_b"), 100.0f);
 
     // Left (path A) back to the left, right (path B) back to the right; and
     // to the centre again when leaving the stereo split.
-    board.lastSplitMode = mode;
+    split.lastMode = mode;
     if (mode == SplitMode::stereo && centred)
     {
         set (panA, -100.0f);
@@ -671,11 +813,17 @@ int BoardProcessor::sectionLatency (const SectionChain& section) const
 
 void BoardProcessor::updateLatency()
 {
-    // Pre, the slower path, post.
-    const auto split = chain[1].size > 0 || chain[2].size > 0;
-    const auto latency = sectionLatency (chain[0])
-                       + (split ? juce::jmax (sectionLatency (chain[1]), sectionLatency (chain[2])) : 0)
-                       + sectionLatency (chain[3]);
+    // Every chain, and the slower path of each active split.
+    auto latency = 0;
+    for (int k = 0; k <= chain.numSplits; ++k)
+        latency += sectionLatency (chain.sections[(size_t) chainSection (k)]);
+    for (int k = 0; k < chain.numSplits; ++k)
+    {
+        const auto& a = chain.sections[(size_t) pathSection (k, 0)];
+        const auto& b = chain.sections[(size_t) pathSection (k, 1)];
+        if (a.size > 0 || b.size > 0)
+            latency += juce::jmax (sectionLatency (a), sectionLatency (b));
+    }
 
     if (totalLatency.exchange (latency) != latency)
         triggerAsyncUpdate();
@@ -890,20 +1038,26 @@ void BoardProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     trailIdle.fill (false);
     trailSilence.fill (0);
 
-    for (int path = 0; path < 2; ++path)
+    for (auto& buffer : pathBuffers)
+        buffer.setSize (2, currentBlockSize, false, true, true);
+
+    for (int k = 0; k < kMaxSplits; ++k)
     {
-        pathBuffers[path].setSize (2, currentBlockSize, false, true, true);
-        pathDelays[path].prepare (2);
-        for (auto& gain : mergeGains[path])
-            gain.reset (sampleRate, 0.02);
+        auto& dsp = splitDsp[(size_t) k];
+        for (int path = 0; path < 2; ++path)
+        {
+            dsp.delays[path].prepare (2);
+            for (auto& gain : dsp.mergeGains[path])
+                gain.reset (sampleRate, 0.02);
+        }
+        for (auto& crossover : dsp.crossovers)
+        {
+            crossover.prepare (sampleRate);
+            crossover.reset();
+        }
+        updateMergeTargets (k, true);
+        dsp.wasActive = false;
     }
-    for (auto& crossover : crossovers)
-    {
-        crossover.prepare (sampleRate);
-        crossover.reset();
-    }
-    updateMergeTargets (true);
-    splitWasActive = false;
 
     // Message thread here (hosts prepare outside processing), so the pedals
     // can be prepared in place.
@@ -931,10 +1085,12 @@ void BoardProcessor::PathDelay::process (juce::AudioBuffer<float>& buffer, int n
     }
 }
 
-void BoardProcessor::updateMergeTargets (bool snap)
+void BoardProcessor::updateMergeTargets (int split, bool snap)
 {
     // Per path: level, then a balance pan (centre = unity on both sides, so
     // a centred path is unchanged), and B's polarity.
+    const auto& routing = *chain.routing[(size_t) split];
+    auto& dsp = splitDsp[(size_t) split];
     for (int path = 0; path < 2; ++path)
     {
         const auto suffix = path == 0 ? "_a" : "_b";
@@ -947,9 +1103,9 @@ void BoardProcessor::updateMergeTargets (bool snap)
         {
             const auto target = sign * level * side[ch];
             if (snap)
-                mergeGains[path][ch].setCurrentAndTargetValue (target);
+                dsp.mergeGains[path][ch].setCurrentAndTargetValue (target);
             else
-                mergeGains[path][ch].setTargetValue (target);
+                dsp.mergeGains[path][ch].setTargetValue (target);
         }
     }
 }
@@ -993,90 +1149,105 @@ void BoardProcessor::processSection (const SectionChain& section, juce::AudioBuf
     }
 }
 
-void BoardProcessor::processChunk (juce::AudioBuffer<float>& main, const juce::MidiBuffer& midi, int midiOffset)
+void BoardProcessor::processSplit (int k, juce::AudioBuffer<float>& main, const juce::MidiBuffer& midi, int midiOffset)
 {
     const auto numSamples = main.getNumSamples();
+    const auto& sectionA = chain.sections[(size_t) pathSection (k, 0)];
+    const auto& sectionB = chain.sections[(size_t) pathSection (k, 1)];
+    auto& dsp = splitDsp[(size_t) k];
+    const auto& routing = *chain.routing[(size_t) k];
 
-    processSection (chain[0], main, midi, midiOffset);
-
-    const auto split = chain[1].size > 0 || chain[2].size > 0;
-    if (split)
+    // With both paths empty the split doesn't take part.
+    const auto active = sectionA.size > 0 || sectionB.size > 0;
+    if (! active)
     {
-        if (! splitWasActive)
-        {
-            // Coming in: start clean, at the current merge settings.
-            for (auto& crossover : crossovers)
-                crossover.reset();
-            for (auto& delay : pathDelays)
-                delay.ring.clear();
-            updateMergeTargets (true);
-        }
-
-        juce::AudioBuffer<float> paths[2] = {
-            juce::AudioBuffer<float> (pathBuffers[0].getArrayOfWritePointers(), 2, numSamples),
-            juce::AudioBuffer<float> (pathBuffers[1].getArrayOfWritePointers(), 2, numSamples)
-        };
-
-        // Split
-        switch (routing.getSplitMode())
-        {
-            case SplitMode::full:
-                for (auto& path : paths)
-                    for (int ch = 0; ch < 2; ++ch)
-                        path.copyFrom (ch, 0, main, ch, 0, numSamples);
-                break;
-
-            case SplitMode::frequency:
-            {
-                const auto hz = routing.value ("crossover");
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    auto& crossover = crossovers[(size_t) ch];
-                    crossover.setFrequency (hz);
-                    const auto* in = main.getReadPointer (ch);
-                    auto* low = paths[0].getWritePointer (ch);
-                    auto* high = paths[1].getWritePointer (ch);
-                    for (int i = 0; i < numSamples; ++i)
-                        crossover.process (in[i], low[i], high[i]);
-                }
-                break;
-            }
-
-            case SplitMode::stereo:
-                // Left to A, right to B, each on both channels.
-                for (int ch = 0; ch < 2; ++ch)
-                {
-                    paths[0].copyFrom (ch, 0, main, 0, 0, numSamples);
-                    paths[1].copyFrom (ch, 0, main, 1, 0, numSamples);
-                }
-                break;
-        }
-
-        processSection (chain[1], paths[0], midi, midiOffset);
-        processSection (chain[2], paths[1], midi, midiOffset);
-
-        // Line the faster path up with the slower one.
-        const auto latencyA = sectionLatency (chain[1]), latencyB = sectionLatency (chain[2]);
-        const auto slowest = juce::jmax (latencyA, latencyB);
-        pathDelays[0].process (paths[0], numSamples, slowest - latencyA);
-        pathDelays[1].process (paths[1], numSamples, slowest - latencyB);
-
-        // Merge
-        updateMergeTargets (false);
-        for (int ch = 0; ch < 2; ++ch)
-        {
-            auto* out = main.getWritePointer (ch);
-            const auto* a = paths[0].getReadPointer (ch);
-            const auto* b = paths[1].getReadPointer (ch);
-            auto& gainA = mergeGains[0][ch];
-            auto& gainB = mergeGains[1][ch];
-            for (int i = 0; i < numSamples; ++i)
-                out[i] = gainA.getNextValue() * a[i] + gainB.getNextValue() * b[i];
-        }
+        dsp.wasActive = false;
+        return;
     }
-    splitWasActive = split;
 
-    processSection (chain[3], main, midi, midiOffset);
+    if (! dsp.wasActive)
+    {
+        // Coming in: start clean, at the current merge settings.
+        for (auto& crossover : dsp.crossovers)
+            crossover.reset();
+        for (auto& delay : dsp.delays)
+            delay.ring.clear();
+        updateMergeTargets (k, true);
+    }
+    dsp.wasActive = true;
+
+    juce::AudioBuffer<float> paths[2] = {
+        juce::AudioBuffer<float> (pathBuffers[0].getArrayOfWritePointers(), 2, numSamples),
+        juce::AudioBuffer<float> (pathBuffers[1].getArrayOfWritePointers(), 2, numSamples)
+    };
+
+    // Split
+    switch (routing.getSplitMode())
+    {
+        case SplitMode::full:
+            for (auto& path : paths)
+                for (int ch = 0; ch < 2; ++ch)
+                    path.copyFrom (ch, 0, main, ch, 0, numSamples);
+            break;
+
+        case SplitMode::frequency:
+        {
+            const auto hz = routing.value ("crossover");
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto& crossover = dsp.crossovers[(size_t) ch];
+                crossover.setFrequency (hz);
+                const auto* in = main.getReadPointer (ch);
+                auto* low = paths[0].getWritePointer (ch);
+                auto* high = paths[1].getWritePointer (ch);
+                for (int i = 0; i < numSamples; ++i)
+                    crossover.process (in[i], low[i], high[i]);
+            }
+            break;
+        }
+
+        case SplitMode::stereo:
+            // Left to A, right to B, each on both channels.
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                paths[0].copyFrom (ch, 0, main, 0, 0, numSamples);
+                paths[1].copyFrom (ch, 0, main, 1, 0, numSamples);
+            }
+            break;
+    }
+
+    processSection (sectionA, paths[0], midi, midiOffset);
+    processSection (sectionB, paths[1], midi, midiOffset);
+
+    // Line the faster path up with the slower one.
+    const auto latencyA = sectionLatency (sectionA), latencyB = sectionLatency (sectionB);
+    const auto slowest = juce::jmax (latencyA, latencyB);
+    dsp.delays[0].process (paths[0], numSamples, slowest - latencyA);
+    dsp.delays[1].process (paths[1], numSamples, slowest - latencyB);
+
+    // Merge
+    updateMergeTargets (k, false);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        auto* out = main.getWritePointer (ch);
+        const auto* a = paths[0].getReadPointer (ch);
+        const auto* b = paths[1].getReadPointer (ch);
+        auto& gainA = dsp.mergeGains[0][ch];
+        auto& gainB = dsp.mergeGains[1][ch];
+        for (int i = 0; i < numSamples; ++i)
+            out[i] = gainA.getNextValue() * a[i] + gainB.getNextValue() * b[i];
+    }
+}
+
+void BoardProcessor::processChunk (juce::AudioBuffer<float>& main, const juce::MidiBuffer& midi, int midiOffset)
+{
+    // Chain 0, then each split and the chain after its merge.
+    processSection (chain.sections[0], main, midi, midiOffset);
+    for (int k = 0; k < chain.numSplits; ++k)
+    {
+        processSplit (k, main, midi, midiOffset);
+        processSection (chain.sections[(size_t) chainSection (k + 1)], main, midi, midiOffset);
+    }
 }
 
 void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -1193,8 +1364,8 @@ void BoardProcessor::glideSceneKnobs (int numSamples)
         if (! k.gliding || k.pedal == 0)
             continue;
 
-        auto* pedal = pedals[(size_t) k.pedal - 1].get();
-        auto* param = pedal != nullptr && k.paramIndex >= 0 ? pedal->getParameters()[k.paramIndex] : nullptr;
+        auto* owner = ownerProcessor (k.pedal);
+        auto* param = owner != nullptr && k.paramIndex >= 0 ? owner->getParameters()[k.paramIndex] : nullptr;
         if (param == nullptr)
         {
             k.gliding = false;
@@ -1214,9 +1385,9 @@ void BoardProcessor::glideSceneKnobs (int numSamples)
 
 int BoardProcessor::paramIndexOf (int pedalId, const juce::String& paramId) const
 {
-    if (auto* pedal = getPedal (pedalId))
-        for (int i = 0; i < pedal->getParameters().size(); ++i)
-            if (auto* p = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[i]); p != nullptr && p->getParameterID() == paramId)
+    if (auto* owner = pedalId != 0 ? ownerProcessor (pedalId) : nullptr)
+        for (int i = 0; i < owner->getParameters().size(); ++i)
+            if (auto* p = dynamic_cast<juce::RangedAudioParameter*> (owner->getParameters()[i]); p != nullptr && p->getParameterID() == paramId)
                 return i;
     return -1;
 }
@@ -1260,7 +1431,7 @@ bool BoardProcessor::setSceneControlled (int pedalId, const juce::String& paramI
         if (k.pedal == 0)
         {
             // Every scene starts at the knob's current value.
-            const auto value = getPedal (pedalId)->getParameters()[index]->getValue();
+            const auto value = ownerProcessor (pedalId)->getParameters()[index]->getValue();
             for (auto& v : k.values)
                 v = value;
             k.gliding = false;
@@ -1358,7 +1529,11 @@ juce::var BoardProcessor::toVar (bool fullState) const
     board->setProperty ("output", level (*outputParam));
     board->setProperty ("tempo", std::round (tempo.load() * 10.0) / 10.0);
     root->setProperty ("board", juce::var (board));
-    root->setProperty ("routing", routing.toVar (! fullState));
+    // The splits' settings, in signal order.
+    juce::Array<juce::var> splitList;
+    for (int k = 0; k < numSplits; ++k)
+        splitList.add (splits[(size_t) k]->settings.toVar (! fullState));
+    root->setProperty ("splits", splitList);
 
     // Assignments, with the range in the target's real units (like presets).
     juce::Array<juce::var> assigns;
@@ -1368,12 +1543,12 @@ juce::var BoardProcessor::toVar (bool fullState) const
         if (info.pedal == 0)
             continue;
 
-        auto* param = getPedal (info.pedal)->findParam (info.paramId);
+        auto* param = findOwnerParam (info.pedal, info.paramId);
         const auto real = [param] (float normalised) { return (double) param->convertFrom0to1 (normalised); };
 
         auto* entry = new juce::DynamicObject();
         entry->setProperty ("slot", slot + 1);
-        entry->setProperty ("pedal", info.pedal);
+        writeOwner (*entry, info.pedal);
         entry->setProperty ("param", info.paramId);
         entry->setProperty ("min", real (info.min));
         entry->setProperty ("max", real (info.max));
@@ -1400,15 +1575,15 @@ juce::var BoardProcessor::toVar (bool fullState) const
 
     juce::Array<juce::var> knobs;
     for (const auto& k : sceneKnobs)
-        if (auto* pedal = getPedal (k.pedal); pedal != nullptr && k.paramIndex >= 0)
-            if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (pedal->getParameters()[k.paramIndex]))
+        if (auto* owner = k.pedal != 0 ? ownerProcessor (k.pedal) : nullptr; owner != nullptr && k.paramIndex >= 0)
+            if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (owner->getParameters()[k.paramIndex]))
             {
                 juce::Array<juce::var> values;
                 for (const auto& v : k.values)
                     values.add ((double) param->convertFrom0to1 (v.load()));
 
                 auto* entry = new juce::DynamicObject();
-                entry->setProperty ("pedal", k.pedal.load());
+                writeOwner (*entry, k.pedal.load());
                 entry->setProperty ("param", param->getParameterID());
                 entry->setProperty ("values", values);
                 knobs.add (juce::var (entry));
@@ -1417,7 +1592,7 @@ juce::var BoardProcessor::toVar (bool fullState) const
     root->setProperty ("scenes", juce::var (scenes));
 
     juce::Array<juce::var> list;
-    for (int s = 0; s < kNumSections; ++s)
+    for (int s = 0; s < getNumSections(); ++s)
         for (const auto id : layout[(size_t) s])
             if (auto* pedal = getPedal (id))
             {
@@ -1444,6 +1619,25 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     juce::StringArray notes;
 
     clearBoard();
+    for (int k = 0; k < kMaxSplits; ++k)
+        clearSceneKnobsOf (routingOwner (k));
+
+    // The splits first (the pedals' sections depend on how many). Older
+    // boards have one, in "routing"; missing settings are the defaults.
+    {
+        const auto* list = root["splits"].getArray();
+        numSplits = list != nullptr ? juce::jlimit (0, kMaxSplits, list->size()) : 1;
+        for (int k = 0; k < kMaxSplits; ++k)
+        {
+            auto& split = *splits[(size_t) k];
+            const auto params = list != nullptr ? (k < list->size() ? (*list)[k] : juce::var()) : (k == 0 ? root["routing"] : juce::var());
+            if (k < numSplits)
+                notes.addArray (split.settings.fromVar (params));
+            else
+                split.settings.fromVar ({});
+            split.lastMode = split.settings.getSplitMode();
+        }
+    }
 
     if (const auto* list = root["pedals"].getArray())
     {
@@ -1478,7 +1672,8 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
             attachPedal (id, std::move (pedal));
             if ((bool) entry["trails"])
                 setTrails (id, true);
-            layout[(size_t) sectionFromKey (entry["section"].toString())].push_back (id);
+            const auto section = juce::jmin ((int) sectionFromKey (entry["section"].toString()), getNumSections() - 1);
+            layout[(size_t) section].push_back (id);
         }
     }
 
@@ -1498,9 +1693,6 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
         boardPlayHead.bpm = tempo.load();
     }
 
-    // Missing routing (older presets) = the defaults.
-    notes.addArray (routing.fromVar (root["routing"]));
-    lastSplitMode = routing.getSplitMode();
 
     for (auto& a : assignments)
     {
@@ -1511,10 +1703,9 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
         for (const auto& entry : *list)
         {
             const auto slot = (int) entry["slot"] - 1;
-            const auto pedalId = (int) entry["pedal"];
+            const auto pedalId = readOwner (entry);
             const auto paramId = entry["param"].toString();
-            auto* pedal = getPedal (pedalId);
-            auto* param = pedal != nullptr ? pedal->findParam (paramId) : nullptr;
+            auto* param = findOwnerParam (pedalId, paramId);
             if (slot < 0 || slot >= kNumAssigns || param == nullptr)
             {
                 notes.add ("Assign " + juce::String (slot + 1) + ": no such knob, skipped");
@@ -1545,10 +1736,9 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     if (const auto* knobs = scenes["knobs"].getArray())
         for (const auto& entry : *knobs)
         {
-            const auto pedalId = (int) entry["pedal"];
+            const auto pedalId = readOwner (entry);
             const auto paramId = entry["param"].toString();
-            auto* pedal = getPedal (pedalId);
-            auto* param = pedal != nullptr ? pedal->findParam (paramId) : nullptr;
+            auto* param = findOwnerParam (pedalId, paramId);
             if (param == nullptr || ! setSceneControlled (pedalId, paramId, true))
             {
                 notes.add ("Scene knob skipped: " + paramId);
@@ -1646,8 +1836,14 @@ void BoardProcessor::resetBoard()
         clearBoard();
         inputParam->setValueNotifyingHost (inputParam->convertTo0to1 (0.0f));
         outputParam->setValueNotifyingHost (outputParam->convertTo0to1 (0.0f));
-        routing.fromVar ({});
-        lastSplitMode = routing.getSplitMode();
+        for (int k = 0; k < kMaxSplits; ++k)
+        {
+            clearAssignmentsOf (routingOwner (k));
+            clearSceneKnobsOf (routingOwner (k));
+            resetSplitSettings (*splits[(size_t) k]);
+        }
+        numSplits = 1;
+        publishChain();
         currentScene = 0;
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 (1.0f));
         ++boardCounter;

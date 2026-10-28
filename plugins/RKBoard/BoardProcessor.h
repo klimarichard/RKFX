@@ -17,8 +17,9 @@ namespace rkboard
 
 /** The RKFX pedalboard: built-in RKFX pedals (up to kMaxPedals, a safety
     cap for the fixed-size audio thread structures, not a design limit),
-    placed anywhere in four sections (see Section): pre, two parallel paths
-    between a split and a merge, and post.
+    placed anywhere along a chain with up to four splits in series (see
+    Section); each split sends the signal down two parallel paths that its
+    merge adds back.
 
     Each pedal is the plugin's own processor (same DSP, parameters, presets
     and editor as the standalone plugin), called directly by the board.
@@ -28,11 +29,14 @@ namespace rkboard
     signal order. A pedal's bypass is the board's: scenes store it, trails
     pedals keep running while bypassed, and an Assign slot can switch it.
 
-    The split sends both paths the full signal, a 4th-order Linkwitz-Riley
-    band split (lows to A, highs to B), or left to A and right to B. The
+    Each split sends both paths the full signal, a 4th-order Linkwitz-Riley
+    band split (lows to A, highs to B), or left to A and right to B. Its
     merge adds them back with a level and pan per path and an optional
     polarity flip on B. An empty path passes its signal through; the faster
     path is delayed to line up with the slower one (oversampled drives).
+    Every split has its own settings; they are board state (not host
+    parameters) but can be assigned and scene-controlled like knobs, under
+    the owner number routingOwner (split).
 
     Threads: the pedal list and chain are changed on the message thread. A
     new pedal is created and prepared there first; the audio thread only ever
@@ -54,19 +58,40 @@ public:
     //==============================================================================
     // The board (message thread)
 
-    /** Every pedal ID: pre, path A, path B, post. */
+    /** Every pedal ID, in section order. */
     std::vector<int> getChain() const;
 
     /** The pedal IDs of one section, in signal order. */
     const std::vector<int>& getSection (Section s) const { return layout[(size_t) s]; }
 
-    /** The section pedal @p id is in (pre when it isn't on the board). */
+    /** The section pedal @p id is in (chain 0 when it isn't on the board). */
     Section sectionOf (int id) const;
 
-    /** True while path A or B holds a pedal (the split and merge take part). */
-    bool isSplitActive() const;
+    int getNumSplits() const noexcept   { return numSplits; }
+    int getNumSections() const noexcept { return 3 * numSplits + 1; }
 
-    RoutingSettings& getRouting() noexcept { return routing; }
+    /** True while one of split @p split's paths holds a pedal (it takes part). */
+    bool isSplitActive (int split = 0) const;
+
+    RoutingSettings& getRouting (int split = 0) noexcept { return splits[(size_t) split]->settings; }
+
+    /** Inserts a split (with empty paths, default settings) into chain
+        @p chain before its pedal at @p position; the pedals from there on
+        follow the new merge. Returns the new split's index, or -1 when the
+        board has kMaxSplits already. */
+    int insertSplit (Section chain, int position);
+
+    /** Removes split @p split: its paths' pedals (A, then B) join the chain
+        in their place, followed by the chain after its merge. */
+    void removeSplit (int split);
+
+    /** The owner number of split @p split's settings, for assignments and
+        scene knobs (pedals are 1 and up). */
+    static constexpr int routingOwner (int split) noexcept { return -(split + 1); }
+
+    /** A parameter of a pedal (owner >= 1) or of a split's settings
+        (routingOwner), or nullptr. */
+    juce::RangedAudioParameter* findOwnerParam (int owner, const juce::String& paramId) const;
 
     /** The pedal with @p id, or nullptr. */
     rkfx::ProcessorBase* getPedal (int id) const;
@@ -98,6 +123,10 @@ public:
     /** Bumped whenever the chain or a pedal's preset changes, so the editor
         can cheaply poll for updates. */
     int getBoardCounter() const noexcept { return boardCounter.load(); }
+
+    //==============================================================================
+    // In the assignment and scene functions below, "pedalId" is an owner:
+    // a pedal ID, or routingOwner (split) for a split's settings.
 
     //==============================================================================
     // Assignable parameters (message thread): host parameters "Assign 1" to
@@ -208,7 +237,7 @@ public:
     // Board presets (message thread), same JSON conventions as plugin presets:
     //     { "plugin": "RKBoard", "version": 1, "name": ...,
     //       "board": { "input": 0, "output": 0, "tempo": 120 },
-    //       "routing": { "split": "frequency", "crossover": 800, ... },
+    //       "splits": [ { "split": "frequency", "crossover": 800, ... }, ... one per split ],   (older boards: one, "routing": { ... })
     //       "assign": [ { "slot": 1, "pedal": 3, "param": "time", "min": 100, "max": 800, "invert": false } ],
     //       "scenes": { "current": 1, "bypass": [ [2, 5], [], ... one list of bypassed IDs per scene ],
     //                   "knobs": [ { "pedal": 3, "param": "time", "values": [ 350, 500, ... 16 ] } ] },
@@ -274,7 +303,14 @@ private:
         std::array<int, kMaxPedals> ids {};
         int size = 0;
     };
-    using Chain = std::array<SectionChain, kNumSections>;
+
+    /** What the audio thread runs: every section, and each split's settings. */
+    struct Chain
+    {
+        std::array<SectionChain, kMaxSections> sections {};
+        std::array<RoutingSettings*, kMaxSplits> routing {};
+        int numSplits = 1;
+    };
 
     /** A short delay (whole samples) lining up the faster path with the slower one. */
     struct PathDelay
@@ -288,22 +324,26 @@ private:
 
     rkfx::PresetLibrary library;
     std::vector<rkfx::FactoryPreset> factoryPresets { (rkboard::registerFactoryPresets(), rkfx::factoryPresetsFor ("RKBoard")) };
-    RoutingSettings routing;
-
     // Pedals by ID - 1. Written on the message thread only; the audio thread
     // reads them through `chain`, under chainLock.
     std::array<std::unique_ptr<rkfx::ProcessorBase>, kMaxPedals> pedals;
-    std::array<std::vector<int>, kNumSections> layout;   // message thread copy, as IDs
+    std::array<std::vector<int>, kMaxSections> layout;   // message thread copy, as IDs
+    int numSplits = 1;
 
     juce::SpinLock chainLock;
     Chain chain;                             // audio thread view (under chainLock)
 
-    // Split and merge (audio thread)
+    // Splits and merges (audio thread): the paths' buffers are shared, the
+    // rest is per split.
     juce::AudioBuffer<float> pathBuffers[2];
-    PathDelay pathDelays[2];
-    std::array<rkfx::LinkwitzRiley4, 2> crossovers;      // per channel
-    juce::SmoothedValue<float> mergeGains[2][2];        // [path][channel], pan and level and polarity folded in
-    bool splitWasActive = false;
+    struct SplitDsp
+    {
+        PathDelay delays[2];
+        std::array<rkfx::LinkwitzRiley4, 2> crossovers;     // per channel
+        juce::SmoothedValue<float> mergeGains[2][2];       // [path][channel], pan and level and polarity folded in
+        bool wasActive = false;
+    };
+    std::array<SplitDsp, kMaxSplits> splitDsp;
 
     // Each pedal's bypass, as the board sees it (a trails pedal's own bypass
     // stays off while it rings out). Any thread.
@@ -429,19 +469,38 @@ private:
     void setPedalOwnBypass (int id, bool bypassed);
     int paramIndexOf (int pedalId, const juce::String& paramId) const;
     void processChunk (juce::AudioBuffer<float>&, const juce::MidiBuffer&, int midiOffset);
-    void updateMergeTargets (bool snap);
+    void processSplit (int split, juce::AudioBuffer<float>& main, const juce::MidiBuffer&, int midiOffset);
+    void updateMergeTargets (int split, bool snap);
 
-    /** Any routing change marks the board modified; choosing the stereo split
-        pans the paths left and right (and back to the centre when leaving it). */
+    struct Split;
+
+    /** Any routing change marks the board modified (and follows assignments
+        and scenes, like a knob); choosing the stereo split pans the paths
+        left and right (and back to the centre when leaving it). */
     struct RoutingWatcher : public juce::AudioProcessorParameter::Listener
     {
-        explicit RoutingWatcher (BoardProcessor& b) : board (b) {}
-        void parameterValueChanged (int, float) override;
+        RoutingWatcher (BoardProcessor& b, Split& s) : board (b), split (s) {}
+        void parameterValueChanged (int parameterIndex, float newValue) override;
         void parameterGestureChanged (int, bool) override {}
         BoardProcessor& board;
+        Split& split;
     };
-    RoutingWatcher routingWatcher { *this };
-    SplitMode lastSplitMode = SplitMode::full;
+
+    /** One split's settings. Splits move as others are inserted or removed
+        (index follows), so each keeps its own settings. */
+    struct Split
+    {
+        Split (BoardProcessor& b, int i) : watcher (b, *this), index (i) {}
+        RoutingSettings settings;
+        RoutingWatcher watcher;
+        SplitMode lastMode = SplitMode::full;
+        std::atomic<int> index;
+    };
+    std::array<std::unique_ptr<Split>, kMaxSplits> splits;
+
+    juce::AudioProcessor* ownerProcessor (int owner) const;
+    void remapOwner (int from, int to);          // assignments and scene knobs follow a moved split
+    void resetSplitSettings (Split&);
 
     void parameterValueChanged (int parameterIndex, float newValue) override;
     void parameterGestureChanged (int, bool) override {}

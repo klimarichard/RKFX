@@ -9,22 +9,30 @@
 namespace rkboard
 {
 
-/** The split's or the merge's settings, shown below the board when its node
-    is clicked. Same knobs and switches as the pedals. */
+/** A split's or merge's settings, shown below the board when its node is
+    clicked. Same knobs and switches as the pedals (right-click one to assign
+    it or make it scene-controlled), and a button to remove the split. */
 class RoutingPanel : public juce::Component,
                      private juce::Timer
 {
 public:
     enum class Node { split, merge };
 
-    RoutingPanel (BoardProcessor&, Node);
+    RoutingPanel (BoardProcessor&, int split, Node);
+
+    int getSplit() const noexcept { return split; }
+
+    /** "Remove this split" was clicked. */
+    std::function<void()> onRemove;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     BoardProcessor& board;
+    const int split;
     const Node node;
+    juce::TextButton removeButton { "Remove this split" };
 
     // Split
     std::unique_ptr<rkfx::SegmentedSwitch> modeSwitch;
@@ -36,6 +44,7 @@ private:
 
     juce::Rectangle<int> card() const;
     juce::String explanation() const;
+    juce::String title() const;
 
     void timerCallback() override;
 

@@ -16,11 +16,16 @@ For knobs, presets and the standard controls inside each pedal, see [Common Cont
 ## The board
 
 ```
-In -> [pre] -> SPLIT -+- [path A] -+- MERGE -> [post] -> Out
-                      +- [path B] -+
+In -> [chain] -> SPLIT 1 -+- [path A] -+- MERGE 1 -> [chain] -> SPLIT 2 ... -> [chain] -> Out
+                          +- [path B] -+
 ```
 
-Pedals can go anywhere: before the split (**pre**), on **path A** or **path B**, or after the merge (**post**). All of them can also form one plain chain. The split and merge only take part while path A or path B holds a pedal; with both paths empty, the board is a simple chain and the signal passes the split untouched.
+A board is a chain of pedals with up to **four splits** in it. Each split sends the signal down two paths, A and B, and its merge adds them back together. Pedals can go anywhere: on a chain (before, between or after the splits) or on any split's paths. A new board has one split. A split only takes part while one of its paths holds a pedal; with both paths empty the signal passes it untouched (it is then drawn small).
+
+- **To add a split:** click the **+** at the end of a chain and choose **Insert a split here**, or right-click a pedal on a chain and choose **Insert a split after it**. The pedals after that point follow the new merge.
+- **To remove a split:** right-click its SPLIT or MERGE node and choose **Remove this split**, or use the button in its settings. Its pedals stay: path A's, then path B's, join the chain in its place.
+
+With several splits, the nodes are numbered (SPLIT 1, MERGE 1, SPLIT 2...).
 
 Each pedal is a tile in its family color, with its name, an LED and a footswitch:
 
@@ -29,15 +34,18 @@ Each pedal is a tile in its family color, with its name, an LED and a footswitch
 | Click the tile | Shows the pedal's controls below the board |
 | Click the footswitch | Bypass on / off (the LED is off while bypassed) |
 | Drag the tile | Moves the pedal: within its section, or to another section or path |
-| Right-click the tile | Duplicate (a copy with the same settings, right after it), Remove, Trails (delay and reverb), and **Assign On/Off to** (see Assignable parameters) |
-| Click a **+** | Adds a pedal at the end of that section, from a menu grouped by family |
+| Right-click the tile | Duplicate (a copy with the same settings, right after it), Remove, Trails (delay and reverb), **Assign On/Off to** (see Assignable parameters), and on a chain **Insert a split after it** |
+| Click a **+** | Adds a pedal at the end of that section, from a menu grouped by family (on a chain also: **Insert a split here**) |
 | Click SPLIT or MERGE | Shows its settings below the board |
+| Right-click SPLIT or MERGE | **Remove this split** |
 
 Pedals only use processing power while switched on.
 
 ## Split and merge
 
-Click the **SPLIT** node:
+Every split has its own settings. Like a pedal's knobs, they can be assigned (right-click one: **Assign to**) and **scene-controlled**, so a scene can, for example, bring in a wet delay path by raising the merge's Level B.
+
+Click a **SPLIT** node:
 
 | Split mode | What it does |
 | --- | --- |
@@ -45,7 +53,7 @@ Click the **SPLIT** node:
 | **Frequency** | Lows go to path A, highs to path B, split at the **Crossover** (50 Hz to 5 kHz, 24 dB/octave). With nothing changed on the paths they add back to the original sound. Distort only the highs and keep the bass clean, for example. |
 | **Stereo** | The left channel goes to path A, the right channel to path B. Choosing Stereo pans path A left and path B right in the merge (and back to the centre when you leave Stereo), so the stereo image comes out as it went in. |
 
-Click the **MERGE** node:
+Click a **MERGE** node:
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
@@ -78,7 +86,7 @@ Assigning a knob never moves it. Turning the knob yourself moves its Assign para
 A board has 16 **scenes**. A scene remembers:
 
 - whether each pedal is on or bypassed, and
-- the value of every **scene-controlled** knob. Right-click a knob and tick **Scene controlled** (up to 48 knobs per board). All other knobs are the same in every scene.
+- the value of every **scene-controlled** knob. Right-click a knob (a pedal's, or a split's or merge's) and tick **Scene controlled** (up to 48 knobs per board). All other knobs are the same in every scene.
 
 Click a scene button to switch. Pedals switch on and off at once; scene-controlled knobs glide to their new values, so nothing clicks. Changes you make while a scene is selected are stored in that scene. Right-click a scene button to copy it to another scene, then change what should differ.
 

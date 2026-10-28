@@ -16,6 +16,7 @@
 #include "PhaseEngine.h"
 #include "ReverbEngine.h"
 #include "SaturateEngine.h"
+#include "SwellEngine.h"
 #include "TransientEngine.h"
 #include "TremoloEngine.h"
 
@@ -319,6 +320,10 @@ int main (int argc, char** argv)
         { "RKDeEss", "default (relative, split)", []
           {
               return makeEngine<DeEssEngine> ([] (DeEssEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKSwell", "default", []
+          {
+              return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });
           } },
     };
 

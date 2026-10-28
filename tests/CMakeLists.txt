@@ -19,6 +19,7 @@ set(RKFX_ENGINE_PLUGINS
     RKLimit/LimitEngine
     RKTransient/TransientEngine
     RKDeEss/DeEssEngine
+    RKSwell/SwellEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -58,6 +59,7 @@ target_sources(RKFXTests PRIVATE
     LimitTests.cpp
     TransientTests.cpp
     DeEssTests.cpp
+    SwellTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

@@ -1,0 +1,8 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Harmony Only",
+  "params": {
+    "dry": -60
+  }
+}

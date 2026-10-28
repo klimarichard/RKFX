@@ -1,0 +1,10 @@
+{
+  "plugin": "RKVoice",
+  "version": 1,
+  "name": "Thirds in the Key",
+  "params": {
+    "mode": "scale",
+    "v1_interval": "3rd_above",
+    "v1_pan": 0
+  }
+}

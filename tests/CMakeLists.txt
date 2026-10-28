@@ -42,6 +42,7 @@ juce_add_console_app(RKFXTests PRODUCT_NAME "RKFXTests")
 target_sources(RKFXTests PRIVATE
     TestMain.cpp
     SafetyTests.cpp
+    LinkwitzRileyTests.cpp
     OutputStageTests.cpp
     PresetFormatTests.cpp
     PresetLibraryTests.cpp

@@ -32,6 +32,7 @@ namespace PhaseParams
         p.addDecibels  ("env_sens", "Envelope Sensitivity", -24.0f, 24.0f, 0.0f);
         p.addTime      ("env_attack", "Envelope Attack", 1.0f, 100.0f, 5.0f);
         p.addTime      ("env_release", "Envelope Release", 20.0f, 1000.0f, 150.0f);
+        p.addChoice    ("mode", "Mode", { "Phaser", "Uni-Vibe" }, { "phaser", "univibe" }, 0);
 
         return p;
     }

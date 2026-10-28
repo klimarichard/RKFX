@@ -61,7 +61,7 @@ public:
             { "RKCompress", CompressParams::create, 5 },   { "RKGate", GateParams::create, 5 },
             { "RKTremolo", TremoloParams::create, 6 },     { "RKChorus", ChorusParams::create, 6 },
             { "RKDouble", DoubleParams::create, 5 },       { "RKFlange", FlangeParams::create, 6 },
-            { "RKPhase", PhaseParams::create, 6 },         { "RKDelay", DelayParams::create, 7 },
+            { "RKPhase", PhaseParams::create, 8 },         { "RKDelay", DelayParams::create, 7 },
             { "RKSaturate", SaturateParams::create, 6 },   { "RKDistort", DistortParams::create, 7 },
             { "RKVerb", VerbParams::create, 8 },        { "RKLimit", LimitParams::create, 6 },
             { "RKTransient", TransientParams::create, 7 }, { "RKDeEss", DeEssParams::create, 7 },

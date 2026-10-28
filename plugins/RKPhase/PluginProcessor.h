@@ -22,7 +22,7 @@ protected:
 
 private:
     juce::RangedAudioParameter *stages, *centre, *feedback, *rate, *depth, *sync, *division, *phase,
-                               *envAmount, *envSens, *envAttack, *envRelease;
+                               *envAmount, *envSens, *envAttack, *envRelease, *mode;
     PhaseEngine engine;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKPhaseProcessor)

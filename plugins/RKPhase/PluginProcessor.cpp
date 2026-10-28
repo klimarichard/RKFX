@@ -22,7 +22,8 @@ RKPhaseProcessor::RKPhaseProcessor()
       stages (findParam ("stages")), centre (findParam ("center")), feedback (findParam ("feedback")),
       rate (findParam ("rate")), depth (findParam ("depth")), sync (findParam ("sync")),
       division (findParam ("division")), phase (findParam ("phase")), envAmount (findParam ("env_amount")),
-      envSens (findParam ("env_sens")), envAttack (findParam ("env_attack")), envRelease (findParam ("env_release"))
+      envSens (findParam ("env_sens")), envAttack (findParam ("env_attack")), envRelease (findParam ("env_release")),
+      mode (findParam ("mode"))
 {
 }
 
@@ -41,6 +42,7 @@ PhaseEngine::Settings RKPhaseProcessor::currentSettings() const
     s.envSensDb    = valueOf (envSens);
     s.envAttackMs  = valueOf (envAttack);
     s.envReleaseMs = valueOf (envRelease);
+    s.univibe      = valueOf (mode) >= 0.5f;
     return s;
 }
 

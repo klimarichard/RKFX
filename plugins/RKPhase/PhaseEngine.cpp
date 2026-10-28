@@ -4,6 +4,12 @@
 
 #include <cmath>
 
+namespace
+{
+    constexpr double kCellBrighterMs = 8.0, kCellDimmerMs = 60.0;   // photocell response
+    constexpr int kVibeUpdate = 4;                                  // samples between coefficient updates
+}
+
 void PhaseEngine::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
@@ -23,12 +29,15 @@ void PhaseEngine::prepare (double newSampleRate)
     envAmount.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     envSens.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     fadeLength = juce::jmax (1, (int) (0.01 * sampleRate));
+    modeFade.reset (sampleRate, 0.005);
+    cellBrighter = (float) std::exp (-1.0 / (0.001 * kCellBrighterMs * sampleRate));
+    cellDimmer = (float) std::exp (-1.0 / (0.001 * kCellDimmerMs * sampleRate));
 
     setSettings (settings);
     reset();
 }
 
-void PhaseEngine::reset()
+void PhaseEngine::clearStates() noexcept
 {
     for (auto& c : channels)
     {
@@ -36,7 +45,16 @@ void PhaseEngine::reset()
         c.y1.fill (0.0f);
         c.dc.reset();
         c.lastOut = 0.0f;
+        c.cell = 0.5f;
     }
+    untilVibeUpdate = 0;
+}
+
+void PhaseEngine::reset()
+{
+    clearStates();
+    univibe = settings.univibe;
+    modeFade.setCurrentAndTargetValue (1.0f);
 
     lfos[0].reset();
     lfos[1].reset (settings.phaseDeg / 360.0);
@@ -64,6 +82,21 @@ void PhaseEngine::setSettings (const Settings& s)
 void PhaseEngine::process (float* const* io, int numChannels, int numSamples, const rkfx::Transport& transport) noexcept
 {
     numChannels = juce::jmin (numChannels, kMaxChannels);
+
+    // A mode change: fade the wet signal out, switch while silent, fade in.
+    if (settings.univibe != univibe)
+    {
+        if (! modeFade.isSmoothing() && modeFade.getCurrentValue() <= 0.0f)
+        {
+            univibe = settings.univibe;
+            clearStates();
+            modeFade.setTargetValue (1.0f);
+        }
+        else
+        {
+            modeFade.setTargetValue (0.0f);
+        }
+    }
 
     // A stage count change crossfades from the old output tap to the new one.
     const auto wanted = juce::jlimit (1, kMaxStages, settings.stages);
@@ -110,6 +143,50 @@ void PhaseEngine::process (float* const* io, int numChannels, int numSamples, co
         const auto level = envelope.process (detector * sens);
         const auto envelope01 = std::abs (env) > 0.0f ? rkfx::EnvelopeFollower::toUnit (level) : 0.0f;
 
+        const auto modeGain = modeFade.getNextValue();
+
+        if (univibe)
+        {
+            // Uni-Vibe: the lamp's light, then the photocell, set four staggered stages.
+            const auto update = --untilVibeUpdate <= 0;
+            if (update)
+                untilVibeUpdate = kVibeUpdate;
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                auto& c = channels[(size_t) ch];
+                const auto light = 0.5f + 0.5f * lfos[(size_t) ch].next();
+                const auto target = light * light;
+                c.cell = target + (target > c.cell ? cellBrighter : cellDimmer) * (c.cell - target);
+
+                if (update)
+                {
+                    const auto octave = centre + kLfoOctaves * d * (2.0f * c.cell - 1.0f) + kEnvOctaves * env * envelope01;
+                    for (int s = 0; s < kVibeStages; ++s)
+                    {
+                        const auto stageOctave = juce::jlimit (minOctave, maxOctave, octave + std::log2 (vibeRatios[s]));
+                        const auto t = (float) std::tan (pi * std::exp2 ((double) stageOctave) / sampleRate);
+                        c.vibeCoefs[(size_t) s] = (t - 1.0f) / (t + 1.0f);
+                    }
+                }
+
+                auto x = io[ch][i];
+                for (int s = 0; s < kVibeStages; ++s)
+                {
+                    const auto a = c.vibeCoefs[(size_t) s];
+                    const auto y = a * x + c.x1[(size_t) s] - a * c.y1[(size_t) s];
+                    c.x1[(size_t) s] = x;
+                    c.y1[(size_t) s] = y;
+                    x = y;
+                }
+                io[ch][i] = modeGain * x;
+            }
+
+            if (numChannels == 1)
+                lfos[1].next();
+            continue;
+        }
+
         const auto running = juce::jmax (stages, fadeRemaining > 0 ? previousStages : 0);
         const auto fade = fadeRemaining > 0 ? 1.0f - (float) fadeRemaining / (float) fadeLength : 1.0f;
 
@@ -138,7 +215,7 @@ void PhaseEngine::process (float* const* io, int numChannels, int numSamples, co
 
             const auto out = fadeRemaining > 0 ? tapOld + fade * (tapNew - tapOld) : tapNew;
             c.lastOut = out;
-            io[ch][i] = out;
+            io[ch][i] = modeGain * out;
         }
 
         if (numChannels == 1)

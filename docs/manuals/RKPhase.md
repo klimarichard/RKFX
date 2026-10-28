@@ -1,8 +1,8 @@
 # RKPhase
 
-**Phaser** · Modulation family (pale blue) · zero latency
+**Phaser and Uni-Vibe** · Modulation family (pale blue) · zero latency
 
-RKPhase is a classic phaser: it sweeps a set of notches up and down through the sound, giving the swirling, "whooshing" movement known from the famous orange and script pedals and from 70s electric piano and string-machine sounds. The sweep can come from an LFO, from your playing dynamics (envelope), or both.
+RKPhase is a classic phaser: it sweeps a set of notches up and down through the sound, giving the swirling, "whooshing" movement known from the famous orange and script pedals and from 70s electric piano and string-machine sounds. The sweep can come from an LFO, from your playing dynamics (envelope), or both. Its **Uni-Vibe** mode gives the throbbing, liquid chorus-vibrato of the classic 60s vibe pedal.
 
 For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls](Common%20Controls.md). A mono input gives a stereo output, so Stereo Phase works on mono sources.
 
@@ -15,10 +15,11 @@ For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls
 
 Every two stages make one notch: 4 stages give 2 notches, 12 stages give 6.
 
-## Phaser
+## Phase
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
+| **Phaser / Uni-Vibe** | Phaser, Uni-Vibe | Phaser | **Phaser**: the classic phaser, as described here. **Uni-Vibe**: four stages tuned to different frequencies (as in the original vibe circuit), swept by a modelled lamp and light sensor: the sweep lingers and then lunges, a lopsided "throb" rather than an even wave. Stages and Feedback don't apply (dimmed). With **Dry/Wet** at 50% it is the vibe's **chorus** setting; at 100% (wet only) its **vibrato** setting. Switching dips the effect for a moment, never clicks. |
 | **Stages** | 2, 4, 6, 8, 12 | 4 | Number of allpass stages. 2 is subtle, 4 is the classic pedal sound, 8 to 12 are deep and dramatic. Changing it crossfades, so it never clicks. |
 | **Center** | 100 Hz to 5 kHz | 800 Hz | The middle of the sweep. Low settings give a darker, throatier phase; high settings a brighter, airier one. |
 | **Feedback** | -95% to +95% | +30% | Resonance. Positive values make the notches sharper and the sweep more vocal and "singing"; negative values give a different, hollower character. |
@@ -60,6 +61,8 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Funky Envelope Phaser** | 4 stages, Center 400 Hz, Feedback +50%, Depth 0%, Env Amount +80%, Attack 5 ms, Release 150 ms |
 | **Synced Pulse** | 6 stages, Center 900 Hz, Feedback +30%, Depth 70%, Sync on, 1/8 |
 | **Rotary-Style Swirl** | 4 stages, Center 1.2 kHz, Feedback +10%, Depth 50%, Rate 5 Hz, Stereo Phase 180° |
+| **Uni-Vibe Chorus** | Uni-Vibe, Center 1 kHz, Depth 80%, Rate 1.2 Hz, Dry/Wet 50% |
+| **Uni-Vibe Vibrato** | Uni-Vibe, Center 1 kHz, Depth 70%, Rate 5 Hz, Dry/Wet 100% |
 
 ## Notes
 

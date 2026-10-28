@@ -10,11 +10,12 @@ namespace
 }
 
 RKPhaseEditor::RKPhaseEditor (RKPhaseProcessor& p)
-    : rkfx::EditorBase (p, 760, 450)
+    : rkfx::EditorBase (p, 760, 480)
 {
     using rkfx::Knob;
     auto param = [&p] (const char* id) -> juce::RangedAudioParameter& { return *p.findParam (id); };
 
+    mode       = std::make_unique<rkfx::SegmentedSwitch> (param ("mode"), accent(), juce::StringArray { "Phaser", "Uni-Vibe" });
     stages     = std::make_unique<rkfx::SegmentedSwitch> (param ("stages"), accent(), juce::StringArray {}, "Stages");
     sync       = std::make_unique<rkfx::ToggleSwitch> (param ("sync"), accent(), "Sync");
     centre     = std::make_unique<Knob> (param ("center"), "Center");
@@ -29,7 +30,7 @@ RKPhaseEditor::RKPhaseEditor (RKPhaseProcessor& p)
     envRelease = std::make_unique<Knob> (param ("env_release"), "Release");
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             stages.get(), sync.get(), centre.get(), feedback.get(), depth.get(), rate.get(), division.get(),
+             mode.get(), stages.get(), sync.get(), centre.get(), feedback.get(), depth.get(), rate.get(), division.get(),
              phase.get(), envAmount.get(), envSens.get(), envAttack.get(), envRelease.get() })
         addToCanvas (*c);
 
@@ -51,6 +52,17 @@ RKPhaseEditor::RKPhaseEditor (RKPhaseProcessor& p)
             k->setDimmed (std::abs (v) < 0.5f);
     });
 
+    // Uni-Vibe has its own four stages and no feedback.
+    modeWatcher = std::make_unique<juce::ParameterAttachment> (param ("mode"), [this] (float v)
+    {
+        const auto vibe = v >= 0.5f;
+        stages->setAlpha (vibe ? 0.35f : 1.0f);
+        stages->setInterceptsMouseClicks (! vibe, ! vibe);
+        feedback->setDimmed (vibe);
+        repaint();
+    });
+
+    modeWatcher->sendInitialUpdate();
     syncWatcher->sendInitialUpdate();
     depthWatcher->sendInitialUpdate();
     envWatcher->sendInitialUpdate();
@@ -68,6 +80,8 @@ void RKPhaseEditor::layoutContent()
     {
         auto area = phaserArea().reduced (8, 0);
         area.removeFromTop (kTitleHeight);
+        mode->setBounds (area.removeFromTop (26));
+        area.removeFromTop (8);
         stages->setBounds (area.removeFromTop (44));
         area.removeFromTop (8);
         auto knobs = area.removeFromTop (Knob::kDefaultHeight);
@@ -103,7 +117,7 @@ void RKPhaseEditor::layoutContent()
 
 void RKPhaseEditor::paintContent (juce::Graphics& g)
 {
-    drawSection (g, phaserArea(), "Phaser");
+    drawSection (g, phaserArea(), "Phase");
     drawSection (g, lfoArea(), "LFO");
     drawSection (g, envelopeArea(), "Envelope");
 }

@@ -75,6 +75,53 @@ public:
             expect (maxStep < 0.03f, "max step " + juce::String (maxStep));
         }
 
+        beginTest ("Uni-Vibe: the wet signal is flat, and its notches differ from the phaser's");
+        {
+            auto vibe = still (4);
+            vibe.univibe = true;
+            for (const auto hz : { 100.0f, 800.0f, 5000.0f })
+                expectWithinAbsoluteError (level (vibe, hz, 0.5f, false), 1.0f, 0.02f, "allpass at " + juce::String (hz) + " Hz");
+
+            // Staggered stages: mixed with dry, it cuts at different places than four equal ones.
+            float maxDifference = 0.0f;
+            for (const auto hz : { 150.0f, 300.0f, 600.0f, 1200.0f, 2400.0f })
+                maxDifference = juce::jmax (maxDifference, std::abs (level (vibe, hz, 0.5f, true) - level (still (4), hz, 0.5f, true)));
+            expect (maxDifference > 0.2f, "a different response: " + juce::String (maxDifference));
+        }
+
+        beginTest ("Switching between Phaser and Uni-Vibe never clicks");
+        {
+            PhaseEngine engine;
+            PhaseEngine::Settings s;
+            engine.setSettings (s);
+            engine.prepare (48000.0);
+
+            juce::AudioBuffer<float> buffer (1, 48000);
+            for (int i = 0; i < 48000; ++i)
+                buffer.setSample (0, i, 0.5f * std::sin (2.0f * juce::MathConstants<float>::pi * 220.0f * (float) i / 48000.0f));
+
+            float maxStep = 0.0f, last = 0.0f;
+            for (int start = 0; start < 48000; start += 64)
+            {
+                if (start == 12000 || start == 36000)
+                {
+                    s.univibe = ! s.univibe;
+                    engine.setSettings (s);
+                }
+                float* p = buffer.getWritePointer (0, start);
+                engine.process (&p, 1, 64, {});
+                for (int i = 0; i < 64; ++i)
+                {
+                    const auto x = buffer.getSample (0, start + i);
+                    if (start + i > 0)
+                        maxStep = juce::jmax (maxStep, std::abs (x - last));
+                    last = x;
+                }
+            }
+            // A 220 Hz sine at 0.5 moves at most 0.0145 per sample.
+            expect (maxStep < 0.03f, "largest step " + juce::String (maxStep));
+        }
+
         beginTest ("Maximum feedback and fast sweeps stay bounded");
         {
             for (const float fb : { 0.95f, -0.95f })

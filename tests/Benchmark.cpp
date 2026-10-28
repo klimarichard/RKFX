@@ -241,6 +241,15 @@ int main (int argc, char** argv)
           {
               return makeEngine<PhaseEngine> ([] (PhaseEngine& e) { e.setSettings ({}); });
           } },
+        { "RKPhase", "Uni-Vibe", []
+          {
+              return makeEngine<PhaseEngine> ([] (PhaseEngine& e)
+              {
+                  PhaseEngine::Settings s;
+                  s.univibe = true;
+                  e.setSettings (s);
+              });
+          } },
         { "RKPhase", "12 stages, envelope", []
           {
               return makeEngine<PhaseEngine> ([] (PhaseEngine& e)

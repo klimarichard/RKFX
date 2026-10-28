@@ -53,6 +53,8 @@ The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controller
 | --- | --- | --- |
 | [RKHarmonize](docs/manuals/RKHarmonize.md) | Harmonizer: up to two harmony notes in a key and scale | Available |
 | [RKArpeggiate](docs/manuals/RKArpeggiate.md) | Tempo-synced arpeggiator with latch, swing and octaves | Available |
+| [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
+| [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
 
 ### RKBoard
 

@@ -4,7 +4,7 @@ A suite of separate, lightweight audio effect plugins by RKMusic, built for live
 
 Goals, in priority order:
 
-1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate, RKDistort, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host).
+1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate, RKDistort, RKPreamp, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host).
 2. **Lightweight.** Minimal CPU and memory, fast loading, no heavy graphics.
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
@@ -40,6 +40,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
+| [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
 
 ### RKBoard
 

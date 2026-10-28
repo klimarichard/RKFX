@@ -1,0 +1,8 @@
+{
+  "plugin": "RKConduct",
+  "version": 1,
+  "name": "Tap Quarter Notes",
+  "params": {
+    "tap_every": "1/4"
+  }
+}

@@ -48,6 +48,7 @@ add_subdirectory(plugins/RKTransient)
 add_subdirectory(plugins/RKDeEss)
 add_subdirectory(plugins/RKSwell)
 add_subdirectory(plugins/RKRotary)
+add_subdirectory(plugins/RKVibrato)
 
 # ---------------------------------------------------------------------------
 # Tests

@@ -25,9 +25,7 @@ endforeach()
 juce_add_console_app(RKFXSnapshot_RKBoard PRODUCT_NAME "RKFXSnapshot_RKBoard")
 set_target_properties(RKFXSnapshot_RKBoard PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_sources(RKFXSnapshot_RKBoard PRIVATE Snapshot.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/BoardProcessor.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/BoardEditor.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/PedalRegistry.cpp
+    ${RKBOARD_SOURCES}
     ${RKBOARD_PEDAL_SOURCES})
 foreach(plugin IN LISTS RKFX_PLUGINS)
     if(TARGET ${plugin}_FactoryPresets)

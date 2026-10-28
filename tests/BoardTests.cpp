@@ -7,6 +7,7 @@
 #include <cstdio>
 
 using rkboard::BoardProcessor;
+using rkboard::Section;
 
 namespace
 {
@@ -54,7 +55,7 @@ namespace
     {
         for (int ch = 0; ch < a.getNumChannels(); ++ch)
             for (int i = 0; i < a.getNumSamples(); ++i)
-                if (a.getSample (ch, i) != b.getSample (ch, i))
+                if (! juce::exactlyEqual (a.getSample (ch, i), b.getSample (ch, i)))
                     return false;
         return true;
     }
@@ -138,11 +139,11 @@ public:
             const auto c = board.addPedal ("RKVerb");
             expect (board.getChain() == std::vector<int> { a, b, c });
 
-            board.movePedal (c, 0);
+            board.movePedal (c, Section::pre, 0);
             expect (board.getChain() == std::vector<int> { c, a, b });
-            board.movePedal (c, 3);   // to the end
+            board.movePedal (c, Section::pre, 3);   // to the end
             expect (board.getChain() == std::vector<int> { a, b, c });
-            board.movePedal (a, 2);   // between b and c
+            board.movePedal (a, Section::pre, 2);   // between b and c
             expect (board.getChain() == std::vector<int> { b, a, c });
 
             board.getPedal (a)->findParam ("rate")->setValueNotifyingHost (0.8f);
@@ -166,7 +167,7 @@ public:
             board.clearBoard();
             board.addPedal ("RKChorus");
             const auto delay = board.addPedal ("RKDelay");
-            board.movePedal (delay, 0);
+            board.movePedal (delay, Section::pre, 0);
 
             auto* hostBypass = board.getParameters()[delay - 1];
             hostBypass->setValueNotifyingHost (1.0f);
@@ -188,7 +189,7 @@ public:
             const auto chorus = board.addPedal ("RKChorus");
             board.addPedal ("RKDistort");
             const auto verb = board.addPedal ("RKVerb");
-            board.movePedal (verb, 0);
+            board.movePedal (verb, Section::pre, 0);
             board.getPedal (chorus)->findParam ("depth")->setValueNotifyingHost (0.3f);
             board.setPedalBypassed (verb, true);
             board.getInputParam().setValueNotifyingHost (board.getInputParam().convertTo0to1 (-6.0f));
@@ -265,6 +266,154 @@ public:
             // Closing the board's window lets the pedals make new editors later.
             rkboard::BoardEditor reopened (board);
             expectEquals (reopened.getShownPedal(), b);
+        }
+
+        beginTest ("Pedals move between sections; the split takes part only with a pedal on A or B");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto a = board.addPedal ("RKChorus");
+            const auto b = board.addPedal ("RKDelay", Section::post);
+            expect (! board.isSplitActive());
+
+            board.movePedal (a, Section::pathB, 0);
+            expect (board.isSplitActive());
+            expect (board.getSection (Section::pathB) == std::vector<int> { a });
+            expect (board.sectionOf (a) == Section::pathB);
+            expect (board.getChain() == std::vector<int> { a, b });
+
+            const auto copy = board.duplicatePedal (a);
+            expect (board.getSection (Section::pathB) == std::vector<int> { a, copy });
+
+            board.movePedal (a, Section::pre, 0);
+            board.movePedal (copy, Section::post, 0);
+            expect (! board.isSplitActive());
+            expect (board.getSection (Section::post) == std::vector<int> { copy, b });
+        }
+
+        beginTest ("Full split: both paths add up (an empty path passes the signal)");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
+            prepare (board);
+            run (board, 50);
+            const auto [in, out] = run (board, 1);
+
+            float worst = 0.0f;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    worst = juce::jmax (worst, std::abs (out.getSample (ch, i) - 2.0f * in.getSample (ch, i)));
+            expect (worst < 1.0e-5f, "error " + juce::String (worst));
+
+            // Invert B: A - B = silence.
+            auto& invert = board.getRouting().param ("invert_b");
+            invert.setValueNotifyingHost (1.0f);
+            run (board, 50);
+            const auto [in2, out2] = run (board, 1);
+            expect (out2.getMagnitude (0, kBlock) < 1.0e-5f);
+        }
+
+        beginTest ("Stereo split pans the paths left and right, and gives the input back");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+
+            auto& split = board.getRouting().param ("split");
+            split.setValueNotifyingHost (split.convertTo0to1 (2.0f));   // stereo
+            expectEquals (board.getRouting().value ("pan_a"), -100.0f);
+            expectEquals (board.getRouting().value ("pan_b"), 100.0f);
+
+            prepare (board);
+            run (board, 50);
+            const auto [in, out] = run (board, 1);
+
+            float worst = 0.0f;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < kBlock; ++i)
+                    worst = juce::jmax (worst, std::abs (out.getSample (ch, i) - in.getSample (ch, i)));
+            expect (worst < 1.0e-6f, "error " + juce::String (worst));
+
+            // Back to full: the pans return to the centre.
+            split.setValueNotifyingHost (split.convertTo0to1 (0.0f));
+            expectEquals (board.getRouting().value ("pan_a"), 0.0f);
+            expectEquals (board.getRouting().value ("pan_b"), 0.0f);
+        }
+
+        beginTest ("Frequency split adds back at the same level");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+            auto& split = board.getRouting().param ("split");
+            split.setValueNotifyingHost (split.convertTo0to1 (1.0f));
+            prepare (board);
+            run (board, 50);
+
+            juce::Random random (7);
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::MidiBuffer midi;
+            double in2 = 0.0, out2 = 0.0;
+            for (int b = 0; b < 400; ++b)
+            {
+                fillNoise (buffer, random);
+                in2 += buffer.getRMSLevel (0, 0, kBlock) * buffer.getRMSLevel (0, 0, kBlock);
+                board.processBlock (buffer, midi);
+                out2 += buffer.getRMSLevel (0, 0, kBlock) * buffer.getRMSLevel (0, 0, kBlock);
+            }
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (std::sqrt (out2 / in2)), 0.0, 0.2);
+        }
+
+        beginTest ("The faster path is delayed to line up with the slower one");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            // A bypassed Saturate still delays its signal by its oversampling latency.
+            const auto saturate = board.addPedal ("RKSaturate", Section::pathA);
+            board.setPedalBypassed (saturate, true);
+            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+            prepare (board);
+
+            const auto latency = board.getPedal (saturate)->getLatencySamples();
+            expect (latency > 0);
+            run (board, 50);
+            const auto [in, out] = run (board, 1);
+
+            float worst = 0.0f;
+            for (int i = latency; i < kBlock; ++i)
+                worst = juce::jmax (worst, std::abs (out.getSample (0, i) - 2.0f * in.getSample (0, i - latency)));
+            expect (worst < 1.0e-5f, "error " + juce::String (worst));
+        }
+
+        beginTest ("Sections and routing round-trip through a preset, only non-default routing written");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto a = board.addPedal ("RKChorus", Section::pathA);
+            const auto b = board.addPedal ("RKVerb", Section::pathB);
+            const auto c = board.addPedal ("RKCompress", Section::pre);
+            auto& crossover = board.getRouting().param ("crossover");
+            crossover.setValueNotifyingHost (crossover.convertTo0to1 (1200.0f));
+
+            const auto saved = board.toVar (false);
+            expectEquals (saved["routing"].getDynamicObject()->getProperties().size(), 1);
+
+            BoardProcessor loaded;
+            expect (loaded.fromVar (saved, false).ok);
+            expect (loaded.getSection (Section::pathA) == std::vector<int> { a });
+            expect (loaded.getSection (Section::pathB) == std::vector<int> { b });
+            expect (loaded.getSection (Section::pre) == std::vector<int> { c });
+            expectWithinAbsoluteError (loaded.getRouting().value ("crossover"), 1200.0f, 0.5f);
+
+            // Phase 1 presets (no sections, no routing) load as a serial chain.
+            const auto old = R"({ "plugin": "RKBoard", "version": 1, "pedals": [
+                                    { "id": 1, "preset": { "plugin": "RKChorus", "version": 1, "params": {} } } ] })";
+            expect (loaded.fromVar (juce::JSON::parse (old), false).ok);
+            expect (loaded.getSection (Section::pre) == std::vector<int> { 1 });
+            expectWithinAbsoluteError (loaded.getRouting().value ("crossover"), 500.0f, 0.5f);
         }
 
         beginTest ("Unknown pedals in a preset are skipped with a note");

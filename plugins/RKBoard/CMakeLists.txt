@@ -20,11 +20,16 @@ juce_add_plugin(RKBoard
     COPY_PLUGIN_AFTER_BUILD  TRUE
 )
 
-target_sources(RKBoard PRIVATE
-    BoardProcessor.cpp
-    BoardEditor.cpp
-    PedalRegistry.cpp
+# The board's own sources (also used by RKBoardTests and the snapshot tool).
+set(RKBOARD_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/BoardProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/BoardEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PedalRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Routing.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RoutingPanel.cpp
 )
+set(RKBOARD_SOURCES ${RKBOARD_SOURCES} PARENT_SCOPE)
+target_sources(RKBoard PRIVATE ${RKBOARD_SOURCES})
 
 # Every plugin's own sources, factory preset list and preset data.
 set(RKBOARD_PEDAL_SOURCES "")

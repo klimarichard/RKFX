@@ -34,92 +34,175 @@ BoardStrip::BoardStrip (BoardProcessor& b) : board (b)
 {
 }
 
-void BoardStrip::setSelected (int id)
+void BoardStrip::setSelected (int item)
 {
-    if (selected != id)
+    if (selected != item)
     {
-        selected = id;
+        selected = item;
         repaint();
     }
 }
 
-juce::Rectangle<int> BoardStrip::tileBounds (int position) const
+int BoardStrip::keyOf (const Item& item)
 {
-    // Centred row of up to 12 tiles (+ the add tile).
-    const auto count = juce::jmin ((int) board.getChain().size() + 1, BoardProcessor::kMaxPedals);
-    const auto rowWidth = count * kTileWidth + (count - 1) * kTileGap;
-    const auto x0 = (getWidth() - rowWidth) / 2;
-    return { x0 + position * (kTileWidth + kTileGap), (getHeight() - kTileHeight) / 2, kTileWidth, kTileHeight };
+    switch (item.kind)
+    {
+        case Item::Kind::pedal: return item.id;
+        case Item::Kind::add:   return 100 + (int) item.section;
+        case Item::Kind::split: return kSplitNode;
+        case Item::Kind::merge: return kMergeNode;
+    }
+    return 0;
+}
+
+void BoardStrip::layoutItems()
+{
+    constexpr int gap = 6, addWidth = 30, nodeWidth = 34, margin = 12;
+
+    const auto& pre = board.getSection (Section::pre);
+    const auto& pathA = board.getSection (Section::pathA);
+    const auto& pathB = board.getSection (Section::pathB);
+    const auto& post = board.getSection (Section::post);
+    const auto lanes = (int) juce::jmax (pathA.size(), pathB.size());
+    const auto columns = (int) pre.size() + lanes + (int) post.size();
+
+    // Tiles shrink (down to 44 px) so twelve pedals and the fixed parts fit.
+    const auto fixed = 3 * (addWidth + gap) + 2 * (nodeWidth + gap);
+    const auto tileWidth = columns > 0 ? juce::jlimit (44, 70, (getWidth() - 2 * margin - fixed) / columns - gap) : 70;
+    const auto total = columns * (tileWidth + gap) + fixed - gap;
+
+    const auto laneA = kPadding, laneB = kPadding + kTileHeight + kLaneGap;
+    const auto middle = (getHeight() - kTileHeight) / 2;
+    auto x = (getWidth() - total) / 2;
+
+    items.clear();
+    const auto addSection = [&] (const std::vector<int>& ids, Section section, int startX, int y)
+    {
+        auto tx = startX;
+        for (int i = 0; i < (int) ids.size(); ++i, tx += tileWidth + gap)
+            items.push_back ({ Item::Kind::pedal, ids[(size_t) i], section, i, { tx, y, tileWidth, kTileHeight } });
+        items.push_back ({ Item::Kind::add, 0, section, (int) ids.size(), { tx, y, addWidth, kTileHeight } });
+    };
+
+    addSection (pre, Section::pre, x, middle);
+    x += (int) pre.size() * (tileWidth + gap) + addWidth + gap;
+
+    items.push_back ({ Item::Kind::split, 0, Section::pre, 0, { x, laneA, nodeWidth, laneB + kTileHeight - laneA } });
+    x += nodeWidth + gap;
+
+    addSection (pathA, Section::pathA, x, laneA);
+    addSection (pathB, Section::pathB, x, laneB);
+    x += lanes * (tileWidth + gap) + addWidth + gap;
+
+    items.push_back ({ Item::Kind::merge, 0, Section::post, 0, { x, laneA, nodeWidth, laneB + kTileHeight - laneA } });
+    x += nodeWidth + gap;
+
+    addSection (post, Section::post, x, middle);
+}
+
+const BoardStrip::Item* BoardStrip::itemAt (juce::Point<int> pos) const
+{
+    for (const auto& item : items)
+        if (item.bounds.contains (pos))
+            return &item;
+    return nullptr;
+}
+
+const BoardStrip::Item* BoardStrip::find (Item::Kind kind, int id) const
+{
+    for (const auto& item : items)
+        if (item.kind == kind && item.id == id)
+            return &item;
+    return nullptr;
 }
 
 juce::Rectangle<int> BoardStrip::footswitchBounds (juce::Rectangle<int> tile) const
 {
-    return tile.removeFromBottom (48).withSizeKeepingCentre (34, 34);
+    return tile.removeFromBottom (40).withSizeKeepingCentre (28, 28);
 }
 
-int BoardStrip::tileAt (juce::Point<int> pos) const
+BoardStrip::Drop BoardStrip::dropAt (juce::Point<int> pos) const
 {
-    const auto chain = board.getChain();
-    for (int i = 0; i < (int) chain.size(); ++i)
-        if (tileBounds (i).contains (pos))
-            return chain[(size_t) i];
+    const auto* split = find (Item::Kind::split);
+    const auto* merge = find (Item::Kind::merge);
+    const auto laneBTop = kPadding + kTileHeight + kLaneGap / 2;
 
-    if ((int) chain.size() < BoardProcessor::kMaxPedals && tileBounds ((int) chain.size()).contains (pos))
-        return -1;
+    auto section = Section::pre;
+    if (pos.x >= merge->bounds.getX())
+        section = Section::post;
+    else if (pos.x >= split->bounds.getRight())
+        section = pos.y < laneBTop ? Section::pathA : Section::pathB;
 
-    return 0;
-}
+    // Before the first tile of the section whose centre is right of the mouse,
+    // else just before the section's "+".
+    for (const auto& item : items)
+        if (item.section == section && (item.kind == Item::Kind::pedal || item.kind == Item::Kind::add)
+            && (item.kind == Item::Kind::add || item.bounds.getCentreX() > pos.x))
+        {
+            const auto marker = juce::Rectangle<int> (item.bounds.getX() - 5, item.bounds.getY(), 3, kTileHeight);
+            return { section, item.index, marker };
+        }
 
-int BoardStrip::insertionIndex (int x) const
-{
-    // Number of tiles whose centre lies left of x (in the chain before the move).
-    const auto chain = board.getChain();
-    int index = 0;
-    for (int i = 0; i < (int) chain.size(); ++i)
-        if (tileBounds (i).getCentreX() < x)
-            index = i + 1;
-    return index;
+    return { section, 0, {} };
 }
 
 void BoardStrip::paint (juce::Graphics& g)
 {
-    const auto chain = board.getChain();
+    layoutItems();
 
-    // The signal line through the row.
-    if (! chain.empty())
-    {
-        const auto first = tileBounds (0), last = tileBounds ((int) chain.size() - 1);
-        g.setColour (Palette::outline);
-        g.fillRect (juce::Rectangle<int> (first.getCentreX(), first.getY() + 30, last.getCentreX() - first.getCentreX(), 2));
-    }
+    // Signal lines (under the tiles): into the split, through each lane, out of the merge.
+    const auto* split = find (Item::Kind::split);
+    const auto* merge = find (Item::Kind::merge);
+    const auto active = board.isSplitActive();
+    const auto middle = getHeight() / 2;
+    const auto laneA = kPadding + kTileHeight / 2, laneB = kPadding + kTileHeight + kLaneGap + kTileHeight / 2;
 
-    for (int i = 0; i < (int) chain.size(); ++i)
+    g.setColour (Palette::outline);
+    g.fillRect (items.front().bounds.getX(), middle - 1, split->bounds.getX() - items.front().bounds.getX(), 2);
+    g.fillRect (merge->bounds.getRight(), middle - 1, items.back().bounds.getRight() - merge->bounds.getRight(), 2);
+    g.setColour (active ? Palette::outline : Palette::outline.withAlpha (0.4f));
+    for (const auto y : { laneA, laneB })
+        g.fillRect (split->bounds.getRight(), y - 1, merge->bounds.getX() - split->bounds.getRight(), 2);
+
+    const auto full = (int) board.getChain().size() >= BoardProcessor::kMaxPedals;
+
+    for (const auto& item : items)
     {
-        const auto id = chain[(size_t) i];
-        if (dragging && id == pressedId)
+        switch (item.kind)
         {
-            // Its old place stays as an outline while it is dragged.
-            g.setColour (Palette::outline);
-            g.drawRoundedRectangle (tileBounds (i).toFloat().reduced (1.0f), Style::kPanelRadius, 1.0f);
-            continue;
-        }
-        paintTile (g, tileBounds (i), id, false);
-    }
+            case Item::Kind::pedal:
+                if (dragging && item.id == pressedId)
+                {
+                    // Its old place stays as an outline while it is dragged.
+                    g.setColour (Palette::outline);
+                    g.drawRoundedRectangle (item.bounds.toFloat().reduced (1.0f), Style::kPanelRadius, 1.0f);
+                }
+                else
+                {
+                    paintTile (g, item.bounds, item.id, false);
+                }
+                break;
 
-    if ((int) chain.size() < BoardProcessor::kMaxPedals)
-        paintAddTile (g, tileBounds ((int) chain.size()));
+            case Item::Kind::add:
+                if (! full || dragging)
+                    paintAddTile (g, item);
+                break;
+
+            case Item::Kind::split:
+            case Item::Kind::merge:
+                paintNode (g, item);
+                break;
+        }
+    }
 
     if (dragging)
     {
-        // Insertion marker, then the dragged tile under the mouse.
-        const auto index = insertionIndex (dragX);
-        const auto x = index < (int) chain.size() ? tileBounds (index).getX() - kTileGap / 2
-                                                  : tileBounds ((int) chain.size() - 1).getRight() + kTileGap / 2;
+        const auto drop = dropAt (dragPos);
         g.setColour (Palette::boardAccent);
-        g.fillRect (x - 1, tileBounds (0).getY(), 3, kTileHeight);
+        g.fillRect (drop.marker);
 
-        auto ghost = tileBounds (0).withX (dragX - kTileWidth / 2).translated (0, -4);
-        paintTile (g, ghost, pressedId, true);
+        if (const auto* dragged = find (Item::Kind::pedal, pressedId))
+            paintTile (g, dragged->bounds.withCentre (dragPos), pressedId, true);
     }
 }
 
@@ -135,7 +218,7 @@ void BoardStrip::paintTile (juce::Graphics& g, juce::Rectangle<int> bounds, int 
 
     // Body in the family tint; a bypassed pedal is darker.
     auto body = Palette::knobBody.interpolatedWith (family, on ? 0.32f : 0.14f);
-    if (id == hoverId && ! ghost)
+    if (id == hoverKey && ! ghost)
         body = body.brighter (0.06f);
     g.setColour (ghost ? body.withAlpha (0.85f) : body);
     g.fillRoundedRectangle (tile, Style::kPanelRadius);
@@ -152,12 +235,12 @@ void BoardStrip::paintTile (juce::Graphics& g, juce::Rectangle<int> bounds, int 
 
     // Name
     g.setColour (on ? Palette::text : Palette::textDim);
-    g.setFont (Fonts::bold (13.0f));
-    g.drawFittedText (shortNameOf (*pedal), bounds.withTrimmedTop (10).removeFromTop (20).reduced (4, 0),
-                      juce::Justification::centred, 1);
+    g.setFont (Fonts::bold (bounds.getWidth() < 60 ? 11.5f : 13.0f));
+    g.drawFittedText (shortNameOf (*pedal), bounds.withTrimmedTop (9).removeFromTop (18).reduced (3, 0),
+                      juce::Justification::centred, 1, 0.8f);
 
     // LED
-    const auto led = juce::Rectangle<float> (9.0f, 9.0f).withCentre ({ tile.getCentreX(), tile.getY() + 46.0f });
+    const auto led = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ tile.getCentreX(), tile.getY() + 36.0f });
     if (on)
     {
         g.setColour (family.brighter (0.4f).withAlpha (0.35f));
@@ -175,60 +258,106 @@ void BoardStrip::paintTile (juce::Graphics& g, juce::Rectangle<int> bounds, int 
     g.setColour (Palette::knobTrack);
     g.fillEllipse (sw);
     g.setColour (Palette::knobBody.brighter (0.15f));
-    g.fillEllipse (sw.reduced (5.0f));
+    g.fillEllipse (sw.reduced (4.0f));
     g.setColour (Palette::outline);
     g.drawEllipse (sw, 1.0f);
 }
 
-void BoardStrip::paintAddTile (juce::Graphics& g, juce::Rectangle<int> bounds) const
+void BoardStrip::paintAddTile (juce::Graphics& g, const Item& item) const
 {
-    const auto tile = bounds.toFloat().reduced (1.0f);
+    const auto tile = item.bounds.toFloat().reduced (1.0f);
     const float dashes[] = { 4.0f, 4.0f };
     juce::Path outline, dashed;
-    outline.addRoundedRectangle (tile, Style::kPanelRadius);
+    outline.addRoundedRectangle (tile, Style::kCornerRadius);
     juce::PathStrokeType (1.0f).createDashedStroke (dashed, outline, dashes, 2);
 
-    g.setColour (hoverId == -1 ? Palette::text : Palette::textDim);
+    g.setColour (hoverKey == keyOf (item) ? Palette::text : Palette::textDim.withAlpha (0.7f));
     g.fillPath (dashed);
-    g.setFont (Fonts::regular (26.0f));
-    g.drawText ("+", bounds.withTrimmedBottom (24), juce::Justification::centred);
-    g.setFont (Fonts::regular (12.0f));
-    g.drawText ("Add pedal", bounds.withTrimmedTop (bounds.getHeight() - 40).withTrimmedBottom (14),
+    g.setFont (Fonts::regular (20.0f));
+    g.drawText ("+", item.bounds, juce::Justification::centred);
+}
+
+void BoardStrip::paintNode (juce::Graphics& g, const Item& item) const
+{
+    const auto active = board.isSplitActive();
+    const auto node = item.bounds.toFloat();
+    const auto isSplit = item.kind == Item::Kind::split;
+
+    g.setColour (Palette::panel.brighter (hoverKey == keyOf (item) ? 0.08f : 0.0f));
+    g.fillRoundedRectangle (node, Style::kCornerRadius);
+    g.setColour (keyOf (item) == selected ? Palette::boardAccent : active ? Palette::textDim : Palette::outline);
+    g.drawRoundedRectangle (node.reduced (0.5f), Style::kCornerRadius, keyOf (item) == selected ? 2.0f : 1.0f);
+
+    // Name written upwards, and the split mode under it.
+    juce::String text = isSplit ? "SPLIT" : "MERGE";
+    if (isSplit)
+        switch (board.getRouting().getSplitMode())
+        {
+            case SplitMode::full:      break;
+            case SplitMode::frequency: text << "  " << juce::String::fromUTF8 ("\xc2\xb7") << "  FREQ"; break;
+            case SplitMode::stereo:    text << "  " << juce::String::fromUTF8 ("\xc2\xb7") << "  L/R"; break;
+        }
+
+    // Which lane is which, at the ends of the node.
+    g.setColour (active ? Palette::textDim : Palette::outline);
+    g.setFont (Fonts::bold (11.0f));
+    g.drawText ("A", item.bounds.withHeight (20), juce::Justification::centred);
+    g.drawText ("B", item.bounds.withTrimmedTop (item.bounds.getHeight() - 20), juce::Justification::centred);
+
+    juce::Graphics::ScopedSaveState save (g);
+    g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, node.getCentreX(), node.getCentreY()));
+    g.setColour (active ? Palette::text : Palette::textDim);
+    g.setFont (Fonts::bold (12.0f));
+    g.drawText (text, juce::Rectangle<float> (node.getHeight(), node.getWidth()).withCentre (node.getCentre()),
                 juce::Justification::centred);
 }
 
 void BoardStrip::mouseMove (const juce::MouseEvent& e)
 {
-    const auto id = tileAt (e.getPosition());
-    if (id != hoverId)
+    const auto* item = itemAt (e.getPosition());
+    const auto key = item != nullptr ? keyOf (*item) : 0;
+    if (key != hoverKey)
     {
-        hoverId = id;
+        hoverKey = key;
         repaint();
     }
 }
 
 void BoardStrip::mouseExit (const juce::MouseEvent&)
 {
-    hoverId = 0;
+    hoverKey = 0;
     repaint();
 }
 
 void BoardStrip::mouseDown (const juce::MouseEvent& e)
 {
-    pressedId = tileAt (e.getPosition());
+    layoutItems();
     dragging = false;
+    pressedId = 0;
 
-    if (pressedId == -1)
-    {
-        showAddMenu (tileBounds ((int) board.getChain().size()));
-        pressedId = 0;
+    const auto* item = itemAt (e.getPosition());
+    if (item == nullptr)
         return;
-    }
 
-    if (pressedId > 0 && e.mods.isPopupMenu())
+    switch (item->kind)
     {
-        showTileMenu (pressedId);
-        pressedId = 0;
+        case Item::Kind::add:
+            if ((int) board.getChain().size() < BoardProcessor::kMaxPedals)
+                showAddMenu (item->section, item->bounds);
+            break;
+
+        case Item::Kind::split:
+        case Item::Kind::merge:
+            if (onSelect)
+                onSelect (keyOf (*item));
+            break;
+
+        case Item::Kind::pedal:
+            if (e.mods.isPopupMenu())
+                showTileMenu (item->id);
+            else
+                pressedId = item->id;
+            break;
     }
 }
 
@@ -237,12 +366,12 @@ void BoardStrip::mouseDrag (const juce::MouseEvent& e)
     if (pressedId <= 0)
         return;
 
-    if (! dragging && e.getDistanceFromDragStart() > 5 && board.getChain().size() > 1)
+    if (! dragging && e.getDistanceFromDragStart() > 5)
         dragging = true;
 
     if (dragging)
     {
-        dragX = e.x;
+        dragPos = e.getPosition();
         repaint();
     }
 }
@@ -258,23 +387,25 @@ void BoardStrip::mouseUp (const juce::MouseEvent& e)
     if (dragging)
     {
         dragging = false;
-        board.movePedal (id, insertionIndex (e.x));
+        const auto drop = dropAt (e.getPosition());
+        board.movePedal (id, drop.section, drop.index);
         repaint();
         return;
     }
 
     // A click: the footswitch toggles bypass, anywhere else opens the pedal.
-    const auto chain = board.getChain();
-    const auto position = (int) std::distance (chain.begin(), std::find (chain.begin(), chain.end(), id));
-    if (footswitchBounds (tileBounds (position)).contains (e.getPosition()))
-        board.setPedalBypassed (id, ! board.isPedalBypassed (id));
-    else if (onSelect)
-        onSelect (id);
+    if (const auto* item = find (Item::Kind::pedal, id))
+    {
+        if (footswitchBounds (item->bounds).contains (e.getPosition()))
+            board.setPedalBypassed (id, ! board.isPedalBypassed (id));
+        else if (onSelect)
+            onSelect (id);
+    }
 
     repaint();
 }
 
-void BoardStrip::showAddMenu (juce::Rectangle<int> target)
+void BoardStrip::showAddMenu (Section section, juce::Rectangle<int> target)
 {
     juce::PopupMenu menu;
     const auto& types = pedalTypes();
@@ -292,12 +423,12 @@ void BoardStrip::showAddMenu (juce::Rectangle<int> target)
 
     juce::Component::SafePointer<BoardStrip> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withTargetScreenArea (localAreaToGlobal (target)),
-                        [safe] (int result)
+                        [safe, section] (int result)
                         {
                             if (safe == nullptr || result <= 0)
                                 return;
 
-                            const auto id = safe->board.addPedal (pedalTypes()[(size_t) result - 1].name);
+                            const auto id = safe->board.addPedal (pedalTypes()[(size_t) result - 1].name, section);
                             if (id > 0 && safe->onSelect)
                                 safe->onSelect (id);
                             safe->repaint();
@@ -399,7 +530,7 @@ BoardEditor::~BoardEditor()
 
 juce::Rectangle<int> BoardEditor::panelArea() const
 {
-    return getLocalBounds().withTrimmedTop (kHeaderHeight + BoardStrip::kTileHeight + 32).reduced (kMargin, 0).withTrimmedBottom (kMargin);
+    return getLocalBounds().withTrimmedTop (kHeaderHeight + BoardStrip::kHeight + 8).reduced (kMargin, 0).withTrimmedBottom (kMargin);
 }
 
 void BoardEditor::paint (juce::Graphics& g)
@@ -419,7 +550,7 @@ void BoardEditor::paint (juce::Graphics& g)
     g.drawText ("RKBoard", kMargin, 0, 120, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
-    if (pedalEditor == nullptr)
+    if (pedalEditor == nullptr && routingPanel == nullptr)
     {
         drawPanel (g, panel, Palette::panel);
         g.setColour (Palette::textDim);
@@ -448,18 +579,26 @@ void BoardEditor::resized()
     header.removeFromRight (8);
     noteLabel.setBounds (header);
 
-    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (BoardStrip::kTileHeight + 32));
+    strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + 4).removeFromTop (BoardStrip::kHeight));
     layoutPedalEditor();
 }
 
 void BoardEditor::showPedal (int id)
 {
-    if (id == shownPedal && (pedalEditor != nullptr || id == 0))
+    if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || id == 0))
         return;
 
     closePedalEditor();
 
-    if (auto* pedal = board.getPedal (id))
+    if (id == BoardStrip::kSplitNode || id == BoardStrip::kMergeNode)
+    {
+        routingPanel = std::make_unique<RoutingPanel> (board, id == BoardStrip::kSplitNode ? RoutingPanel::Node::split
+                                                                                           : RoutingPanel::Node::merge);
+        shownPedal = id;
+        addAndMakeVisible (*routingPanel);
+        layoutPedalEditor();
+    }
+    else if (auto* pedal = board.getPedal (id))
     {
         pedalEditor.reset (pedal->createEditorAndMakeActive());
         if (pedalEditor != nullptr)
@@ -485,11 +624,15 @@ void BoardEditor::closePedalEditor()
             pedal->editorBeingDeleted (pedalEditor.get());
 
     pedalEditor.reset();
+    routingPanel.reset();
     shownPedal = 0;
 }
 
 void BoardEditor::layoutPedalEditor()
 {
+    if (routingPanel != nullptr)
+        routingPanel->setBounds (panelArea());
+
     if (pedalEditor == nullptr)
         return;
 
@@ -514,11 +657,13 @@ void BoardEditor::timerCallback()
         lastBoardCounter = board.getBoardCounter();
 
         // The shown pedal may have gone (a board preset or host state loaded).
-        if (shownPedal != 0 && board.getPedal (shownPedal) == nullptr)
+        if (shownPedal > 0 && board.getPedal (shownPedal) == nullptr)
             showPedal (0);
 
         strip.repaint();
         repaint (panelArea());
+        if (routingPanel != nullptr)
+            routingPanel->repaint();
     }
 }
 

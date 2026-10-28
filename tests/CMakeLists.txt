@@ -135,9 +135,7 @@ add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)
 juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
 target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/BoardProcessor.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/BoardEditor.cpp
-    ${PROJECT_SOURCE_DIR}/plugins/RKBoard/PedalRegistry.cpp
+    ${RKBOARD_SOURCES}
     ${RKBOARD_PEDAL_SOURCES}
 )
 target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard)

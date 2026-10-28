@@ -4,28 +4,38 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "BoardProcessor.h"
+#include "RoutingPanel.h"
 #include "gui/LookAndFeel.h"
 
 namespace rkboard
 {
 
-/** The row of pedals: one tile per pedal in signal order, then a "+" tile
-    while there is room. Painted as one component (no child per tile), so
-    dragging a tile to a new place is simple.
+/** The board, flowing left to right:
 
-    - click a tile: open its controls below;
-    - click its footswitch: bypass on / off;
-    - drag a tile: move the pedal;
+        [pre] -> SPLIT -+- [path A] -+- MERGE -> [post]
+                        +- [path B] -+
+
+    One tile per pedal, a "+" at the end of each section while there is room,
+    and the split and merge as narrow nodes. Painted as one component (no
+    child per tile), so dragging a tile anywhere is simple.
+
+    - click a tile: open its controls below; click a node: its settings;
+    - click a tile's footswitch: bypass on / off;
+    - drag a tile: move the pedal, also to another section;
     - right-click a tile: duplicate or remove;
-    - click "+": add a pedal from a menu grouped by family. */
+    - click a "+": add a pedal there, from a menu grouped by family. */
 class BoardStrip : public juce::Component
 {
 public:
     explicit BoardStrip (BoardProcessor&);
 
+    /** What can be selected: a pedal ID, or one of the nodes. */
+    static constexpr int kSplitNode = -2;
+    static constexpr int kMergeNode = -3;
+
     int getSelected() const noexcept { return selected; }
-    void setSelected (int id);
-    std::function<void (int id)> onSelect;
+    void setSelected (int item);
+    std::function<void (int item)> onSelect;
 
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -34,28 +44,45 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
-    static constexpr int kTileWidth = 70;
-    static constexpr int kTileGap = 6;
-    static constexpr int kTileHeight = 112;
+    static constexpr int kTileHeight = 84;
+    static constexpr int kLaneGap = 8;
+    static constexpr int kPadding = 10;
+    static constexpr int kHeight = 2 * kTileHeight + kLaneGap + 2 * kPadding;
 
 private:
+    struct Item
+    {
+        enum class Kind { pedal, add, split, merge } kind;
+        int id = 0;                        // pedals
+        Section section = Section::pre;    // pedals and "+"
+        int index = 0;                     // position in its section
+        juce::Rectangle<int> bounds;
+    };
+
     BoardProcessor& board;
     int selected = 0;
-    int hoverId = 0;
+    int hoverKey = 0;                     // keyOf() the item under the mouse
+    std::vector<Item> items;              // rebuilt by layoutItems()
 
-    int pressedId = 0;          // tile under the mouse at mouseDown
+    int pressedId = 0;          // pedal under the mouse at mouseDown
     bool dragging = false;
-    int dragX = 0;              // mouse x while dragging
+    juce::Point<int> dragPos;
 
-    juce::Rectangle<int> tileBounds (int position) const;
+    void layoutItems();
+    static int keyOf (const Item&);       // pedal ID, node constant, or 100 + section for a "+"
+    const Item* itemAt (juce::Point<int>) const;
+    const Item* find (Item::Kind, int id = 0) const;
     juce::Rectangle<int> footswitchBounds (juce::Rectangle<int> tile) const;
-    int tileAt (juce::Point<int>) const;               // pedal ID, -1 for "+", 0 for none
-    int insertionIndex (int x) const;
+
+    /** Where a dragged pedal would land. */
+    struct Drop { Section section; int index; juce::Rectangle<int> marker; };
+    Drop dropAt (juce::Point<int>) const;
 
     void paintTile (juce::Graphics&, juce::Rectangle<int>, int id, bool ghost) const;
-    void paintAddTile (juce::Graphics&, juce::Rectangle<int>) const;
+    void paintAddTile (juce::Graphics&, const Item&) const;
+    void paintNode (juce::Graphics&, const Item&) const;
 
-    void showAddMenu (juce::Rectangle<int> target);
+    void showAddMenu (Section, juce::Rectangle<int> target);
     void showTileMenu (int id);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardStrip)
@@ -73,12 +100,13 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    /** Opens pedal @p id's controls below the board (0 closes them). */
-    void showPedal (int id);
+    /** Opens a pedal's controls below the board, or the split's or merge's
+        settings (BoardStrip::kSplitNode / kMergeNode); 0 closes them. */
+    void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
     static constexpr int kWidth = 960;
-    static constexpr int kHeight = 800;
+    static constexpr int kHeight = 820;
     static constexpr int kHeaderHeight = 44;
     static constexpr int kMargin = 12;
 
@@ -99,6 +127,7 @@ private:
 
     int shownPedal = 0;
     std::unique_ptr<juce::AudioProcessorEditor> pedalEditor;
+    std::unique_ptr<RoutingPanel> routingPanel;
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;

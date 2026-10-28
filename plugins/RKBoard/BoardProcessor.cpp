@@ -50,6 +50,10 @@ BoardProcessor::BoardProcessor()
 
     pedalMidi.ensureSize (4096);
 
+    for (auto* p : routing.getParameters())
+        p->addListener (&routingWatcher);
+    lastSplitMode = routing.getSplitMode();
+
     // New instances start from the user's board Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile ("RKBoard");
     if (defaultFile.existsAsFile())
@@ -62,6 +66,8 @@ BoardProcessor::~BoardProcessor()
         p->removeListener (this);
     inputParam->removeListener (this);
     outputParam->removeListener (this);
+    for (auto* p : routing.getParameters())
+        p->removeListener (&routingWatcher);
 
     for (int id = 1; id <= kMaxPedals; ++id)
         detachPedal (id);
@@ -70,7 +76,23 @@ BoardProcessor::~BoardProcessor()
 //==============================================================================
 std::vector<int> BoardProcessor::getChain() const
 {
-    return order;
+    std::vector<int> all;
+    for (const auto& section : layout)
+        all.insert (all.end(), section.begin(), section.end());
+    return all;
+}
+
+Section BoardProcessor::sectionOf (int id) const
+{
+    for (int s = 0; s < kNumSections; ++s)
+        if (std::find (layout[(size_t) s].begin(), layout[(size_t) s].end(), id) != layout[(size_t) s].end())
+            return (Section) s;
+    return Section::pre;
+}
+
+bool BoardProcessor::isSplitActive() const
+{
+    return ! getSection (Section::pathA).empty() || ! getSection (Section::pathB).empty();
 }
 
 rkfx::ProcessorBase* BoardProcessor::getPedal (int id) const
@@ -92,12 +114,12 @@ std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::createPedal (const juce::St
 void BoardProcessor::preparePedal (rkfx::ProcessorBase& pedal) const
 {
     // Stereo in and out; a sidechain bus (compressor, gate) stays off.
-    auto layout = pedal.getBusesLayout();
-    for (auto& bus : layout.inputBuses)
+    auto buses = pedal.getBusesLayout();
+    for (auto& bus : buses.inputBuses)
         bus = juce::AudioChannelSet::disabled();
-    layout.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
-    layout.outputBuses.getReference (0) = juce::AudioChannelSet::stereo();
-    pedal.setBusesLayout (layout);
+    buses.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
+    buses.outputBuses.getReference (0) = juce::AudioChannelSet::stereo();
+    pedal.setBusesLayout (buses);
 
     pedal.setRateAndBufferSizeDetails (currentSampleRate, currentBlockSize);
     pedal.prepareToPlay (currentSampleRate, currentBlockSize);
@@ -137,7 +159,8 @@ std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
     if (pedalAboutToBeRemoved)
         pedalAboutToBeRemoved (id);
 
-    order.erase (std::remove (order.begin(), order.end(), id), order.end());
+    for (auto& section : layout)
+        section.erase (std::remove (section.begin(), section.end(), id), section.end());
     publishChain();
 
     std::unique_ptr<rkfx::ProcessorBase> pedal;
@@ -158,13 +181,15 @@ void BoardProcessor::publishChain()
     Chain next;
     double tail = 0.0;
 
-    for (const auto id : order)
-        if (auto* pedal = getPedal (id))
-        {
-            next.pedals[(size_t) next.size++] = pedal;
-            if (const auto* type = findPedalType (pedal->getConfig().name))
-                tail = juce::jmax (tail, type->tailSeconds);
-        }
+    for (int s = 0; s < kNumSections; ++s)
+        for (const auto id : layout[(size_t) s])
+            if (auto* pedal = getPedal (id))
+            {
+                auto& section = next[(size_t) s];
+                section.pedals[(size_t) section.size++] = pedal;
+                if (const auto* type = findPedalType (pedal->getConfig().name))
+                    tail = juce::jmax (tail, type->tailSeconds);
+            }
 
     {
         const juce::SpinLock::ScopedLockType sl (chainLock);
@@ -175,7 +200,7 @@ void BoardProcessor::publishChain()
     updateLatency();
 }
 
-int BoardProcessor::addPedal (const juce::String& typeName, int position)
+int BoardProcessor::addPedal (const juce::String& typeName, Section section, int position)
 {
     const auto id = freeId();
     if (id == 0)
@@ -187,9 +212,10 @@ int BoardProcessor::addPedal (const juce::String& typeName, int position)
 
     attachPedal (id, std::move (pedal));
 
-    if (position < 0 || position > (int) order.size())
-        position = (int) order.size();
-    order.insert (order.begin() + position, id);
+    auto& list = layout[(size_t) section];
+    if (position < 0 || position > (int) list.size())
+        position = (int) list.size();
+    list.insert (list.begin() + position, id);
     publishChain();
     boardChanged();
     return id;
@@ -206,8 +232,9 @@ int BoardProcessor::duplicatePedal (int sourceId)
     pedal->loadPresetVar (source->getPresetVar (true), true);
     attachPedal (id, std::move (pedal));
 
-    const auto at = std::find (order.begin(), order.end(), sourceId);
-    order.insert (at == order.end() ? order.end() : at + 1, id);
+    auto& list = layout[(size_t) sectionOf (sourceId)];
+    const auto at = std::find (list.begin(), list.end(), sourceId);
+    list.insert (at == list.end() ? list.end() : at + 1, id);
     publishChain();
     boardChanged();
     return id;
@@ -219,19 +246,24 @@ void BoardProcessor::removePedal (int id)
         boardChanged();
 }
 
-void BoardProcessor::movePedal (int id, int position)
+void BoardProcessor::movePedal (int id, Section section, int position)
 {
-    const auto it = std::find (order.begin(), order.end(), id);
-    if (it == order.end())
+    if (getPedal (id) == nullptr)
         return;
 
-    const auto from = (int) std::distance (order.begin(), it);
-    order.erase (it);
-    // Positions count the chain before the move; skipping our own old place.
-    if (position > from)
+    const auto from = sectionOf (id);
+    auto& source = layout[(size_t) from];
+    const auto it = std::find (source.begin(), source.end(), id);
+    const auto fromIndex = (int) std::distance (source.begin(), it);
+    source.erase (it);
+
+    // Within the same section, positions count the pedals before the move.
+    if (from == section && position > fromIndex)
         --position;
-    position = juce::jlimit (0, (int) order.size(), position);
-    order.insert (order.begin() + position, id);
+
+    auto& target = layout[(size_t) section];
+    position = juce::jlimit (0, (int) target.size(), position);
+    target.insert (target.begin() + position, id);
 
     publishChain();
     boardChanged();
@@ -241,7 +273,8 @@ void BoardProcessor::clearBoard()
 {
     for (int id = 1; id <= kMaxPedals; ++id)
         detachPedal (id);
-    order.clear();
+    for (auto& section : layout)
+        section.clear();
     publishChain();
 }
 
@@ -294,6 +327,43 @@ void BoardProcessor::parameterValueChanged (int parameterIndex, float newValue)
     markModified();
 }
 
+void BoardProcessor::RoutingWatcher::parameterValueChanged (int, float)
+{
+    board.markModified();
+    ++board.boardCounter;
+
+    // Message thread only (the split mode is never automated).
+    const auto mode = board.routing.getSplitMode();
+    if (mode == board.lastSplitMode || board.loadingBoard)
+    {
+        board.lastSplitMode = mode;
+        return;
+    }
+
+    auto& panA = board.routing.param ("pan_a");
+    auto& panB = board.routing.param ("pan_b");
+    const auto set = [] (juce::RangedAudioParameter& p, float pct) { p.setValueNotifyingHost (p.convertTo0to1 (pct)); };
+
+    const auto centred = juce::approximatelyEqual (board.routing.value ("pan_a"), 0.0f)
+                      && juce::approximatelyEqual (board.routing.value ("pan_b"), 0.0f);
+    const auto hardLR = juce::approximatelyEqual (board.routing.value ("pan_a"), -100.0f)
+                     && juce::approximatelyEqual (board.routing.value ("pan_b"), 100.0f);
+
+    // Left (path A) back to the left, right (path B) back to the right; and
+    // to the centre again when leaving the stereo split.
+    board.lastSplitMode = mode;
+    if (mode == SplitMode::stereo && centred)
+    {
+        set (panA, -100.0f);
+        set (panB, 100.0f);
+    }
+    else if (mode != SplitMode::stereo && hardLR)
+    {
+        set (panA, 0.0f);
+        set (panB, 0.0f);
+    }
+}
+
 void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float newValue)
 {
     auto* pedal = board.getPedal (id);
@@ -318,11 +388,21 @@ void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float
 }
 
 //==============================================================================
-void BoardProcessor::updateLatency()
+int BoardProcessor::sectionLatency (const SectionChain& section) const
 {
     int latency = 0;
-    for (int i = 0; i < chain.size; ++i)
-        latency += chain.pedals[(size_t) i]->getLatencySamples();
+    for (int i = 0; i < section.size; ++i)
+        latency += section.pedals[(size_t) i]->getLatencySamples();
+    return latency;
+}
+
+void BoardProcessor::updateLatency()
+{
+    // Pre, the slower path, post.
+    const auto split = chain[1].size > 0 || chain[2].size > 0;
+    const auto latency = sectionLatency (chain[0])
+                       + (split ? juce::jmax (sectionLatency (chain[1]), sectionLatency (chain[2])) : 0)
+                       + sectionLatency (chain[3]);
 
     if (totalLatency.exchange (latency) != latency)
         triggerAsyncUpdate();
@@ -356,11 +436,171 @@ void BoardProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     inputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (inputParam->get()));
     outputGain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (outputParam->get()));
 
+    for (int path = 0; path < 2; ++path)
+    {
+        pathBuffers[path].setSize (2, currentBlockSize, false, true, true);
+        pathDelays[path].prepare (2);
+        for (auto& gain : mergeGains[path])
+            gain.reset (sampleRate, 0.02);
+    }
+    for (auto& crossover : crossovers)
+    {
+        crossover.prepare (sampleRate);
+        crossover.reset();
+    }
+    updateMergeTargets (true);
+    splitWasActive = false;
+
     // Message thread here (hosts prepare outside processing), so the pedals
     // can be prepared in place.
     for (auto& pedal : pedals)
         if (pedal != nullptr)
             preparePedal (*pedal);
+}
+
+void BoardProcessor::PathDelay::process (juce::AudioBuffer<float>& buffer, int numSamples, int delay) noexcept
+{
+    delay = juce::jlimit (0, kSize - 1, delay);
+    const auto channels = juce::jmin (buffer.getNumChannels(), ring.getNumChannels());
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto read = (write - delay + kSize) % kSize;
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto* r = ring.getWritePointer (ch);
+            auto* x = buffer.getWritePointer (ch);
+            r[write] = x[i];
+            x[i] = r[read];
+        }
+        write = (write + 1) % kSize;
+    }
+}
+
+void BoardProcessor::updateMergeTargets (bool snap)
+{
+    // Per path: level, then a balance pan (centre = unity on both sides, so
+    // a centred path is unchanged), and B's polarity.
+    for (int path = 0; path < 2; ++path)
+    {
+        const auto suffix = path == 0 ? "_a" : "_b";
+        const auto level = juce::Decibels::decibelsToGain (routing.value (juce::String ("level") + suffix));
+        const auto pan = routing.value (juce::String ("pan") + suffix) / 100.0f;
+        const auto sign = (path == 1 && routing.value ("invert_b") >= 0.5f) ? -1.0f : 1.0f;
+
+        const float side[2] = { juce::jmin (1.0f, 1.0f - pan), juce::jmin (1.0f, 1.0f + pan) };
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            const auto target = sign * level * side[ch];
+            if (snap)
+                mergeGains[path][ch].setCurrentAndTargetValue (target);
+            else
+                mergeGains[path][ch].setTargetValue (target);
+        }
+    }
+}
+
+void BoardProcessor::processSection (const SectionChain& section, juce::AudioBuffer<float>& buffer,
+                                     const juce::MidiBuffer& midi, int midiOffset)
+{
+    const auto numSamples = buffer.getNumSamples();
+
+    for (int i = 0; i < section.size; ++i)
+    {
+        auto* pedal = section.pedals[(size_t) i];
+        pedal->setPlayHead (getPlayHead());
+
+        // Each pedal gets the incoming MIDI (the vocoder plays its carrier from it).
+        pedalMidi.clear();
+        pedalMidi.addEvents (midi, midiOffset, numSamples, -midiOffset);
+        pedal->processBlock (buffer, pedalMidi);
+    }
+}
+
+void BoardProcessor::processChunk (juce::AudioBuffer<float>& main, const juce::MidiBuffer& midi, int midiOffset)
+{
+    const auto numSamples = main.getNumSamples();
+
+    processSection (chain[0], main, midi, midiOffset);
+
+    const auto split = chain[1].size > 0 || chain[2].size > 0;
+    if (split)
+    {
+        if (! splitWasActive)
+        {
+            // Coming in: start clean, at the current merge settings.
+            for (auto& crossover : crossovers)
+                crossover.reset();
+            for (auto& delay : pathDelays)
+                delay.ring.clear();
+            updateMergeTargets (true);
+        }
+
+        juce::AudioBuffer<float> paths[2] = {
+            juce::AudioBuffer<float> (pathBuffers[0].getArrayOfWritePointers(), 2, numSamples),
+            juce::AudioBuffer<float> (pathBuffers[1].getArrayOfWritePointers(), 2, numSamples)
+        };
+
+        // Split
+        switch (routing.getSplitMode())
+        {
+            case SplitMode::full:
+                for (auto& path : paths)
+                    for (int ch = 0; ch < 2; ++ch)
+                        path.copyFrom (ch, 0, main, ch, 0, numSamples);
+                break;
+
+            case SplitMode::frequency:
+            {
+                const auto hz = routing.value ("crossover");
+                for (int ch = 0; ch < 2; ++ch)
+                {
+                    auto& crossover = crossovers[(size_t) ch];
+                    crossover.setFrequency (hz);
+                    const auto* in = main.getReadPointer (ch);
+                    auto* low = paths[0].getWritePointer (ch);
+                    auto* high = paths[1].getWritePointer (ch);
+                    for (int i = 0; i < numSamples; ++i)
+                        crossover.process (in[i], low[i], high[i]);
+                }
+                break;
+            }
+
+            case SplitMode::stereo:
+                // Left to A, right to B, each on both channels.
+                for (int ch = 0; ch < 2; ++ch)
+                {
+                    paths[0].copyFrom (ch, 0, main, 0, 0, numSamples);
+                    paths[1].copyFrom (ch, 0, main, 1, 0, numSamples);
+                }
+                break;
+        }
+
+        processSection (chain[1], paths[0], midi, midiOffset);
+        processSection (chain[2], paths[1], midi, midiOffset);
+
+        // Line the faster path up with the slower one.
+        const auto latencyA = sectionLatency (chain[1]), latencyB = sectionLatency (chain[2]);
+        const auto slowest = juce::jmax (latencyA, latencyB);
+        pathDelays[0].process (paths[0], numSamples, slowest - latencyA);
+        pathDelays[1].process (paths[1], numSamples, slowest - latencyB);
+
+        // Merge
+        updateMergeTargets (false);
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            auto* out = main.getWritePointer (ch);
+            const auto* a = paths[0].getReadPointer (ch);
+            const auto* b = paths[1].getReadPointer (ch);
+            auto& gainA = mergeGains[0][ch];
+            auto& gainB = mergeGains[1][ch];
+            for (int i = 0; i < numSamples; ++i)
+                out[i] = gainA.getNextValue() * a[i] + gainB.getNextValue() * b[i];
+        }
+    }
+    splitWasActive = split;
+
+    processSection (chain[3], main, midi, midiOffset);
 }
 
 void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -374,6 +614,9 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     if (numIn == 1 && buffer.getNumChannels() > 1)
         buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
 
+    if (buffer.getNumChannels() < 2)
+        return;
+
     inputGain.setTargetValue (juce::Decibels::decibelsToGain (inputParam->get()));
     outputGain.setTargetValue (juce::Decibels::decibelsToGain (outputParam->get()));
 
@@ -382,23 +625,17 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     {
         const juce::SpinLock::ScopedLockType sl (chainLock);
 
-        for (int i = 0; i < chain.size; ++i)
+        // Hosts may send more samples than announced: the path buffers hold
+        // one prepared block, so work in chunks of that size.
+        for (int start = 0; start < numSamples; start += currentBlockSize)
         {
-            auto* pedal = chain.pedals[(size_t) i];
-            pedal->setPlayHead (getPlayHead());
-
-            // Each pedal gets the incoming MIDI (the vocoder plays its carrier from it).
-            pedalMidi.clear();
-            pedalMidi.addEvents (midi, 0, numSamples, 0);
-            pedal->processBlock (buffer, pedalMidi);
+            const auto length = juce::jmin (currentBlockSize, numSamples - start);
+            juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), 2, start, length);
+            processChunk (chunk, midi, start);
         }
 
         // A drive pedal changing its oversampling changes the board's latency.
-        int latency = 0;
-        for (int i = 0; i < chain.size; ++i)
-            latency += chain.pedals[(size_t) i]->getLatencySamples();
-        if (totalLatency.exchange (latency) != latency)
-            triggerAsyncUpdate();
+        updateLatency();
     }
 
     outputGain.applyGain (buffer, numSamples);
@@ -425,17 +662,20 @@ juce::var BoardProcessor::toVar (bool fullState) const
     board->setProperty ("input", level (*inputParam));
     board->setProperty ("output", level (*outputParam));
     root->setProperty ("board", juce::var (board));
+    root->setProperty ("routing", routing.toVar (! fullState));
 
     juce::Array<juce::var> list;
-    for (const auto id : order)
-        if (auto* pedal = getPedal (id))
-        {
-            auto* entry = new juce::DynamicObject();
-            entry->setProperty ("id", id);
-            entry->setProperty ("bypass", isPedalBypassed (id));
-            entry->setProperty ("preset", pedal->getPresetVar (fullState));
-            list.add (juce::var (entry));
-        }
+    for (int s = 0; s < kNumSections; ++s)
+        for (const auto id : layout[(size_t) s])
+            if (auto* pedal = getPedal (id))
+            {
+                auto* entry = new juce::DynamicObject();
+                entry->setProperty ("id", id);
+                entry->setProperty ("section", sectionKey ((Section) s));
+                entry->setProperty ("bypass", isPedalBypassed (id));
+                entry->setProperty ("preset", pedal->getPresetVar (fullState));
+                list.add (juce::var (entry));
+            }
     root->setProperty ("pedals", list);
 
     return juce::var (root);
@@ -458,7 +698,7 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
             const auto preset = entry["preset"];
             const auto typeName = preset["plugin"].toString();
 
-            if ((int) order.size() >= kMaxPedals)
+            if ((int) getChain().size() >= kMaxPedals)
             {
                 notes.add ("More than " + juce::String (kMaxPedals) + " pedals: skipped " + typeName);
                 continue;
@@ -482,7 +722,7 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
 
             pedal->getBypassParameter()->setValueNotifyingHost ((bool) entry["bypass"] ? 1.0f : 0.0f);
             attachPedal (id, std::move (pedal));
-            order.push_back (id);
+            layout[(size_t) sectionFromKey (entry["section"].toString())].push_back (id);
         }
     }
 
@@ -501,6 +741,10 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     };
     setLevel (*inputParam, board["input"]);
     setLevel (*outputParam, board["output"]);
+
+    // Missing routing (older presets) = the defaults.
+    notes.addArray (routing.fromVar (root["routing"]));
+    lastSplitMode = routing.getSplitMode();
 
     publishChain();
     ++boardCounter;
@@ -565,6 +809,8 @@ void BoardProcessor::resetBoard()
         clearBoard();
         inputParam->setValueNotifyingHost (inputParam->convertTo0to1 (0.0f));
         outputParam->setValueNotifyingHost (outputParam->convertTo0to1 (0.0f));
+        routing.fromVar ({});
+        lastSplitMode = routing.getSplitMode();
         ++boardCounter;
     }
     setPresetState ("Default", {}, false);

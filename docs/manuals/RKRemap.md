@@ -32,7 +32,7 @@ One row per shown output (a linked pair shares one row of controls):
 | **Trim** | -24 to +12 dB | 0 dB | The output's level. Double-click to reset. |
 | **M** (mute) | off, on | off | Silences the output. |
 | **Ø** (polarity) | normal, inverted | normal | Flips the output's polarity (a reversed cable, a mic facing the other way). |
-| **Mono** | off, on | off | On a linked output pair whose source is a linked input pair: both sides get the mono sum. |
+| **Mono** | off, on | off | On a linked output pair whose source is a linked input pair: both sides get the mono sum. A single output fed by a linked pair is always mono: its row shows a dimmed **Mono** label instead of the switch. |
 | **Link** | off, on | off | Makes the output pair a stereo pair, with one set of controls (the left output's). The right output shows "linked with ...". |
 
 ### How pairs and mono sums work

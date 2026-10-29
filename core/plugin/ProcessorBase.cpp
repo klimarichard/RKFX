@@ -128,7 +128,7 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryDelayWrite = 0;
 
     outputStage.prepare (sampleRate);
-    outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
+    outputStage.setMix (mixParam != nullptr && ! config.mixInDsp ? valueOf (mixParam) / 100.0f : 1.0f);
     outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
     outputStage.reset();
@@ -183,7 +183,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     if (maxBlock == 0 || numOut == 0)
         return;
 
-    outputStage.setMix (mixParam != nullptr ? valueOf (mixParam) / 100.0f : 1.0f);
+    outputStage.setMix (mixParam != nullptr && ! config.mixInDsp ? valueOf (mixParam) / 100.0f : 1.0f);
     outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
 

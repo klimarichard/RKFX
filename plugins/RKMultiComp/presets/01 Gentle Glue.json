@@ -1,0 +1,16 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Gentle Glue",
+  "params": {
+    "low_threshold": -20,
+    "low_ratio": 1.8,
+    "lmid_threshold": -20,
+    "lmid_ratio": 1.5,
+    "high_threshold": -20,
+    "high_ratio": 1.5,
+    "knee": 9,
+    "release_auto": true,
+    "gain_auto": true
+  }
+}

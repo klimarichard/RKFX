@@ -1,0 +1,21 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Drum Punch",
+  "params": {
+    "low_threshold": -28,
+    "low_ratio": 4,
+    "low_attack": 30,
+    "low_release": 120,
+    "lmid_threshold": -26,
+    "lmid_ratio": 3,
+    "lmid_attack": 30,
+    "lmid_release": 120,
+    "high_threshold": -22,
+    "high_ratio": 2,
+    "high_attack": 5,
+    "detect": "peak",
+    "gain_auto": true,
+    "mix": 50
+  }
+}

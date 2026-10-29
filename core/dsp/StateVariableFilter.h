@@ -56,6 +56,14 @@ public:
         return k * process (x, Type::bandpass);
     }
 
+    /** Allpass: flat level, phase turning through 180 degrees at the cutoff.
+        At Q 0.7071 this is exactly what a Linkwitz-Riley split's two bands add
+        up to, so it phase-matches signals that skipped that split. */
+    float processAllpass (float x) noexcept
+    {
+        return x - 2.0f * k * process (x, Type::bandpass);
+    }
+
     /** The band-pass output of the last process() call (for filters that
         need more than one output of the same update). */
     float lastBandpass() const noexcept { return bp; }

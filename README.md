@@ -75,6 +75,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 - macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out; RKFollow and RKTrigger are AU music effects and VST3 effects with audio in and out and MIDI out.
 - Mono and stereo; sample rates 44.1 to 192 kHz.
+- Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).
 - Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`.

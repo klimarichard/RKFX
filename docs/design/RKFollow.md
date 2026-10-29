@@ -2,7 +2,7 @@
 
 **Pitch and expression to MIDI** · MIDI family · audio passes through untouched
 
-Working name (RK + a verb: the synth *follows* you); to be settled before the first build. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
+RK + a verb, as every RKFX plugin: the synth *follows* you. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
 
 ## What it does
 
@@ -159,7 +159,7 @@ The audio has **zero latency**. A note starts once the tracker has confirmed its
 - **Audio untouched:** output equals input, bit for bit.
 - **Validation:** auval (`aumf Flw1 RKMu`), pluginval at strictness 10, presets.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **The name.** RKFollow is a working name. Others: RKTranscribe, RKPlay.
-- **Polyphony:** none in v1. Chords on a guitar or double stops on a violin need spectral analysis (FFT, latency), outside RKFX's rules.
+- **Name:** RKFollow.
+- **No polyphony** in v1: chords and double stops would need spectral analysis (FFT, latency), outside RKFX's rules.

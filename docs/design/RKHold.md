@@ -120,7 +120,7 @@ When there's no single pitch (a guitar chord, a double stop, breath, a cymbal), 
 - **Silence:** Hold on silence starts no layer.
 - **Presets, board, validation:** RKFXPresetTests, RKBoardTests, auval (`aufx Hld1 RKMu`), pluginval at strictness 10.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Capture length:** 250 ms is long enough for natural variation and short enough that the note's attack is usually left out. Alternatively it could be a control (100 ms to 1 s).
-- **MIDI-triggered hold:** holding when a MIDI note arrives (a keyboard or a MIDI footswitch) would need MIDI input (AU music effect). Recommendation: not in v1; the Hold parameter mapped to a footswitch covers it.
+- **Capture length:** fixed at 250 ms.
+- **No MIDI-triggered hold** in v1: the Hold parameter mapped to a footswitch covers it.

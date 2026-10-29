@@ -23,7 +23,8 @@ RKVerbProcessor::RKVerbProcessor()
       predelay (findParam ("predelay")), predelaySync (findParam ("predelay_sync")),
       predelayDivision (findParam ("predelay_division")), damping (findParam ("damping")),
       lowCut (findParam ("lowcut")), highCut (findParam ("highcut")), mod (findParam ("mod")),
-      width (findParam ("width")), freeze (findParam ("freeze"))
+      width (findParam ("width")), freeze (findParam ("freeze")),
+      shimmer (findParam ("shimmer")), shimmerInterval (findParam ("shimmer_interval"))
 {
 }
 
@@ -39,6 +40,8 @@ ReverbEngine::Settings RKVerbProcessor::currentSettings (double bpm) const
     s.modulation   = valueOf (mod) / 100.0f;
     s.width        = valueOf (width) / 100.0f;
     s.freeze       = valueOf (freeze) >= 0.5f;
+    s.shimmer      = valueOf (shimmer) / 100.0f;
+    s.shimmerRatio = rkfx::ShimmerInterval::ratio (juce::roundToInt (valueOf (shimmerInterval)));
 
     if (valueOf (predelaySync) >= 0.5f)
     {

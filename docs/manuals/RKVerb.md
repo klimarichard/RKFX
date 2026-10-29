@@ -2,7 +2,7 @@
 
 **Algorithmic reverb** · Reverb family (orange) · zero latency
 
-RKVerb places a sound in a space: a small room, a big hall or a classic studio plate. It has pre-delay with tempo sync, damping, filters for the reverb, gentle modulation for lush tails, stereo width and **Freeze**, which holds the current reverb forever as a pad underneath you.
+RKVerb places a sound in a space: a small room, a big hall or a classic studio plate. It has pre-delay with tempo sync, damping, filters for the reverb, gentle modulation for lush tails, stereo width, **Shimmer**, which makes the tail bloom upwards into a shining pad, and **Freeze**, which holds the current reverb forever as a pad underneath you.
 
 For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls](Common%20Controls.md). A mono input gives a stereo reverb.
 
@@ -11,10 +11,11 @@ For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls
 1. **Pre-delay** waits a moment before the reverb starts, keeping the original clear.
 2. **Early reflections** (the first echoes off nearby walls) give the space its character; they depend on the type.
 3. A network of eight delay lines builds the dense **reverb tail**: its length is set by **Decay** and **Size**, its brightness by **Damping**, its movement by **Modulation**.
-4. **Low Cut** and **High Cut** shape the reverb, **Width** sets its stereo spread.
-5. **Dry/Wet** blends with the original, then **Output** sets the level.
+4. With **Shimmer** up, part of the tail is pitch-shifted (an octave up, for example) and sent back into the reverb, so each pass climbs higher.
+5. **Low Cut** and **High Cut** shape the reverb, **Width** sets its stereo spread.
+6. **Dry/Wet** blends with the original, then **Output** sets the level.
 
-The original signal is never delayed, so RKVerb adds no latency.
+The original signal is never delayed, so RKVerb adds no latency. (The shimmer's pitch shifter needs about 20 ms to work, but it only acts on the tail, which is late anyway.)
 
 ## Reverb
 
@@ -42,6 +43,15 @@ The original signal is never delayed, so RKVerb adds no latency.
 | **Modulation** | 0 to 100% | 20% | Slowly moves the reverb's echoes for a lush, chorus-like tail and to avoid metallic ringing on long decays. 0% is completely still. |
 | **Width** | 0 to 100% | 100% | Stereo spread of the reverb: 0% is mono, 100% fully wide. |
 
+## Shimmer
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Shimmer** | 0 to 100% | 0% | How much pitch-shifted tail goes back into the reverb. Each trip comes back shifted again, so the sound climbs (an octave, then two...) and the Damping darkens each new layer until it fades. Around 30 to 60% gives the classic ambient shimmer. At 0% it's switched off entirely. |
+| **Interval** | Octave up, Fifth up, Octave + fifth up, Two octaves up, Octave down | Octave up | How far each trip is shifted. Octave up is the classic shimmer; Fifth up is more harmonic and "choral"; Octave down sinks into a dark drone. Dimmed while Shimmer is 0%. |
+
+Shimmer is held in check whatever the settings: the shimmer path is limited, so even the longest Decay with Shimmer at 100% doesn't run away. While **Freeze** is on, the shimmer stops feeding, so a frozen pad stays as it is.
+
 ## Freeze (bottom row)
 
 **Freeze** holds the reverb that's sounding now, indefinitely, and stops new sound from entering it: play a chord, press Freeze, and play over the sustained pad. Switching Freeze off lets the held sound fade out with the normal Decay. It's made to be mapped to a footswitch in Gig Performer.
@@ -62,8 +72,12 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Synced Vocal Hall** | Hall, Decay 2.2 s, Pre-Delay synced to 1/16, Dry/Wet 22% |
 | **Freeze Drone** | Hall, Decay 12 s, Size 100%, Modulation 40%, Dry/Wet 60%; press Freeze to hold a chord |
 | **Dark Guitar Room** | Room, Decay 1 s, Size 60%, Damping 75%, High Cut 5 kHz |
+| **Shimmer Pad** | Hall, Decay 6 s, Size 80%, Damping 40%, Shimmer 50%, Octave up, Dry/Wet 40% |
+| **Fifth Heaven** | Hall, Decay 8 s, Size 80%, Shimmer 40%, Fifth up, Dry/Wet 40% |
+| **Shimmer Plate** | Plate, Decay 4 s, Shimmer 30%, Octave up, Dry/Wet 30%: brighter and shorter, for a violin or vocal line |
 
 ## Notes
 
 - Long decays with little Low Cut can build up a lot of low end; raise Low Cut for a clearer mix.
-- Gig Performer tip: map Freeze to a footswitch, Dry/Wet to a widget for "more reverb" moments, or Decay for a longer tail at the end of a song.
+- More Damping keeps a shimmer softer (each octave layer is darker); less makes it glassier.
+- Gig Performer tip: map Shimmer to an expression pedal to swell the shimmer in and out, Freeze to a footswitch, Dry/Wet to a widget for "more reverb" moments, or Decay for a longer tail at the end of a song.

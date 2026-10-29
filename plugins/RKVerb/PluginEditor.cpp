@@ -7,10 +7,11 @@ namespace
     constexpr int kTitleHeight = 26;
     constexpr int kReverbWidth = 290;
     constexpr int kToneWidth = 250;
+    constexpr int kSpaceWidth = 200;
 }
 
 RKVerbEditor::RKVerbEditor (RKVerbProcessor& p)
-    : rkfx::EditorBase (p, 780, 450)
+    : rkfx::EditorBase (p, 970, 450)
 {
     using rkfx::Knob;
     auto param = [&p] (const char* id) -> juce::RangedAudioParameter& { return *p.findParam (id); };
@@ -27,10 +28,12 @@ RKVerbEditor::RKVerbEditor (RKVerbProcessor& p)
     highCut  = std::make_unique<Knob> (param ("highcut"), "High Cut");
     mod      = std::make_unique<Knob> (param ("mod"), "Modulation");
     width    = std::make_unique<Knob> (param ("width"), "Width");
+    shimmer  = std::make_unique<Knob> (param ("shimmer"), "Shimmer");
+    interval = std::make_unique<Knob> (param ("shimmer_interval"), "Interval");
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              type.get(), sync.get(), freeze.get(), decay.get(), size.get(), predelay.get(), division.get(),
-             damping.get(), lowCut.get(), highCut.get(), mod.get(), width.get() })
+             damping.get(), lowCut.get(), highCut.get(), mod.get(), width.get(), shimmer.get(), interval.get() })
         addToCanvas (*c);
 
     syncWatcher = std::make_unique<juce::ParameterAttachment> (param ("predelay_sync"), [this] (float v)
@@ -40,12 +43,19 @@ RKVerbEditor::RKVerbEditor (RKVerbProcessor& p)
     });
     syncWatcher->sendInitialUpdate();
 
+    shimmerWatcher = std::make_unique<juce::ParameterAttachment> (param ("shimmer"), [this] (float v)
+    {
+        interval->setDimmed (v <= 0.0f);
+    });
+    shimmerWatcher->sendInitialUpdate();
+
     finishSetup();
 }
 
 juce::Rectangle<int> RKVerbEditor::reverbArea() const { return contentArea().withWidth (kReverbWidth); }
 juce::Rectangle<int> RKVerbEditor::toneArea() const   { return contentArea().withTrimmedLeft (kReverbWidth + kGap).withWidth (kToneWidth); }
-juce::Rectangle<int> RKVerbEditor::spaceArea() const  { return contentArea().withTrimmedLeft (kReverbWidth + kToneWidth + 2 * kGap); }
+juce::Rectangle<int> RKVerbEditor::spaceArea() const  { return contentArea().withTrimmedLeft (kReverbWidth + kToneWidth + 2 * kGap).withWidth (kSpaceWidth); }
+juce::Rectangle<int> RKVerbEditor::shimmerArea() const { return contentArea().withTrimmedLeft (kReverbWidth + kToneWidth + kSpaceWidth + 3 * kGap); }
 
 void RKVerbEditor::layoutContent()
 {
@@ -83,6 +93,14 @@ void RKVerbEditor::layoutContent()
         width->setBounds (knobs);
     }
 
+    {
+        auto area = shimmerArea().reduced (8, 0);
+        area.removeFromTop (kTitleHeight + 34);
+        auto knobs = area.removeFromTop (Knob::kDefaultHeight);
+        shimmer->setBounds (knobs.removeFromLeft (knobs.getWidth() / 2));
+        interval->setBounds (knobs);
+    }
+
     // Freeze sits on its own in the bottom row: easy to find, made for a footswitch.
     freeze->setBounds (globalArea().removeFromLeft (110).withSizeKeepingCentre (110, 40));
 }
@@ -92,4 +110,5 @@ void RKVerbEditor::paintContent (juce::Graphics& g)
     drawSection (g, reverbArea(), "Reverb");
     drawSection (g, toneArea(), "Tone");
     drawSection (g, spaceArea(), "Space");
+    drawSection (g, shimmerArea(), "Shimmer");
 }

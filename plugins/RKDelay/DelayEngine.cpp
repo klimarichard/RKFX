@@ -14,6 +14,9 @@ namespace
     constexpr float kAnalogDrive = 1.6f;
     constexpr float kTapeDrive = 1.25f;
 
+    // Keeps an Octave down shimmer from piling up low end.
+    constexpr float kShimmerHighPassHz = 80.0f;
+
     // Tape wow (slow, random + periodic) and flutter (fast, periodic), in ms.
     constexpr float kWowMs = 0.35f, kFlutterMs = 0.04f;
     constexpr double kWowHz = 0.45, kFlutterHz = 6.5;
@@ -41,6 +44,9 @@ void DelayEngine::prepare (double newSampleRate)
         c.lowCut.prepare (sampleRate);
         c.highCut.prepare (sampleRate);
         c.dc.prepare (sampleRate);
+        c.shifter.prepare (sampleRate);
+        c.shimmerHighPass.prepare (sampleRate);
+        c.shimmerHighPass.setCutoff (kShimmerHighPassHz);
     }
 
     wow.prepare (sampleRate);
@@ -50,7 +56,7 @@ void DelayEngine::prepare (double newSampleRate)
 
     timeCoef = (float) std::exp (-1.0 / (0.08 * sampleRate));   // ~80 ms glide on time changes
 
-    for (auto* s : { &feedback, &darkCoef, &saturation, &tapeAmount, &modDepthSamples, &duck })
+    for (auto* s : { &feedback, &darkCoef, &saturation, &tapeAmount, &modDepthSamples, &duck, &shimmer })
         s->reset (sampleRate, rkfx::kParamSmoothingSeconds);
     lowCutHz.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     highCutHz.reset (sampleRate, rkfx::kParamSmoothingSeconds);
@@ -67,6 +73,8 @@ void DelayEngine::reset()
         c.lowCut.reset();
         c.highCut.reset();
         c.dc.reset();
+        c.shifter.reset();
+        c.shimmerHighPass.reset();
         c.characterLowPass = 0.0f;
         c.lastProcessed = 0.0f;
         c.time = -1.0;   // jump straight to the set time on the first sample
@@ -76,7 +84,9 @@ void DelayEngine::reset()
     inputLevel.reset();
     wowPhase = flutterPhase = modPhase = 0.0;
 
-    for (auto* s : { &feedback, &darkCoef, &saturation, &tapeAmount, &modDepthSamples, &duck })
+    shimmerRunning = false;
+
+    for (auto* s : { &feedback, &darkCoef, &saturation, &tapeAmount, &modDepthSamples, &duck, &shimmer })
         s->setCurrentAndTargetValue (s->getTargetValue());
     lowCutHz.setCurrentAndTargetValue (lowCutHz.getTargetValue());
     highCutHz.setCurrentAndTargetValue (highCutHz.getTargetValue());
@@ -91,6 +101,9 @@ void DelayEngine::setSettings (const Settings& s)
     highCutHz.setTargetValue (juce::jlimit (200.0f, 20000.0f, s.highCutHz));
     modDepthSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, s.modDepth) * kMaxModMs * 0.001f * (float) sampleRate);
     duck.setTargetValue (juce::jlimit (0.0f, 1.0f, s.duck));
+    shimmer.setTargetValue (juce::jlimit (0.0f, 1.0f, s.shimmer));
+    for (auto& c : channels)
+        c.shifter.setRatio (juce::jlimit (0.25f, 4.0f, s.shimmerRatio));
 
     // Character: one-pole coefficient of the extra loop low-pass (0 = open), saturation, tape amount.
     const auto onePole = [this] (float hz) { return (float) std::exp (-kTwoPi * hz / sampleRate); };
@@ -131,6 +144,16 @@ void DelayEngine::process (float* const* io, int numChannels, int numSamples, co
         const auto tape = tapeAmount.getNextValue();
         const auto mod = modDepthSamples.getNextValue();
         const auto duckAmount = duck.getNextValue();
+        const auto shimmerAmount = shimmer.getNextValue();
+
+        const auto shimmering = shimmerAmount > 0.0f || shimmer.isSmoothing();
+        if (shimmering && ! shimmerRunning)
+            for (auto& c : channels)
+            {
+                c.shifter.reset();
+                c.shimmerHighPass.reset();
+            }
+        shimmerRunning = shimmering;
 
         // Time modulation: the modulation knob (sine) plus tape wow and flutter.
         const auto modulation = mod * (float) std::sin (kTwoPi * modPhase)
@@ -190,8 +213,22 @@ void DelayEngine::process (float* const* io, int numChannels, int numSamples, co
                 source = 0;
             }
 
-            const auto loop = rkfx::softClip (c.dc.process (fb * processed[source]));
-            c.line.write (input + loop);
+            const auto repeat = c.dc.process (fb * processed[source]);
+
+            if (! shimmering)
+            {
+                c.line.write (input + rkfx::softClip (repeat));
+                continue;
+            }
+
+            // Shimmer: the shifted part goes in the shifter's latency early, so
+            // its trip around the loop still takes the delay time.
+            c.line.write (input + rkfx::softClip ((1.0f - shimmerAmount) * repeat));
+
+            auto shifted = c.shifter.process (shimmerAmount * repeat);
+            shifted = rkfx::softClip (c.shimmerHighPass.process (shifted, rkfx::StateVariableFilter::Type::highpass));
+            const auto early = juce::jlimit (0, juce::jmax (0, (int) c.time - 3), c.shifter.latencySamples());
+            c.line.addAt (early, shifted);
         }
 
         // Ducking: the louder the input, the quieter the repeats.

@@ -98,6 +98,7 @@ target_sources(RKFXTests PRIVATE
     ConductTests.cpp
     MultiCompTests.cpp
     RideTests.cpp
+    ShimmerTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

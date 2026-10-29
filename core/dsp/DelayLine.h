@@ -38,6 +38,14 @@ public:
         buffer[(size_t) writeIndex] = x;
     }
 
+    /** Adds @p x to the sample written @p samplesAgo ago (0 = the latest),
+        so it is read that much sooner: lets a feedback path that adds its own
+        delay (a pitch shifter) write early and keep the loop's timing. */
+    void addAt (int samplesAgo, float x) noexcept
+    {
+        buffer[(size_t) ((writeIndex - samplesAgo) & mask)] += x;
+    }
+
     /** Sample from @p delaySamples ago (fractional, clamped to 1..the line's length). */
     float read (float delaySamples) const noexcept
     {

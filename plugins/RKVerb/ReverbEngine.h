@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dsp/DelayLine.h"
+#include "dsp/PitchShifter.h"
 #include "dsp/StateVariableFilter.h"
 #include "safety/DCBlocker.h"
 #include "safety/Smoothing.h"
@@ -14,6 +15,11 @@
               -> feedback delay network (8 lines, Householder matrix,
                  damping and decay per line, slow modulation)
               -> low cut and high cut -> width -> wet out
+
+    Shimmer: the tail is pitch-shifted (an octave up by default), band-limited
+    and fed back into the network after the diffusers, so each pass climbs
+    another step. The feed is limited and soft-clipped, and muted while frozen.
+    At 0% the shifter doesn't run.
 
     Types are blends of smoothed settings (room and hall reflection
     patterns, diffusion amount, line lengths), so switching glides:
@@ -48,7 +54,12 @@ public:
         float modulation = 0.2f;      // 0..1
         float width = 1.0f;           // 0..1
         bool freeze = false;
+        float shimmer = 0.0f;         // 0..1
+        float shimmerRatio = 2.0f;    // pitch ratio of the shifted tail
     };
+
+    /** How much of the tail goes back in at Shimmer 100%. */
+    static constexpr float kShimmerFeed = 0.5f;
 
     void prepare (double sampleRate);
     void reset();
@@ -71,4 +82,9 @@ private:
     rkfx::Smoothed predelaySamples, sizeFactor { 0.72f }, typeScale { 1.0f }, diffusion { 0.5f },
                    roomLevel, hallLevel { 0.7f }, modSamples, width { 1.0f }, freeze;
     float decaySeconds = 2.5f, dampingCoef = 0.0f;
+
+    rkfx::PitchShifter shimmerShifter;
+    rkfx::StateVariableFilter shimmerHighPass, shimmerLowPass;
+    rkfx::Smoothed shimmer;
+    bool shimmerRunning = false;
 };

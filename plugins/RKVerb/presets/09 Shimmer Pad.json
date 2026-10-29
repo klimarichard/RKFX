@@ -1,0 +1,14 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Shimmer Pad",
+  "params": {
+    "type": "hall",
+    "decay": 6000,
+    "size": 80,
+    "damping": 40,
+    "shimmer": 50,
+    "shimmer_interval": "octave_up",
+    "mix": 40
+  }
+}

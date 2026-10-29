@@ -1,0 +1,14 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Shimmer Echo",
+  "params": {
+    "mode": "digital",
+    "sync": true,
+    "division": "1/4d",
+    "feedback": 55,
+    "shimmer": 60,
+    "shimmer_interval": "octave_up",
+    "mix": 35
+  }
+}

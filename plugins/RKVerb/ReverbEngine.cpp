@@ -43,6 +43,11 @@ namespace
     constexpr float kOutR[ReverbEngine::kLines]    = { 1, 1, -1, -1, 1, 1, -1, -1 };
 
     float sizeToFactor (float size) noexcept { return 0.3f + 0.7f * size; }
+
+    // The shimmer path is band-limited, so octaves can't pile up at the bottom
+    // or alias at the top.
+    constexpr float kShimmerHighPassHz = 80.0f;
+    constexpr float kShimmerLowPassHz = 10000.0f;
 }
 
 void ReverbEngine::prepare (double newSampleRate)
@@ -69,6 +74,13 @@ void ReverbEngine::prepare (double newSampleRate)
     for (auto* s : { &predelaySamples, &sizeFactor, &typeScale, &diffusion, &roomLevel, &hallLevel, &modSamples, &width })
         s->reset (sampleRate, 0.05);   // size and type glide over 50 ms
     freeze.reset (sampleRate, rkfx::kParamSmoothingSeconds);
+    shimmer.reset (sampleRate, rkfx::kParamSmoothingSeconds);
+
+    shimmerShifter.prepare (sampleRate);
+    shimmerHighPass.prepare (sampleRate);
+    shimmerLowPass.prepare (sampleRate);
+    shimmerHighPass.setCutoff (kShimmerHighPassHz);
+    shimmerLowPass.setCutoff (kShimmerLowPassHz);
 
     setSettings (settings);
     reset();
@@ -92,8 +104,12 @@ void ReverbEngine::reset()
     }
     damped.fill (0.0f);
     modPhase = { 0.0, 0.25, 0.5, 0.75 };
+    shimmerShifter.reset();
+    shimmerHighPass.reset();
+    shimmerLowPass.reset();
+    shimmerRunning = false;
 
-    for (auto* s : { &predelaySamples, &sizeFactor, &typeScale, &diffusion, &roomLevel, &hallLevel, &modSamples, &width, &freeze })
+    for (auto* s : { &predelaySamples, &sizeFactor, &typeScale, &diffusion, &roomLevel, &hallLevel, &modSamples, &width, &freeze, &shimmer })
         s->setCurrentAndTargetValue (s->getTargetValue());
 }
 
@@ -111,6 +127,8 @@ void ReverbEngine::setSettings (const Settings& s)
     modSamples.setTargetValue (juce::jlimit (0.0f, 1.0f, s.modulation) * 0.0006f * (float) sampleRate);   // up to +/-0.6 ms
     width.setTargetValue (juce::jlimit (0.0f, 1.0f, s.width));
     freeze.setTargetValue (s.freeze ? 1.0f : 0.0f);
+    shimmer.setTargetValue (juce::jlimit (0.0f, 1.0f, s.shimmer));
+    shimmerShifter.setRatio (juce::jlimit (0.25f, 4.0f, s.shimmerRatio));
 
     // Measured decay runs about 6% short of the loop-gain formula (energy taken by the
     // loops' DC blockers and the diffusion); calibrated so the knob reads true.
@@ -199,6 +217,37 @@ void ReverbEngine::process (float* const* io, int numChannels, int numSamples) n
             out[l] = lines[(size_t) l].read (juce::jmax (2.0f, len) - 1.0f);
         }
 
+        // Outputs: decorrelated sums of the lines.
+        float lateL = 0.0f, lateR = 0.0f;
+        for (int l = 0; l < kLines; ++l)
+        {
+            lateL += kOutL[l] * out[l];
+            lateR += kOutR[l] * out[l];
+        }
+
+        // Shimmer: the tail, shifted and band-limited, goes back into the network.
+        auto shimmerFeed = 0.0f;
+        const auto shimmerAmount = shimmer.getNextValue();
+        if (shimmerAmount > 0.0f || shimmer.isSmoothing())
+        {
+            if (! shimmerRunning)
+            {
+                shimmerShifter.reset();
+                shimmerHighPass.reset();
+                shimmerLowPass.reset();
+                shimmerRunning = true;
+            }
+
+            using Type = rkfx::StateVariableFilter::Type;
+            auto shifted = shimmerShifter.process (0.35f * lateL);
+            shifted = shimmerLowPass.process (shimmerHighPass.process (shifted, Type::highpass), Type::lowpass);
+            shimmerFeed = rkfx::softClip (shimmerAmount * kShimmerFeed * shifted * (1.0f - frozen));
+        }
+        else
+        {
+            shimmerRunning = false;
+        }
+
         float sum = 0.0f, v[kLines];
         const auto dampingNow = dampingCoef * (1.0f - frozen);
         for (int l = 0; l < kLines; ++l)
@@ -215,7 +264,7 @@ void ReverbEngine::process (float* const* io, int numChannels, int numSamples) n
         for (int l = 0; l < kLines; ++l)
         {
             const auto feedback = v[l] - householder;
-            const auto injected = 0.5f * kInSign[l] * diffused[l % 2];
+            const auto injected = 0.5f * kInSign[l] * (diffused[l % 2] + shimmerFeed);
             const auto in = rkfx::softClip (lineDc[(size_t) l].process (feedback + injected), 4.0f);
             lines[(size_t) l].write (in);
         }
@@ -227,13 +276,7 @@ void ReverbEngine::process (float* const* io, int numChannels, int numSamples) n
                 modPhase[(size_t) m] -= 1.0;
         }
 
-        // Outputs: decorrelated sums of the lines, plus the early reflections.
-        float lateL = 0.0f, lateR = 0.0f;
-        for (int l = 0; l < kLines; ++l)
-        {
-            lateL += kOutL[l] * out[l];
-            lateR += kOutR[l] * out[l];
-        }
+        // Outputs, plus the early reflections.
         float wet[kMaxChannels] = { 0.35f * lateL + early[0], 0.35f * lateR + early[1] };
 
         for (int ch = 0; ch < kMaxChannels; ++ch)

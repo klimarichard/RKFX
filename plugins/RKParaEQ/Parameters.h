@@ -58,6 +58,23 @@ namespace ParaEQParams
             }
         }
 
+        // Dynamics (added later, so appended after everything above), for
+        // the five gain bands.
+        for (const auto& b : bands)
+        {
+            if (b.cut)
+                continue;
+
+            const juce::String title (b.title);
+            p.addBool     (id (b, "dyn"), title + " Dynamic", false);
+            p.addDecibels (id (b, "threshold"), title + " Threshold", -60.0f, 0.0f, -30.0f);
+            p.addDecibels (id (b, "range"), title + " Range", -24.0f, 24.0f, -6.0f);
+            p.addFloat    (id (b, "ratio"), title + " Ratio", rkfx::Units::logRange (1.5f, 10.0f), 3.0f,
+                           [] (float r) { return juce::String (r, r < 10.0f ? 1 : 0) + ":1"; }, rkfx::Units::parseNumber);
+            p.addTime     (id (b, "attack"), title + " Attack", 1.0f, 100.0f, 10.0f);
+            p.addTime     (id (b, "release"), title + " Release", 10.0f, 2000.0f, 150.0f);
+        }
+
         return p;
     }
 }

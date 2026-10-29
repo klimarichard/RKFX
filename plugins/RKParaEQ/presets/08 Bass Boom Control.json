@@ -1,0 +1,16 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Bass Boom Control",
+  "params": {
+    "low_type": "bell",
+    "low_freq": 110,
+    "low_q": 1.5,
+    "low_dyn": true,
+    "low_threshold": -24,
+    "low_range": -6,
+    "low_ratio": 3,
+    "low_attack": 20,
+    "low_release": 200
+  }
+}

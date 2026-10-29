@@ -30,6 +30,12 @@ RKParaEQProcessor::RKParaEQProcessor()
         p.gain  = findParam (id (b, "gain"));
         p.q     = findParam (id (b, "q"));
         p.slope = findParam (id (b, "slope"));
+        p.dyn       = findParam (id (b, "dyn"));
+        p.threshold = findParam (id (b, "threshold"));
+        p.range     = findParam (id (b, "range"));
+        p.ratio     = findParam (id (b, "ratio"));
+        p.attack    = findParam (id (b, "attack"));
+        p.release   = findParam (id (b, "release"));
     }
 }
 
@@ -55,6 +61,14 @@ ParaEQEngine::Settings RKParaEQProcessor::currentSettings() const
         band.hz = valueOf (p.freq);
         band.gainDb = valueOf (p.gain);
         band.q = valueOf (p.q);
+
+        auto& d = band.dynamic;
+        d.on          = valueOf (p.dyn) >= 0.5f;
+        d.thresholdDb = valueOf (p.threshold);
+        d.rangeDb     = valueOf (p.range);
+        d.ratio       = valueOf (p.ratio);
+        d.attackMs    = valueOf (p.attack);
+        d.releaseMs   = valueOf (p.release);
     }
 
     return s;
@@ -76,6 +90,21 @@ void RKParaEQProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
     engine.setSettings (currentSettings());
     engine.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
+
+    for (int b = 0; b < ParaEQEngine::kBands; ++b)
+    {
+        const auto m = engine.takeMeter (b);
+        auto& target = meters[(size_t) b];
+        auto current = target.levelDb.load();
+        while (m.levelDb > current && ! target.levelDb.compare_exchange_weak (current, m.levelDb)) {}
+        target.gainDb = m.gainDb;
+    }
+}
+
+ParaEQEngine::Meter RKParaEQProcessor::takeMeter (int band) noexcept
+{
+    auto& m = meters[(size_t) band];
+    return { m.levelDb.exchange (rkfx::Dynamics::kSilenceDb), m.gainDb.load() };
 }
 
 juce::AudioProcessorEditor* RKParaEQProcessor::createEditor()

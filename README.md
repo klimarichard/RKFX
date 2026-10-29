@@ -4,7 +4,7 @@ A suite of separate, lightweight audio effect plugins by RKMusic, built for live
 
 Goals, in priority order:
 
-1. **Zero latency.** No lookahead, no FFT, no block-based processing. The only exception is the optional oversampling in RKSaturate, RKDistort, RKPreamp, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host).
+1. **Zero latency.** No lookahead, no FFT, no block-based processing. The exceptions: the optional oversampling in RKSaturate, RKDistort, RKPreamp, RKLimit and RKRotary (4 or 5 samples, about 0.1 ms, reported to the host), and RKPolyPitch's Whammy mode, where the shifted sound replaces yours and trails it by 5 to 27 ms (shown on screen; its Harmony and Detune modes leave your sound undelayed).
 2. **Lightweight.** Minimal CPU and memory, fast loading, no heavy graphics.
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
@@ -46,6 +46,8 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKSynth](docs/manuals/RKSynth.md) | Monophonic synth played by your bass, guitar or violin: saw, square, triangle, sub, resonant filter envelope | Available |
 | [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
 | [RKLoop](docs/manuals/RKLoop.md) | Live looper, eight loops as song parts or layers, synced to Loop 1: overdub, undo/redo, reverse, half speed, footswitch control | Available |
+| [RKHold](docs/manuals/RKHold.md) | Note freeze: a footswitch holds the note you're playing as a drone (or a chord, layer by layer), an octave down or up if you like | Available |
+| [RKPolyPitch](docs/manuals/RKPolyPitch.md) | Polyphonic pitch shifter, whammy style: pedal sweeps, momentary jumps, harmony and detune, chords included (Whammy mode delays your sound by a few ms, stated on screen) | Available |
 | [RKVoice](docs/manuals/RKVoice.md) | Harmonizer: up to four harmony voices on a voice or instrument, placed by a held MIDI chord (1st, 2nd, 3rd above or below) or a key and scale; the dry signal untouched | Available |
 
 ### MIDI effects
@@ -59,6 +61,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 | [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
 | [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
 | [RKConduct](docs/manuals/RKConduct.md) | MIDI file player conducted by taps: tap the beats (or bars, in any time signature), the notes in between follow your tempo | Available |
+| [RKEcho](docs/manuals/RKEcho.md) | MIDI echo: repeats in time that can climb (fifths, octaves, thirds in a key) and go to another instrument or bounce between two | Available |
 | [RKFollow](docs/manuals/RKFollow.md) | Pitch and expression to MIDI: a violin, voice or any single line plays a synth, with pitch bend (or MPE) and your dynamics as a controller; the audio passes through untouched | Available |
 | [RKTrigger](docs/manuals/RKTrigger.md) | Drum trigger: hits on a piezo, drum mic or instrument body to MIDI notes, one or two triggers, with crosstalk rejection | Available |
 

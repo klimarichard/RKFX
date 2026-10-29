@@ -78,7 +78,17 @@ Appended to each plugin, after its existing parameters. With the defaults below,
 - **No clicks:** sweeping Shimmer and switching Interval on a sustained tone produce no steps beyond the signal's own.
 - **Presets, board, validation:** RKFXPresetTests, RKBoardTests, auval (`aufx Vrb1 RKMu`, `aufx Dly1 RKMu`), pluginval at strictness 10.
 
-## Open questions
+## As built (2026-10-29)
 
-- **Interval list:** is Octave up / Fifth up / Octave + fifth / Two octaves / Octave down the right set? A Fourth up or a "Detuned" (±10 cents, a chorus-like widen) could be added.
-- **Shimmer tone:** the shifted layers are darkened by the reverb's damping (RKVerb) or the loop filters (RKDelay). A dedicated Shimmer Tone knob could brighten or darken just the shimmer. Recommendation: not in v1.
+Where the build differs from the design above:
+
+- **The shifter has two pairs of taps, not four evenly spaced taps.** Four taps a quarter window apart turned out to be a fixed comb filter: every odd multiple of 40 Hz (with a 50 ms window) cancelled completely, including 440 Hz. Each pair is two Hann-faded taps half a window apart; the pairs use different windows (50 and 35 ms) and start out of step, so their partial cancellations fall at different frequencies and move. A fixed make-up of ×1.6 brings the average level back to the input's (measured within -0.1 to +0.6 dB, tones from 110 Hz to 1 kHz, every interval). Latency: about 21 ms.
+- **RKDelay timing, measured:** with Shimmer 100% and Octave up at a 300 ms delay, repeat 2 lands 3 ms early and repeat 3 0.4 ms early, against 18 and 41 ms late without the early write. An upward shift squeezes a note slightly, which pulls its weight a little earlier; it doesn't build up. The test allows 5 ms.
+- **RKVerb's shimmer path** is band-limited to 80 Hz to 10 kHz (both ways, not only for Octave down), so octaves can't pile up at the bottom or fold back from the top. The feed is a fixed ×0.5 of Shimmer, soft-clipped; the tests run the longest decay with no damping at Shimmer 100% for 20 s free and 20 s frozen, with no build-up.
+- **Windows:** RKVerb 970 × 450 and RKDelay 910 × 450, each with a Shimmer section (Shimmer and a stepped Interval knob).
+- **CPU, measured** (RKFXBench, 48 kHz, 64 samples): RKVerb hall 0.49% → 0.52% with shimmer; RKDelay stereo 0.24% → 0.35% with shimmer.
+
+## Decisions (2026-10-29)
+
+- **Intervals:** Octave up, Fifth up, Octave + fifth up, Two octaves up, Octave down, as proposed.
+- **No Shimmer Tone knob:** the reverb's damping and the delay's feedback filters shape the shifted layers.

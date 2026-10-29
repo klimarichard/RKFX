@@ -2,7 +2,7 @@
 
 **Stereo delay** · Delay family (green) · zero latency
 
-RKDelay repeats the sound as echoes. It has three characters (clean **digital**, warm **analog** and wobbly **tape**), stereo, mono and **ping-pong** modes, tempo sync, filters that shape the repeats, modulation and **ducking**, which keeps the echoes out of the way while you play.
+RKDelay repeats the sound as echoes. It has three characters (clean **digital**, warm **analog** and wobbly **tape**), stereo, mono and **ping-pong** modes, tempo sync, filters that shape the repeats, modulation, **ducking**, which keeps the echoes out of the way while you play, and **Shimmer**, which makes each repeat climb in pitch.
 
 For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls](Common%20Controls.md). A mono input gives a stereo output, so ping-pong works on mono sources.
 
@@ -10,7 +10,7 @@ For the header, knobs, presets, Dry/Wet, Output and Bypass, see [Common Controls
 
 1. The input goes into a delay line (up to 4 seconds).
 2. Each repeat passes through the **character** (digital, analog or tape) and the **Low Cut** and **High Cut** filters.
-3. **Feedback** sends the repeat back into the delay for more echoes. A soft limiter in that loop means even 100% feedback sustains without ever running away.
+3. **Feedback** sends the repeat back into the delay for more echoes. A soft limiter in that loop means even 100% feedback sustains without ever running away. With **Shimmer** up, part of each repeat is pitch-shifted on its way back, so the echoes climb.
 4. **Ducking** turns the echoes down while the input is loud.
 5. **Dry/Wet** blends the echoes with the original, then **Output** sets the level.
 
@@ -44,6 +44,15 @@ These filters sit inside the feedback loop, so every repeat is filtered again: t
 | **Depth** | 0 to 100% | 0% | Gently moves the delay time up and down, adding a chorus-like shimmer to the repeats. Works in every mode, on top of the tape wow and flutter. |
 | **Rate** | 0.1 to 5 Hz | 0.6 Hz | Speed of the modulation. Dimmed while Depth is 0. |
 
+## Shimmer
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Shimmer** | 0 to 100% | 0% | How much of the feedback is pitch-shifted. The first echo is always at your pitch; at 100% the next is an octave up (with Octave up), the next two octaves up, each a little darker through the Feedback Tone filters. In between, shifted and unshifted repeats sound together. At 0% it's switched off entirely. |
+| **Interval** | Octave up, Fifth up, Octave + fifth up, Two octaves up, Octave down | Octave up | How far each repeat climbs (or falls, with Octave down). Dimmed while Shimmer is 0%. |
+
+**The repeats stay on the beat.** The pitch shifter needs about 20 ms to work, so RKDelay sends the shifted repeats back that much earlier: they still arrive at the delay time (within a few milliseconds, inaudible as timing), synced or free. Only at very short times (under about 30 ms) do they come slightly late, where shimmer becomes a texture rather than an echo. Feedback stays as safe as without shimmer: the feedback is only split between shifted and unshifted repeats.
+
 ## Bottom row
 
 | Control | Range | Default | What it does |
@@ -65,8 +74,12 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Wide Ping-Pong Keys** | Digital, Ping-Pong, Sync 1/4, Feedback 40%, High Cut 7 kHz, Dry/Wet 25% |
 | **Clear Vocal Throw** | Analog, Stereo, Sync 1/4, Feedback 30%, Ducking 80%, Dry/Wet 30% |
 | **Ambient Wash** | Tape, Ping-Pong, Time 600 ms, Feedback 90 to 100%, Mod Depth 40%, Dry/Wet 50% |
+| **Shimmer Echo** | Digital, Stereo, Sync 1/4 D, Feedback 55%, Shimmer 60%, Octave up, Dry/Wet 35%: climbing repeats |
+| **Crystal Fifths** | Tape, Ping-Pong, Sync 1/8, Feedback 50%, Shimmer 50%, Fifth up, Dry/Wet 35% |
+| **Sub Drop** | Analog, Stereo, Sync 1/4, Feedback 45%, Shimmer 40%, Octave down, Dry/Wet 35%: repeats falling into darkness |
 
 ## Notes
 
 - High feedback in Digital mode with the filters wide open repeats almost forever; lower Feedback or the High Cut for trails that fade.
-- Gig Performer tip: map Feedback to an expression pedal for dub-style swells, or Dry/Wet to a widget to throw echoes on single words.
+- With Shimmer, a lower High Cut keeps the higher octaves from getting shrill.
+- Gig Performer tip: map Shimmer to an expression pedal to bring the climbing repeats in for a solo, Feedback for dub-style swells, or Dry/Wet to a widget to throw echoes on single words.

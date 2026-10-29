@@ -12,7 +12,7 @@ namespace TriggerParams
 
     inline juce::String noteName (int note)
     {
-        return juce::MidiMessage::getMidiNoteName (note, true, true, 4) + " (" + juce::String (note) + ")";
+        return juce::MidiMessage::getMidiNoteName (note, true, true, 3) + " (" + juce::String (note) + ")";
     }
 
     inline rkfx::ParamBuilder create()
@@ -44,7 +44,7 @@ namespace TriggerParams
                                      if (text.containsOnly ("0123456789"))
                                          return parseNumber (text);
                                      for (int n = 0; n < 128; ++n)
-                                         if (juce::MidiMessage::getMidiNoteName (n, true, true, 4).equalsIgnoreCase (text))
+                                         if (juce::MidiMessage::getMidiNoteName (n, true, true, 3).equalsIgnoreCase (text))
                                              return (float) n;
                                      return 36.0f;
                                  });

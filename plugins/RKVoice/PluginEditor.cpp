@@ -12,7 +12,7 @@ namespace
 
     juce::String noteName (int note)
     {
-        return note < 0 ? juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x93")) : juce::MidiMessage::getMidiNoteName (note, true, true, 4);
+        return note < 0 ? juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x93")) : juce::MidiMessage::getMidiNoteName (note, true, true, 3);
     }
 
     juce::String chordName (int classes)

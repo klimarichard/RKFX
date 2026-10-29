@@ -43,7 +43,7 @@ void RKTriggerEditor::HitDisplay::paint (juce::Graphics& g)
         g.drawText ("Trigger " + juce::String (t + 1), label.removeFromTop (20.0f), juce::Justification::centredLeft);
         g.setFont (Fonts::regular (11.0f));
         g.setColour (Palette::textDim);
-        g.drawText (active ? juce::MidiMessage::getMidiNoteName (tr.note, true, true, 4) + ", ch " + juce::String (tr.channel)
+        g.drawText (active ? juce::MidiMessage::getMidiNoteName (tr.note, true, true, 3) + ", ch " + juce::String (tr.channel)
                            : juce::String ("off (Mono)"),
                     label.removeFromTop (16.0f), juce::Justification::centredLeft);
 

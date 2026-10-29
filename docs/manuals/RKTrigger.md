@@ -24,7 +24,7 @@ For the header and presets, see [Common Controls](Common%20Controls.md). RKTrigg
 
 ## The display
 
-For each trigger, the last few seconds scroll from right to left: the level (shaded) against the Threshold (white line), and each hit as a bar as tall as its velocity. Double-triggers and missed soft hits are easy to spot while you set it up. The note name and channel of each trigger are shown on the left. Note names have middle C (60) as C4, so the General MIDI kick (36) shows as C2.
+For each trigger, the last few seconds scroll from right to left: the level (shaded) against the Threshold (white line), and each hit as a bar as tall as its velocity. Double-triggers and missed soft hits are easy to spot while you set it up. The note name and channel of each trigger are shown on the left. Note names have middle C (60) as C3, as in Yamaha instruments and Cubase, so the General MIDI kick (36) shows as C1.
 
 ## Trigger controls
 
@@ -53,7 +53,7 @@ Click **Trigger 1** or **Trigger 2** to show that trigger's controls. Trigger 2 
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
-| **Note** | 0 to 127 | 36 (C2) / 38 (D2) | The note sent: 36 is the General MIDI kick, 38 the snare. You can type a number or a name (for example "C2"). |
+| **Note** | 0 to 127 | 36 (C1) / 38 (D1) | The note sent: 36 is the General MIDI kick, 38 the snare. You can type a number or a name (for example "C1"). |
 | **Channel** | 1 to 16 | 10 | The MIDI channel (10 is the General MIDI drum channel). |
 | **Length** | 5 to 500 ms | 50 ms | When the note-off follows. Most drum samplers ignore it; some instruments need it to stop. |
 

@@ -42,7 +42,7 @@ void RKFollowEditor::Display::paint (juce::Graphics& g)
     const auto sounding = shown.note >= 0;
     g.setColour (sounding ? Palette::text : Palette::textDim);
     g.setFont (Fonts::bold (54.0f));
-    g.drawText (sounding ? juce::MidiMessage::getMidiNoteName (shown.note, true, true, 4) : juce::String ("-"),
+    g.drawText (sounding ? juce::MidiMessage::getMidiNoteName (shown.note, true, true, 3) : juce::String ("-"),
                 noteArea.removeFromTop (70.0f), juce::Justification::centredLeft);
 
     g.setFont (Fonts::regular (12.0f));

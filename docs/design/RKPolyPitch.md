@@ -119,7 +119,7 @@ Plus **Output** and **Bypass**. No Dry/Wet: the modes are the mix (Whammy has no
 - **Shimmer unchanged:** RKVerb and RKDelay's shimmer outputs are identical before and after the PitchShifter change (their windows stay 50 and 35 ms).
 - **Validation:** auval (`aufx Ppt1 RKMu`), pluginval at strictness 10, presets, RKBoardTests.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Range list:** Violin (which also suits voice and higher instruments), Guitar, Bass. Should there be a fourth, Keys (full range, the guitar window)?
-- **A "Low latency" toggle** that shortens the window by a third (less delay, grainier low notes), for players who prefer speed to smoothness?
+- **Ranges:** Violin, Guitar, Bass (no Keys range).
+- **Low Latency** switch (`low_latency`, Off by default, appended after the controls above): shortens the shifter's windows by a third, so the Whammy delay drops by a third (violin about 5 ms, guitar about 9 ms, bass about 17 ms) at the cost of grainier low notes. The display shows the delay that applies.

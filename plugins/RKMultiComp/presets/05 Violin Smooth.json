@@ -1,0 +1,16 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Violin Smooth",
+  "params": {
+    "xover_low": 200,
+    "xover_high": 2500,
+    "low_ratio": 1.5,
+    "lmid_threshold": -22,
+    "lmid_ratio": 2,
+    "high_threshold": -28,
+    "high_ratio": 3,
+    "high_attack": 1,
+    "high_release": 60
+  }
+}

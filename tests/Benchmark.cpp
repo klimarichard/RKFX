@@ -30,6 +30,7 @@
 #include "VoiceEngine.h"
 #include "RingModEngine.h"
 #include "LoopEngine.h"
+#include "MultiCompEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -342,6 +343,22 @@ int main (int argc, char** argv)
         { "RKDeEss", "default (relative, split)", []
           {
               return makeEngine<DeEssEngine> ([] (DeEssEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKMultiComp", "default (3 bands, RMS)", []
+          {
+              return makeEngine<MultiCompEngine> ([] (MultiCompEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKMultiComp", "4 bands, peak, auto release, Dry/Wet 50%", []
+          {
+              return makeEngine<MultiCompEngine> ([] (MultiCompEngine& e)
+              {
+                  MultiCompEngine::Settings s;
+                  s.fourBands = true;
+                  s.detection = rkfx::Dynamics::LevelDetector::Mode::peak;
+                  s.autoRelease = true;
+                  s.mix = 0.5f;
+                  e.setSettings (s);
+              });
           } },
         { "RKSwell", "default", []
           {

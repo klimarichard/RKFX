@@ -1,0 +1,21 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Piezo Tame",
+  "params": {
+    "bands": "4",
+    "xover_low": 250,
+    "xover_mid": 1000,
+    "xover_high": 3500,
+    "low_threshold": -28,
+    "low_ratio": 4,
+    "low_attack": 15,
+    "low_release": 150,
+    "lmid_ratio": 1.5,
+    "hmid_threshold": -26,
+    "hmid_ratio": 3,
+    "hmid_attack": 3,
+    "hmid_release": 80,
+    "high_ratio": 1.5
+  }
+}

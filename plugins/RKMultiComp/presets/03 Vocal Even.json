@@ -1,0 +1,23 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Vocal Even",
+  "params": {
+    "bands": "4",
+    "xover_low": 200,
+    "xover_mid": 2500,
+    "xover_high": 5000,
+    "low_threshold": -26,
+    "low_ratio": 2,
+    "lmid_threshold": -24,
+    "lmid_ratio": 3,
+    "lmid_attack": 10,
+    "lmid_release": 120,
+    "hmid_threshold": -28,
+    "hmid_ratio": 4,
+    "hmid_attack": 2,
+    "hmid_release": 60,
+    "high_on": false,
+    "knee": 9
+  }
+}

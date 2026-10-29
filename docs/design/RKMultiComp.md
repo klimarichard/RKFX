@@ -49,18 +49,18 @@ Switching to 4 bands **inserts the Mid crossover inside the Mid band**: the 3-ba
 
 Each split is the existing `core/dsp/LinkwitzRiley4` (zero-latency, 4th order). An LR4 split's low and high bands add up to a 2nd-order **allpass** at the crossover frequency: the level is flat, but the phase is shifted. With more than one split, a band that didn't pass through a given split has to get that split's allpass instead, so that every band ends up with the same total phase shift and they still add up flat:
 
-- **3 bands:** input → split at Low → *low band* → allpass at High → **Low**; *upper band* → split at High → **Mid**, **High**.
-- **4 bands:** input → split at Mid → *lower half* → allpass at High → split at Low → **Low**, **Low-Mid**; *upper half* → allpass at Low → split at High → **High-Mid**, **High**.
+- **The tree (as built, used in both modes):** input → split at Mid → *lower half* → allpass at High → split at Low → **Low**, **Low-Mid**; *upper half* → allpass at Low → split at High → **High-Mid**, **High**.
+- **3 bands** add Low-Mid and High-Mid back together into **Mid** before compressing it (with the Low-Mid settings). The Mid crossover is then internal: it follows the Mid knob, kept between Low and High.
 
-Every band then carries AP(Low) · AP(High) (and AP(Mid) with 4 bands), so with all compressors idle the output is a flat allpass of the input.
+Every band then carries AP(Low) · AP(Mid) · AP(High), so with all compressors idle the output is a flat allpass of the input. (The first design had a separate 3-band tree without the Mid split; running the one tree in both modes costs a few filters more, but makes switching modes trivial, see below.)
 
-`StateVariableFilter` gets an **allpass output** (input − 2 × the unity-gain band-pass, Q = 0.707), and `LinkwitzRiley4` gets a matching `allpass (x)` helper, so the compensation uses the same filter core as the split.
+`StateVariableFilter` gets an **allpass output** (`processAllpass`: input − 2 × the unity-gain band-pass, Q = 0.707), so the compensation uses the same filter core as the split.
 
-**Crossover changes** are smoothed (the frequency glides, and coefficients are updated every 32 samples), so sweeping a crossover live never clicks. **Changing the band count** crossfades the two topologies over 20 ms (as RKParaEQ does for a mode change). The compressor state of the bands that stay is kept.
+**Crossover changes** are smoothed (the frequency glides in octaves, and coefficients are updated every 32 samples), so sweeping a crossover live never clicks. **Changing the band count** crossfades between the summed Mid (one compressor) and the two separate middles (two compressors) over 20 ms; the compressors fading in start from the state of the one fading out, and Low and High aren't touched.
 
 ### Dry/Wet without comb filtering
 
-Because the bands are phase-shifted, mixing them with the raw input would cause dips around the crossovers. The **dry signal goes through the same allpass chain** (two or three 2nd-order allpasses per channel), so Dry/Wet works like it does in RKCompress: parallel compression with no notches.
+Because the bands are phase-shifted, mixing them with the raw input would cause dips around the crossovers. The **dry signal goes through the same allpass chain** (three 2nd-order allpasses per channel). As built, the plugin applies Dry/Wet itself: the new `PluginConfig::mixInDsp` keeps the standard Dry/Wet knob but tells the base processor to mix at 100%, so Dry/Wet works like it does in RKCompress: parallel compression with no notches.
 
 **Bypass** (base processor) still passes the original, unshifted input. The 10 ms bypass crossfade blends the phase-shifted and the original signal for that moment only, which is inaudible.
 
@@ -124,16 +124,16 @@ A display across the top of the window, on the same frequency axis and grid styl
 
 ## The window
 
-About **900 × 600 px** (like RKParaEQ), scaling as usual:
+About **900 × 640 px** (as built), scaling as usual:
 
 1. The common header (presets).
-2. **The graphic**, full width, about 230 px high.
-3. **Band tabs**: Low · Mid · High (or Low · Low-Mid · High-Mid · High), each with a small gain reduction meter and its On and Solo switches. A tab and a click in the graphic select the same band.
+2. **The graphic**, full width, 270 px high.
+3. **Band tabs**: Low · Mid · High (or Low · Low-Mid · High-Mid · High), each with a slim gain reduction bar along its bottom edge (as built: the dB value is in the graphic) and its On and Solo switches. A tab and a click in the graphic select the same band.
 4. **The selected band's knobs**: Threshold, Ratio, Attack, Release, Gain. One row only, so the window stays the size of the other plugins. Every band's parameters still exist as host parameters, whether shown or not.
 5. **Crossover row**: Low, Mid (dimmed in 3-band mode), High.
 6. **Bottom row**: Bands (3 | 4), Offset, Knee, Detection, Auto release, Stereo link, Auto gain on the left; Dry/Wet, Output, Bypass on the right, as on every plugin.
 
-The selected band is a GUI setting (saved with the editor's state, not a parameter), so it doesn't mark a preset as modified.
+The selected band is a GUI setting, not a parameter, so it doesn't mark a preset as modified. As built it is kept while the plugin is loaded (closing and reopening the window keeps it), not saved with the session.
 
 ## Identity
 
@@ -156,7 +156,7 @@ Each one is a starting point in the manual.
 
 ## CPU and safety
 
-- 3 bands: two LR4 splits, one compensation allpass, two allpasses on the dry path, three compressors per channel. 4 bands: three splits, two compensation allpasses, three dry allpasses, four compressors. That's a few dozen SVF stages in total, well under 1% of one core at 48 kHz (aim: under 0.5%, measured with RKFXBench).
+- Per channel (as built, both modes): three LR4 splits, two compensation allpasses and three dry allpasses (17 SVF stages), plus three compressors (3 bands) or four (4 bands). Fully linked stereo (Link 100%) computes each band's gain once for both channels. **Measured** (RKFXBench, 48 kHz, 64 samples, stereo noise): 0.32% of one core with 3 bands, 0.47% with 4 bands, Peak, Auto Release and Dry/Wet 50% (aim: under 0.5%). RKCompress is 0.05%.
 - Allocation-free after prepare(). Bands that are off still split (to keep the sum flat), but skip their compressor.
 - No feedback paths, so nothing can run away. Gain is smoothed, crossovers glide, and the band count crossfades.
 

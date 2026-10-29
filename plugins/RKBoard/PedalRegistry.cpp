@@ -16,6 +16,7 @@
 #include "../RKGraphEQ/PluginProcessor.h"
 #include "../RKLimit/PluginProcessor.h"
 #include "../RKLoop/PluginProcessor.h"
+#include "../RKMultiComp/PluginProcessor.h"
 #include "../RKParaEQ/PluginProcessor.h"
 #include "../RKPhase/PluginProcessor.h"
 #include "../RKPreamp/PluginProcessor.h"
@@ -54,6 +55,7 @@
     X (RKGraphEQ) \
     X (RKLimit) \
     X (RKLoop) \
+    X (RKMultiComp) \
     X (RKParaEQ) \
     X (RKPhase) \
     X (RKPreamp) \
@@ -93,6 +95,7 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKVocode() { return std::make_unique<RKVocodeProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVoice() { return std::make_unique<RKVoiceProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKCompress() { return std::make_unique<RKCompressProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKMultiComp() { return std::make_unique<RKMultiCompProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKGate() { return std::make_unique<RKGateProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKLimit() { return std::make_unique<RKLimitProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKTransient() { return std::make_unique<RKTransientProcessor>(); }
@@ -132,6 +135,7 @@ const std::vector<PedalType>& pedalTypes()
         { "RKGraphEQ", "GraphEQ", Family::filterEQ, makeRKGraphEQ },
         { "RKVocode", "Vocode", Family::filterEQ, makeRKVocode },
         { "RKCompress", "Compress", Family::dynamics, makeRKCompress },
+        { "RKMultiComp", "MultiComp", Family::dynamics, makeRKMultiComp },
         { "RKGate", "Gate", Family::dynamics, makeRKGate },
         { "RKLimit", "Limit", Family::dynamics, makeRKLimit },
         { "RKTransient", "Transient", Family::dynamics, makeRKTransient },

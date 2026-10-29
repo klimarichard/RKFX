@@ -21,6 +21,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKGraphEQ](docs/manuals/RKGraphEQ.md) | Graphic EQ (10, 15 or 31 bands) with response curve | Available |
 | [RKVocode](docs/manuals/RKVocode.md) | Channel vocoder with sidechain or MIDI-played carrier | Available |
 | [RKCompress](docs/manuals/RKCompress.md) | Compressor with external sidechain, transfer curve and gain reduction meter | Available |
+| [RKMultiComp](docs/manuals/RKMultiComp.md) | Multiband compressor, 3 or 4 bands, with phase-matched Dry/Wet and a band display with draggable thresholds and crossovers | Available |
 | [RKGate](docs/manuals/RKGate.md) | Gate and expander with external sidechain and key filter | Available |
 | [RKLimit](docs/manuals/RKLimit.md) | Peak limiter with absolute ceiling | Available |
 | [RKTransient](docs/manuals/RKTransient.md) | Level-independent transient shaper | Available |

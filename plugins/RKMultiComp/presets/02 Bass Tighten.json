@@ -1,0 +1,17 @@
+{
+  "plugin": "RKMultiComp",
+  "version": 1,
+  "name": "Bass Tighten",
+  "params": {
+    "xover_low": 120,
+    "low_threshold": -26,
+    "low_ratio": 4,
+    "low_attack": 30,
+    "low_release": 200,
+    "lmid_threshold": -22,
+    "lmid_ratio": 2,
+    "high_threshold": -20,
+    "high_ratio": 1.5,
+    "gain_auto": true
+  }
+}

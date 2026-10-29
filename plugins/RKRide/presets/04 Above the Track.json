@@ -1,0 +1,12 @@
+{
+  "plugin": "RKRide",
+  "version": 1,
+  "name": "Above the Track",
+  "params": {
+    "mode": "relative",
+    "above": 3,
+    "max_boost": 8,
+    "max_cut": 8,
+    "speed": 700
+  }
+}

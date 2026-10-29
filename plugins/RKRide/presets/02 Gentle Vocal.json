@@ -1,0 +1,10 @@
+{
+  "plugin": "RKRide",
+  "version": 1,
+  "name": "Gentle Vocal",
+  "params": {
+    "max_boost": 3,
+    "max_cut": 3,
+    "speed": 1000
+  }
+}

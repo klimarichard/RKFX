@@ -35,6 +35,7 @@
 #include "../plugins/RKLoop/Parameters.h"
 #include "../plugins/RKVoice/Parameters.h"
 #include "../plugins/RKMultiComp/Parameters.h"
+#include "../plugins/RKRide/Parameters.h"
 #include "../plugins/RKHarmonize/Parameters.h"
 #include "../plugins/RKArpeggiate/Parameters.h"
 #include "../plugins/RKStrum/Parameters.h"
@@ -78,7 +79,7 @@ public:
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
             { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
             { "RKLoop", LoopParams::create, 8 },        { "RKVoice", VoiceParams::create, 7 },
-            { "RKMultiComp", MultiCompParams::create, 6 },
+            { "RKMultiComp", MultiCompParams::create, 6 }, { "RKRide", RideParams::create, 6 },
             { "RKHarmonize", HarmonizeParams::create, 6 },
             { "RKArpeggiate", ArpParams::create, 6 },    { "RKStrum", StrumParams::create, 5 },
             { "RKSustain", SustainParams::create, 5 },   { "RKConduct", ConductParams::create, 7 },

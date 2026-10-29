@@ -1,0 +1,11 @@
+{
+  "plugin": "RKRide",
+  "version": 1,
+  "name": "Violin Phrases",
+  "params": {
+    "target": -20,
+    "max_boost": 8,
+    "max_cut": 4,
+    "speed": 300
+  }
+}

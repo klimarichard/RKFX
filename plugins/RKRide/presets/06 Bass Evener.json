@@ -1,0 +1,12 @@
+{
+  "plugin": "RKRide",
+  "version": 1,
+  "name": "Bass Evener",
+  "params": {
+    "target": -20,
+    "max_boost": 4,
+    "max_cut": 4,
+    "speed": 800,
+    "floor": -55
+  }
+}

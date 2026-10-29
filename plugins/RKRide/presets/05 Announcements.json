@@ -1,0 +1,12 @@
+{
+  "plugin": "RKRide",
+  "version": 1,
+  "name": "Announcements",
+  "params": {
+    "target": -16,
+    "max_boost": 10,
+    "max_cut": 10,
+    "speed": 200,
+    "floor": -45
+  }
+}

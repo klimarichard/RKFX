@@ -107,6 +107,13 @@ About **760 × 470 px** (like RKCompress):
 - **No clicks:** a level step of 20 dB and every control swept while playing produce no step larger than the signal's own.
 - **Presets, board, validation:** RKFXPresetTests, RKBoardTests, auval (`aufx Rid1 RKMu`), pluginval at strictness 10.
 
+## As built (2026-10-29)
+
+- **Window 900 × 600** (not 760 × 470): the ride graph needs the height to show both lanes readably. The graph's gain lane is scaled to the Max Boost / Max Cut range (a little more), so small rides are visible; the fader keeps a fixed ±18 dB scale. Mode and Above Music sit in the bottom row.
+- The graph stands still while no audio is processed (the processor flags fresh meter data).
+- The gain computer runs every 16 samples; the gain glides and is applied per sample.
+- **CPU measured** (RKFXBench, 48 kHz, 64 samples, stereo): 0.03% of one core.
+
 ## Decisions (2026-10-29)
 
 - **Long pauses return to 0 dB:** after Return (default 3 s) below the Floor, the gain drifts back to 0 dB, the neutral start for every phrase after a long silence. Short pauses hold.

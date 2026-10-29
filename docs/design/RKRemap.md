@@ -136,6 +136,7 @@ The RKFX standard Bypass passes each input to the output with the same number (I
 - **Hidden-routes note** counts only hidden outputs that carry a *shown* input (see Names and views).
 - **Tests:** routing, pairs, mono sums, trim/mute/polarity, every input to every output, and click-free switching in RKFXTests (checked to fail without the crossfade); 64 channels, straight-through bit-exactness, names and views in the session, preset files, factory presets and Reset in RKBoardTests (which links the real processor; RKRemap's factory presets are registered there too, though it isn't a pedal).
 - **CPU:** 0.13% of a core with all 64 outputs routed, half of them mono sums.
+- **A single output fed by a linked pair** (always the mono sum) shows a dimmed **Mono** label where linked pairs have the Mono switch, so the summing is visible (added 2026-10-29, at the user's request).
 - **Window 1060 × 720.** Rows: number, name (double-click to edit), Source menu (inputs listed with their names; linked pairs only), trim slider, M, Ø, Mono, light, Link.
 
 ## Decisions (2026-10-29)

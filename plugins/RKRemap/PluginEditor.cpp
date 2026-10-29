@@ -123,6 +123,13 @@ RKRemapEditor::OutputRow::OutputRow (RKRemapEditor& o, int ch) : owner (o), chan
     if (ch % 2 == 0)
         link = std::make_unique<rkfx::ToggleSwitch> (*p.findParam (RemapParams::outputLinkId (ch / 2)), o.accent(), "Link");
 
+    monoNote.setText ("Mono", juce::dontSendNotification);
+    monoNote.setFont (rkfx::Fonts::regular (12.0f));
+    monoNote.setJustificationType (juce::Justification::centred);
+    monoNote.setColour (juce::Label::textColourId, rkfx::Palette::textDim);
+    monoNote.setTooltip ("A stereo pair on a single output is always summed to mono");
+    addChildComponent (monoNote);
+
     for (juce::Component* c : std::initializer_list<juce::Component*> { &name, &source, &trim, mute.get(), polarity.get(), mono.get(), &light })
         addAndMakeVisible (*c);
     if (link != nullptr)
@@ -159,7 +166,11 @@ void RKRemapEditor::OutputRow::updateLinked()
     const auto& o = owner.settings.outputs[(size_t) channel];
     const auto pairSource = o.source >= RemapEngine::kFirstPairSource
                          && owner.settings.inputLinks[(size_t) juce::jlimit (0, RemapEngine::kPairs - 1, o.source - RemapEngine::kFirstPairSource)];
-    mono->setVisible (! follower && channel % 2 == 0 && owner.settings.outputLinks[(size_t) (channel / 2)] && pairSource);
+    const auto linkedOutput = owner.settings.outputLinks[(size_t) (channel / 2)];
+    mono->setVisible (! follower && channel % 2 == 0 && linkedOutput && pairSource);
+
+    // A single output fed by a stereo pair sums it to mono: shown, not switchable.
+    monoNote.setVisible (! linkedOutput && pairSource);
     repaint();
 }
 
@@ -175,6 +186,7 @@ void RKRemapEditor::OutputRow::resized()
     light.setBounds (r.removeFromRight (16));
     r.removeFromRight (6);
     mono->setBounds (r.removeFromRight (48));
+    monoNote.setBounds (mono->getBounds());
     r.removeFromRight (4);
     polarity->setBounds (r.removeFromRight (28));
     r.removeFromRight (4);

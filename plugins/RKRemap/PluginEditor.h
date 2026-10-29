@@ -60,6 +60,7 @@ private:
         std::unique_ptr<juce::SliderParameterAttachment> trimAttachment;
         std::unique_ptr<juce::ParameterAttachment> sourceAttachment;
         std::unique_ptr<rkfx::ToggleSwitch> mute, polarity, mono, link;
+        juce::Label monoNote;                       // a single output summing a pair: always mono
         Light light;
         bool follower = false;                      // the right output of a linked pair
     };

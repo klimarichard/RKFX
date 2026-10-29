@@ -35,6 +35,7 @@ input ─┬──────────────────────�
 
 - **Wanted gain** = Target − level, limited to **Max Boost** upwards and **Max Cut** downwards.
 - **Floor:** while the level is below the Floor (a pause, breaths, stage noise between phrases), the gain **holds** where it was instead of rising. Without this, every pause would make the rider turn up the room noise, and the next phrase would start too loud.
+- **Return:** if the silence lasts longer than **Return** (default 3 s), the gain drifts back to **0 dB** (over about a second). 0 dB is the rider's neutral starting point, so after a long pause (between songs, a long instrumental) every phrase starts from it, not from wherever the last phrase left the gain. Short pauses between phrases still hold.
 - **In Relative mode** the Target isn't a fixed level but **Above Music** dB over the sidechain's level (for example a backing track), measured with the same weighting. The voice then stays a fixed amount above the music: louder in a loud chorus, softer in a quiet bridge. While the sidechain is silent (between songs), the target falls back to the absolute Target.
 
 ### Smoothing
@@ -52,6 +53,7 @@ input ─┬──────────────────────�
 | Max Cut | `max_cut` | 0 to 18 dB | 6 dB |
 | Speed | `speed` | 100 ms to 3 s | 500 ms |
 | Floor | `floor` | −70 to −20 dB | −50 dB |
+| Return | `return` | 1 to 10 s | 3 s |
 | Mode | `mode` | Absolute, Relative | Absolute |
 | Above Music (Relative only, dimmed otherwise) | `above` | −12 to +12 dB | +3 dB |
 
@@ -99,12 +101,12 @@ About **760 × 470 px** (like RKCompress):
 
 - **Converges:** a steady tone at −30 dB ends at the Target (−18 dB) within 0.3 dB; at −40 dB it stops at Max Boost; at 0 dB it stops at Max Cut.
 - **Speed:** the gain covers about 63% of a step change in the Speed time going up, and in half of it going down.
-- **Floor:** after a phrase, silence or a signal below the Floor holds the gain where it was. The next phrase starts from that gain.
+- **Floor and Return:** after a phrase, a pause shorter than Return holds the gain where it was, and the next phrase starts from it. A pause longer than Return brings the gain back to 0 dB.
 - **Relative:** with a sidechain 6 dB louder, the target rises 6 dB; with a silent sidechain it falls back to the absolute Target.
 - **Weighting:** a 40 Hz tone counts clearly less than a 1 kHz tone of the same level.
 - **No clicks:** a level step of 20 dB and every control swept while playing produce no step larger than the signal's own.
 - **Presets, board, validation:** RKFXPresetTests, RKBoardTests, auval (`aufx Rid1 RKMu`), pluginval at strictness 10.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Return to 0 dB in long pauses?** As designed, the gain holds indefinitely below the Floor, so the next song starts where the last one ended. An option could drift it back to 0 dB after a few seconds of silence. Recommendation: hold (it's usually the same singer and mic), and revisit after use.
+- **Long pauses return to 0 dB:** after Return (default 3 s) below the Floor, the gain drifts back to 0 dB, the neutral start for every phrase after a long silence. Short pauses hold.

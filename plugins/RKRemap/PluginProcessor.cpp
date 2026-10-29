@@ -29,6 +29,7 @@ RKRemapProcessor::RKRemapProcessor()
     {
         inputLinks[(size_t) pair] = findParam (inputLinkId (pair));
         outputLinks[(size_t) pair] = findParam (outputLinkId (pair));
+        inputMidSide[(size_t) pair] = findParam (inputMidSideId (pair));
     }
 }
 
@@ -49,6 +50,7 @@ RemapEngine::Settings RKRemapProcessor::currentSettings() const
     {
         s.inputLinks[(size_t) pair] = valueOf (inputLinks[(size_t) pair]) >= 0.5f;
         s.outputLinks[(size_t) pair] = valueOf (outputLinks[(size_t) pair]) >= 0.5f;
+        s.inputMidSide[(size_t) pair] = valueOf (inputMidSide[(size_t) pair]) >= 0.5f;
     }
     return s;
 }

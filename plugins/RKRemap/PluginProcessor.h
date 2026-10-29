@@ -52,7 +52,7 @@ protected:
 private:
     struct OutputParams { juce::RangedAudioParameter *source, *trim, *mute, *polarity, *mono; };
     std::array<OutputParams, kChannels> outputParams;
-    std::array<juce::RangedAudioParameter*, RemapEngine::kPairs> inputLinks {}, outputLinks {};
+    std::array<juce::RangedAudioParameter*, RemapEngine::kPairs> inputLinks {}, outputLinks {}, inputMidSide {};
 
     RemapEngine engine;
 

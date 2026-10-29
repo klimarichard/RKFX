@@ -29,18 +29,23 @@ private:
         int level = 0;
     };
 
-    /** One input: number, name (double-click to edit), light; the pair's Link on its first row. */
+    /** One input: number, name (double-click to edit), light; the pair's Link on
+        its first row. The second row of a linked pair has no name (the pair has
+        one, on its first row) but the pair's L/R | M/S switch. */
     struct InputRow : public juce::Component
     {
         InputRow (RKRemapEditor&, int channel);
         void resized() override;
         void paint (juce::Graphics&) override;
+        void updateLinked();
 
         RKRemapEditor& owner;
         const int channel;
         juce::Label name;
         Light light;
-        std::unique_ptr<rkfx::ToggleSwitch> link;   // first row of a pair only
+        std::unique_ptr<rkfx::ToggleSwitch> link;           // first row of a pair only
+        std::unique_ptr<rkfx::SegmentedSwitch> pairMode;    // second row of a pair only
+        bool follower = false;
     };
 
     /** One output: number, name, Source, Trim, Mute, Polarity, Mono, light, Link. */

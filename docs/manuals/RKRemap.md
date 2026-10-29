@@ -21,6 +21,11 @@ A route is an exact copy of its input (bit for bit) unless you set a trim, polar
 
 One row per shown input: its number, its **name** (double-click to type one, for example "Violin pickup"), and a **signal light**: dim when there is signal (above -60 dBFS), bright when it's strong (above -20 dBFS). **Link** (on the first row of each pair: 1/2, 3/4 ...) makes the pair a stereo input: it then appears in the source menus as one choice ("In 5/6").
 
+A linked pair has **one name**, on its first row. Its second row holds the pair's **L/R | M/S** switch instead:
+
+- **L/R** (default): a left/right stereo pair. In the menus its inputs read "In 1 Keys L", "In 2 Keys R", and the pair "In 1/2 Keys".
+- **M/S**: a mid/side pair (a mid mic and a figure-of-eight side mic, for example). Its inputs read "In 1 Keys Mid", "In 2 Keys Side". As a pair it is **decoded to stereo**: left = Mid + Side, right = Mid − Side (as RKUtility decodes), and its mono is the **Mid** channel alone. The decode is plain arithmetic on each sample: no latency. The mid and side signals must arrive at RKRemap time-aligned (wired straight from the interface, they are).
+
 ## Outputs
 
 One row per shown output (a linked pair shares one row of controls):
@@ -33,7 +38,7 @@ One row per shown output (a linked pair shares one row of controls):
 | **M** (mute) | off, on | off | Silences the output. |
 | **Ø** (polarity) | normal, inverted | normal | Flips the output's polarity (a reversed cable, a mic facing the other way). |
 | **Mono** | off, on | off | On a linked output pair whose source is a linked input pair: both sides get the mono sum. A single output fed by a linked pair is always mono: its row shows a dimmed **Mono** label instead of the switch. |
-| **Link** | off, on | off | Makes the output pair a stereo pair, with one set of controls (the left output's). The right output shows "linked with ...". |
+| **Link** | off, on | off | Makes the output pair a stereo pair, with one set of controls and one name (the left output's). The right output shows "linked with ...". |
 
 ### How pairs and mono sums work
 
@@ -41,12 +46,14 @@ One row per shown output (a linked pair shares one row of controls):
 | --- | --- | --- |
 | a single input | a single output | that input |
 | a single input | a linked pair | that input on both sides |
-| a linked input pair | a linked pair | left to left, right to right (or the mono sum on both, with **Mono**) |
-| a linked input pair | a single output | the mono sum |
+| a linked L/R pair | a linked pair | left to left, right to right (or the mono sum on both, with **Mono**) |
+| a linked L/R pair | a single output | the mono sum |
+| a linked M/S pair | a linked pair | decoded: left = Mid + Side, right = Mid − Side (or the Mid on both, with **Mono**) |
+| a linked M/S pair | a single output | the Mid channel |
 
 The **mono sum** is the average of left and right, as RKUtility's Width at 0%: centred sounds keep their level, a sound on one side only comes out 6 dB lower, and anything out of phase between the sides cancels (as it would on a mono PA).
 
-Example: a stereo synth bass on inputs 5/6 (linked) goes **In 5/6 → Out 5/6** (linked) in stereo to the in-ear mix, and **In 5/6 → Out 3** in mono to the front of house.
+Example: a stereo synth bass on inputs 5/6 (linked, named "Synth Bass") goes **In 5/6 → Out 5/6** (linked) in stereo to the in-ear mix, and **In 5/6 → Out 3** in mono to the front of house.
 
 Note that RKRemap **routes**: each output plays one source. Mixing several sources into one output (an in-ear mix of vocal, violin and synth) is a mixer's job; RKRemap feeds the mixer's channels.
 

@@ -138,6 +138,34 @@ public:
             expect (equal (ur.out, 0, ur.in, 4), "an unlinked pair acts as its left input");
         }
 
+        beginTest ("Mid/side pairs: decoded on a stereo output, the mid on a mono one");
+        {
+            RemapEngine::Settings s;
+            s.inputLinks[0] = true;                  // In 1/2: mid, side
+            s.inputMidSide[0] = true;
+            s.outputLinks[0] = true;                 // Out 1/2: decoded
+            s.outputs[0].source = pairSource (0);
+            s.outputs[2].source = pairSource (0);    // Out 3 (single): the mid
+            s.outputLinks[2] = true;                 // Out 5/6 with Mono: the mid on both
+            s.outputs[4].source = pairSource (0);
+            s.outputs[4].mono = true;
+            s.outputs[6].source = 2;                 // Out 7: "In 2 Side" alone, raw
+            auto e = makeEngine (s);
+            const auto r = block (e);
+
+            bool decoded = true;
+            for (int i = 0; i < kBlock; ++i)
+            {
+                const auto m = r.in.getSample (0, i), side = r.in.getSample (1, i);
+                decoded = decoded && std::abs (r.out.getSample (0, i) - (m + side)) < 1.0e-6f
+                                  && std::abs (r.out.getSample (1, i) - (m - side)) < 1.0e-6f;
+            }
+            expect (decoded, "left = M + S, right = M - S");
+            expect (equal (r.out, 2, r.in, 0), "a single output: the mid, exactly");
+            expect (equal (r.out, 4, r.in, 0) && equal (r.out, 5, r.in, 0), "Mono on a linked pair: the mid on both");
+            expect (equal (r.out, 6, r.in, 1), "the side channel alone, raw");
+        }
+
         beginTest ("Trim, mute and polarity; a linked pair follows its left output");
         {
             RemapEngine::Settings s;

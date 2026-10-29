@@ -12,7 +12,7 @@ Each gain band gets a **Dynamic** switch. When it's on, the band listens to its 
 - **Range above 0 dB (boost):** when the band's level falls **below** the Threshold, the band is turned up, by at most the Range. This lifts a range only when it's quiet: presence on a soft vocal line, body on a quiet passage.
 - **Range at 0 dB:** no dynamics.
 
-Both directions even out the dynamics of that range (downward and upward compression), so one knob covers both. Boosting louder signals or cutting quieter ones (expansion) is left out of v1; see [Open questions](#open-questions).
+Both directions even out the dynamics of that range (downward and upward compression), so one knob covers both. Boosting louder signals or cutting quieter ones (expansion) is left out of v1; see [Decisions](#decisions-2026-10-29).
 
 The HP and LP cut filters have no gain, so they stay as they are.
 
@@ -84,7 +84,7 @@ The selected band is a GUI setting held by the processor while the plugin is loa
 - **The static curve**, as today: the EQ with every dynamic gain at 0. It is redrawn only when a setting changes.
 - **The live curve:** when any band has Dynamic on, a second curve shows the EQ as it is right now, including the moving dynamic gains. It's drawn brighter, with the static curve dimmed under it, and repainted at about 30 fps, only while a dynamic gain is actually moving by more than 0.1 dB. When nothing moves, nothing is redrawn.
 - **Range markers:** at each dynamic band's frequency, a thin vertical bracket spans from its static gain to its static gain + Range, showing how far that band can move.
-- The curve stays **display-only**, as today (see [Open questions](#open-questions)).
+- The curve stays **display-only**, as today (see [Decisions](#decisions-2026-10-29)).
 
 **Cost:** the live curve needs the magnitude of up to five biquads at about 450 points per frame. That runs on the message thread, only while something moves and only while the window is open. The audio thread just publishes each band's current dynamic gain and detector level as atomics.
 
@@ -117,8 +117,8 @@ The five existing presets stay unchanged. New ones (also the starting points in 
 - **Curve:** the live curve's magnitude matches the measured response with a dynamic band held at a known gain.
 - **Board and presets:** RKBoardTests and RKFXPresetTests pass; auval (`aufx Peq1 RKMu`) and pluginval at strictness 10.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Dragging on the curve.** RKMultiComp lets you drag thresholds and crossovers. Here, dragging a band's dot to set frequency and gain (and its Range bracket end to set Range) would be natural, but it would be the first draggable EQ curve in the suite. Recommendation: keep ParaEQ display-only in this step and decide after using it.
-- **Above/Below switch.** Expansion (boost when loud, cut when quiet) would need a per-band switch. Recommendation: not in v1. It could be appended later without breaking anything.
-- **Per-band Listen** (hear what the detector hears, as in RKDeEss). Recommendation: not in v1. The level meter in the dynamics row covers setting the threshold.
+- **No dragging on the curve:** it stays display-only, as today.
+- **Above/Below switch:** not in v1 (it can be appended later).
+- **Per-band Listen:** not in v1. The level meter in the dynamics row covers setting the threshold.

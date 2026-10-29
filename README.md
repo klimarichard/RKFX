@@ -40,7 +40,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong, ducking and shimmer (repeats that climb in pitch) | Available |
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with shimmer and freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
-| [RKRemap](docs/manuals/RKRemap.md) | Patch bay: 64 inputs to 64 outputs with names, stereo and mid/side pairs, mono sums, trim, mute and polarity, for straight cables in Gig Performer | Available |
+| [RKRemap](docs/manuals/RKRemap.md) | Patch bay: 64 inputs to 64 outputs with names, stereo and mid/side pairs, mono sums, trim, mute and polarity, for straight cables in Gig Performer (about 0.1% of a CPU core) | Available |
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
 | [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |

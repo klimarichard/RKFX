@@ -120,6 +120,15 @@ When there's no single pitch (a guitar chord, a double stop, breath, a cymbal), 
 - **Silence:** Hold on silence starts no layer.
 - **Presets, board, validation:** RKFXPresetTests, RKBoardTests, auval (`aufx Hld1 RKMu`), pluginval at strictness 10.
 
+## As built (2026-10-29)
+
+- **Footswitches** follow RKLoop's pattern: Hold and Clear are momentary parameters, and presses and lifts are counted as they change, so a quick tap between two audio blocks is never missed. Footswitches should be mapped as momentary. Latch + Replace: a press holds, the next releases. Latch + Add: every press adds a layer (Clear releases). Momentary: a press holds (or adds), the lift releases everything.
+- **Five layer slots** for four layers: the fifth lets a layer fade out while a new one fades in (Add with four sounding).
+- **Note grains** are normalised for their overlap (two-period grains one output period apart sum to 1; an octave up overlaps twice as deep, an octave down half). **Texture grains** get the same ×1.6 make-up as the shimmer shifter (four grains of random phase add up to about −4 dB).
+- **Measured:** a held 220 Hz note stays within 3 cents, its level within 2 dB over 50 ms windows; a held chord keeps each tone within 3 dB (measured over 20 ms windows: grains start at random places, so a tone's phase moves from grain to grain, which a long measurement would average away although it's heard).
+- **CPU:** a cosine per grain per sample for the Hann window cost 40% of the plugin; a 2048-point table brought four texture layers (the busier kind) from 0.46% to **0.27%** of a core.
+- **Window 900 × 560.**
+
 ## Decisions (2026-10-29)
 
 - **Capture length:** fixed at 250 ms.

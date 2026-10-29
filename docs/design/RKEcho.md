@@ -84,6 +84,13 @@ Plus **Bypass**: bypassed, MIDI passes through unchanged; as bypass engages, eve
 - A sorted queue of at most 256 events, checked once per block: negligible.
 - No hanging notes: every scheduled note-on has its note-off scheduled with it; bypass and preset changes end sounding repeats; dropped events are always pending note-ons (their note-offs go with them).
 
+## As built (2026-10-29)
+
+- **Owners:** each (channel, note) has one owner token at a time. A note-on that takes a note (a repeat, or a played note) ends the current owner first; a scheduled note-off only sends if its token still owns the note; a played note's note-off is dropped when a repeat has taken the note over. Tested with repeats as long as the echo time colliding with every next one (and checked to fail without the rule).
+- **Times** are rounded to whole samples when scheduled (a swing of 20% was otherwise one sample late in floating point).
+- **As played:** a repeat lasts as long as the played note did, capped at 90% of the echo time; a repeat due before the played note has ended lasts the cap.
+- **Window 980 × 500.**
+
 ## Tests
 
 - **Timing:** repeats at Time (and at the synced division for a given tempo), within one sample, swing on every second repeat.

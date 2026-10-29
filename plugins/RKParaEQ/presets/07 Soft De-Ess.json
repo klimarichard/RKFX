@@ -1,0 +1,14 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Soft De-Ess",
+  "params": {
+    "high_freq": 6500,
+    "high_dyn": true,
+    "high_threshold": -36,
+    "high_range": -8,
+    "high_ratio": 4,
+    "high_attack": 1,
+    "high_release": 60
+  }
+}

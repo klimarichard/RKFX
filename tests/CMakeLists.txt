@@ -62,6 +62,7 @@ target_sources(RKFXTests PRIVATE
     FreqShiftTests.cpp
     FilterTests.cpp
     ParaEQTests.cpp
+    ParaEQDynamicTests.cpp
     GraphEQTests.cpp
     CompressTests.cpp
     GateTests.cpp

@@ -154,6 +154,21 @@ int main (int argc, char** argv)
                   e.setSettings (s);
               });
           } },
+        { "RKParaEQ", "all 5 gain bands dynamic, 48 dB cuts", []
+          {
+              return makeEngine<ParaEQEngine> ([] (ParaEQEngine& e)
+              {
+                  auto s = ParaEQEngine::defaults();
+                  s.highPass = { true, 60.0f, 4 };
+                  s.lowPass = { true, 15000.0f, 4 };
+                  for (auto& b : s.bands)
+                  {
+                      b.gainDb = 4.0f;
+                      b.dynamic.on = true;
+                  }
+                  e.setSettings (s);
+              });
+          } },
         { "RKGraphEQ", "default (transparent)", []
           {
               return makeEngine<GraphEQEngine> ([] (GraphEQEngine& e) { e.setSettings ({}); });

@@ -1,0 +1,16 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Acoustic Body Control",
+  "params": {
+    "lowmid_freq": 220,
+    "lowmid_q": 1.4,
+    "lowmid_gain": -2,
+    "lowmid_dyn": true,
+    "lowmid_threshold": -28,
+    "lowmid_range": -4,
+    "lowmid_ratio": 3,
+    "lowmid_attack": 15,
+    "lowmid_release": 150
+  }
+}

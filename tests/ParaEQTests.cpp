@@ -88,9 +88,9 @@ public:
             auto s = ParaEQEngine::defaults();
             s.highPass = { true, 120.0f, 2 };
             s.lowPass = { true, 9000.0f, 4 };
-            s.bands[ParaEQEngine::low] = { true, false, 150.0f, -6.0f, 0.71f };
-            s.bands[ParaEQEngine::mid] = { true, true, 1000.0f, 9.0f, 2.0f };
-            s.bands[ParaEQEngine::high] = { true, true, 6000.0f, -4.0f, 1.5f };
+            s.bands[ParaEQEngine::low] = { true, false, 150.0f, -6.0f, 0.71f, {} };
+            s.bands[ParaEQEngine::mid] = { true, true, 1000.0f, 9.0f, 2.0f, {} };
+            s.bands[ParaEQEngine::high] = { true, true, 6000.0f, -4.0f, 1.5f, {} };
 
             for (const float hz : { 60.0f, 150.0f, 400.0f, 1000.0f, 2500.0f, 6000.0f, 12000.0f })
             {
@@ -104,8 +104,8 @@ public:
         {
             ParaEQEngine engine;
             auto s = ParaEQEngine::defaults();
-            s.bands[ParaEQEngine::low] = { true, false, 200.0f, 12.0f, 0.71f };
-            s.bands[ParaEQEngine::mid] = { true, true, 300.0f, 12.0f, 1.0f };
+            s.bands[ParaEQEngine::low] = { true, false, 200.0f, 12.0f, 0.71f, {} };
+            s.bands[ParaEQEngine::mid] = { true, true, 300.0f, 12.0f, 1.0f, {} };
             engine.setSettings (s);
             engine.prepare (48000.0);
 
@@ -157,7 +157,7 @@ public:
                         s.lowPass = { rng.nextBool(), rng.nextBool() ? 1000.0f : 20000.0f, 1 + rng.nextInt (4) };
                         for (auto& b : s.bands)
                             b = { rng.nextBool(), rng.nextBool(), rng.nextBool() ? 20.0f : 20000.0f,
-                                  rng.nextBool() ? 18.0f : -18.0f, rng.nextBool() ? 0.3f : 10.0f };
+                                  rng.nextBool() ? 18.0f : -18.0f, rng.nextBool() ? 0.3f : 10.0f, {} };
                         engine.setSettings (s);
                     }
 

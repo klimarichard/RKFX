@@ -1,0 +1,17 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Vocal Harshness Tamer",
+  "params": {
+    "hp_on": true,
+    "hp_freq": 80,
+    "highmid_freq": 3200,
+    "highmid_q": 2,
+    "highmid_dyn": true,
+    "highmid_threshold": -32,
+    "highmid_range": -6,
+    "highmid_ratio": 3,
+    "highmid_attack": 5,
+    "highmid_release": 100
+  }
+}

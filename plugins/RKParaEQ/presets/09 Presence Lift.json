@@ -1,0 +1,15 @@
+{
+  "plugin": "RKParaEQ",
+  "version": 1,
+  "name": "Presence Lift",
+  "params": {
+    "highmid_freq": 2500,
+    "highmid_q": 1,
+    "highmid_dyn": true,
+    "highmid_threshold": -36,
+    "highmid_range": 4,
+    "highmid_ratio": 2,
+    "highmid_attack": 20,
+    "highmid_release": 300
+  }
+}

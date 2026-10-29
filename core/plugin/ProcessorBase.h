@@ -28,6 +28,7 @@ struct PluginConfig
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     bool midiEffect = false;         // MIDI in, MIDI out, no audio (no dry/wet, no output); also needs MIDI_EFFECT in CMake
+    bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };
@@ -113,8 +114,8 @@ public:
     juce::AudioProcessorParameter* getBypassParameter() const override;
 
     const juce::String getName() const override { return config.name; }
-    bool acceptsMidi() const override { return config.midiInput || config.midiEffect; }
-    bool producesMidi() const override { return config.midiEffect; }
+    bool acceptsMidi() const override { return config.midiInput || config.midiEffect || config.midiOutput; }
+    bool producesMidi() const override { return config.midiEffect || config.midiOutput; }
     bool isMidiEffect() const override { return config.midiEffect; }
     double getTailLengthSeconds() const override { return 0.0; }
     bool hasEditor() const override { return true; }
@@ -142,8 +143,9 @@ protected:
         positions 0 .. @p numSamples - 1). Not called while bypassed. */
     virtual void processMidi (juce::MidiBuffer& /*midi*/, int /*numSamples*/) {}
 
-    /** MIDI effects: add note-offs (at position 0) for every note the effect
-        is sounding, and forget them. Called as bypass engages. */
+    /** MIDI effects and plugins with MIDI output: add note-offs (at position
+        0) for every note the plugin is sounding, and forget them. Called as
+        bypass engages. */
     virtual void releaseMidi (juce::MidiBuffer& /*midi*/) {}
 
     /** Host tempo and beat position at the start of the buffer handed to
@@ -161,6 +163,11 @@ protected:
         inside processDsp only; nullptr for plugins without MIDI input. */
     const juce::MidiBuffer* getMidi() const noexcept { return config.midiInput ? midiIn : nullptr; }
     int getChunkStart() const noexcept { return chunkStart; }
+
+    /** Plugins with MIDI output (config.midiOutput): sends @p message at
+        @p sampleInChunk of the buffer handed to processDsp(). Dropped while
+        bypassed, so nothing starts after releaseMidi(). Audio thread only. */
+    void sendMidi (const juce::MidiMessage& message, int sampleInChunk);
 
     /** Declares the latency the plugin's DSP adds (oversampling only; every
         other plugin reports 0). Safe from any thread: the dry signal (used by
@@ -222,6 +229,7 @@ private:
     std::atomic<bool> applyingValues { false };
 
     bool midiBypassed = false;
+    juce::MidiBuffer midiOut;   // what plugins with MIDI output send this block
 
     static BusesProperties makeBuses (bool withSidechain, bool midiEffect);
     void processChunk (juce::AudioBuffer<float>& chunk);

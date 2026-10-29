@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Kick Piezo",
+  "params": {
+    "t1_lpf": 2000,
+    "t1_mask": 50,
+    "t1_note": 36
+  }
+}

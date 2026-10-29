@@ -1,0 +1,12 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Cajon",
+  "params": {
+    "mode": "dual",
+    "t1_lpf": 300,
+    "t1_note": 36,
+    "t2_hpf": 500,
+    "t2_note": 38
+  }
+}

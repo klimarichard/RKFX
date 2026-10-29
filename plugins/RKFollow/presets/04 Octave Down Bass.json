@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Octave Down Bass",
+  "params": {
+    "transpose": -12,
+    "bend": "off",
+    "retrigger": 18
+  }
+}

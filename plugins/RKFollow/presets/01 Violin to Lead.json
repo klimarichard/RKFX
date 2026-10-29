@@ -1,0 +1,9 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Violin to Lead",
+  "params": {
+    "bend": "on",
+    "bend_range": "2"
+  }
+}

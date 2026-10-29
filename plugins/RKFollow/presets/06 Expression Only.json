@@ -1,0 +1,11 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Expression Only",
+  "params": {
+    "notes": false,
+    "expr_floor": -55,
+    "expr_ceiling": -12,
+    "expr_response": 80
+  }
+}

@@ -70,14 +70,17 @@ endforeach()
 # factory preset lists).
 add_subdirectory(plugins/RKBoard)
 
-# MIDI effects (MIDI in, MIDI out, no audio): the MIDI family. Not on the
-# pedalboard, whose pedals are audio effects.
+# The MIDI family: MIDI effects (MIDI in, MIDI out, no audio), and audio
+# effects that send MIDI (RKFollow, RKTrigger). Not on the pedalboard, whose
+# pedals pass audio only.
 set(RKFX_MIDI_PLUGINS
     RKHarmonize
     RKArpeggiate
     RKStrum
     RKSustain
     RKConduct
+    RKFollow
+    RKTrigger
 )
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})

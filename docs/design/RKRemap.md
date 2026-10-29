@@ -73,7 +73,7 @@ The **Source** parameter's values are 0 = Off, 1–64 = In 1–64, 65–96 = In 
 ## Names and views (not parameters)
 
 - **A name for every input and output** ("Violin pickup", "Vocal mic", "IEM L"), shown in the lists and the source menus ("In 5/6 · Synth Bass").
-- **Inputs shown** and **Outputs shown** (1 to 64 each, defaults 16 and 16): how many the window lists. They only change the view; hidden channels keep routing. An output that is hidden but still has a source is counted in a note under the list ("3 hidden outputs routed"), so nothing plays unnoticed.
+- **Inputs shown** and **Outputs shown** (1 to 64 each, defaults 16 and 16): how many the window lists. They only change the view; hidden channels keep routing. A hidden output that carries a **shown** input is counted in a note under the list ("3 hidden outputs carry shown inputs"), so nothing plays unnoticed. (As built: hidden outputs fed by hidden inputs, such as the straight-through default beyond the shown channels, aren't counted; counting every routed hidden output flagged 48 harmless default routes.)
 
 Names and view counts are part of a patch bay's setup, so they belong in **presets** as well as in the session. Today a plugin's extra state (RKConduct's MIDI file) is saved with the session only. **Core change:** `PluginConfig::extraInPresets`: when set, `getExtraState()` is also written to and read from preset files (as "extra", as in the host state).
 

@@ -63,6 +63,7 @@ set(RKFX_PLUGINS
     RKRide
     RKHold
     RKPolyPitch
+    RKRemap
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})

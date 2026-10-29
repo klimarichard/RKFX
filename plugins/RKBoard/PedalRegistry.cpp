@@ -75,6 +75,7 @@
     X (RKVerb) \
     X (RKOctave) \
     X (RKPolyPitch) \
+    X (RKRemap) \
     X (RKVibrato) \
     X (RKVocode) \
     X (RKVoice) \

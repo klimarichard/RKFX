@@ -1,0 +1,12 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Bass Octave Down",
+  "params": {
+    "mode": "harmony",
+    "range": "bass",
+    "heel": -12,
+    "toe": -12,
+    "tone": 2000
+  }
+}

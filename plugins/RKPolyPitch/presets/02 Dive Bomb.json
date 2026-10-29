@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Dive Bomb",
+  "params": {
+    "mode": "whammy",
+    "heel": 0,
+    "toe": -24,
+    "glide": 80
+  }
+}

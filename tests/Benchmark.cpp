@@ -35,6 +35,7 @@
 #include "FollowEngine.h"
 #include "TriggerEngine.h"
 #include "HoldEngine.h"
+#include "PolyPitchEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -447,6 +448,34 @@ int main (int argc, char** argv)
               return Processor ([engine] (juce::AudioBuffer<float>& buffer)
               {
                   engine->process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
+              });
+          } },
+        { "RKPolyPitch", "whammy, guitar, +12", []
+          {
+              return makeEngine<PolyPitchEngine> ([] (PolyPitchEngine& e)
+              {
+                  PolyPitchEngine::Settings s;
+                  s.heel = s.toe = 12.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPolyPitch", "whammy, bass, +24 (most splices)", []
+          {
+              return makeEngine<PolyPitchEngine> ([] (PolyPitchEngine& e)
+              {
+                  PolyPitchEngine::Settings s;
+                  s.range = PolyPitchEngine::Range::bass;
+                  s.heel = s.toe = 24.0f;
+                  e.setSettings (s);
+              });
+          } },
+        { "RKPolyPitch", "detune", []
+          {
+              return makeEngine<PolyPitchEngine> ([] (PolyPitchEngine& e)
+              {
+                  PolyPitchEngine::Settings s;
+                  s.mode = PolyPitchEngine::Mode::detune;
+                  e.setSettings (s);
               });
           } },
         { "RKSwell", "default", []

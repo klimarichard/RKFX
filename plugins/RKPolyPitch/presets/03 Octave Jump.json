@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Octave Jump",
+  "params": {
+    "mode": "whammy",
+    "toe": 12,
+    "rise": 30,
+    "fall": 100
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Detune Double",
+  "params": {
+    "mode": "detune",
+    "detune": 10,
+    "width": 80
+  }
+}

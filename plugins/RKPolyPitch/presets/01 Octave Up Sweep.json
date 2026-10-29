@@ -1,0 +1,10 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Octave Up Sweep",
+  "params": {
+    "mode": "whammy",
+    "heel": 0,
+    "toe": 12
+  }
+}

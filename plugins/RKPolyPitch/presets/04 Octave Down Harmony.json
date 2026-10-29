@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Octave Down Harmony",
+  "params": {
+    "mode": "harmony",
+    "heel": -12,
+    "toe": -12,
+    "voice_level": -2
+  }
+}

@@ -62,6 +62,7 @@ set(RKFX_PLUGINS
     RKMultiComp
     RKRide
     RKHold
+    RKPolyPitch
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})

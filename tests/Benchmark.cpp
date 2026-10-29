@@ -34,6 +34,7 @@
 #include "RideEngine.h"
 #include "FollowEngine.h"
 #include "TriggerEngine.h"
+#include "HoldEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -420,6 +421,32 @@ int main (int argc, char** argv)
                   s.triggers[0].lowPassHz = 2000.0f;
                   s.triggers[1].highPassHz = 100.0f;
                   e.setSettings (s);
+              });
+          } },
+        { "RKHold", "four texture layers, octave down", []
+          {
+              // Fill the history, then hold four layers (texture: the busier kind), before timing.
+              auto engine = std::make_shared<HoldEngine>();
+              HoldEngine::Settings s;
+              s.add = true;
+              s.octave = -1;
+              s.mode = HoldEngine::Mode::texture;
+              engine->setSettings (s);
+              engine->prepare (kRate);
+              juce::Random rng (7);
+              juce::AudioBuffer<float> b (2, kBlock);
+              for (int block = 0; block < 1000; ++block)
+              {
+                  for (int ch = 0; ch < 2; ++ch)
+                      for (int i = 0; i < kBlock; ++i)
+                          b.setSample (ch, i, rng.nextFloat() - 0.5f);
+                  engine->process (b.getArrayOfWritePointers(), 2, kBlock);
+                  if (block >= 900 && block % 20 == 0)
+                      engine->hold();
+              }
+              return Processor ([engine] (juce::AudioBuffer<float>& buffer)
+              {
+                  engine->process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
               });
           } },
         { "RKSwell", "default", []

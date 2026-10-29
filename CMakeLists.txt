@@ -61,6 +61,7 @@ set(RKFX_PLUGINS
     RKVoice
     RKMultiComp
     RKRide
+    RKHold
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})

@@ -1,0 +1,10 @@
+{
+  "plugin": "RKHold",
+  "version": 1,
+  "name": "Chord Builder",
+  "params": {
+    "mode": "auto",
+    "layers": "add",
+    "width": 80
+  }
+}

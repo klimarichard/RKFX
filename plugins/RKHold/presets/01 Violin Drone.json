@@ -1,0 +1,13 @@
+{
+  "plugin": "RKHold",
+  "version": 1,
+  "name": "Violin Drone",
+  "params": {
+    "mode": "note",
+    "hold_mode": "latch",
+    "layers": "replace",
+    "attack": 300,
+    "release": 2000,
+    "movement": 40
+  }
+}

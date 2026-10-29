@@ -113,7 +113,14 @@ A display across the top of the window, on the same frequency axis and grid styl
 
 **Cost**: the static parts (grid, crossover and threshold lines, labels) are drawn into a cached image that is redrawn only when a parameter changes, as in RKParaEQ. The live columns repaint at about 30 fps, limited to the display area, from per-band atomics the audio thread already has (the detector level and gain reduction of each band, as RKCompress's meter uses). Nothing is analysed for the display, so it adds no audio-thread work.
 
-**Not an FFT analyser.** The "spectrum" is the per-band level columns, not a continuous spectrum curve. A real analyser would need an FFT running on the message thread while the window is open. It wouldn't affect latency, but it would cost CPU on stage and goes against the lightweight goal. See [Open questions](#open-questions).
+**Not an FFT analyser.** The "spectrum" is the per-band level columns, not a continuous spectrum curve. A real analyser would need an FFT running on the message thread while the window is open. It wouldn't affect latency, but it would cost CPU on stage and goes against the lightweight goal (see [Decisions](#decisions-2026-10-29)).
+
+### Dragging
+
+- **Threshold lines** drag up and down and set that band's Threshold. The line shows the threshold including Offset; the stored Threshold is the line's value minus Offset. **Crossover lines** drag sideways and set that crossover. Nothing else in the graphic can be dragged. A click anywhere else in a band's region selects that band.
+- Each line has a hit zone of a few pixels, and the cursor changes over it. Shift-drag is fine (as on the knobs), and double-click resets to the default, as on the knobs.
+- A drag is one host gesture (begin, change, end), so it automates and undoes like turning the knob, and the knob follows.
+- **Cost**: dragging only sets parameters. The audio thread sees the same smoothed parameter changes it gets from a knob, so the DSP doesn't change. On the GUI side, the cached static image is redrawn once per parameter change, at most once per display frame (about 30 fps) during a drag, and only while the mouse button is down. When nothing is being dragged, the graphic costs exactly the same as a display-only one.
 
 ## The window
 
@@ -163,8 +170,8 @@ Each one is a starting point in the manual.
 - **No clicks**: sweeping crossovers, switching 3 ↔ 4 bands, and toggling Solo and Band On on a sustained tone produce no discontinuity above the usual click threshold.
 - **Presets**: all factory presets load (RKFXPresetTests), and the plugin is added to `RKFX_ENGINE_PLUGINS`. auval (`aufx Mbc1 RKMu`) and pluginval at strictness 10 pass.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Dragging in the graphic.** RKParaEQ's curve is display-only ("use the knobs"). Here, dragging a threshold line up and down, or a crossover line sideways, would be the natural way to set them. Recommendation: allow dragging just these two kinds of lines (with the knobs following), and treat it as a deliberate exception to display-only graphics.
-- **A real spectrum analyser** behind the band columns (a display-only FFT, running only while the window is open, with a switch in the graphic). It wouldn't break zero latency, but it costs CPU while the window is open. Recommendation: not in v1. The level columns show what the compressor reacts to, which is what matters for setting it.
-- **External sidechain** split by the same crossovers (ducking per band). Not in v1: rarely needed live, and the base processor already supports it if wanted later.
+- **Dragging in the graphic: yes**, a deliberate exception to RKFX's display-only graphics, as long as it costs little. Only the threshold lines (up and down) and the crossover lines (sideways) can be dragged; see [Dragging](#dragging).
+- **A real spectrum analyser: not in v1.** The level columns show what the compressor reacts to, which is what matters for setting it.
+- **External sidechain per band: not in v1.** It's rarely needed live, and the base processor already supports sidechains if it's wanted later.

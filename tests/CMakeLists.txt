@@ -32,6 +32,7 @@ set(RKFX_ENGINE_PLUGINS
     RKLoop/LoopEngine
     RKVoice/VoiceEngine
     RKMultiComp/MultiCompEngine
+    RKRide/RideEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -96,6 +97,7 @@ target_sources(RKFXTests PRIVATE
     SustainTests.cpp
     ConductTests.cpp
     MultiCompTests.cpp
+    RideTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

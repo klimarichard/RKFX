@@ -31,6 +31,7 @@
 #include "RingModEngine.h"
 #include "LoopEngine.h"
 #include "MultiCompEngine.h"
+#include "RideEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -67,7 +68,7 @@ namespace
         return [engine] (juce::AudioBuffer<float>& b)
         {
             if constexpr (std::is_same_v<Engine, CompressorEngine> || std::is_same_v<Engine, GateEngine>
-                      || std::is_same_v<Engine, VocodeEngine>)
+                      || std::is_same_v<Engine, VocodeEngine> || std::is_same_v<Engine, RideEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), nullptr, 0);
             else if constexpr (std::is_same_v<Engine, FilterEngine> || std::is_same_v<Engine, TremoloEngine>
                                || std::is_same_v<Engine, ChorusEngine> || std::is_same_v<Engine, FlangeEngine>
@@ -374,6 +375,10 @@ int main (int argc, char** argv)
                   s.mix = 0.5f;
                   e.setSettings (s);
               });
+          } },
+        { "RKRide", "default", []
+          {
+              return makeEngine<RideEngine> ([] (RideEngine& e) { e.setSettings ({}); });
           } },
         { "RKSwell", "default", []
           {

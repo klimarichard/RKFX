@@ -124,6 +124,7 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     const auto numChannels = juce::jmax (getMainBusNumInputChannels(), getMainBusNumOutputChannels());
 
     dryBuffer.setSize (numChannels, maxBlock, false, false, true);
+    midiOut.ensureSize (8192);   // MIDI output is written on the audio thread: no allocation there
     dryDelay.setSize (numChannels, kMaxLatency + 1, false, true, true);
     dryDelayWrite = 0;
 
@@ -187,6 +188,15 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
     outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
     outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
 
+    // MIDI output: as bypass engages, end what the plugin is sounding first.
+    if (config.midiOutput)
+    {
+        const auto bypassed = valueOf (bypassParam) >= 0.5f;
+        if (bypassed && ! midiBypassed)
+            releaseMidi (midiOut);
+        midiBypassed = bypassed;
+    }
+
     updateTransport();
     const auto blockPpq = transport.ppq;
     const auto quartersPerSample = transport.bpm / (60.0 * getSampleRate());
@@ -207,8 +217,19 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         processChunk (chunk);
     }
 
-    // Effects never pass MIDI on.
+    // Effects never pass MIDI on; those with MIDI output send their own.
     midi.clear();
+    if (config.midiOutput)
+    {
+        midi.addEvents (midiOut, 0, -1, 0);
+        midiOut.clear();
+    }
+}
+
+void ProcessorBase::sendMidi (const juce::MidiMessage& message, int sampleInChunk)
+{
+    if (config.midiOutput && ! midiBypassed)
+        midiOut.addEvent (message, chunkStart + sampleInChunk);
 }
 
 void ProcessorBase::updateTransport()

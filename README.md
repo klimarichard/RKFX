@@ -50,7 +50,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 
 ### MIDI effects
 
-The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controllers in front of an instrument:
+The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MIDI controllers in front of an instrument, and two plugins that turn audio into MIDI:
 
 | Plugin | Effect | Status |
 | --- | --- | --- |
@@ -59,6 +59,8 @@ The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controller
 | [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
 | [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
 | [RKConduct](docs/manuals/RKConduct.md) | MIDI file player conducted by taps: tap the beats (or bars, in any time signature), the notes in between follow your tempo | Available |
+| [RKFollow](docs/manuals/RKFollow.md) | Pitch and expression to MIDI: a violin, voice or any single line plays a synth, with pitch bend (or MPE) and your dynamics as a controller; the audio passes through untouched | Available |
+| [RKTrigger](docs/manuals/RKTrigger.md) | Drum trigger: hits on a piezo, drum mic or instrument body to MIDI notes, one or two triggers, with crosstalk rejection | Available |
 
 ### RKBoard
 
@@ -71,8 +73,9 @@ The MIDI family (MIDI in, MIDI out, no audio), for keyboards and MIDI controller
 
 ## Formats and requirements
 
-- macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out.
+- macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out; RKFollow and RKTrigger are AU music effects and VST3 effects with audio in and out and MIDI out.
 - Mono and stereo; sample rates 44.1 to 192 kHz.
+- Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).
 - Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`.

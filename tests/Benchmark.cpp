@@ -32,6 +32,8 @@
 #include "LoopEngine.h"
 #include "MultiCompEngine.h"
 #include "RideEngine.h"
+#include "FollowEngine.h"
+#include "TriggerEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -75,6 +77,12 @@ namespace
                                || std::is_same_v<Engine, PhaseEngine> || std::is_same_v<Engine, DelayEngine>
                                || std::is_same_v<Engine, VibratoEngine> || std::is_same_v<Engine, RingModEngine>)
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), {});
+            else if constexpr (std::is_same_v<Engine, FollowEngine> || std::is_same_v<Engine, TriggerEngine>)
+            {
+                static juce::MidiBuffer midi;   // MIDI out, cleared every block
+                midi.clear();
+                engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples(), midi);
+            }
             else
                 engine->process (b.getArrayOfWritePointers(), b.getNumChannels(), b.getNumSamples());
         };
@@ -398,6 +406,21 @@ int main (int argc, char** argv)
         { "RKRide", "default", []
           {
               return makeEngine<RideEngine> ([] (RideEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKFollow", "default (notes, bend, expression)", []
+          {
+              return makeEngine<FollowEngine> ([] (FollowEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKTrigger", "dual, filters", []
+          {
+              return makeEngine<TriggerEngine> ([] (TriggerEngine& e)
+              {
+                  TriggerEngine::Settings s;
+                  s.mode = TriggerEngine::Mode::dual;
+                  s.triggers[0].lowPassHz = 2000.0f;
+                  s.triggers[1].highPassHz = 100.0f;
+                  e.setSettings (s);
+              });
           } },
         { "RKSwell", "default", []
           {

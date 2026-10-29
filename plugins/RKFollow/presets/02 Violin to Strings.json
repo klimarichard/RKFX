@@ -1,0 +1,11 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Violin to Strings",
+  "params": {
+    "bend": "off",
+    "vel_min": 60,
+    "vel_max": 110,
+    "expr_response": 200
+  }
+}

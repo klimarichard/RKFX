@@ -1,0 +1,12 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Snare Piezo",
+  "params": {
+    "t1_hpf": 100,
+    "t1_threshold": -32,
+    "t1_mask": 30,
+    "t1_retrigger": 6,
+    "t1_note": 38
+  }
+}

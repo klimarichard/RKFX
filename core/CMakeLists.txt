@@ -32,17 +32,18 @@ target_sources(rkfx_core INTERFACE
 )
 
 # ---------------------------------------------------------------------------
-# rkfx_add_plugin(<Name> CODE <Abc1> BUNDLE_ID <id> [MIDI_INPUT | MIDI_EFFECT] SOURCES <files...>)
+# rkfx_add_plugin(<Name> CODE <Abc1> BUNDLE_ID <id> [MIDI_INPUT | MIDI_OUTPUT | MIDI_EFFECT] SOURCES <files...>)
 #
 # One call per plugin. Identity fields shared by the whole suite (vendor,
 # manufacturer code, formats, effect type) live here so they can't drift.
 # CODE and BUNDLE_ID are permanent: never change them after a release.
 # ---------------------------------------------------------------------------
 function(rkfx_add_plugin name)
-    cmake_parse_arguments(ARG "MIDI_INPUT;MIDI_EFFECT" "CODE;BUNDLE_ID" "SOURCES" ${ARGN})
+    cmake_parse_arguments(ARG "MIDI_INPUT;MIDI_OUTPUT;MIDI_EFFECT" "CODE;BUNDLE_ID" "SOURCES" ${ARGN})
 
-    # MIDI input (vocoder carrier) makes the AU a music effect (aumf); a MIDI
-    # effect (MIDI in and out, no audio) is a MIDI processor (aumi).
+    # MIDI input (vocoder carrier) makes the AU a music effect (aumf), as does
+    # MIDI output from an audio effect (pitch or hits to MIDI); a MIDI effect
+    # (MIDI in and out, no audio) is a MIDI processor (aumi).
     set(midiOut FALSE)
     set(midiEffect FALSE)
     if(ARG_MIDI_EFFECT)
@@ -50,6 +51,10 @@ function(rkfx_add_plugin name)
         set(midiOut TRUE)
         set(midiEffect TRUE)
         set(auType kAudioUnitType_MIDIProcessor)
+    elseif(ARG_MIDI_OUTPUT)
+        set(needsMidi TRUE)
+        set(midiOut TRUE)
+        set(auType kAudioUnitType_MusicEffect)
     elseif(ARG_MIDI_INPUT)
         set(needsMidi TRUE)
         set(auType kAudioUnitType_MusicEffect)

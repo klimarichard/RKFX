@@ -1,0 +1,10 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Pad Only",
+  "params": {
+    "audio": "mute",
+    "t1_mask": 25,
+    "t1_dynamics": 36
+  }
+}

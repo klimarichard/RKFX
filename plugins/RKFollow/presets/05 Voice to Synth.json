@@ -1,0 +1,10 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Voice to Synth",
+  "params": {
+    "range": "voice",
+    "threshold": -45,
+    "glide": 20
+  }
+}

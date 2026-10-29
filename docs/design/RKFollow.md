@@ -28,7 +28,7 @@ input ────────────────────────�
 ## Pitch tracking
 
 - The shared **`core/dsp/PitchTracker`** (zero latency, a report per cycle), as in RKOctave, RKSynth and RKVoice, with the same **Range** choices: Violin (default), Voice, Guitar, Bass.
-- **Note:** the tracked frequency rounded to the nearest semitone (A4 = 440 Hz), with RKVoice's **hysteresis**: a move of up to 2 semitones only changes the note once the pitch has been more than 70 cents away for 40 ms, so vibrato and scoops don't flip notes. Bigger moves (a new note) switch at once.
+- **Note:** the tracked frequency rounded to the nearest semitone (A = 440 Hz, MIDI note 69), with RKVoice's **hysteresis**: a move of up to 2 semitones only changes the note once the pitch has been more than 70 cents away for 40 ms, so vibrato and scoops don't flip notes. Bigger moves (a new note) switch at once.
 - **No pitch** (below the Threshold, noise, breath): no note.
 
 ## Notes
@@ -149,7 +149,7 @@ The audio has **zero latency**. A note starts once the tracker has confirmed its
 ## Tests
 
 - **Notes:** a sine sweep through semitones gives the right note numbers (with Transpose), each on, then off; legato order (new on before old off).
-- **Hysteresis:** ±40 cent vibrato on A4 stays one note, with the bend following it; a 3-semitone jump switches at once.
+- **Hysteresis:** ±40 cent vibrato on A 440 Hz stays one note, with the bend following it; a 3-semitone jump switches at once.
 - **Bend:** a note 30 cents sharp sends the matching bend for ±2 and ±48 ranges; no bend messages when Bend is Off.
 - **MPE:** consecutive notes on rotating channels 2..15, configuration message first.
 - **Velocity:** soft and loud onsets map to Min and Max; Min = Max gives a fixed velocity.
@@ -158,6 +158,14 @@ The audio has **zero latency**. A note starts once the tracker has confirmed its
 - **Never hanging:** bypass mid-note, silence mid-note, Range change mid-note all end with every note off.
 - **Audio untouched:** output equals input, bit for bit.
 - **Validation:** auval (`aumf Flw1 RKMu`), pluginval at strictness 10, presets.
+
+## As built (2026-10-29)
+
+- **Pitch measured over ~12 ms of cycles, not one cycle.** The tracker gives each cycle's length in whole samples: fine for RKVoice's shifter, but too coarse for MIDI (at 2 kHz, a sample is about 50 cents, so notes would flicker and the bend would be off). RKFollow measures the time across the cycles of the last 12 ms (at least two), which puts the pitch within about 2 cents.
+- **First notes and jumps are confirmed.** A note's first cycles read flat or sharp while the tracker's filter settles, which sent a wrong note (a semitone off) for ~40 ms before the right one. A first note or a jump now needs three cycles agreeing within 1.5% on it, and the tracker's own (filter) pitch agreeing too. Measured: a note starts 28 ms into an A 440 Hz; a jump of three semitones lands 16 ms after it is played.
+- **Core:** as designed. `sendMidi()` also drops anything sent while bypassed, so nothing can start after the bypass note-offs.
+- **Note names** with middle C = C3 (Yamaha, Cubase), the suite's convention: A 440 Hz shows as A3.
+- **Window 1000 × 630.** CPU measured 0.08% of one core (RKFXBench).
 
 ## Decisions (2026-10-29)
 

@@ -1,0 +1,14 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Kick and Snare",
+  "params": {
+    "mode": "dual",
+    "t1_lpf": 2000,
+    "t1_mask": 50,
+    "t2_hpf": 100,
+    "t2_threshold": -32,
+    "t2_mask": 30,
+    "crosstalk": 50
+  }
+}

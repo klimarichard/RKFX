@@ -1,0 +1,9 @@
+{
+  "plugin": "RKFollow",
+  "version": 1,
+  "name": "Violin MPE",
+  "params": {
+    "bend": "mpe",
+    "bend_range": "48"
+  }
+}

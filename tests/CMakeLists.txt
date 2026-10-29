@@ -33,6 +33,8 @@ set(RKFX_ENGINE_PLUGINS
     RKVoice/VoiceEngine
     RKMultiComp/MultiCompEngine
     RKRide/RideEngine
+    RKFollow/FollowEngine
+    RKTrigger/TriggerEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -99,6 +101,8 @@ target_sources(RKFXTests PRIVATE
     MultiCompTests.cpp
     RideTests.cpp
     ShimmerTests.cpp
+    FollowTests.cpp
+    TriggerTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

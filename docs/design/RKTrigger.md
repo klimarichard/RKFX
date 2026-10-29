@@ -12,7 +12,7 @@ RKTrigger turns hits into MIDI notes: a piezo on a drum or a practice pad, a dru
 - **A pad or cajón as a drum kit:** two piezos, two sounds.
 - **Body tap:** a knock on the violin or guitar body triggers a percussion sample, or a footswitch-free cue.
 
-Up to **two triggers**: the left and right inputs separately (Dual), or both summed into one (Mono).
+Up to **two triggers**: the left and right inputs separately (Dual), or both summed into one (Mono). Note names follow the suite's convention: middle C (60) is C3 (Yamaha, Cubase), so the General MIDI kick (36) shows as C1.
 
 ## Signal flow (per trigger)
 
@@ -36,7 +36,7 @@ input ────────────────────────�
 ## Velocity and notes
 
 - **Velocity:** the hit's peak between the Threshold (→ **Velocity Min**) and the Threshold + **Dynamics** dB (→ **Velocity Max**, Dynamics 6 to 48 dB, default 30 dB), with a **Curve** (−100 to +100%, 0 = linear in dB). Min = Max gives a fixed velocity.
-- **Note** (0 to 127, defaults 36 for trigger 1 (kick, C1), 38 for trigger 2 (snare, D1)) and **Channel** (1 to 16; default 10, the General MIDI drum channel), per trigger.
+- **Note** (0 to 127, defaults 36 for trigger 1 (kick, shown as C1), 38 for trigger 2 (snare, D1)) and **Channel** (1 to 16; default 10, the General MIDI drum channel), per trigger.
 - **Note Length** (5 to 500 ms, default 50 ms): the note-off follows after this time. Most drum samplers ignore it, but some instruments need a note-off to stop.
 
 ## Audio
@@ -101,7 +101,7 @@ The audio has **zero latency** (Thru). Each note leaves at the end of its **Scan
 | Kick Piezo | Mono, High-Pass Off, Low-Pass 2 kHz, Threshold −30 dB, Mask 50 ms, note 36 |
 | Snare Piezo | Mono, High-Pass 100 Hz, Threshold −32 dB, Mask 30 ms, Retrigger 6 dB (rolls), note 38 |
 | Kick and Snare | Dual, the two above on L and R, Crosstalk 50% |
-| Cajón | Dual: bass (L, Low-Pass 300 Hz) note 36, slap (R, High-Pass 1 kHz) note 38, Audio Thru |
+| Cajón | Dual: bass (L, Low-Pass 300 Hz) note 36, slap (R, High-Pass 500 Hz) note 38, Audio Thru |
 | Body Tap | Mono, High-Pass 200 Hz, Threshold −20 dB, Mask 150 ms, fixed velocity 100, note 60: a knock on the instrument as a cue |
 | Pad Only | Mono, Audio Mute, Mask 25 ms, Dynamics 36 dB |
 
@@ -109,6 +109,13 @@ The audio has **zero latency** (Thru). Each note leaves at the end of its **Scan
 
 - Per trigger: two SVF stages, a peak envelope and a few comparisons per sample. Far under 0.1% of a core.
 - Never a hanging note: every note-on has its scheduled note-off. Bypass, preset changes and Note or Channel changes end sounding notes first.
+
+## As built (2026-10-29)
+
+- **Rearming after the Mask.** As designed, once the Mask ended a drum still ringing above the Threshold would fire again on every cycle. A new hit (after the Mask, and for Retrigger inside it) is now measured against a reference level: set to the last hit's peak, following the signal with a 5 ms attack (a new hit outruns it, a ring doesn't) and a 50 ms release. After the Mask a new hit has to rise 6 dB above it. Tested with rings of 30, 150 and 400 ms: one note each.
+- **Note names** follow the suite's convention, middle C = C3 (Yamaha, Cubase; set 2026-10-29, also in RKFollow, RKVoice, RKConduct, RKVocode), so note 36 shows as C1 and 38 as D1.
+- **Cajón preset:** High-Pass 500 Hz (the top of the range), not 1 kHz.
+- **Window 900 × 640**, one trigger's controls at a time (Trigger 1 / Trigger 2 tabs). CPU measured 0.09% of one core, dual with filters.
 
 ## Tests
 

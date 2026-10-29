@@ -1,0 +1,14 @@
+{
+  "plugin": "RKTrigger",
+  "version": 1,
+  "name": "Body Tap",
+  "params": {
+    "t1_hpf": 200,
+    "t1_threshold": -20,
+    "t1_mask": 150,
+    "t1_vel_min": 100,
+    "t1_vel_max": 100,
+    "t1_note": 60,
+    "t1_channel": 1
+  }
+}

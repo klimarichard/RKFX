@@ -82,6 +82,7 @@ set(RKFX_MIDI_PLUGINS
     RKConduct
     RKFollow
     RKTrigger
+    RKEcho
 )
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})

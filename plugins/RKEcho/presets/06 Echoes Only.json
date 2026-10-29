@@ -1,0 +1,12 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Echoes Only",
+  "params": {
+    "original": false,
+    "sync": true,
+    "division": "1/4d",
+    "repeats": 3,
+    "channel": 2
+  }
+}

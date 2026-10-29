@@ -1,0 +1,11 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Dotted Eighths",
+  "params": {
+    "sync": true,
+    "division": "1/8d",
+    "repeats": 4,
+    "feedback": 65
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Rising Fifths",
+  "params": {
+    "sync": true,
+    "division": "1/8",
+    "repeats": 5,
+    "step": 7,
+    "feedback": 80
+  }
+}

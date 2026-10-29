@@ -1,0 +1,13 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Ping-Pong Instruments",
+  "params": {
+    "sync": true,
+    "division": "1/4",
+    "repeats": 6,
+    "channel": 2,
+    "alternate": 3,
+    "feedback": 75
+  }
+}

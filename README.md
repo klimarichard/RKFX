@@ -40,6 +40,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong, ducking and shimmer (repeats that climb in pitch) | Available |
 | [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with shimmer and freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
+| [RKRemap](docs/manuals/RKRemap.md) | Patch bay: 64 inputs to 64 outputs with names, stereo pairs, mono sums, trim, mute and polarity, for straight cables in Gig Performer | Available |
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |
 | [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
@@ -77,7 +78,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 ## Formats and requirements
 
 - macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out; RKFollow and RKTrigger are AU music effects and VST3 effects with audio in and out and MIDI out.
-- Mono and stereo; sample rates 44.1 to 192 kHz.
+- Mono and stereo (RKRemap: 64 channels each way); sample rates 44.1 to 192 kHz.
 - Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).

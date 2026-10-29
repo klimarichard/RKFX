@@ -73,7 +73,7 @@ The **Source** parameter's values are 0 = Off, 1–64 = In 1–64, 65–96 = In 
 ## Names and views (not parameters)
 
 - **A name for every input and output** ("Violin pickup", "Vocal mic", "IEM L"), shown in the lists and the source menus ("In 5/6 · Synth Bass").
-- **Inputs shown** and **Outputs shown** (1 to 64 each, defaults 16 and 16): how many the window lists. They only change the view; hidden channels keep routing. An output that is hidden but still has a source is counted in a note under the list ("3 hidden outputs routed"), so nothing plays unnoticed.
+- **Inputs shown** and **Outputs shown** (1 to 64 each, defaults 16 and 16): how many the window lists. They only change the view; hidden channels keep routing. A hidden output that carries a **shown** input is counted in a note under the list ("3 hidden outputs carry shown inputs"), so nothing plays unnoticed. (As built: hidden outputs fed by hidden inputs, such as the straight-through default beyond the shown channels, aren't counted; counting every routed hidden output flagged 48 harmless default routes.)
 
 Names and view counts are part of a patch bay's setup, so they belong in **presets** as well as in the session. Today a plugin's extra state (RKConduct's MIDI file) is saved with the session only. **Core change:** `PluginConfig::extraInPresets`: when set, `getExtraState()` is also written to and read from preset files (as "extra", as in the host state).
 
@@ -127,6 +127,16 @@ The RKFX standard Bypass passes each input to the output with the same number (I
 - **Views:** Inputs/Outputs shown don't change the audio; hidden routed outputs are counted.
 - **Names and views in presets:** saved and loaded with presets and the session (and the core change keeps other plugins' presets unchanged).
 - **Validation:** auval (`aufx Rmp1 RKMu`), pluginval at strictness 10, presets; and Step 0 in Gig Performer.
+
+## As built (2026-10-29)
+
+- **Step 0:** the user confirmed in Gig Performer that **one 64-channel bus** each way works; that layout is used (the test plugins are removed from the build by default and from the plugin folders).
+- **Default Source: straight through** (In *n* → Out *n*), not Off, so inserting RKRemap changes nothing until a route is changed. The factory presets turn unused outputs off where they set up a rig.
+- **Trim at 0 dB is exactly unity:** 0 dB came back from the host's 0..1 parameter scale a few millionths off, so routes weren't bit-exact (found by the state test). Trims within 0.001 dB of 0 are now treated as 0.
+- **Hidden-routes note** counts only hidden outputs that carry a *shown* input (see Names and views).
+- **Tests:** routing, pairs, mono sums, trim/mute/polarity, every input to every output, and click-free switching in RKFXTests (checked to fail without the crossfade); 64 channels, straight-through bit-exactness, names and views in the session, preset files, factory presets and Reset in RKBoardTests (which links the real processor; RKRemap's factory presets are registered there too, though it isn't a pedal).
+- **CPU:** 0.13% of a core with all 64 outputs routed, half of them mono sums.
+- **Window 1060 × 720.** Rows: number, name (double-click to edit), Source menu (inputs listed with their names; linked pairs only), trim slider, M, Ø, Mono, light, Link.
 
 ## Decisions (2026-10-29)
 

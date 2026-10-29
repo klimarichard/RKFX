@@ -10,10 +10,15 @@ namespace rkfx { std::vector<FactoryPreset> RKFX_FACTORY_PRESET_LIST(); }
 namespace rkfx
 {
 
-juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain, bool midiEffect)
+juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain, bool midiEffect, int channels)
 {
     if (midiEffect)
         return BusesProperties();   // MIDI only
+
+    if (channels > 0)
+        return BusesProperties()
+                   .withInput  ("Input",  juce::AudioChannelSet::discreteChannels (channels), true)
+                   .withOutput ("Output", juce::AudioChannelSet::discreteChannels (channels), true);
 
     auto buses = BusesProperties()
                      .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -26,7 +31,7 @@ juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidecha
 }
 
 ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
-    : juce::AudioProcessor (makeBuses (cfg.sidechain, cfg.midiEffect)),
+    : juce::AudioProcessor (makeBuses (cfg.sidechain, cfg.midiEffect, cfg.channels)),
       config (std::move (cfg))
 {
     // A MIDI effect has no audio to mix or level.
@@ -96,6 +101,9 @@ bool ProcessorBase::isBusesLayoutSupported (const BusesLayout& layouts) const
 
     const auto in  = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
+
+    if (config.channels > 0)
+        return in == out && in == juce::AudioChannelSet::discreteChannels (config.channels);
 
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
         return false;
@@ -398,6 +406,8 @@ ProcessorBase::PresetResult ProcessorBase::loadPreset (const juce::File& file)
         return { false, r.error };
 
     applyValues (r.values);
+    if (config.extraInPresets)
+        setExtraState (juce::JSON::parse (file.loadFileAsString())["extra"]);
     setPresetState (r.name.isNotEmpty() ? r.name : file.getFileNameWithoutExtension(), file, false);
 
     return { true, r.notes.joinIntoString ("; ") };
@@ -414,6 +424,8 @@ ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
         return { false, r.error };
 
     applyValues (r.values);
+    if (config.extraInPresets)
+        setExtraState (juce::JSON::parse (preset.json)["extra"]);
     // No file: Save on a factory preset asks for a new name (factory presets stay read-only).
     setPresetState (r.name.isNotEmpty() ? r.name : preset.name, {}, false);
     return { true, r.notes.joinIntoString ("; ") };
@@ -421,8 +433,11 @@ ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
 
 ProcessorBase::PresetResult ProcessorBase::savePreset (const juce::File& file)
 {
-    const auto json = PresetFormat::toJson (PresetFormat::toVar (config.name, config.stateVersion, {},
-                                                                 presetInfos, currentValues(), true));
+    auto preset = PresetFormat::toVar (config.name, config.stateVersion, {}, presetInfos, currentValues(), true);
+    if (config.extraInPresets)
+        if (const auto extra = getExtraState(); ! extra.isVoid())
+            preset.getDynamicObject()->setProperty ("extra", extra);
+    const auto json = PresetFormat::toJson (preset);
 
     if (! file.getParentDirectory().createDirectory() || ! PresetLibrary::writeAtomically (file, json))
         return { false, "Could not save " + file.getFileName() };
@@ -434,6 +449,8 @@ ProcessorBase::PresetResult ProcessorBase::savePreset (const juce::File& file)
 void ProcessorBase::resetToDefaults()
 {
     applyValues (PresetFormat::defaults (presetInfos));
+    if (config.extraInPresets)
+        setExtraState ({});
     setPresetState ("Default", {}, false);
 }
 
@@ -441,7 +458,13 @@ void ProcessorBase::resetToDefaults()
 juce::var ProcessorBase::getPresetVar (bool fullState) const
 {
     if (! fullState)
-        return PresetFormat::toVar (config.name, config.stateVersion, getPresetName(), presetInfos, currentValues(), true);
+    {
+        auto preset = PresetFormat::toVar (config.name, config.stateVersion, getPresetName(), presetInfos, currentValues(), true);
+        if (config.extraInPresets)
+            if (const auto extra = getExtraState(); ! extra.isVoid())
+                preset.getDynamicObject()->setProperty ("extra", extra);
+        return preset;
+    }
 
     // Self-contained: every value (bypass included) plus the preset name, so
     // a gig never depends on a preset file existing.
@@ -476,6 +499,8 @@ ProcessorBase::PresetResult ProcessorBase::loadPresetVar (const juce::var& prese
     }
     else
     {
+        if (config.extraInPresets)
+            setExtraState (preset["extra"]);
         setPresetState (r.name.isNotEmpty() ? r.name : "Default", {}, false);
     }
 

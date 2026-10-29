@@ -38,6 +38,7 @@ set(RKFX_ENGINE_PLUGINS
     RKHold/HoldEngine
     RKEcho/EchoEngine
     RKPolyPitch/PolyPitchEngine
+    RKRemap/RemapEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -109,6 +110,7 @@ target_sources(RKFXTests PRIVATE
     HoldTests.cpp
     EchoTests.cpp
     PolyPitchTests.cpp
+    RemapTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 
@@ -175,6 +177,7 @@ add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)
 juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
 target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
+    RemapStateTests.cpp
     ${RKBOARD_SOURCES}
     ${RKBOARD_PEDAL_SOURCES}
 )

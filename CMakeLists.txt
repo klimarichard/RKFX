@@ -63,6 +63,7 @@ set(RKFX_PLUGINS
     RKRide
     RKHold
     RKPolyPitch
+    RKRemap
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})
@@ -88,6 +89,12 @@ set(RKFX_MIDI_PLUGINS
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})
 endforeach()
+
+# RKRemap step 0: two throwaway 64-channel test plugins (off by default).
+option(RKFX_BUILD_REMAP_TEST "Build the RKRemap 64-channel test plugins" OFF)
+if(RKFX_BUILD_REMAP_TEST)
+    add_subdirectory(tools/remap-test)
+endif()
 
 # ---------------------------------------------------------------------------
 # Tests

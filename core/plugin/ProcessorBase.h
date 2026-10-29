@@ -29,6 +29,8 @@ struct PluginConfig
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     bool midiEffect = false;         // MIDI in, MIDI out, no audio (no dry/wet, no output); also needs MIDI_EFFECT in CMake
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
+    int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKRemap); 0 = mono/stereo
+    bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };
@@ -98,6 +100,13 @@ public:
     juce::String getPresetName() const;
     juce::File getPresetFile() const;
     bool isPresetModified() const noexcept { return presetModified.load(); }
+
+    /** Marks the preset modified (for changes outside the parameters: RKRemap's names). */
+    void markPresetModified() noexcept
+    {
+        if (! presetModified.exchange (true))
+            ++presetStateCounter;
+    }
 
     /** Bumped whenever the name, file or modified flag changes, so the editor
         can cheaply poll for header updates. */
@@ -176,9 +185,10 @@ protected:
     void reportLatency (int samples);
     static constexpr int kMaxLatency = 63;
 
-    /** State beyond the parameters (RKConduct's MIDI file): saved with the
-        host state (as "extra"), not in preset files. setExtraState() gets a
-        void var for a state without it. Message thread. */
+    /** State beyond the parameters (RKConduct's MIDI file, RKRemap's names):
+        saved with the host state (as "extra"), and in preset files too when
+        config.extraInPresets is set. setExtraState() gets a void var for a
+        state without it (and on Reset to defaults). Message thread. */
     virtual juce::var getExtraState() const { return {}; }
     virtual void setExtraState (const juce::var&) {}
 
@@ -231,7 +241,7 @@ private:
     bool midiBypassed = false;
     juce::MidiBuffer midiOut;   // what plugins with MIDI output send this block
 
-    static BusesProperties makeBuses (bool withSidechain, bool midiEffect);
+    static BusesProperties makeBuses (bool withSidechain, bool midiEffect, int channels);
     void processChunk (juce::AudioBuffer<float>& chunk);
     void delayDry (int numChannels, int numSamples) noexcept;
     void updateTransport();

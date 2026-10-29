@@ -117,6 +117,16 @@ The five existing presets stay unchanged. New ones (also the starting points in 
 - **Curve:** the live curve's magnitude matches the measured response with a dynamic band held at a known gain.
 - **Board and presets:** RKBoardTests and RKFXPresetTests pass; auval (`aufx Peq1 RKMu`) and pluginval at strictness 10.
 
+## As built (2026-10-29)
+
+Where the build differs from the design above:
+
+- **Window 900 × 800** (not 770). The **Dynamic** switch sits at the bottom of each gain band's strip, under Q (the title row had no room next to On). Clicking anywhere on a gain band's strip outside its controls selects it, and the selected strip gets an accent outline (rather than an accent title). The dynamics row also has its own Dynamic switch.
+- **Live curve:** drawn in white over the static curve, which keeps its colour (it isn't dimmed). Brackets as designed.
+- **Fades:** switching Dynamic on or off, a cut ↔ boost change and a shelf ↔ bell change fade the dynamic part over the suite's 20 ms glide (not over the release time), then swap.
+- **Filter updates:** a dynamic band is checked every 16 samples, but its coefficients are only redesigned when its total gain has moved by 0.05 dB or more, so a steady band costs no designs. The RMS level is taken straight from the mean square (no square root).
+- **CPU, measured** (RKFXBench, 48 kHz, 64 samples, stereo full-scale noise, all five bands dynamic and always moving, 48 dB cuts): **0.35%** of one core, against the 0.3% aim. This is a worst case: with music, gains move less and fewer designs run. With Dynamic off, ParaEQ costs what it did (0.13% with all bands active).
+
 ## Decisions (2026-10-29)
 
 - **No dragging on the curve:** it stays display-only, as today.

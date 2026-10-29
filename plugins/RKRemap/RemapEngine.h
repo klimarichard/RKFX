@@ -58,7 +58,10 @@ public:
     void reset();
     void setSettings (const Settings&);
 
-    void process (float* const* io, int numChannels, int numSamples) noexcept;
+    /** @param measure  update the peaks (only needed while a window shows them)
+        @param input    the inputs, untouched, if the caller has them (then no copy is made) */
+    void process (float* const* io, int numChannels, int numSamples, bool measure = true,
+                  const float* const* input = nullptr) noexcept;
 
     /** The loudest sample since the last call, per input and per output (resets). */
     float takeInputPeak (int channel) noexcept;

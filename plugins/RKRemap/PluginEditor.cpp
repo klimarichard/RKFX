@@ -293,11 +293,13 @@ RKRemapEditor::RKRemapEditor (RKRemapProcessor& p)
     onParameterChange();
     refreshNamesAndViews();
     finishSetup();
+    ++remap.windowsOpen;
     lightTimer.startTimerHz (15);
 }
 
 RKRemapEditor::~RKRemapEditor()
 {
+    --remap.windowsOpen;
     inputViewport.setViewedComponent (nullptr, false);
     outputViewport.setViewedComponent (nullptr, false);
 }

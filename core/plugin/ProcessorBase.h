@@ -166,6 +166,12 @@ protected:
         Unconnected inputs are silent. Valid inside processDsp only. */
     const juce::AudioBuffer<float>* getSidechain() const noexcept { return hasSidechain ? &sidechain : nullptr; }
 
+    /** The input of the buffer handed to processDsp(), untouched (what Bypass
+        passes; delayed by the reported latency). Valid inside processDsp only:
+        a plugin whose output overwrites inputs it still needs can read them
+        here instead of copying them (RKRemap). */
+    const juce::AudioBuffer<float>& getDryInput() const noexcept { return dryView; }
+
     /** MIDI arriving with the buffer handed to processDsp(): events at
         positions getChunkStart() .. getChunkStart() + numSamples belong to it
         (subtract getChunkStart() for the position in the buffer). Valid
@@ -227,6 +233,7 @@ private:
     };
     LatencyNotifier latencyNotifier { *this };
     juce::AudioBuffer<float> dryBuffer;
+    juce::AudioBuffer<float> dryView;   // the chunk's part of dryBuffer, for getDryInput()
     int maxBlock = 0;
     bool wetWasIdle = true;
 

@@ -306,6 +306,7 @@ void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
         dryBuffer.copyFrom (ch, 0, chunk, ch, 0, numSamples);
 
     delayDry (numChannels, numSamples);
+    dryView.setDataToReferTo (dryBuffer.getArrayOfWritePointers(), numChannels, 0, numSamples);
 
     if (outputStage.wetNeeded())
     {

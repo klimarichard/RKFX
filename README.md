@@ -22,6 +22,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKVocode](docs/manuals/RKVocode.md) | Channel vocoder with sidechain or MIDI-played carrier | Available |
 | [RKCompress](docs/manuals/RKCompress.md) | Compressor with external sidechain, transfer curve and gain reduction meter | Available |
 | [RKMultiComp](docs/manuals/RKMultiComp.md) | Multiband compressor, 3 or 4 bands, with phase-matched Dry/Wet and a band display with draggable thresholds and crossovers | Available |
+| [RKRide](docs/manuals/RKRide.md) | Automatic level rider: keeps a voice or instrument at a steady level (or a set amount above the music), holds in pauses | Available |
 | [RKGate](docs/manuals/RKGate.md) | Gate and expander with external sidechain and key filter | Available |
 | [RKLimit](docs/manuals/RKLimit.md) | Peak limiter with absolute ceiling | Available |
 | [RKTransient](docs/manuals/RKTransient.md) | Level-independent transient shaper | Available |

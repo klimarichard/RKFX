@@ -27,12 +27,26 @@ namespace rkfx
 class PitchShifter
 {
 public:
-    void prepare (double sampleRate)
+    /** @param windowMs, secondWindowMs  the two pairs' windows (shimmer: 50 and 35 ms)
+        @param maxWindowMs               room for setWindows() later (at least windowMs) */
+    void prepare (double newSampleRate, float windowMs = kWindowMs[0], float secondWindowMs = kWindowMs[1],
+                  float maxWindowMs = 0.0f)
     {
-        windows[0] = (float) std::round (kWindowMs[0] * 0.001 * sampleRate);
-        windows[1] = (float) std::round (kWindowMs[1] * 0.001 * sampleRate);
-        line.prepare ((int) windows[0] + 8);
+        sampleRate = newSampleRate;
+        windows[0] = (float) std::round (windowMs * 0.001 * sampleRate);
+        windows[1] = (float) std::round (secondWindowMs * 0.001 * sampleRate);
+        const auto room = (float) std::round (larger (maxWindowMs, larger (windowMs, secondWindowMs)) * 0.001 * sampleRate);
+        line.prepare ((int) room + 8);
         reset();
+    }
+
+    /** Changes the windows (no larger than prepare()'s maxWindowMs). The taps
+        jump: fade the output around a change. */
+    void setWindows (float windowMs, float secondWindowMs) noexcept
+    {
+        const auto limit = (float) (line.getMaxDelay() - 4);
+        windows[0] = std::fmin ((float) std::round (windowMs * 0.001 * sampleRate), limit);
+        windows[1] = std::fmin ((float) std::round (secondWindowMs * 0.001 * sampleRate), limit);
     }
 
     void reset() noexcept
@@ -82,7 +96,10 @@ private:
     static constexpr float kMakeup = 1.6f;
     static constexpr float kWindowMs[2] = { 50.0f, 35.0f };
 
+    static float larger (float a, float b) noexcept { return a > b ? a : b; }
+
     DelayLine line;
+    double sampleRate = 48000.0;
     float windows[2] { 2400.0f, 1680.0f };
     float phases[2] { 0.0f, 0.37f };
     float ratio = 1.0f;

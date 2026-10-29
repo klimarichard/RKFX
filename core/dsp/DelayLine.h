@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -44,6 +45,13 @@ public:
     void addAt (int samplesAgo, float x) noexcept
     {
         buffer[(size_t) ((writeIndex - samplesAgo) & mask)] += x;
+    }
+
+    /** The sample written @p delaySamples ago, at a whole-sample delay (no
+        interpolation: for searches that compare many positions). */
+    float readWhole (int delaySamples) const noexcept
+    {
+        return at (writeIndex - std::max (0, std::min (delaySamples, getMaxDelay())));
     }
 
     /** Sample from @p delaySamples ago (fractional, clamped to 1..the line's length). */

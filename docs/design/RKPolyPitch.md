@@ -119,7 +119,16 @@ Plus **Output** and **Bypass**. No Dry/Wet: the modes are the mix (Whammy has no
 - **Shimmer unchanged:** RKVerb and RKDelay's shimmer outputs are identical before and after the PitchShifter change (their windows stay 50 and 35 ms).
 - **Validation:** auval (`aufx Ppt1 RKMu`), pluginval at strictness 10, presets, RKBoardTests.
 
+## As built (2026-10-29)
+
+- **A new shifter: `core/dsp/AlignedPitchShifter`.** The shimmer PitchShifter with short windows (as designed: 14, 28, 50 ms) put the pitch off by up to **100 cents** (an octave down came out sharp, up flat): each tap restarts a fixed distance away, so its waveform meets the other tap's out of phase, and with short windows that shifts the heard pitch. The aligned shifter moves each restart by up to a search span to where the input best matches what the other tap is reading (correlation, coarse then fine, both channels summed), as WSOLA does. Measured within about **6 cents** from −24 to +24 semitones (11 cents at the extremes with Low Latency on the guitar range; bass within 1 cent), and a chord shifted an octave keeps each note at its level (0.0 dB).
+- **Windows and search per range:** search = half a period of the lowest note, window about one and a half periods: violin 8 ms / 2.6 ms, guitar 16 / 6.1, bass 30 / 12.2. **Delay = search + half the window: about 7, 14 and 27 ms** (Low Latency, window × 2/3: about 5, 11 and 22 ms). The display shows it.
+- **CPU:** the first version of the search read the delay line with full interpolation at every point (6.2% of a core for bass at +24); whole-sample reads (new `DelayLine::readWhole`), the other tap's segment copied once per splice and about 96 compared points brought it to **0.16%** (guitar, +12) and **0.25%** (bass, +24); Detune 0.25%.
+- **Detune** keeps the shimmer PitchShifter (its windows now configurable, 10 and 7 ms; the shimmer's own 50 and 35 ms are unchanged, tested bit-exact): at ratios near 1 its splices don't move the pitch.
+- **Range and Low Latency changes** dip the shifted voice for 10 ms around the change (the taps jump); mode changes crossfade the mix gains over 20 ms.
+- **Window 980 × 560.**
+
 ## Decisions (2026-10-29)
 
 - **Ranges:** Violin, Guitar, Bass (no Keys range).
-- **Low Latency** switch (`low_latency`, Off by default, appended after the controls above): shortens the shifter's windows by a third, so the Whammy delay drops by a third (violin about 5 ms, guitar about 9 ms, bass about 17 ms) at the cost of grainier low notes. The display shows the delay that applies.
+- **Low Latency** switch (`low_latency`, Off by default, appended after the controls above): shortens the shifter's window by a third (as built the delay drops by about a fifth, as the alignment search stays: violin about 5 ms, guitar about 11 ms, bass about 22 ms) at the cost of grainier low notes. The display shows the delay that applies.

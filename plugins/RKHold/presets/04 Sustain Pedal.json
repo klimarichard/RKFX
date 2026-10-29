@@ -1,0 +1,10 @@
+{
+  "plugin": "RKHold",
+  "version": 1,
+  "name": "Sustain Pedal",
+  "params": {
+    "hold_mode": "momentary",
+    "attack": 20,
+    "release": 400
+  }
+}

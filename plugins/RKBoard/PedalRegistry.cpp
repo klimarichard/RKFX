@@ -16,6 +16,7 @@
 #include "../RKGraphEQ/PluginProcessor.h"
 #include "../RKLimit/PluginProcessor.h"
 #include "../RKLoop/PluginProcessor.h"
+#include "../RKHold/PluginProcessor.h"
 #include "../RKMultiComp/PluginProcessor.h"
 #include "../RKRide/PluginProcessor.h"
 #include "../RKParaEQ/PluginProcessor.h"
@@ -31,6 +32,7 @@
 #include "../RKUtility/PluginProcessor.h"
 #include "../RKVerb/PluginProcessor.h"
 #include "../RKOctave/PluginProcessor.h"
+#include "../RKPolyPitch/PluginProcessor.h"
 #include "../RKVibrato/PluginProcessor.h"
 #include "../RKVocode/PluginProcessor.h"
 #include "../RKVoice/PluginProcessor.h"
@@ -56,6 +58,7 @@
     X (RKGraphEQ) \
     X (RKLimit) \
     X (RKLoop) \
+    X (RKHold) \
     X (RKMultiComp) \
     X (RKRide) \
     X (RKParaEQ) \
@@ -71,6 +74,7 @@
     X (RKUtility) \
     X (RKVerb) \
     X (RKOctave) \
+    X (RKPolyPitch) \
     X (RKVibrato) \
     X (RKVocode) \
     X (RKVoice) \
@@ -116,7 +120,9 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKSynth() { return std::make_unique<RKSynthProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKRingMod() { return std::make_unique<RKRingModProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKLoop() { return std::make_unique<RKLoopProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKHold() { return std::make_unique<RKHoldProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKOctave() { return std::make_unique<RKOctaveProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKPolyPitch() { return std::make_unique<RKPolyPitchProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVibrato() { return std::make_unique<RKVibratoProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKRotary() { return std::make_unique<RKRotaryProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKFreqShift() { return std::make_unique<RKFreqShiftProcessor>(); }
@@ -157,11 +163,13 @@ const std::vector<PedalType>& pedalTypes()
         { "RKRotary", "Rotary", Family::modulation, makeRKRotary },
         { "RKFreqShift", "FreqShift", Family::modulation, makeRKFreqShift },
         { "RKOctave", "Octave", Family::modulation, makeRKOctave },
+        { "RKPolyPitch", "PolyPitch", Family::modulation, makeRKPolyPitch },
         { "RKSynth", "Synth", Family::modulation, makeRKSynth },
         { "RKRingMod", "RingMod", Family::modulation, makeRKRingMod },
         { "RKVoice", "Voice", Family::modulation, makeRKVoice },
         { "RKDelay", "Delay", Family::delay, makeRKDelay, 10.0 },
         { "RKLoop", "Loop", Family::delay, makeRKLoop },
+        { "RKHold", "Hold", Family::delay, makeRKHold },
         { "RKVerb", "Verb", Family::reverb, makeRKVerb, 10.0 },
         { "RKVolume", "Volume", Family::utility, makeRKVolume },
         { "RKUtility", "Utility", Family::utility, makeRKUtility }

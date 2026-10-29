@@ -1,0 +1,14 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Octave Cascade",
+  "params": {
+    "sync": true,
+    "division": "1/16",
+    "repeats": 4,
+    "step": 12,
+    "length": "gate",
+    "gate": 40,
+    "feedback": 75
+  }
+}

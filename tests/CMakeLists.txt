@@ -35,6 +35,9 @@ set(RKFX_ENGINE_PLUGINS
     RKRide/RideEngine
     RKFollow/FollowEngine
     RKTrigger/TriggerEngine
+    RKHold/HoldEngine
+    RKEcho/EchoEngine
+    RKPolyPitch/PolyPitchEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -103,6 +106,9 @@ target_sources(RKFXTests PRIVATE
     ShimmerTests.cpp
     FollowTests.cpp
     TriggerTests.cpp
+    HoldTests.cpp
+    EchoTests.cpp
+    PolyPitchTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

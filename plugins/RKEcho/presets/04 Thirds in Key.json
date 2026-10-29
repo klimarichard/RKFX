@@ -1,0 +1,15 @@
+{
+  "plugin": "RKEcho",
+  "version": 1,
+  "name": "Thirds in Key",
+  "params": {
+    "sync": true,
+    "division": "1/8",
+    "repeats": 6,
+    "scale_steps": true,
+    "step": 2,
+    "key": "c",
+    "scale": "major",
+    "feedback": 80
+  }
+}

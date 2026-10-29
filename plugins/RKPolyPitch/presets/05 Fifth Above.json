@@ -1,0 +1,11 @@
+{
+  "plugin": "RKPolyPitch",
+  "version": 1,
+  "name": "Fifth Above",
+  "params": {
+    "mode": "harmony",
+    "heel": 7,
+    "toe": 7,
+    "voice_level": -6
+  }
+}

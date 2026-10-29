@@ -17,6 +17,7 @@ public:
     static constexpr int kChannels = RemapEngine::kChannels;
 
     RKRemapProcessor();
+    ~RKRemapProcessor() override;
 
     juce::AudioProcessorEditor* createEditor() override;
 
@@ -41,6 +42,9 @@ public:
 
     static constexpr int kDefaultShown = 16;
 
+    /** Set while a window shows the signal lights (no measuring otherwise). */
+    std::atomic<int> windowsOpen { 0 };
+
 protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;
     void resetDsp() override;
@@ -52,9 +56,21 @@ protected:
 private:
     struct OutputParams { juce::RangedAudioParameter *source, *trim, *mute, *polarity, *mono; };
     std::array<OutputParams, kChannels> outputParams;
-    std::array<juce::RangedAudioParameter*, RemapEngine::kPairs> inputLinks {}, outputLinks {};
+    std::array<juce::RangedAudioParameter*, RemapEngine::kPairs> inputLinks {}, outputLinks {}, inputMidSide {};
 
     RemapEngine engine;
+
+    // The routing is rebuilt only when a parameter changes (416 of them: reading
+    // them every block cost more than the routing itself).
+    std::atomic<bool> settingsChanged { true };
+    struct ChangeListener : public juce::AudioProcessorParameter::Listener
+    {
+        explicit ChangeListener (RKRemapProcessor& p) : owner (p) {}
+        void parameterValueChanged (int, float) override { owner.settingsChanged = true; }
+        void parameterGestureChanged (int, bool) override {}
+        RKRemapProcessor& owner;
+    };
+    ChangeListener changeListener { *this };
 
     mutable juce::CriticalSection namesLock;
     std::array<juce::String, kChannels> inputNames, outputNames;

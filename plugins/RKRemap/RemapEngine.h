@@ -9,7 +9,9 @@
 
     Each output takes a Source: off, one input, or a linked input pair
     (summed to mono on a single output, or left/right on a linked output
-    pair, or mono there too). A linked output pair follows its left output's
+    pair, or mono there too). A pair can be mid/side: as a pair it is
+    decoded (left = M + S, right = M - S, as RKUtility), and its mono is the
+    mid channel. A linked output pair follows its left output's
     settings. Trim, mute and polarity glide (kFadeSeconds); a source change
     crossfades from the old route to the new one. A steady route at unity
     is a bit-exact copy. Allocation-free after prepare(). */
@@ -33,13 +35,18 @@ public:
     {
         std::array<Output, kChannels> outputs {};
         std::array<bool, kPairs> inputLinks {}, outputLinks {};
+        std::array<bool, kPairs> inputMidSide {};   // a linked input pair is mid/side (else left/right)
     };
 
-    /** What output @p index plays: inputs a and b (b >= 0: their average), or a < 0 for silence. */
+    /** What output @p index plays: wa x input a + wb x input b (b < 0: input a alone), or a < 0 for silence. */
     struct Route
     {
         int a = -1, b = -1;
-        bool operator== (const Route& o) const noexcept { return a == o.a && b == o.b; }
+        float wa = 1.0f, wb = 0.0f;
+        bool operator== (const Route& o) const noexcept
+        {
+            return a == o.a && b == o.b && juce::exactlyEqual (wa, o.wa) && juce::exactlyEqual (wb, o.wb);
+        }
         bool operator!= (const Route& o) const noexcept { return ! (*this == o); }
     };
     static Route routeOf (const Settings&, int output);
@@ -51,7 +58,10 @@ public:
     void reset();
     void setSettings (const Settings&);
 
-    void process (float* const* io, int numChannels, int numSamples) noexcept;
+    /** @param measure  update the peaks (only needed while a window shows them)
+        @param input    the inputs, untouched, if the caller has them (then no copy is made) */
+    void process (float* const* io, int numChannels, int numSamples, bool measure = true,
+                  const float* const* input = nullptr) noexcept;
 
     /** The loudest sample since the last call, per input and per output (resets). */
     float takeInputPeak (int channel) noexcept;

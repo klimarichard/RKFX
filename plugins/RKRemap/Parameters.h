@@ -6,12 +6,14 @@
 
 /** RKRemap parameter IDs and ranges. IDs are permanent: never rename, reuse
     or reorder; only append. Per output k (1..64): source, trim, mute,
-    polarity, mono; then the input pair links, then the output pair links. */
+    polarity, mono; then the input pair links, the output pair links, and
+    the input pairs' L/R or M/S. */
 namespace RemapParams
 {
     inline juce::String outputId (int output, const char* name) { return "out_" + juce::String (output + 1) + "_" + name; }
     inline juce::String inputLinkId (int pair) { return "in_link_" + juce::String (pair + 1); }
     inline juce::String outputLinkId (int pair) { return "out_link_" + juce::String (pair + 1); }
+    inline juce::String inputMidSideId (int pair) { return "in_ms_" + juce::String (pair + 1); }
 
     /** The Source choices: Off, In 1 .. In 64, In 1/2 .. In 63/64. */
     inline juce::String sourceName (int value)
@@ -58,6 +60,11 @@ namespace RemapParams
             p.addBool (inputLinkId (pair), "In " + juce::String (pair * 2 + 1) + "/" + juce::String (pair * 2 + 2) + " Link", false);
         for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
             p.addBool (outputLinkId (pair), "Out " + juce::String (pair * 2 + 1) + "/" + juce::String (pair * 2 + 2) + " Link", false);
+
+        // Added later (appended): a linked input pair as mid/side.
+        for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
+            p.addChoice (inputMidSideId (pair), "In " + juce::String (pair * 2 + 1) + "/" + juce::String (pair * 2 + 2) + " Pair",
+                         { "L/R", "M/S" }, { "lr", "ms" }, 0);
 
         return p;
     }

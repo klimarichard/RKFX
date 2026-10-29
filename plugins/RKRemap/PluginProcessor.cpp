@@ -29,7 +29,17 @@ RKRemapProcessor::RKRemapProcessor()
     {
         inputLinks[(size_t) pair] = findParam (inputLinkId (pair));
         outputLinks[(size_t) pair] = findParam (outputLinkId (pair));
+        inputMidSide[(size_t) pair] = findParam (inputMidSideId (pair));
     }
+
+    for (auto* param : getParameters())
+        param->addListener (&changeListener);
+}
+
+RKRemapProcessor::~RKRemapProcessor()
+{
+    for (auto* param : getParameters())
+        param->removeListener (&changeListener);
 }
 
 RemapEngine::Settings RKRemapProcessor::currentSettings() const
@@ -49,6 +59,7 @@ RemapEngine::Settings RKRemapProcessor::currentSettings() const
     {
         s.inputLinks[(size_t) pair] = valueOf (inputLinks[(size_t) pair]) >= 0.5f;
         s.outputLinks[(size_t) pair] = valueOf (outputLinks[(size_t) pair]) >= 0.5f;
+        s.inputMidSide[(size_t) pair] = valueOf (inputMidSide[(size_t) pair]) >= 0.5f;
     }
     return s;
 }
@@ -140,20 +151,28 @@ void RKRemapProcessor::setExtraState (const juce::var& extra)
 //==============================================================================
 void RKRemapProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
+    settingsChanged = false;
     engine.setSettings (currentSettings());
     engine.prepare (sampleRate, maxBlockSize);
 }
 
 void RKRemapProcessor::resetDsp()
 {
+    settingsChanged = false;
     engine.setSettings (currentSettings());
     engine.reset();
 }
 
 void RKRemapProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
-    engine.setSettings (currentSettings());
-    engine.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples());
+    if (settingsChanged.exchange (false))
+        engine.setSettings (currentSettings());
+
+    const auto measure = windowsOpen.load() > 0;
+    engine.process (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), buffer.getNumSamples(), measure,
+                    getDryInput().getArrayOfReadPointers());   // the base's untouched copy: no second copy
+    if (! measure)
+        return;
 
     auto raise = [] (std::atomic<float>& peak, float value)
     {

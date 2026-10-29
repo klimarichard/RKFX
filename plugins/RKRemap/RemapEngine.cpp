@@ -17,17 +17,28 @@ RemapEngine::Route RemapEngine::routeOf (const Settings& s, int output)
         return {};
 
     if (o.source <= kChannels)
-        return { o.source - 1, -1 };   // one input (to both sides of a linked pair)
+        return { o.source - 1 };       // one input (to both sides of a linked pair)
 
     const auto pair = o.source - kFirstPairSource;
-    const auto left = pair * 2, right = left + 1;
+    const auto first = pair * 2, second = first + 1;
     if (! s.inputLinks[(size_t) pair])
-        return { left, -1 };           // a pair that isn't linked: its left input alone
+        return { first };              // a pair that isn't linked: its first input alone
 
-    if (linkedOutput && ! o.mono)
-        return { output == leader ? left : right, -1 };   // left to left, right to right
+    const auto stereo = linkedOutput && ! o.mono;
+    const auto leftSide = output == leader;
 
-    return { left, right };            // a single output, or Mono: the average
+    if (s.inputMidSide[(size_t) pair])
+    {
+        // Mid/side: decoded to left = M + S, right = M - S; its mono is the mid.
+        if (stereo)
+            return { first, second, 1.0f, leftSide ? 1.0f : -1.0f };
+        return { first };
+    }
+
+    if (stereo)
+        return { leftSide ? first : second };   // left to left, right to right
+
+    return { first, second, 0.5f, 0.5f };       // a single output, or Mono: the average
 }
 
 float RemapEngine::gainFor (int output) const noexcept
@@ -104,23 +115,31 @@ float RemapEngine::takeOutputPeak (int channel) noexcept
     return p;
 }
 
-void RemapEngine::process (float* const* io, int numChannels, int numSamples) noexcept
+void RemapEngine::process (float* const* io, int numChannels, int numSamples, bool measure, const float* const* input) noexcept
 {
     numChannels = juce::jmin (numChannels, kChannels);
     numSamples = juce::jmin (numSamples, inputs.getNumSamples());
 
+    // The outputs overwrite the inputs: read from the caller's untouched copy, or make one.
+    std::array<const float*, kChannels> in {};
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        inputs.copyFrom (ch, 0, io[ch], numSamples);
-        inputPeaks[(size_t) ch] = juce::jmax (inputPeaks[(size_t) ch], inputs.getMagnitude (ch, 0, numSamples));
+        if (input == nullptr)
+            inputs.copyFrom (ch, 0, io[ch], numSamples);
+        in[(size_t) ch] = input != nullptr ? input[ch] : inputs.getReadPointer (ch);
+        if (measure)
+        {
+            const auto range = juce::FloatVectorOperations::findMinAndMax (in[(size_t) ch], numSamples);
+            inputPeaks[(size_t) ch] = juce::jmax (inputPeaks[(size_t) ch], range.getEnd(), -range.getStart());
+        }
     }
 
-    auto readRoute = [this, numChannels] (const Route& r, int i)
+    auto readRoute = [&in, numChannels] (const Route& r, int i)
     {
         if (r.a < 0 || r.a >= numChannels)
             return 0.0f;
-        const auto x = inputs.getSample (r.a, i);
-        return r.b < 0 || r.b >= numChannels ? x : 0.5f * (x + inputs.getSample (r.b, i));
+        const auto x = r.wa * in[(size_t) r.a][i];
+        return r.b < 0 || r.b >= numChannels ? x : x + r.wb * in[(size_t) r.b][i];
     };
 
     for (int k = 0; k < numChannels; ++k)
@@ -135,11 +154,11 @@ void RemapEngine::process (float* const* io, int numChannels, int numSamples) no
             if (st.route.a < 0 || st.route.a >= numChannels || juce::exactlyEqual (st.gain, 0.0f))
                 juce::FloatVectorOperations::clear (out, numSamples);
             else if (st.route.b < 0 || st.route.b >= numChannels)
-                juce::FloatVectorOperations::copyWithMultiply (out, inputs.getReadPointer (st.route.a), st.gain, numSamples);
+                juce::FloatVectorOperations::copyWithMultiply (out, in[(size_t) st.route.a], st.route.wa * st.gain, numSamples);
             else
             {
-                juce::FloatVectorOperations::copyWithMultiply (out, inputs.getReadPointer (st.route.a), 0.5f * st.gain, numSamples);
-                juce::FloatVectorOperations::addWithMultiply (out, inputs.getReadPointer (st.route.b), 0.5f * st.gain, numSamples);
+                juce::FloatVectorOperations::copyWithMultiply (out, in[(size_t) st.route.a], st.route.wa * st.gain, numSamples);
+                juce::FloatVectorOperations::addWithMultiply (out, in[(size_t) st.route.b], st.route.wb * st.gain, numSamples);
             }
         }
         else
@@ -166,7 +185,10 @@ void RemapEngine::process (float* const* io, int numChannels, int numSamples) no
             }
         }
 
-        outputPeaks[(size_t) k] = juce::jmax (outputPeaks[(size_t) k], juce::FloatVectorOperations::findMaximum (out, numSamples),
-                                              -juce::FloatVectorOperations::findMinimum (out, numSamples));
+        if (measure)
+        {
+            const auto range = juce::FloatVectorOperations::findMinAndMax (out, numSamples);
+            outputPeaks[(size_t) k] = juce::jmax (outputPeaks[(size_t) k], range.getEnd(), -range.getStart());
+        }
     }
 }

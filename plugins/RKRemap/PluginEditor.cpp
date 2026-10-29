@@ -55,6 +55,20 @@ RKRemapEditor::InputRow::InputRow (RKRemapEditor& o, int ch) : owner (o), channe
         link = std::make_unique<rkfx::ToggleSwitch> (*o.remap.findParam (RemapParams::inputLinkId (ch / 2)), o.accent(), "Link");
         addAndMakeVisible (*link);
     }
+    else
+    {
+        pairMode = std::make_unique<rkfx::SegmentedSwitch> (*o.remap.findParam (RemapParams::inputMidSideId (ch / 2)), o.accent());
+        addChildComponent (*pairMode);
+    }
+}
+
+void RKRemapEditor::InputRow::updateLinked()
+{
+    follower = channel % 2 == 1 && owner.settings.inputLinks[(size_t) (channel / 2)];
+    name.setVisible (! follower);
+    if (pairMode != nullptr)
+        pairMode->setVisible (follower);
+    repaint();
 }
 
 void RKRemapEditor::InputRow::resized()
@@ -69,6 +83,8 @@ void RKRemapEditor::InputRow::resized()
     light.setBounds (r.removeFromRight (16));
     r.removeFromRight (6);
     name.setBounds (r);
+    if (pairMode != nullptr)
+        pairMode->setBounds (r.withWidth (juce::jmin (r.getWidth(), 120)));
 }
 
 void RKRemapEditor::InputRow::paint (juce::Graphics& g)
@@ -82,7 +98,7 @@ void RKRemapEditor::InputRow::paint (juce::Graphics& g)
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::bold (12.0f));
     g.drawText (juce::String (channel + 1), 4, 0, 30, getHeight(), juce::Justification::centredLeft);
-    if (name.getText().isEmpty() && ! name.isBeingEdited())
+    if (! follower && name.getText().isEmpty() && ! name.isBeingEdited())
     {
         g.setFont (rkfx::Fonts::regular (13.0f));
         g.drawText (name.getProperties()["placeholder"].toString(), name.getBounds().withTrimmedLeft (4), juce::Justification::centredLeft);
@@ -158,8 +174,9 @@ void RKRemapEditor::OutputRow::refreshSources()
 
 void RKRemapEditor::OutputRow::updateLinked()
 {
+    // The second output of a linked pair: no controls and no name of its own (the pair has one).
     follower = channel % 2 == 1 && owner.settings.outputLinks[(size_t) (channel / 2)];
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &source, &trim, mute.get(), polarity.get() })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &name, &source, &trim, mute.get(), polarity.get() })
         c->setVisible (! follower);
 
     // Mono: on the left output of a linked pair whose source is a linked input pair.
@@ -211,7 +228,7 @@ void RKRemapEditor::OutputRow::paint (juce::Graphics& g)
     g.setFont (rkfx::Fonts::bold (12.0f));
     g.drawText (juce::String (channel + 1), 4, 0, 34, getHeight(), juce::Justification::centredLeft);
     g.setFont (rkfx::Fonts::regular (13.0f));
-    if (name.getText().isEmpty() && ! name.isBeingEdited())
+    if (! follower && name.getText().isEmpty() && ! name.isBeingEdited())
         g.drawText (name.getProperties()["placeholder"].toString(), name.getBounds().withTrimmedLeft (4), juce::Justification::centredLeft);
     if (follower)
         g.drawText ("linked with " + juce::String (channel), source.getBounds().getUnion (polarity->getBounds()),
@@ -276,11 +293,13 @@ RKRemapEditor::RKRemapEditor (RKRemapProcessor& p)
     onParameterChange();
     refreshNamesAndViews();
     finishSetup();
+    ++remap.windowsOpen;
     lightTimer.startTimerHz (15);
 }
 
 RKRemapEditor::~RKRemapEditor()
 {
+    --remap.windowsOpen;
     inputViewport.setViewedComponent (nullptr, false);
     outputViewport.setViewedComponent (nullptr, false);
 }
@@ -288,10 +307,30 @@ RKRemapEditor::~RKRemapEditor()
 juce::String RKRemapEditor::sourceText (int value) const
 {
     auto text = RemapParams::sourceName (value);
-    const auto first = value <= kChannels ? value - 1 : (value - RemapEngine::kFirstPairSource) * 2;
-    if (value > RemapEngine::kSourceOff)
-        if (const auto name = remap.getInputName (first); name.isNotEmpty())
+    if (value <= RemapEngine::kSourceOff)
+        return text;
+
+    if (value > kChannels)
+    {
+        // A pair: its one name.
+        if (const auto name = remap.getInputName ((value - RemapEngine::kFirstPairSource) * 2); name.isNotEmpty())
             text << "  " << name;
+        return text;
+    }
+
+    // One input: in a linked pair, the pair's name and which side ("Keys L", "Keys Mid").
+    const auto input = value - 1, pair = input / 2;
+    if (settings.inputLinks[(size_t) pair])
+    {
+        const auto first = input % 2 == 0;
+        const auto side = settings.inputMidSide[(size_t) pair] ? (first ? "Mid" : "Side") : (first ? "L" : "R");
+        const auto name = remap.getInputName (pair * 2);
+        text << "  " << (name.isNotEmpty() ? name + " " : juce::String()) << side;
+        return text;
+    }
+
+    if (const auto name = remap.getInputName (input); name.isNotEmpty())
+        text << "  " << name;
     return text;
 }
 
@@ -300,7 +339,7 @@ void RKRemapEditor::onParameterChange()
     const auto before = settings;
     settings = remap.currentSettings();
 
-    const auto linksChanged = before.inputLinks != settings.inputLinks;
+    const auto linksChanged = before.inputLinks != settings.inputLinks || before.inputMidSide != settings.inputMidSide;
     for (auto& row : outputRows)
     {
         if (linksChanged)
@@ -308,7 +347,7 @@ void RKRemapEditor::onParameterChange()
         row->updateLinked();
     }
     for (auto& row : inputRows)
-        row->repaint();
+        row->updateLinked();
     updateHiddenNote();
 }
 

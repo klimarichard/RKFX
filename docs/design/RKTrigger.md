@@ -110,6 +110,13 @@ The audio has **zero latency** (Thru). Each note leaves at the end of its **Scan
 - Per trigger: two SVF stages, a peak envelope and a few comparisons per sample. Far under 0.1% of a core.
 - Never a hanging note: every note-on has its scheduled note-off. Bypass, preset changes and Note or Channel changes end sounding notes first.
 
+## As built (2026-10-29)
+
+- **Rearming after the Mask.** As designed, once the Mask ended a drum still ringing above the Threshold would fire again on every cycle. A new hit (after the Mask, and for Retrigger inside it) is now measured against a reference level: set to the last hit's peak, following the signal with a 5 ms attack (a new hit outruns it, a ring doesn't) and a 50 ms release. After the Mask a new hit has to rise 6 dB above it. Tested with rings of 30, 150 and 400 ms: one note each.
+- **Note names** follow the suite's convention (middle C = C4), so note 36 shows as C2 and 38 as D2.
+- **Cajón preset:** High-Pass 500 Hz (the top of the range), not 1 kHz.
+- **Window 900 × 640**, one trigger's controls at a time (Trigger 1 / Trigger 2 tabs). CPU measured 0.09% of one core, dual with filters.
+
 ## Tests
 
 - **One hit, one note:** a decaying 60 Hz burst crosses the threshold once and gives exactly one note-on and one note-off after Length, even with the ringing above the threshold for longer than the Mask.

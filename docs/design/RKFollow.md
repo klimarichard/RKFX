@@ -159,6 +159,13 @@ The audio has **zero latency**. A note starts once the tracker has confirmed its
 - **Audio untouched:** output equals input, bit for bit.
 - **Validation:** auval (`aumf Flw1 RKMu`), pluginval at strictness 10, presets.
 
+## As built (2026-10-29)
+
+- **Pitch measured over ~12 ms of cycles, not one cycle.** The tracker gives each cycle's length in whole samples: fine for RKVoice's shifter, but too coarse for MIDI (at 2 kHz, a sample is about 50 cents, so notes would flicker and the bend would be off). RKFollow measures the time across the cycles of the last 12 ms (at least two), which puts the pitch within about 2 cents.
+- **First notes and jumps are confirmed.** A note's first cycles read flat or sharp while the tracker's filter settles, which sent a wrong note (a semitone off) for ~40 ms before the right one. A first note or a jump now needs three cycles agreeing within 1.5% on it, and the tracker's own (filter) pitch agreeing too. Measured: a note starts 28 ms into an A4; a jump of three semitones lands 16 ms after it is played.
+- **Core:** as designed. `sendMidi()` also drops anything sent while bypassed, so nothing can start after the bypass note-offs.
+- **Window 1000 × 630.** CPU measured 0.08% of one core (RKFXBench).
+
 ## Decisions (2026-10-29)
 
 - **Name:** RKFollow.

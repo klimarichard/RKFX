@@ -36,8 +36,8 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKTremolo](docs/manuals/RKTremolo.md) | Tremolo, auto-pan and harmonic tremolo | Available |
 | [RKRotary](docs/manuals/RKRotary.md) | Rotary speaker with horn, drum and drive | Available |
 | [RKVibrato](docs/manuals/RKVibrato.md) | Pitch vibrato with rise | Available |
-| [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong and ducking | Available |
-| [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with freeze | Available |
+| [RKDelay](docs/manuals/RKDelay.md) | Digital, analog and tape delay with ping-pong, ducking and shimmer (repeats that climb in pitch) | Available |
+| [RKVerb](docs/manuals/RKVerb.md) | Room, hall and plate reverb with shimmer and freeze | Available |
 | [RKUtility](docs/manuals/RKUtility.md) | Gain, pan, width, bass mono, polarity, mid/side, mic alignment delay | Available |
 | [RKOctave](docs/manuals/RKOctave.md) | Analog-style octave divider, one and two octaves down | Available |
 | [RKAcoustic](docs/manuals/RKAcoustic.md) | Preamp for piezo pickups: body, quack cut, EQ, notch, phase, compression | Available |

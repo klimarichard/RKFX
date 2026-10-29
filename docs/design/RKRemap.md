@@ -128,8 +128,9 @@ The RKFX standard Bypass passes each input to the output with the same number (I
 - **Names and views in presets:** saved and loaded with presets and the session (and the core change keeps other plugins' presets unchanged).
 - **Validation:** auval (`aufx Rmp1 RKMu`), pluginval at strictness 10, presets; and Step 0 in Gig Performer.
 
-## Open questions
+## Decisions (2026-10-29)
 
-- **Bypass:** keep the RKFX standard (In *n* → Out *n*, with a warning), or make RKRemap's Bypass mute every output? Muting is safer on stage but breaks the suite's rule that bypass passes the input through. Recommendation: keep the standard and warn, or leave Bypass out of mappings.
-- **Bus layout:** one 64-channel bus or 32 stereo buses, decided by Step 0.
-- **Trim range:** −24 to +12 dB enough, or should it reach −∞ (off) like a fader?
+- **Bypass:** the RKFX standard (In *n* → Out *n*); the manual warns against mapping it in a live rig.
+- **Trim:** −24 to +12 dB.
+- **Step 0** is built first: a test build with identity routing, for checking in Gig Performer.
+- **Bus layout:** decided by Step 0 (one 64-channel bus, or 32 stereo buses).

@@ -1,0 +1,14 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Sub Drop",
+  "params": {
+    "mode": "analog",
+    "sync": true,
+    "division": "1/4",
+    "feedback": 45,
+    "shimmer": 40,
+    "shimmer_interval": "octave_down",
+    "mix": 35
+  }
+}

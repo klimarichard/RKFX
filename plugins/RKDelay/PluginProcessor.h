@@ -25,7 +25,8 @@ protected:
 
 private:
     juce::RangedAudioParameter *mode, *time, *sync, *division, *feedback, *stereo, *offset,
-                               *lowCut, *highCut, *modDepth, *modRate, *duck;
+                               *lowCut, *highCut, *modDepth, *modRate, *duck,
+                               *shimmer, *shimmerInterval;
     DelayEngine engine;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKDelayProcessor)

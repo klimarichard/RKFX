@@ -281,6 +281,16 @@ int main (int argc, char** argv)
           {
               return makeEngine<DelayEngine> ([] (DelayEngine& e) { e.setSettings ({}); });
           } },
+        { "RKDelay", "stereo, shimmer 60%", []
+          {
+              return makeEngine<DelayEngine> ([] (DelayEngine& e)
+              {
+                  DelayEngine::Settings s;
+                  s.feedback = 0.55f;
+                  s.shimmer = 0.6f;
+                  e.setSettings (s);
+              });
+          } },
         { "RKDelay", "tape, ping-pong, modulation, ducking", []
           {
               return makeEngine<DelayEngine> ([] (DelayEngine& e)
@@ -327,6 +337,15 @@ int main (int argc, char** argv)
         { "RKVerb", "default (hall)", []
           {
               return makeEngine<ReverbEngine> ([] (ReverbEngine& e) { e.setSettings ({}); });
+          } },
+        { "RKVerb", "hall, shimmer 50%", []
+          {
+              return makeEngine<ReverbEngine> ([] (ReverbEngine& e)
+              {
+                  ReverbEngine::Settings s;
+                  s.shimmer = 0.5f;
+                  e.setSettings (s);
+              });
           } },
         { "RKLimit", "default", []
           {

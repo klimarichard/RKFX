@@ -1,0 +1,13 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Fifth Heaven",
+  "params": {
+    "type": "hall",
+    "decay": 8000,
+    "size": 80,
+    "shimmer": 40,
+    "shimmer_interval": "fifth_up",
+    "mix": 40
+  }
+}

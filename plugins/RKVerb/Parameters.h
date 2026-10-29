@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dsp/PitchShifter.h"
 #include "plugin/ParamBuilder.h"
 
 /** RKVerb parameter IDs and ranges. IDs are permanent: never rename, reuse
@@ -46,6 +47,18 @@ namespace VerbParams
         p.addPercent ("mod", "Modulation", 0.0f, 100.0f, 20.0f);
         p.addPercent ("width", "Width", 0.0f, 100.0f, 100.0f);
         p.addBool    ("freeze", "Freeze", false);
+
+        // Shimmer (added later, so appended).
+        {
+            juce::StringArray intervalNames, intervalKeys;
+            for (int i = 0; i < rkfx::ShimmerInterval::kCount; ++i)
+            {
+                intervalNames.add (rkfx::ShimmerInterval::names[i]);
+                intervalKeys.add (rkfx::ShimmerInterval::keys[i]);
+            }
+            p.addPercent ("shimmer", "Shimmer", 0.0f, 100.0f, 0.0f);
+            p.addChoice  ("shimmer_interval", "Shimmer Interval", intervalNames, intervalKeys, 0);
+        }
 
         return p;
     }

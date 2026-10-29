@@ -1,0 +1,12 @@
+{
+  "plugin": "RKVerb",
+  "version": 1,
+  "name": "Shimmer Plate",
+  "params": {
+    "type": "plate",
+    "decay": 4000,
+    "shimmer": 30,
+    "shimmer_interval": "octave_up",
+    "mix": 30
+  }
+}

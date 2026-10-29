@@ -22,7 +22,8 @@ RKDelayProcessor::RKDelayProcessor()
       mode (findParam ("mode")), time (findParam ("time")), sync (findParam ("sync")),
       division (findParam ("division")), feedback (findParam ("feedback")), stereo (findParam ("stereo")),
       offset (findParam ("offset")), lowCut (findParam ("lowcut")), highCut (findParam ("highcut")),
-      modDepth (findParam ("mod_depth")), modRate (findParam ("mod_rate")), duck (findParam ("duck"))
+      modDepth (findParam ("mod_depth")), modRate (findParam ("mod_rate")), duck (findParam ("duck")),
+      shimmer (findParam ("shimmer")), shimmerInterval (findParam ("shimmer_interval"))
 {
 }
 
@@ -41,6 +42,8 @@ DelayEngine::Settings RKDelayProcessor::currentSettings() const
     s.modDepth  = valueOf (modDepth) / 100.0f;
     s.modRateHz = valueOf (modRate);
     s.duck      = valueOf (duck) / 100.0f;
+    s.shimmer   = valueOf (shimmer) / 100.0f;
+    s.shimmerRatio = rkfx::ShimmerInterval::ratio (juce::roundToInt (valueOf (shimmerInterval)));
     return s;
 }
 

@@ -1,0 +1,15 @@
+{
+  "plugin": "RKDelay",
+  "version": 1,
+  "name": "Crystal Fifths",
+  "params": {
+    "mode": "tape",
+    "sync": true,
+    "division": "1/8",
+    "feedback": 50,
+    "stereo": "pingpong",
+    "shimmer": 50,
+    "shimmer_interval": "fifth_up",
+    "mix": 35
+  }
+}

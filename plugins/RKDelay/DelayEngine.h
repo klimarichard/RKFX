@@ -2,6 +2,7 @@
 
 #include "dsp/DelayLine.h"
 #include "dsp/EnvelopeFollower.h"
+#include "dsp/PitchShifter.h"
 #include "dsp/RandomModulator.h"
 #include "dsp/StateVariableFilter.h"
 #include "dsp/TempoSync.h"
@@ -22,6 +23,10 @@
       saturated;
     - tape: wow and flutter on the delay time, tape-style soft saturation and
       a slight loss of highs.
+
+    Shimmer: part of the feedback goes through a pitch shifter, so each
+    repeat climbs (an octave up by default). The shifted part is written into
+    the line the shifter's latency early, so its repeats stay on the beat.
 
     Feedback at 100% sustains but never runs away (clipper and loop filters).
     The buffer holds 4 s; longer synced times are clamped. GUI-free and
@@ -49,6 +54,8 @@ public:
         float modDepth = 0.0f;         // 0..1
         float modRateHz = 0.6f;
         float duck = 0.0f;             // 0..1
+        float shimmer = 0.0f;          // 0..1, share of the feedback that is pitch-shifted
+        float shimmerRatio = 2.0f;     // pitch ratio of the shifted repeats
     };
 
     /** The left delay time in ms (synced or free), clamped to the buffer. */
@@ -66,6 +73,8 @@ private:
         rkfx::DelayLine line;
         rkfx::StateVariableFilter lowCut, highCut;
         rkfx::DCBlocker dc;
+        rkfx::PitchShifter shifter;
+        rkfx::StateVariableFilter shimmerHighPass;
         float characterLowPass = 0.0f;   // one-pole state (analog darkening, tape highs loss)
         float lastProcessed = 0.0f;
         double time = 0.0;               // smoothed delay time in samples
@@ -80,6 +89,7 @@ private:
     rkfx::EnvelopeFollower inputLevel;
 
     float timeCoef = 0.0f;   // delay time glide
-    rkfx::Smoothed feedback { 0.35f }, darkCoef, saturation, tapeAmount, modDepthSamples, duck;
+    rkfx::Smoothed feedback { 0.35f }, darkCoef, saturation, tapeAmount, modDepthSamples, duck, shimmer;
+    bool shimmerRunning = false;
     rkfx::SmoothedGain lowCutHz { 100.0f }, highCutHz { 8000.0f };
 };

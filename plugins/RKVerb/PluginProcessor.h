@@ -25,7 +25,8 @@ protected:
 
 private:
     juce::RangedAudioParameter *type, *decay, *size, *predelay, *predelaySync, *predelayDivision,
-                               *damping, *lowCut, *highCut, *mod, *width, *freeze;
+                               *damping, *lowCut, *highCut, *mod, *width, *freeze,
+                               *shimmer, *shimmerInterval;
     ReverbEngine engine;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKVerbProcessor)

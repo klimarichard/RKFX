@@ -24,7 +24,7 @@ RKMix with nothing switched on (sections off, faders at 0 dB, centred, all chann
 ```
 input n ─► Trim ─► Polarity ─► Delay ─► HPF ─► Gate ─► EQ ─► Comp ─► Insert 1 ─► Insert 2 ─┬─► Mute ─► Fader ─► Pan ─┬─► Main L/R
                                                                                            │                         ├─► Group buses (assigned, post-fader)
-                                                                                           ├─► pre-fader sends ──────┼─► Aux buses (send level, pre or post)
+                                                                                           ├─► Aux sends ────────────┼─► Aux buses (send level, tap point per send)
                                                                                            └─► PFL                   ├─► FX buses (send level, always post)
                                                                                                                      └─► AFL
 
@@ -39,6 +39,8 @@ Aux bus   ─► Insert 1-4 ─► Mute ─► Fader ─────────
 Main L/R  ─► Insert 1-4 ─► Mute ─► Fader ─► Balance ─► main output pair
                                     └─► Mono sum (L+R)/2 ─► Insert 1-2 ─► Mute ─► Fader ─► mono output
 ```
+
+The drawing shows Aux sends at their default, Pre-Fader. Each send can tap the strip earlier or later instead (see Send tap points).
 
 **Processing order** is fixed: channels, then Group buses in ascending number, then FX buses, then Aux buses, then the main and the mono sum. A Group can feed only a **higher-numbered** Group, so the routing can never loop. FX and Aux buses never feed Groups, and Aux buses never feed the main.
 
@@ -79,12 +81,33 @@ Every section has an **On** switch. An off section is skipped entirely (bit-exac
 | Main | off, on (assign to Main L/R) | on |
 | Group *k* | off, on, per Group bus | off |
 | Send *k* | −∞ to +10 dB, per Aux and FX bus | −∞ |
-| Send pre/post | per Aux bus (one setting for the bus, see Buses) | pre |
+| Send tap | per send (channel × Aux bus): Bus default, Input, Pre-EQ, Pre-Comp, Pre-Inserts, Pre-Fader, Post-Fader | Bus default |
 
 - **Pan law:** a mono channel panned centre into a stereo bus is **−3 dB per side** (constant power). A stereo channel's Balance turns one side down and leaves the other at unity.
 - **Into a mono bus,** a mono channel goes as it is and a stereo channel as (L + R) / 2.
 - **Stereo sends** to a stereo Aux follow the channel's pan (**Pan follows**, a switch per Aux bus, default on, so an in-ear mix keeps the stage picture).
 - **Sends at −∞ are skipped** (no multiply-add).
+
+### Send tap points
+
+Every send to an **Aux bus** taps the channel at its own point. The bus sets the default and each send can override it. For example, the singer's in-ear (Bus 1) gets the vocal **Pre-Comp** (natural dynamics in the ear), while every other Aux gets it at the bus default, Pre-Fader (after the compressor).
+
+| Tap | Taken after | Before |
+| --- | --- | --- |
+| Input | Trim, Polarity, Delay | HPF |
+| Pre-EQ | HPF, Gate | EQ |
+| Pre-Comp | EQ | Comp |
+| Pre-Inserts | Comp | Insert 1 |
+| Pre-Fader | Inserts | Mute, Fader |
+| Post-Fader | Fader, Pan | — |
+
+- **Mute applies at every tap:** a muted channel is silent in every send, whatever its tap point.
+- **Pan follows** (stereo Aux) applies the channel's pan at every tap, not only post-fader.
+- **The bus's default** (Pre-Fader or Post-Fader in the bus settings, or any tap) is used by every send left at *Bus default*. A send with its own tap shows a small tap label next to its knob, so overrides are visible.
+- **FX sends** stay Post-Fader (no tap choice); Group assigns are always post-fader.
+- **Cost:** the strip keeps a copy of the signal only at the tap points some send actually uses (a copy per used tap per block). A strip whose sends all use one tap costs what it did before.
+- **Latency:** a tap before the inserts has less latency than one after them. The alignment at each bus (see Latency) delays it to match, so a pre-insert send stays in time with the rest of the in-ear mix.
+- **Tap points are structure, not scene values** (see Scenes): they can change latency alignment, so they are set up once, not switched per song.
 
 ## Buses
 
@@ -97,13 +120,13 @@ Each of the 16 buses has:
 | Name, colour | text, 8 colours | "Bus *k*" |
 | Output | Off, Out *n*, or Out *n*/*n+1* (stereo) | Off |
 | Main | off, on (Group and FX only) | Group off, FX on |
-| Pre/post (Aux only) | Pre (after the channel's inserts, before mute and fader), Post (after the fader and pan) | Pre |
+| Default tap (Aux only) | any send tap point (see Send tap points) | Pre-Fader |
 | Pan follows (stereo Aux only) | off, on | on |
 
 and like a channel: **4 insert slots**, Mute, Fader, Pan/Balance (into the main), and sends to Aux and FX buses (Group and FX buses). A Group bus also has assign switches to **higher-numbered** Groups.
 
 - **Group:** fed by the channels assigned to it, post-fader and post-pan at unity (no send knob). Use it for "Drums" or "Backing vocals" with one fader and shared compression.
-- **Aux:** fed by per-channel send levels, pre or post fader. Never feeds the main. Use it for monitor and in-ear mixes, a recorder feed or a broadcast feed.
+- **Aux:** fed by per-channel send levels, each at its own tap point (the bus's default unless overridden). Never feeds the main. Use it for monitor and in-ear mixes, a recorder feed or a broadcast feed.
 - **FX:** fed by per-channel send levels, always post-fader. Returns into the main (and can be sent on to Aux buses, so the singer hears the reverb). Its inserts hold the effect (RKVerb, RKDelay), usually at 100% wet.
 - **Changing a bus's type or format** doesn't erase the sends or assigns that the new type doesn't use. They are kept and come back if the type is changed back. The window shows the change as a structural one (see Scenes).
 
@@ -129,11 +152,27 @@ A global **Solo mode**:
 
 Solo is never saved (in presets, scenes or the session) and clears when a mix is loaded. A solo change fades over 10 ms.
 
+## Talkback
+
+- **Talk source:** any input (a dedicated talkback mic, usually not on a channel's fader), after its Trim, through a fixed 100 Hz high-pass. Default Off.
+- **Destinations:** any of the 16 buses and the main, chosen by switches (default: every Aux bus, not the main). Talkback is added at the bus's input, so it passes the bus's inserts and fader like the rest of the mix.
+- **Level** −∞ to +10 dB (default 0 dB), and **Talk** button: momentary (hold) or latch (click), a setting.
+- **Talk** is a host parameter, an assignable target and MIDI-learnable, so a Gig Performer widget or a footswitch can work it. It fades in and out over 10 ms.
+- **Never saved on:** Talk is always off when a mix loads.
+
+## Oscillator
+
+- **Signal:** Sine (20 Hz–20 kHz, default 1 kHz) or **Pink noise** (−3 dB/octave, the usual Voss-McCartney generator).
+- **Level** −60 to 0 dBFS, default −18 dBFS. Mono signal, the same on both sides of a stereo destination.
+- **Destinations:** any buses, the main, or one output or output pair directly (to check a speaker or a cable), chosen by switches. Default: none.
+- **On** switch, fading over 10 ms. Not a host parameter, but an assignable target.
+- **Never saved on:** the oscillator is always off when a mix loads, and the master section shows a lit **OSC** indicator while it runs.
+
 ## Inserts
 
 - **What fits:** any RKBoard pedal (stereo RKFX audio plugins and the board's Volume and Wah), hosted the same way RKBoard does: the plugin's own `ProcessorBase` instance and its own editor, with its presets and factory presets, and the sidechain bus disabled. MIDI-input plugins (RKVoice, RKVocode, RKSynth) receive the mix's MIDI input.
 - **Per slot:** plugin (or empty), On (bypass), and an **Edit** button opening the plugin's editor in the top panel (see The window).
-- **A mono channel or mono bus** runs its inserts in mono. Effects whose point is stereo (ping-pong delay, chorus spread) belong on a stereo FX bus; the slot menu marks them "stereo effect". See the open questions.
+- **A mono channel or mono bus** runs its inserts in mono. Effects whose point is stereo (ping-pong delay, chorus spread) belong on a stereo FX bus; the slot menu marks them "stereo effect".
 - **Insert on/off** fades over 20 ms (the plugin is fed silence and idles while off, as RKBoard's bypass does).
 
 ## Latency
@@ -146,7 +185,7 @@ Solo is never saved (in presets, scenes or the session) and clears when a mix is
 
 ## Scenes and assignables
 
-- **16 scenes**, like RKBoard's. A scene holds the **mix values**: every strip value and section switch, faders, mutes, pans, sends, group and main assigns, insert on/off, and the insert knobs marked **Scene controlled** (right-click, up to 64, as RKBoard). It does **not** hold the **structure**: input links, bus types and formats, outputs, which plugin sits in which slot, names and colours. So a scene change never changes latency or routing topology.
+- **16 scenes**, like RKBoard's. A scene holds the **mix values**: every strip value and section switch, faders, mutes, pans, sends, group and main assigns, insert on/off, and the insert knobs marked **Scene controlled** (right-click, up to 64, as RKBoard). It does **not** hold the **structure**: input links, bus types and formats, send tap points, outputs, which plugin sits in which slot, the talkback and oscillator setup, names and colours. So a scene change never changes latency or routing topology.
 - **Glide** (per mix, 0 to 5 s, default 100 ms): continuous values glide, switches and choices jump at the start (sections on/off and mutes crossfade over their usual 20 ms).
 - **Recall safe** per channel and bus: excluded from scene recall (a talkback mic, a channel being sound-checked).
 - **32 assignables** as RKBoard's: any control in the mix or in an insert, with min/max and invert, set by right-clicking a control ("Assign to…"). Two-way: moving the control moves the host parameter.
@@ -165,8 +204,9 @@ Fixed host parameters, in this order (IDs permanent, append only):
 | `main_fader`, `main_mute`, `mono_fader`, `mono_mute` | 4 | main and mono |
 | `assign1` … `assign32` | 32 | assignables |
 | `scene` | 1 | scene 1–16 |
+| `talk` | 1 | talkback on/off |
 
-133 in all, plus the base's Bypass. Everything else (about 1,000 values: strips, sends, buses, routing) lives in the mix state, not in host parameters, as RKBoard's board does. A scene recalling a fader moves its host parameter, so Gig Performer widgets follow.
+134 in all, plus the base's Bypass. Everything else (about 1,000 values: strips, sends, buses, routing) lives in the mix state, not in host parameters, as RKBoard's board does. A scene recalling a fader moves its host parameter, so Gig Performer widgets follow.
 
 No Dry/Wet and no Output knob (`hasMix` and `hasOutput` off).
 
@@ -191,7 +231,7 @@ Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is
 - **Utility family**, accent proposal **steel `#6B8CA6`** (not used by another plugin).
 - **One bus of 32 discrete channels** each way (`PluginConfig::channels = 32`). RKRemap's Step 0 confirmed in Gig Performer that one 64-channel bus works as AU and VST3, so no new step 0 is needed.
 - **Not an RKBoard pedal**: the board's chain is stereo. RKBoard can't be an insert either.
-- **Host bypass:** the RKFX standard for a multi-channel plugin, as RKRemap: In *n* → Out *n*. The manual warns against mapping it live.
+- **Host bypass = silence** on every output (unlike RKRemap's straight-through: raw inputs on the PA and in-ears would be worse than nothing). It fades out and in over 10 ms. **Core change:** a `PluginConfig` option for bypass to mute rather than pass the dry signal (e.g. `bypassMutes`).
 
 ## Architecture
 
@@ -208,7 +248,7 @@ As RKBoard: one stacked branch per phase, the user tests in Gig Performer betwee
 2. **Fixed strip** (`feat/rkmix-strip`): HPF, gate, EQ, comp, keys, the channel view, channel presets.
 3. **Buses** (`feat/rkmix-buses`): 16 buses with types, formats, sends, sends on fader, groups to later groups, outputs, the routing page.
 4. **Inserts** (`feat/rkmix-inserts`): the shared pedal-hosting refactor, insert slots, hosted editors, latency alignment.
-5. **Solo** (`feat/rkmix-solo`): cue PFL/AFL, solo in place, solo safe.
+5. **Solo, talkback, oscillator** (`feat/rkmix-solo`): cue PFL/AFL, solo in place, solo safe, talkback, sine/pink-noise oscillator.
 6. **Scenes and assignables** (`feat/rkmix-scenes`): scenes, glide, recall safe, scene-controlled insert knobs, assignables.
 7. **Standalone** (`feat/rkmix-standalone`): MIDI learn, program change, tempo/tap/clock.
 
@@ -235,8 +275,10 @@ Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the websi
 
 - **Summing:** unity routes bit-exact at default settings; channels to the main, pan law (−3 dB centre), balance, mono and stereo into mono buses; the mono sum is (L + R) / 2.
 - **Fixed strip:** each section off is bit-exact; HPF/EQ responses match RKParaEQ's/RKFilter's; gate and comp match RKGate's/RKCompress's engines; keys from another input; a linked pair gates and compresses both sides together.
-- **Buses:** Group assigns post-fader; Aux pre and post taps (pre ignores the fader, both follow mute); FX always post; pan follows; groups feed only higher groups (the GUI and the state loader refuse otherwise); several sources on one output add up.
+- **Buses:** Group assigns post-fader; every Aux tap point takes the signal at its place in the strip (e.g. Pre-Comp is uncompressed while the same channel's Pre-Fader send is compressed), per-send overrides beat the bus default, every tap follows mute, a pre-insert tap is latency-aligned with post-insert sends; FX always post; pan follows; groups feed only higher groups (the GUI and the state loader refuse otherwise); several sources on one output add up.
 - **Solo:** cue PFL/AFL taps, cue source with nothing soloed, the main untouched in Cue mode; solo in place mutes the rest except solo-safe; solo never saved.
+- **Talkback and oscillator:** reach only their chosen destinations; sine frequency and level; pink noise slope (−3 dB/octave within ±1 dB, 50 Hz–10 kHz); both off after loading a mix saved with them on.
+- **Bypass:** every output silent, with a fade.
 - **Latency:** a latent insert on one channel: every summing point aligned (impulse on two channels arrives together at the main, in an Aux pre and post, and at the cue output); reported latency; zero latency with no latent insert.
 - **No clicks:** fader, mute, section switches, insert on/off, solo and scene changes on a sustained tone produce no step beyond the signal's own.
 - **Scenes:** recall restores values not structure; recall safe; glide; host fader parameters follow a scene.
@@ -255,12 +297,12 @@ Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the websi
 - **Host parameters:** channel/bus/main/mono faders and mutes, plus 32 assignables and Scene; the rest in the mix state.
 - **Scenes and assignables:** 16 scenes with a glide, 32 assignables, MIDI learn in the standalone.
 
+- **Bypass:** silence on every output.
+- **Mono channels** run inserts in mono.
+- **Send tap point per send** (channel × Aux bus), the bus supplying the default: so the singer's in-ear can take the vocal before the compressor while the other mixes take it after.
+- **Talkback** and an **oscillator** (sine and pink noise) are in v1 (phase 5).
+- **Not in v1:** mid/side input pairs, a comp-before-EQ switch, direct outs (an RKRemap before RKMix can split raw inputs for recording).
+
 ## Open questions
 
-- **Host bypass:** In *n* → Out *n* (assumed, as RKRemap) or silence? Straight-through feeds raw inputs to the PA and the in-ears.
-- **Mono channels and stereo effects:** run inserts in mono (as designed) or let a channel "go stereo" after a stereo insert?
-- **Mid/side pairs** as in RKRemap (an L/R | M/S switch on a linked input pair)?
-- **Comp before EQ** switch per channel?
-- **Direct outs** (each channel to an output, pre or post, for recording) or leave that to an RKRemap before RKMix?
-- **Talkback and an oscillator** (test tone/pink noise to any bus)?
 - **Accent colour** (`#6B8CA6` proposed) and window size once phase 1 is on screen.

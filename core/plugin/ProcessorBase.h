@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "FactoryPresets.h"
+#include "MidiFootprint.h"
 #include "OutputStage.h"
 #include "dsp/TempoSync.h"
 #include "ParamBuilder.h"
@@ -31,6 +32,7 @@ struct PluginConfig
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
     int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKRemap); 0 = mono/stereo
     bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
+    bool bypassMutes = false;        // Bypass fades to silence instead of passing the input (RKMix: raw inputs must never reach the PA)
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };
@@ -62,6 +64,10 @@ public:
     ~ProcessorBase() override;
 
     const PluginConfig& getConfig() const noexcept { return config; }
+
+    /** Plugins with MIDI output: what they can send at their current settings
+        (message thread; RKMix warns when two of its inserts clash). */
+    virtual MidiFootprint getMidiOutputFootprint() const { return {}; }
 
     /** Lookup by ID (set up at construction; safe to call any time). */
     juce::RangedAudioParameter* findParam (const juce::String& id) const;
@@ -187,9 +193,12 @@ protected:
     /** Declares the latency the plugin's DSP adds (oversampling only; every
         other plugin reports 0). Safe from any thread: the dry signal (used by
         dry/wet and bypass) is delayed to match from the next block on, and
-        the host is told on the message thread. Up to kMaxLatency samples. */
+        the host is told on the message thread. Up to kMaxLatency samples;
+        a plugin whose bypass mutes (config.bypassMutes) has no dry signal to
+        delay and may report up to kMaxMutedLatency (RKMix's inserts). */
     void reportLatency (int samples);
     static constexpr int kMaxLatency = 63;
+    static constexpr int kMaxMutedLatency = 1 << 16;
 
     /** State beyond the parameters (RKConduct's MIDI file, RKRemap's names):
         saved with the host state (as "extra"), and in preset files too when

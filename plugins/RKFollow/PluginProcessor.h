@@ -21,6 +21,10 @@ public:
     /** For the display (message thread): the level is the loudest since the last call. */
     FollowEngine::Meter takeMeter() noexcept;
 
+    /** Any note, the expression controller or pressure, pitch bend and its range
+        (RPN) on its channel; in MPE mode on every channel. */
+    rkfx::MidiFootprint getMidiOutputFootprint() const override;
+
 protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;
     void resetDsp() override;

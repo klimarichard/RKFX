@@ -1,6 +1,6 @@
 # RKBoard: every RKFX plugin built in, as pedals on a board. Not made with
 # rkfx_add_plugin(): it adds a Standalone, and it compiles the sources of all
-# the other plugins (their own entry points left out with RKFX_BOARD).
+# the other plugins through the pedal host (host/).
 # Plugin code and bundle ID are permanent.
 
 juce_add_plugin(RKBoard
@@ -26,60 +26,35 @@ juce_add_plugin(RKBoard
 set(RKBOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardEditor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/PedalRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RoutingPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/AssignPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MidiLearn.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PitchDetector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TunerPanel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/pedals/VolumePedal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahPedal.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahEngine.cpp
 )
 
-# Factory presets, registered by name like every plugin's: the board's own
-# (presets/*.json, board presets) and the board-only pedals'
-# (pedals/presets/<Name>/*.json).
+# The board's own factory presets (presets/*.json, board presets), registered
+# by name like every plugin's. The pedals and their presets come from the
+# shared pedal host (host/).
 add_library(rkboard_factory_presets INTERFACE)
-foreach(pedal RKBoard RKVolume RKWah)
-    if(pedal STREQUAL "RKBoard")
-        set(presetDir "${CMAKE_CURRENT_SOURCE_DIR}/presets")
-    else()
-        set(presetDir "${CMAKE_CURRENT_SOURCE_DIR}/pedals/presets/${pedal}")
-    endif()
-    file(GLOB pedalPresets CONFIGURE_DEPENDS "${presetDir}/*.json")
-    list(SORT pedalPresets)
-    juce_add_binary_data(${pedal}_FactoryPresets
-        HEADER_NAME ${pedal}FactoryPresetData.h
-        NAMESPACE   ${pedal}FactoryPresetData
-        SOURCES     ${pedalPresets})
-    target_link_libraries(rkboard_factory_presets INTERFACE ${pedal}_FactoryPresets)
-
-    set(PLUGIN ${pedal})
-    configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in"
-                   "${CMAKE_CURRENT_BINARY_DIR}/${pedal}FactoryPresetList.cpp" @ONLY)
-    list(APPEND RKBOARD_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/${pedal}FactoryPresetList.cpp")
-endforeach()
+file(GLOB boardPresets CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/presets/*.json")
+list(SORT boardPresets)
+juce_add_binary_data(RKBoard_FactoryPresets
+    HEADER_NAME RKBoardFactoryPresetData.h
+    NAMESPACE   RKBoardFactoryPresetData
+    SOURCES     ${boardPresets})
+target_link_libraries(rkboard_factory_presets INTERFACE RKBoard_FactoryPresets rkfx_pedal_host)
+set(PLUGIN RKBoard)
+configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/RKBoardFactoryPresetList.cpp" @ONLY)
+list(APPEND RKBOARD_SOURCES "${CMAKE_CURRENT_BINARY_DIR}/RKBoardFactoryPresetList.cpp")
 
 set(RKBOARD_SOURCES ${RKBOARD_SOURCES} PARENT_SCOPE)
 target_sources(RKBoard PRIVATE ${RKBOARD_SOURCES})
 
-# Every plugin's own sources, factory preset list and preset data.
-set(RKBOARD_PEDAL_SOURCES "")
-foreach(plugin IN LISTS RKFX_PLUGINS)
-    file(GLOB pluginSources CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/plugins/${plugin}/*.cpp")
-    list(APPEND RKBOARD_PEDAL_SOURCES ${pluginSources} "${CMAKE_BINARY_DIR}/plugins/${plugin}/FactoryPresetList.cpp")
-    if(TARGET ${plugin}_FactoryPresets)
-        target_link_libraries(RKBoard PRIVATE ${plugin}_FactoryPresets)
-    endif()
-endforeach()
-set(RKBOARD_PEDAL_SOURCES ${RKBOARD_PEDAL_SOURCES} PARENT_SCOPE)
-target_sources(RKBoard PRIVATE ${RKBOARD_PEDAL_SOURCES})
-
 target_compile_definitions(RKBoard
     PUBLIC
-        RKFX_BOARD=1
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0

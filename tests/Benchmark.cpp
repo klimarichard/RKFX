@@ -37,6 +37,7 @@
 #include "HoldEngine.h"
 #include "PolyPitchEngine.h"
 #include "RemapEngine.h"
+#include "MixEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -46,7 +47,8 @@
 /** CPU benchmarks at 48 kHz with 64-sample blocks (the spec's reference
     setting), stereo. Prints microseconds per block and the share of the
     block's real-time budget. With --record <file>, appends a CSV line per
-    case so builds can be compared over time. */
+    case so builds can be compared over time; --only <Plugin> runs one
+    plugin's cases. */
 
 namespace
 {
@@ -500,6 +502,104 @@ int main (int argc, char** argv)
                   engine->process (buffer->getArrayOfWritePointers(), RemapEngine::kChannels, kBlock);
               });
           } },
+        { "RKMix", "32 mono channels to the main and mono sum, delay on", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+              {
+                  s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
+                  s.channels[(size_t) ch].strip.delayOn = true;
+                  s.channels[(size_t) ch].strip.delayMs = 1.5f;
+              }
+              s.main.monoOutput = 3;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
+        { "RKMix", "32 channels, every strip section on, 16 stereo Aux buses, 32 sends", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+              {
+                  auto& strip = s.channels[(size_t) ch].strip;
+                  strip.delayOn = true;
+                  strip.delayMs = 1.5f;
+                  strip.hpf.on = true;
+                  strip.gate.on = true;
+                  strip.gate.thresholdDb = -60.0f;
+                  strip.eq.on = true;
+                  for (auto& band : strip.eq.bands)
+                      band.gainDb = 3.0f;
+                  strip.comp.on = true;
+                  s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
+                  s.channels[(size_t) ch].sendDb[(size_t) (ch % 16)] = -6.0f;     // 32 sends over 16 buses
+              }
+              for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+                  s.buses[(size_t) bus].output = 1 + bus;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
+        { "RKMix", "16 stereo buses and the main: EQ (6 bands, cuts), comp, limit all on", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              const auto full = []
+              {
+                  BusDsp::Settings d;
+                  d.eq.on = d.eq.hpfOn = d.eq.lpfOn = true;
+                  for (auto& band : d.eq.bands)
+                      band.gainDb = 2.0f;
+                  d.comp.on = true;
+                  d.limit.on = true;
+                  return d;
+              }();
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  s.channels[(size_t) ch].sendDb[(size_t) (ch % 16)] = -6.0f;
+              for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+              {
+                  s.buses[(size_t) bus].output = 1 + bus;
+                  s.buses[(size_t) bus].dsp = full;
+              }
+              s.main.dsp = full;
+              s.main.monoDsp = full;
+              s.main.monoOutput = 20;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
         { "RKSwell", "default", []
           {
               return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });
@@ -655,14 +755,24 @@ int main (int argc, char** argv)
           } },
     };
 
+    // --record <csv>: append the results; --only <Plugin>: run that plugin's cases alone.
     juce::File recordFile;
-    if (argc >= 3 && juce::String (argv[1]) == "--record")
-        recordFile = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
+    juce::String only;
+    for (int i = 1; i + 1 < argc; ++i)
+    {
+        if (juce::String (argv[i]) == "--record")
+            recordFile = juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1]);
+        else if (juce::String (argv[i]) == "--only")
+            only = argv[i + 1];
+    }
 
     const auto budget = kBlock * 1.0e6 / kRate;
 
     for (const auto& c : cases)
     {
+        if (only.isNotEmpty() && only != c.plugin)
+            continue;
+
         const auto us = run (c);
         std::printf ("%-12s %-28s %7.2f us/block  %5.2f %% of real time\n", c.plugin, c.name, us, 100.0 * us / budget);
 

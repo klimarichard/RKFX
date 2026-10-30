@@ -264,8 +264,9 @@ rkfx::ProcessorBase* BoardProcessor::getPedal (int id) const
 
 std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::createPedal (const juce::String& typeName) const
 {
+    // Plugins that send MIDI need a MIDI output: the board has none.
     const auto* type = findPedalType (typeName);
-    if (type == nullptr)
+    if (type == nullptr || type->sendsMidi)
         return nullptr;
 
     auto pedal = type->create();

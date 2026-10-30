@@ -97,6 +97,11 @@ public:
                 BoardProcessor board;
                 board.clearBoard();
                 prepare (board);
+                if (type.sendsMidi)
+                {
+                    expectEquals (board.addPedal (type.name), 0, type.name + ": not on the board (no MIDI out)");
+                    continue;
+                }
                 const auto id = board.addPedal (type.name);
                 expect (id == 1, type.name);
 
@@ -106,12 +111,12 @@ public:
                 const auto [in, out] = run (board, 40);
                 expect (allFinite (out), type.name + " output is finite");
 
-                // Plugins keep theirs in plugins/<Name>/presets, board-only pedals in
-                // plugins/RKBoard/pedals/presets/<Name>.
-                const auto source = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins");
-                auto presetDir = source.getChildFile (type.name + "/presets");
+                // Plugins keep theirs in plugins/<Name>/presets, the host's own
+                // pedals in host/pedals/presets/<Name>.
+                const auto source = juce::File (RKFX_SOURCE_DIR);
+                auto presetDir = source.getChildFile ("plugins/" + type.name + "/presets");
                 if (! presetDir.isDirectory())
-                    presetDir = source.getChildFile ("RKBoard/pedals/presets/" + type.name);
+                    presetDir = source.getChildFile ("host/pedals/presets/" + type.name);
                 const auto files = presetDir.findChildFiles (juce::File::findFiles, false, "*.json");
                 expect (! files.isEmpty(), type.name + " has factory presets");
                 expectEquals ((int) pedal->getFactoryPresets().size(), files.size(), type.name + " factory presets");

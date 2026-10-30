@@ -28,13 +28,17 @@ void GainReductionMeter::setReduction (float reductionDb, float secondsSinceLast
 void GainReductionMeter::paint (juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
-    const auto labelArea = bounds.removeFromTop (16.0f);
+    auto labelArea = bounds.removeFromTop (16.0f);
+    bounds.removeFromBottom (6.0f);   // room for the lowest scale label, centred on the bar's end
     const auto scaleArea = bounds.removeFromRight (20.0f);
     const auto bar = bounds.reduced (2.0f, 0.0f);
 
+    // "GR" over the bar, clear of the scale's top label
+    labelArea.removeFromRight (scaleArea.getWidth());
     g.setColour (Palette::textDim);
     g.setFont (Fonts::regular (11.0f));
-    g.drawText ("GR", labelArea, juce::Justification::centred);
+    g.drawText ("GR", labelArea.withSizeKeepingCentre (juce::jmax (labelArea.getWidth(), 16.0f), labelArea.getHeight()),
+                juce::Justification::centred);
 
     g.setColour (Palette::background);
     g.fillRoundedRectangle (bar, 3.0f);

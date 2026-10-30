@@ -22,21 +22,24 @@ foreach(plugin IN LISTS RKFX_PLUGINS RKFX_MIDI_PLUGINS)
     add_dependencies(RKFXSnapshots ${tool})
 endforeach()
 
-# RKBoard: the board with every plugin's sources.
+# RKBoard and RKMix: every plugin's sources through the pedal host.
 juce_add_console_app(RKFXSnapshot_RKBoard PRODUCT_NAME "RKFXSnapshot_RKBoard")
 set_target_properties(RKFXSnapshot_RKBoard PROPERTIES EXCLUDE_FROM_ALL TRUE)
-target_sources(RKFXSnapshot_RKBoard PRIVATE Snapshot.cpp
-    ${RKBOARD_SOURCES}
-    ${RKBOARD_PEDAL_SOURCES})
-foreach(plugin IN LISTS RKFX_PLUGINS)
-    if(TARGET ${plugin}_FactoryPresets)
-        target_link_libraries(RKFXSnapshot_RKBoard PRIVATE ${plugin}_FactoryPresets)
-    endif()
-endforeach()
-target_compile_definitions(RKFXSnapshot_RKBoard PRIVATE RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_sources(RKFXSnapshot_RKBoard PRIVATE Snapshot.cpp ${RKBOARD_SOURCES})
+target_include_directories(RKFXSnapshot_RKBoard PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard)
+target_compile_definitions(RKFXSnapshot_RKBoard PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
 target_link_libraries(RKFXSnapshot_RKBoard PRIVATE rkboard_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
                       PUBLIC juce::juce_recommended_config_flags)
 add_dependencies(RKFXSnapshots RKFXSnapshot_RKBoard)
+
+juce_add_console_app(RKFXSnapshot_RKMix PRODUCT_NAME "RKFXSnapshot_RKMix")
+set_target_properties(RKFXSnapshot_RKMix PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKFXSnapshot_RKMix PRIVATE Snapshot.cpp ${RKMIX_SOURCES})
+target_include_directories(RKFXSnapshot_RKMix PRIVATE ${RKMIX_INCLUDE_DIRS})
+target_compile_definitions(RKFXSnapshot_RKMix PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
+target_link_libraries(RKFXSnapshot_RKMix PRIVATE rkmix_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
+                      PUBLIC juce::juce_recommended_config_flags)
+add_dependencies(RKFXSnapshots RKFXSnapshot_RKMix)
 
 # The RKMusic plugin icons (tools/icons): renders each plugin's icon_big.png
 # and icon_small.png. Not built by default; see tools/icons/RenderIcons.cpp.

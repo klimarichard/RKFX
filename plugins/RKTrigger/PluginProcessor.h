@@ -22,6 +22,9 @@ public:
     /** For the display (message thread): the level is the loudest since the last call. */
     TriggerEngine::Meter takeMeter (int trigger) noexcept;
 
+    /** The notes the triggers send (one trigger in Mono mode, both in Dual). */
+    rkfx::MidiFootprint getMidiOutputFootprint() const override;
+
     /** The trigger whose controls the editor shows (kept while loaded; not a parameter). */
     std::atomic<int> selectedTrigger { 0 };
 

@@ -1,0 +1,19 @@
+{
+  "plugin": "RKMix",
+  "version": 1,
+  "name": "Mono Fill",
+  "params": {},
+  "extra": {
+    "settings": {
+      "main_eq_on": true,
+      "main_hpf_on": true,
+      "main_hpf": 30,
+      "main_lim_on": true,
+      "mono_out": "3",
+      "mono_eq_on": true,
+      "mono_hpf_on": true,
+      "mono_hpf": 80,
+      "mono_lim_on": true
+    }
+  }
+}

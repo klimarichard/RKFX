@@ -35,6 +35,9 @@ public:
         processing entirely. */
     bool wetNeeded() const noexcept;
 
+    /** True while bypass is engaged or fading (the dry signal is heard). */
+    bool isBypassActive() const noexcept { return bypass.isSmoothing() || bypass.getTargetValue() > 0.0f; }
+
     /** Mixes @p dry into @p io (which holds the wet signal on entry) in place. */
     void process (const float* const* dry, float* const* io, int numChannels, int numSamples) noexcept;
 

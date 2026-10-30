@@ -65,12 +65,16 @@ void TransferCurve::paint (juce::Graphics& g)
     g.fillRoundedRectangle (bounds, 6.0f);
 
     g.setFont (Fonts::regular (10.5f));
+    // A small curve (RKMix's channel strip) labels every other line
+    const auto labelEvery = pointFor (-36.0f, -36.0f).x - pointFor (-48.0f, -48.0f).x < 28.0f ? 24 : 12;
     for (int db = -48; db < 0; db += 12)
     {
         const auto p = pointFor ((float) db, (float) db);
         g.setColour (Palette::outline.withAlpha (0.5f));
         g.drawVerticalLine ((int) p.x, 0.0f, bounds.getBottom());
         g.drawHorizontalLine ((int) p.y, 0.0f, bounds.getRight());
+        if ((db + 48) % labelEvery != 0)
+            continue;
         g.setColour (Palette::textDim);
         g.drawText (juce::String (db), (int) p.x + 2, getHeight() - 14, 30, 12, juce::Justification::left);
     }

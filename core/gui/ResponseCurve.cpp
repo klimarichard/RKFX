@@ -3,6 +3,7 @@
 #include "LookAndFeel.h"
 
 #include <cmath>
+#include <limits>
 
 namespace rkfx
 {
@@ -58,6 +59,7 @@ void ResponseCurve::paint (juce::Graphics& g)
 
     // Frequency grid
     struct GridLine { double hz; bool major; };
+    auto lastLabelRight = std::numeric_limits<int>::min() / 2;
     for (const auto line : { GridLine { 50.0, false }, GridLine { 100.0, true }, GridLine { 200.0, false },
                              GridLine { 500.0, false }, GridLine { 1000.0, true }, GridLine { 2000.0, false },
                              GridLine { 5000.0, false }, GridLine { 10000.0, true } })
@@ -70,9 +72,15 @@ void ResponseCurve::paint (juce::Graphics& g)
 
         if (major)
         {
+            // Right of its line, or left of it when a narrow curve has no room
+            const auto text = hz >= 1000.0 ? juce::String ((int) (hz / 1000.0)) + "k" : juce::String ((int) hz);
+            const auto width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text)) + 1;
+            const auto left = (int) x + 3 + width <= getWidth() - 2 ? (int) x + 3 : (int) x - 3 - width;
+            if (left < lastLabelRight + 4)   // too crowded to label
+                continue;
+            lastLabelRight = left + width;
             g.setColour (Palette::textDim);
-            g.drawText (hz >= 1000.0 ? juce::String ((int) (hz / 1000.0)) + "k" : juce::String ((int) hz),
-                        (int) x + 3, getHeight() - 15, 30, 13, juce::Justification::left);
+            g.drawText (text, left, getHeight() - 15, width, 13, juce::Justification::left);
         }
     }
 

@@ -77,6 +77,16 @@ void RKTriggerProcessor::resetDsp()
     engine.reset();
 }
 
+rkfx::MidiFootprint RKTriggerProcessor::getMidiOutputFootprint() const
+{
+    rkfx::MidiFootprint f;
+    const auto dual = juce::roundToInt (valueOf (findParam ("mode"))) == 1;
+    for (int t = 0; t < (dual ? TriggerParams::kTriggers : 1); ++t)
+        f.addNote (juce::roundToInt (valueOf (triggerParams[(size_t) t].channel)),
+                   juce::roundToInt (valueOf (triggerParams[(size_t) t].note)));
+    return f;
+}
+
 void RKTriggerProcessor::releaseMidi (juce::MidiBuffer& midi)
 {
     engine.release (midi, 0);

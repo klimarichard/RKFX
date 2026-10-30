@@ -1,11 +1,12 @@
 // Renders a plugin's editor offscreen and saves it as a PNG (no screen
 // recording permission needed). Built per plugin by tools/CMakeLists.txt.
 //
-//   RKFXSnapshot_<Plugin> <output.png> [scale] [state.json] [x,y]
+//   RKFXSnapshot_<Plugin> <output.png> [scale] [state.json] [x,y[;x,y...]]
 //
 // state.json, if given, is loaded as the host state first (any preset or
 // RKBoard board JSON with the plugin's full state). x,y clicks the editor
-// there first (editor coordinates), e.g. to open something.
+// there first (editor coordinates), e.g. to open something; several clicks
+// are separated by semicolons.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -35,9 +36,10 @@ int main (int argc, char** argv)
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorIfNeeded());
 
-    if (argc > 4)
+    // Clicks, in order: "x,y" or "x,y;x,y;..."
+    for (const auto& click : juce::StringArray::fromTokens (argc > 4 ? argv[4] : "", ";", {}))
     {
-        const auto xy = juce::StringArray::fromTokens (argv[4], ",", {});
+        const auto xy = juce::StringArray::fromTokens (click, ",", {});
         const juce::Point<int> pos (xy[0].getIntValue(), xy[1].getIntValue());
         editor->setVisible (true);   // offscreen, but hit-testing skips invisible components
         auto* target = editor->getComponentAt (pos);

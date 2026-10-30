@@ -559,6 +559,8 @@ void BoardStrip::showAddMenu (Section section, juce::Rectangle<int> target)
     std::optional<Palette::Family> family;
     for (int i = 0; i < (int) types.size(); ++i)
     {
+        if (types[(size_t) i].sendsMidi)
+            continue;   // the board has no MIDI output (they are RKMix inserts)
         if (family != types[(size_t) i].family)
         {
             family = types[(size_t) i].family;

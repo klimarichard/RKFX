@@ -41,7 +41,8 @@ public:
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHighlight = true; repaint(); }
     void fileDragExit (const juce::StringArray&) override { dropHighlight = false; repaint(); }
 
-    void mouseDown (const juce::MouseEvent&) override;   // right-click Stop: Panic
+    void mouseDown (const juce::MouseEvent&) override;   // right-click a button: its MIDI learn (and Stop: Panic)
+    bool keyPressed (const juce::KeyPress&) override;    // the keyboard shortcuts
 
 private:
     /** The now-playing area: names, times, the waveform (click to seek), what's next. */
@@ -117,6 +118,16 @@ private:
         juce::TextButton chooseFolder { "Choose..." }, clearFolder { "None" }, relink { "Relink missing songs..." },
                          close { "Close" };
         juce::Rectangle<int> transportArea, loudnessArea, duckArea, folderArea;
+
+        // The Remote page (the standalone app's OSC, MIDI, keyboard and history)
+        juce::TextButton showPage { "Show" }, remotePage { "Remote" };
+        bool remote = false;
+        juce::ToggleButton oscOn { "OSC remote (TouchOSC)" };
+        juce::TextEditor oscPort, phone, phonePort;
+        juce::TextButton sendAll { "Send everything again" }, history { "Show the history..." };
+        juce::Rectangle<int> oscArea, midiArea, keysArea;
+        void setPage (bool remotePage);
+        void applyOsc();
     };
 
     RKPlayProcessor& player;
@@ -175,6 +186,8 @@ private:
     void exportPlaylist (int playlist);
     void applyEndAt();
     void showPadMenu (int pad);
+    void showLearnMenu (int target, bool withPanic = false);
+    int lastRigVersion = -1;
     void choosePadFile (int pad);
     void renamePad (int pad);
 

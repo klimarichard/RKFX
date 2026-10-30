@@ -66,12 +66,20 @@ RKPlayProcessor::RKPlayProcessor()
     diskThread.startThread (juce::Thread::Priority::high);
     cache = std::make_unique<PlayAnalysisCache> (PlayAnalysisCache::defaultFile());
     analyser = std::make_unique<PlayAnalyser>();
+    if (wrapperType == wrapperType_Standalone)
+        rig = std::make_unique<PlayRig> (*this, PlayRig::defaultFolder());
     startTimerHz (30);
 }
 
 RKPlayProcessor::~RKPlayProcessor()
 {
     stopTimer();
+    if (rig != nullptr)
+    {
+        finishCurrent();
+        rig->writeSession (true);   // a normal quit: nothing to recover
+        rig.reset();
+    }
     analyser.reset();
     if (cache != nullptr)
         cache->save();
@@ -109,6 +117,24 @@ void RKPlayProcessor::prepareDsp (double newRate, int maxBlockSize, int /*numCha
 
 void RKPlayProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
+    // The standalone app: controllers and program changes, to the message thread.
+    if (rig != nullptr)
+        if (const auto* midi = getMidi())
+            for (const auto metadata : *midi)
+            {
+                const auto m = metadata.getMessage();
+                if (! (m.isController() || m.isProgramChange()))
+                    continue;
+                int start1, size1, start2, size2;
+                midiFifo.prepareToWrite (1, start1, size1, start2, size2);
+                if (size1 + size2 == 0)
+                    break;
+                const auto* raw = m.getRawData();
+                midiEvents[(size_t) (size1 > 0 ? start1 : start2)] = (juce::uint32) raw[0] | ((juce::uint32) raw[1] << 8)
+                                                                     | ((juce::uint32) (m.getRawDataSize() > 2 ? raw[2] : 0) << 16);
+                midiFifo.finishedWrite (1);
+            }
+
     // The input is only ever the duck key: the output is the music alone.
     const auto n = buffer.getNumSamples();
     const auto keyChannels = juce::jmin (2, getMainBusNumInputChannels(), buffer.getNumChannels());
@@ -470,6 +496,8 @@ void RKPlayProcessor::startItem (const Item& item, double crossfade)
         }
 
     disarm();
+    finishCurrent();
+    currentStarted = juce::Time::getMillisecondCounterHiRes() * 0.001;
     if (state == State::stopped)
         engine.start (slot, 0.01, 1.0f);
     else
@@ -623,6 +651,7 @@ void RKPlayProcessor::fadeOut()
     if (state == State::stopped)
         return;
     disarm();
+    finishCurrent();
     engine.fadeOutAll (show.fadeOutSeconds);
     markSent (currentSlot);
     drop (currentSlot);
@@ -636,6 +665,7 @@ void RKPlayProcessor::stop()
     if (state == State::stopped)
         return;
     disarm();
+    finishCurrent();
     engine.fadeOutAll (kStopFade);
     markSent (currentSlot);
     drop (currentSlot);
@@ -652,6 +682,7 @@ void RKPlayProcessor::stop()
 void RKPlayProcessor::panic()
 {
     disarm();
+    finishCurrent();
     engine.fadeOutAll (kPanicFade);
     markSent (currentSlot);
     drop (currentSlot);
@@ -832,6 +863,19 @@ void RKPlayProcessor::update()
             stream.fillNow();
 
     pollTriggers();
+    if (rig != nullptr)
+    {
+        int start1, size1, start2, size2;
+        midiFifo.prepareToRead (midiFifo.getNumReady(), start1, size1, start2, size2);
+        for (int i = 0; i < size1 + size2; ++i)
+        {
+            const auto e = midiEvents[(size_t) (i < size1 ? start1 + i : start2 + i - size1)];
+            const auto status = (int) (e & 0xff);
+            rig->handleMidi ((status & 0xf0) == 0xc0 ? juce::MidiMessage ((int) (e & 0xff), (int) ((e >> 8) & 0xff))
+                                                     : juce::MidiMessage ((int) (e & 0xff), (int) ((e >> 8) & 0xff), (int) ((e >> 16) & 0xff)));
+        }
+        midiFifo.finishedRead (size1 + size2);
+    }
     handleEvents();
     takeAnalyses();
     checkEndAt();
@@ -856,6 +900,8 @@ void RKPlayProcessor::update()
 
     const auto db = valueOf (levelParam);
     engine.setLevel (db <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (db));
+    if (rig != nullptr)
+        rig->update();
 
     // The Playlist host parameter: another value crossfades into that list.
     const auto wanted = juce::roundToInt (valueOf (playlistParam));
@@ -915,6 +961,8 @@ void RKPlayProcessor::handleEvents()
             case PlayEngine::Event::Type::advanced:
                 if (e.slot == armedSlot)
                 {
+                    finishCurrent();
+                    currentStarted = juce::Time::getMillisecondCounterHiRes() * 0.001;
                     drop (currentSlot);
                     current = armed;
                     currentSlot = armedSlot;
@@ -938,6 +986,7 @@ void RKPlayProcessor::handleEvents()
                 if (e.slot == currentSlot)
                 {
                     // The current song ended with nothing armed after it (or ran dry).
+                    finishCurrent();
                     drop (currentSlot);
                     const auto wasPlaying = state == State::playing;
                     state = State::stopped;
@@ -1483,6 +1532,32 @@ bool RKPlayProcessor::hasCueOutput() const
 {
     const auto* bus = getBus (false, 1);
     return bus != nullptr && bus->isEnabled();
+}
+
+void RKPlayProcessor::finishCurrent()
+{
+    if (rig == nullptr || ! current.isValid() || currentStarted <= 0.0)
+        return;
+    const auto seconds = juce::Time::getMillisecondCounterHiRes() * 0.001 - currentStarted;
+    const auto list = current.queued ? juce::String ("Request")
+                    : current.playlist >= 0 && current.playlist < (int) show.playlists.size() ? show.playlists[(size_t) current.playlist].name
+                                                                                               : juce::String();
+    rig->songFinished (list, current.song.title, current.song.artist, current.song.file, seconds);
+    currentStarted = 0.0;
+}
+
+void RKPlayProcessor::readyToPlay (int playlist, int index)
+{
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return;
+    auto& p = show.playlists[(size_t) playlist];
+    if (index < 0 || index >= (int) p.songs.size())
+        return;
+    show.active = playlist;
+    p.cursor = index;
+    setPlayed (playlist, false);
+    syncPlaylistParam();
+    showChanged();
 }
 
 void RKPlayProcessor::setNote (const juce::String& text)

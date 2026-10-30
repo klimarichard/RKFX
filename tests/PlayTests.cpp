@@ -3,6 +3,7 @@
 
 #include "PlayAnalysis.h"
 #include "PlayEngine.h"
+#include "PlayRig.h"
 #include "dsp/Loudness.h"
 #include "PlayStream.h"
 #include "PluginProcessor.h"
@@ -976,6 +977,150 @@ public:
             }
             expect (! p.isPreListening(), "played for real: pre-listen stops");
             expectEquals (buffer.getSample (2, 100), 0.0f);
+        }
+
+        //==============================================================================
+        // Phase 5: the standalone app (OSC, MIDI, history, recovery)
+
+        const auto rigFolder = [] (const juce::String& name)
+        {
+            auto f = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/rig-" + name);
+            f.deleteRecursively();
+            return f;
+        };
+
+        beginTest ("OSC: playback from TouchOSC, buttons acting on their press");
+        {
+            TestPlayer p;
+            p.setStandaloneForTesting (rigFolder ("osc"));
+            auto& rig = *p.getRig();
+            p.addFiles (0, songsIn ("osc", 3, 5.0));
+            const auto b = p.addPlaylist ("Party");
+            p.addFiles (b, songsIn ("osc/b", 2, 5.0, 10));
+
+            rig.handleOsc (juce::OSCMessage ("/rkplay/play", 0.0f));
+            expect (p.getState() == RKPlayProcessor::State::stopped, "a release does nothing");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/play", 1.0f));
+            expect (p.getState() == RKPlayProcessor::State::playing);
+            p.runFor (0.1);
+            rig.handleOsc (juce::OSCMessage ("/rkplay/next"));
+            p.runFor (0.1);
+            expectEquals (p.getCurrent().index, 1, "next (no argument: a press)");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/duck", 1.0f));
+            expect (p.isManualDuck());
+            rig.handleOsc (juce::OSCMessage ("/rkplay/duck", 0.0f));
+            expect (! p.isManualDuck());
+            rig.handleOsc (juce::OSCMessage ("/rkplay/playlist/2", 1.0f));
+            p.runFor (0.1);
+            expectEquals (p.getCurrent().playlist, b, "the Party list");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/level", 0.5f));
+            expectWithinAbsoluteError (p.findParam ("level")->getValue(), 0.5f, 1.0e-6f);
+            rig.handleOsc (juce::OSCMessage ("/rkplay/endat", juce::String ("23:15")));
+            expect (p.getShow().endAt.on && p.getShow().endAt.minutes == 23 * 60 + 15);
+            rig.handleOsc (juce::OSCMessage ("/rkplay/endat/off"));
+            expect (! p.getShow().endAt.on);
+            rig.handleOsc (juce::OSCMessage ("/somethingelse/play", 1.0f));
+            rig.handleOsc (juce::OSCMessage ("/rkplay/fade", 1.0f));
+            expect (p.getState() == RKPlayProcessor::State::stopped);
+        }
+
+        beginTest ("OSC feedback: everything once, then only what changed; lights on the buttons' addresses");
+        {
+            TestPlayer p;
+            p.setStandaloneForTesting (rigFolder ("feedback"));
+            auto& rig = *p.getRig();
+            p.addFiles (0, songsIn ("feedback", 2, 5.0));
+            const auto all = rig.takeFeedback (true);
+            const auto find = [] (const std::vector<juce::OSCMessage>& list, const juce::String& address) -> const juce::OSCMessage*
+            {
+                for (const auto& m : list)
+                    if (m.getAddressPattern().toString() == address)
+                        return &m;
+                return nullptr;
+            };
+            expect (find (all, "/rkplay/title") != nullptr && (*find (all, "/rkplay/title"))[0].getString() == "Song 01", "stopped: what Play starts");
+            expect (find (all, "/rkplay/play") != nullptr && juce::exactlyEqual ((*find (all, "/rkplay/play"))[0].getFloat32(), 0.0f));
+            expect (find (all, "/rkplay/playlist/1/name") != nullptr);
+            expect (rig.takeFeedback (false).empty(), "nothing changed");
+
+            p.play();
+            p.runFor (0.1);
+            const auto changed = rig.takeFeedback (false);
+            expect (find (changed, "/rkplay/play") != nullptr && juce::exactlyEqual ((*find (changed, "/rkplay/play"))[0].getFloat32(), 1.0f), "Play lights");
+            expect (find (changed, "/rkplay/playlist/1/name") == nullptr, "unchanged names aren't sent again");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/hello"));
+            expect (rig.takeFeedback (false).size() == all.size(), "hello: everything again");
+        }
+
+        beginTest ("MIDI: a learned footswitch plays, program changes switch playlists");
+        {
+            TestPlayer p;
+            p.setStandaloneForTesting (rigFolder ("midi"));
+            auto& rig = *p.getRig();
+            p.addFiles (0, songsIn ("midi", 2, 5.0));
+            const auto b = p.addPlaylist();
+            p.addFiles (b, songsIn ("midi/b", 2, 5.0, 10));
+
+            const auto send = [&p] (const juce::MidiMessage& m)
+            {
+                juce::AudioBuffer<float> buffer (2, kBlock);
+                juce::MidiBuffer midi;
+                midi.addEvent (m, 0);
+                buffer.clear();
+                p.processBlock (buffer, midi);
+                p.update();
+            };
+            rig.learn (PlayRig::playPause);
+            send (juce::MidiMessage::controllerEvent (1, 64, 127));
+            expectEquals (rig.describe (PlayRig::playPause), juce::String ("CC 64, channel 1"));
+            expect (p.getState() == RKPlayProcessor::State::stopped, "learning doesn't act");
+            send (juce::MidiMessage::controllerEvent (1, 64, 0));
+            send (juce::MidiMessage::controllerEvent (1, 64, 127));
+            expect (p.getState() == RKPlayProcessor::State::playing, "the footswitch going down");
+            send (juce::MidiMessage::controllerEvent (1, 64, 127));
+            expect (p.getState() == RKPlayProcessor::State::playing, "held: no second press");
+
+            send (juce::MidiMessage::programChange (1, 1));
+            p.runFor (0.1);
+            expectEquals (p.getCurrent().playlist, b, "program change 2 (number 1): playlist 2");
+
+            // The mapping is the rig's: another instance has it.
+            TestPlayer q;
+            q.setStandaloneForTesting (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/rig-midi"));
+            expectEquals (q.getRig()->describe (PlayRig::playPause), juce::String ("CC 64, channel 1"));
+        }
+
+        beginTest ("History: what played, a file a night; recovery after a crash");
+        {
+            const auto folder = rigFolder ("session");
+            {
+                TestPlayer p;
+                p.setStandaloneForTesting (folder);
+                p.addFiles (0, songsIn ("session", 3, 5.0));
+                p.play();
+                p.runFor (0.2);
+                juce::Thread::sleep (1100);   // the history counts a song played for a second or more
+                p.next();
+                p.runFor (0.2);
+                const auto log = p.getRig()->historyFile (juce::Time::getCurrentTime()).loadFileAsString();
+                expect (log.startsWith ("time,playlist,title"));
+                expect (log.contains ("Playlist 1,Song 01,"), log);
+
+                p.getRig()->writeSession (false);   // the autosave; then the app "crashes" (no clean save)
+                p.setStandaloneForTesting (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/elsewhere"));
+            }
+            TestPlayer q;
+            q.setStandaloneForTesting (folder);
+            expect (q.getRig()->recover(), "recovered");
+            expectEquals ((int) q.getShow().playlists[0].songs.size(), 3, "the show is back");
+            expect (q.getState() == RKPlayProcessor::State::stopped, "stopped");
+            expectEquals (q.peekNext().index, 1, "the song that was playing, ready");
+            expect (q.getNote().contains ("unexpectedly"));
+
+            q.getRig()->writeSession (true);   // a normal quit
+            TestPlayer r;
+            r.setStandaloneForTesting (folder);
+            expect (! r.getRig()->recover(), "nothing to recover after a normal quit");
         }
     }
 };

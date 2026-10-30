@@ -213,6 +213,7 @@ target_link_libraries(RKPlayTests
         rkplay_factory_presets
         rkfx_core
         juce::juce_audio_formats
+        juce::juce_osc
         juce::juce_audio_processors
         juce::juce_gui_basics
     PUBLIC

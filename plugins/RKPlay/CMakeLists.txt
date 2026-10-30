@@ -8,6 +8,8 @@ juce_add_plugin(RKPlay
     PLUGIN_CODE              Ply1
     BUNDLE_ID                com.rkmusic.rkplay
     PRODUCT_NAME             "RKPlay"
+    ICON_BIG                 "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_big.png"    # RKMusic icon: RK over the name strip
+    ICON_SMALL               "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_small.png"
     FORMATS                  AU VST3 Standalone
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         TRUE      # MIDI learn and program changes (later phases)
@@ -27,6 +29,8 @@ set(RKPLAY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayStream.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayShow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayAnalysis.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlayRig.cpp
+    ${PROJECT_SOURCE_DIR}/host/MidiMap.cpp          # MIDI learn, shared with RKBoard and RKMix (just this file)
 )
 
 # Factory presets (presets/*.json, empty shows set up for an occasion).
@@ -50,10 +54,10 @@ target_sources(rkplay_factory_presets INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/RKP
 target_compile_definitions(rkplay_factory_presets INTERFACE RKFX_FACTORY_PRESET_LIST=factoryPresetList_RKPlay)
 
 set(RKPLAY_SOURCES ${RKPLAY_SOURCES} PARENT_SCOPE)
-set(RKPLAY_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
+set(RKPLAY_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/host PARENT_SCOPE)
 
 target_sources(RKPlay PRIVATE ${RKPLAY_SOURCES})
-target_include_directories(RKPlay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(RKPlay PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/host)
 
 target_compile_definitions(RKPlay
     PUBLIC
@@ -70,6 +74,7 @@ target_link_libraries(RKPlay
         juce::juce_audio_formats        # WAV, AIFF, FLAC, Ogg; MP3, M4A and ALAC through Core Audio
         juce::juce_audio_processors
         juce::juce_audio_utils          # Standalone wrapper (device settings)
+        juce::juce_osc                  # remote control of the standalone app (TouchOSC)
         juce::juce_gui_basics
     PUBLIC
         juce::juce_recommended_config_flags

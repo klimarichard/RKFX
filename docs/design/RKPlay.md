@@ -210,6 +210,30 @@ Fixed, in this order (IDs permanent, append only):
 - **The input is only the duck key**, never passed to the output.
 - **Mainly a standalone app**, also AU and VST3.
 
+### As built (phase 5, feat/rkplay-standalone)
+
+- **PlayRig** holds what only the standalone app has; its files are in `Application Support/RKFX/RKPlay`: `settings.json` (OSC), `midi-map.json` (learned controllers, the shared `host/MidiMap`), `session.json` (the autosave), `History/<date>.csv`.
+- **OSC remote** (added at the user's request, playback only, off by default): RKPlay listens on a UDP port (default 8000, TouchOSC's default send port) and sends feedback to the phone's address (default port 9000, TouchOSC's default receive port). Commands act on a button's press (a value of 0.5 or more, or no value):
+
+| Address | Does |
+| --- | --- |
+| `/rkplay/play`, `/pause`, `/playpause`, `/next`, `/prev`, `/fade`, `/stop`, `/panic` | the transport |
+| `/rkplay/duck` 1 or 0 (no value: toggle) | Duck |
+| `/rkplay/pad/1` ... `/pad/8` (or `/rkplay/pad` n) | a pad |
+| `/rkplay/playlist/1` ... `/playlist/8` (or `/rkplay/playlist` n); `/rkplay/playlist/after` n | switch now; after this song |
+| `/rkplay/level` 0..1 (a fader), `/rkplay/level/db` dB | the Level |
+| `/rkplay/endat` "hh:mm", `/rkplay/endat/off` | End at |
+| `/rkplay/hello` | send all the feedback again |
+
+  Feedback (what changed, ten times a second): `/rkplay/play` and `/pause` (1 lights the button), `/state`, `/title`, `/artist`, `/elapsed`, `/remaining`, `/progress` (0..1), `/next`, `/playlist/name`, `/playlist/n` (1 for the playing list) and `/playlist/n/name`, `/duck` and `/duck/db`, `/pad/n` (1 while playing) and `/pad/n/name`, `/endat` (time and countdown), `/level` (0..1). A TouchOSC layout file is not included yet (it couldn't be checked without TouchOSC); the addresses are for building one.
+- **MIDI learn**: right-click a transport button, Duck, a pad or the Level knob; switches act as a footswitch goes down. **Program changes 0-7** switch to playlists 1-8 (crossfade now; stopped, the one Play starts).
+- **Keyboard** (the plugin too): Space play/pause, Right/Left next/previous, F fade out, S stop, D duck, 1-8 pads, Esc stop pre-listening.
+- **Awake while music plays** (no display or system sleep: `Desktop::setScreenSaverEnabled`).
+- **Autosave** every 30 s; a normal quit marks the session clean. After a crash, about a second after the app starts, the show comes back with the song that was playing ready to play (stopped), and a note says so.
+- **History**: a song that played a second or more is a line in that night's file (time, playlist or Request, title, artist, seconds, file); Settings > Remote > Show the history.
+- **The app icon**: "PLAY" in sage, from `tools/icons`.
+- **Settings** has two pages: Show (as before) and Remote (OSC, MIDI, keyboard, history).
+
 ## Identity
 
 - **AU code** `Ply1`, bundle ID `com.rkmusic.rkplay`, a music effect (`aumf`) with MIDI in: a stereo input (the duck key, never passed through) and two stereo outputs (main, cue). AU, VST3, Standalone.

@@ -4,6 +4,7 @@
 
 #include "PlayAnalysis.h"
 #include "PlayEngine.h"
+#include "PlayRig.h"
 #include "PlayShow.h"
 #include "PlayStream.h"
 
@@ -180,6 +181,17 @@ public:
     /** Tests: the clock End at follows. */
     void setClockForTesting (std::function<juce::Time()> c) { clock = std::move (c); }
 
+    //==============================================================================
+    // The standalone app (nullptr in a plugin): OSC, MIDI learn, keep awake, autosave, history
+    PlayRig* getRig() noexcept { return rig.get(); }
+
+    /** Tests: as the standalone app, its rig kept in @p folder. */
+    void setStandaloneForTesting (const juce::File& folder) { rig = std::make_unique<PlayRig> (*this, folder); }
+
+    /** Stopped, @p index of @p playlist is the song Play starts (after a recovery). */
+    void readyToPlay (int playlist, int index);
+    void showNote (const juce::String& text) { setNote (text); }
+
 protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;
     void resetDsp() override {}
@@ -230,6 +242,13 @@ private:
 
     juce::String note;
     int noteVersion = 0;
+
+    // The standalone app
+    std::unique_ptr<PlayRig> rig;
+    juce::AbstractFifo midiFifo { 256 };
+    std::array<juce::uint32, 256> midiEvents {};     // controller and program change messages, packed
+    double currentStarted = 0.0;                     // when the current song began (for the history)
+    void finishCurrent();                            // the current song stops being current: into the history
 
     std::array<juce::RangedAudioParameter*, 6> triggers {};   // play, pause, next, prev, fade, stop
     juce::RangedAudioParameter *levelParam = nullptr, *playlistParam = nullptr, *duckParam = nullptr;

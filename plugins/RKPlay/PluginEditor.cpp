@@ -139,6 +139,7 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     settings.setVisible (false);
 
     addMouseListener (this, true);
+    setWantsKeyboardFocus (true);
     finishSetup();
     refresh();
     timer.startTimerHz (15);
@@ -151,11 +152,70 @@ RKPlayEditor::~RKPlayEditor()
 
 void RKPlayEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.mods.isPopupMenu() && e.originalComponent == &stopButton)
+    if (! e.mods.isPopupMenu())
+        return;
+    const std::pair<juce::Component*, int> buttons[] = {
+        { &playButton, PlayRig::playPause }, { &prevButton, PlayRig::prev }, { &nextButton, PlayRig::next },
+        { &fadeButton, PlayRig::fade }, { &stopButton, PlayRig::stop }, { &duckButton, PlayRig::duck } };
+    for (const auto& [button, target] : buttons)
+        if (e.originalComponent == button)
+        {
+            showLearnMenu (target, button == &stopButton);
+            return;
+        }
+    if (level != nullptr && level->isParentOf (e.originalComponent) && player.getRig() != nullptr)
+        showLearnMenu (PlayRig::level);
+}
+
+void RKPlayEditor::showLearnMenu (int target, bool withPanic)
+{
+    auto* rig = player.getRig();
+    juce::PopupMenu menu;
+    if (withPanic)
+        menu.addItem (1, "Panic: stop everything at once");
+    if (rig != nullptr)
     {
-        player.panic();
-        refresh();
+        const auto mapped = rig->describe (target);
+        menu.addItem (2, "MIDI learn for " + PlayRig::targetName (target) + "...");
+        menu.addItem (3, "Forget its MIDI" + (mapped.isNotEmpty() ? " (" + mapped + ")" : juce::String()), mapped.isNotEmpty());
     }
+    if (menu.getNumItems() == 0)
+        return;
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, target] (int result)
+    {
+        if (safe == nullptr)
+            return;
+        auto& p = safe->player;
+        if (result == 1)
+            p.panic();
+        else if (result == 2 && p.getRig() != nullptr)
+        {
+            p.getRig()->learn (target);
+            p.showNote ("MIDI learn: move a controller (or press a footswitch) for " + PlayRig::targetName (target));
+        }
+        else if (result == 3 && p.getRig() != nullptr)
+            p.getRig()->forget (target);
+        safe->refresh();
+    });
+}
+
+bool RKPlayEditor::keyPressed (const juce::KeyPress& key)
+{
+    // Space play/pause, arrows previous/next, F fade out, S stop, D duck, 1-8 pads, Esc stop pre-listening.
+    const auto c = juce::CharacterFunctions::toLowerCase (key.getTextCharacter());
+    if (key == juce::KeyPress::spaceKey)            player.togglePlay();
+    else if (key == juce::KeyPress::rightKey)       player.next();
+    else if (key == juce::KeyPress::leftKey)        player.previous();
+    else if (key == juce::KeyPress::escapeKey)      player.stopPreListen();
+    else if (c == 'f')                              player.fadeOut();
+    else if (c == 's')                              player.stop();
+    else if (c == 'd')                              player.setManualDuck (! player.isManualDuck());
+    else if (c >= '1' && c <= '8')                  player.triggerPad ((int) (c - '1'));
+    else
+        return false;
+    refresh();
+    return true;
 }
 
 //==============================================================================
@@ -824,6 +884,13 @@ void RKPlayEditor::showPadMenu (int index)
         colours.addColouredItem (200 + c, kPadColourNames[c], kPadColours[c], true, pad.colour == c);
     menu.addSubMenu ("Colour", colours, ! pad.isEmpty());
     menu.addSeparator();
+    if (auto* rig = player.getRig())
+    {
+        const auto mapped = rig->describe (PlayRig::pad1 + index);
+        menu.addItem (7, "MIDI learn...");
+        menu.addItem (8, "Forget its MIDI" + (mapped.isNotEmpty() ? " (" + mapped + ")" : juce::String()), mapped.isNotEmpty());
+        menu.addSeparator();
+    }
     menu.addItem (6, "Clear", ! pad.isEmpty());
 
     juce::Component::SafePointer<RKPlayEditor> safe (this);
@@ -835,6 +902,11 @@ void RKPlayEditor::showPadMenu (int index)
         auto options = pl.getShow().pads[(size_t) index];
         switch (result)
         {
+            case 7:
+                pl.getRig()->learn (PlayRig::pad1 + index);
+                pl.showNote ("MIDI learn: move a controller (or press a footswitch) for " + PlayRig::targetName (PlayRig::pad1 + index));
+                return;
+            case 8: pl.getRig()->forget (PlayRig::pad1 + index); return;
             case 1: safe->choosePadFile (index); return;
             case 2: safe->renamePad (index); return;
             case 3: options.loop = ! options.loop; break;
@@ -1051,6 +1123,34 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     };
     close.onClick = [this] { owner.showSettings (false); };
 
+    showPage.onClick = [this] { setPage (false); };
+    remotePage.onClick = [this] { setPage (true); };
+    oscOn.setTooltip ("Control playback from TouchOSC on a phone or tablet, on the same network");
+    oscOn.onClick = [this] { applyOsc(); };
+    for (auto* t : { &oscPort, &phone, &phonePort })
+    {
+        t->setJustification (juce::Justification::centredLeft);
+        t->onReturnKey = [this] { applyOsc(); };
+        t->onFocusLost = [this] { applyOsc(); };
+    }
+    oscPort.setInputRestrictions (5, "0123456789");
+    phonePort.setInputRestrictions (5, "0123456789");
+    phone.setInputRestrictions (64, "0123456789.abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-");
+    phone.setTextToShowWhenEmpty ("the phone's address", rkfx::Palette::textDim);
+    sendAll.setTooltip ("Send TouchOSC everything (names, lights) now");
+    sendAll.onClick = [this] { if (auto* rig = owner.player.getRig()) rig->handleOsc (juce::OSCMessage ("/rkplay/hello")); };
+    history.setTooltip ("What played, and when: a file a night");
+    history.onClick = [this]
+    {
+        if (auto* rig = owner.player.getRig())
+        {
+            const auto today = rig->historyFile (juce::Time::getCurrentTime());
+            (today.existsAsFile() ? today : today.getParentDirectory()).revealToUser();
+        }
+    };
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &showPage, &remotePage, &oscOn, &oscPort, &phone, &phonePort, &sendAll, &history })
+        addAndMakeVisible (*c);
+
     for (juce::Component* c : std::initializer_list<juce::Component*> { &fadeOutTime, &target, &smart, &match, &safety, &lift,
                                                                           &chooseFolder, &clearFolder, &relink, &close,
                                                                           &autoDuck, &depth, &threshold, &attack, &hold, &release })
@@ -1060,8 +1160,36 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
 void RKPlayEditor::Settings::resized()
 {
     auto r = getLocalBounds().reduced (16);
-    close.setBounds (r.removeFromBottom (32).removeFromRight (110));
+    auto bottom = r.removeFromBottom (32);
+    close.setBounds (bottom.removeFromRight (110));
+    showPage.setBounds (bottom.removeFromLeft (100));
+    remotePage.setBounds (bottom.removeFromLeft (100));
     r.removeFromBottom (10);
+
+    // The Remote page: OSC, MIDI, keyboard and history.
+    {
+        auto page = r;
+        const auto third = (page.getWidth() - 2 * kGap) / 3;
+        oscArea = page.removeFromLeft (third);
+        page.removeFromLeft (kGap);
+        midiArea = page.removeFromLeft (third);
+        page.removeFromLeft (kGap);
+        keysArea = page;
+
+        auto o = oscArea.reduced (14, 10).withTrimmedTop (30);
+        oscOn.setBounds (o.removeFromTop (28));
+        o.removeFromTop (22);
+        oscPort.setBounds (o.removeFromTop (28).withWidth (100));
+        o.removeFromTop (22);
+        auto row = o.removeFromTop (28);
+        phone.setBounds (row.removeFromLeft (170));
+        row.removeFromLeft (8);
+        phonePort.setBounds (row.withWidth (70));
+        o.removeFromTop (60);
+        sendAll.setBounds (o.removeFromTop (28).withWidth (200));
+
+        history.setBounds (keysArea.reduced (14, 10).removeFromBottom (30).withWidth (200));
+    }
     const auto quarter = (r.getWidth() - 3 * kGap) / 4;
     transportArea = r.removeFromLeft (quarter);
     r.removeFromLeft (kGap);
@@ -1108,6 +1236,63 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
 {
     g.setColour (owner.backgroundColour());
     g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
+
+    if (remote)
+    {
+        auto* rig = owner.player.getRig();
+        owner.drawSection (g, oscArea, "OSC remote");
+        owner.drawSection (g, midiArea, "MIDI");
+        owner.drawSection (g, keysArea, "Keyboard and history");
+        g.setFont (rkfx::Fonts::regular (13.0f));
+        g.setColour (rkfx::Palette::textDim);
+        if (rig == nullptr)
+        {
+            g.drawFittedText ("OSC, MIDI learn and the history are the standalone app's. In Gig Performer, map its widgets "
+                              "to RKPlay's parameters (Play, Next, Fade Out, Duck, Playlist, Pads).",
+                              oscArea.reduced (14, 10).withTrimmedTop (30), juce::Justification::topLeft, 6);
+        }
+        else
+        {
+            g.drawText ("RKPlay listens on port", oscPort.getBounds().translated (0, -20).withWidth (200).withHeight (18), juce::Justification::centredLeft);
+            g.drawText ("Feedback to the phone (address, port)", phone.getBounds().translated (0, -20).withWidth (260).withHeight (18), juce::Justification::centredLeft);
+            g.setColour (rig->getOsc().on ? owner.accent() : rkfx::Palette::textDim);
+            g.drawFittedText (rig->getOscStatus(), phone.getBounds().translated (0, 34).withWidth (oscArea.getWidth() - 28).withHeight (40),
+                              juce::Justification::topLeft, 3);
+
+            // The learned controllers.
+            auto m = midiArea.reduced (14, 10).withTrimmedTop (30);
+            g.setColour (rkfx::Palette::textDim);
+            g.drawFittedText ("Right-click a transport button, Duck, a pad or Level: MIDI learn. Program changes 1-8 switch playlists.",
+                              m.removeFromTop (36), juce::Justification::topLeft, 2);
+            m.removeFromTop (6);
+            bool any = false;
+            for (int t = 0; t < PlayRig::numTargets; ++t)
+                if (const auto d = rig->describe (t); d.isNotEmpty())
+                {
+                    g.setColour (rkfx::Palette::text);
+                    g.drawText (PlayRig::targetName (t), m.removeFromTop (18).withWidth (100), juce::Justification::centredLeft);
+                    g.setColour (rkfx::Palette::textDim);
+                    g.drawText (d, m.getX() + 100, m.getY() - 18, m.getWidth() - 100, 18, juce::Justification::centredLeft);
+                    any = true;
+                }
+            if (! any)
+                g.drawText ("Nothing learned yet", m.removeFromTop (18), juce::Justification::centredLeft);
+        }
+
+        // The keyboard.
+        auto k = keysArea.reduced (14, 10).withTrimmedTop (30);
+        const char* keys[][2] = { { "Space", "Play / Pause" }, { "Right, Left", "Next, Previous" }, { "F", "Fade out" },
+                                  { "S", "Stop" }, { "D", "Duck" }, { "1 - 8", "Pads" }, { "Esc", "Stop pre-listening" } };
+        for (const auto& [key, what] : keys)
+        {
+            auto line = k.removeFromTop (20);
+            g.setColour (rkfx::Palette::text);
+            g.drawText (key, line.removeFromLeft (90), juce::Justification::centredLeft);
+            g.setColour (rkfx::Palette::textDim);
+            g.drawText (what, line, juce::Justification::centredLeft);
+        }
+        return;
+    }
     owner.drawSection (g, transportArea, "Playback");
     owner.drawSection (g, loudnessArea, "Loudness");
     owner.drawSection (g, duckArea, "Ducking");
@@ -1141,8 +1326,44 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
                 relink.getBounds().translated (0, -26).withHeight (20), juce::Justification::centredLeft);
 }
 
+void RKPlayEditor::Settings::setPage (bool remoteShown)
+{
+    remote = remoteShown;
+    showPage.setToggleState (! remote, juce::dontSendNotification);
+    remotePage.setToggleState (remote, juce::dontSendNotification);
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &fadeOutTime, &target, &smart, &match, &safety, &lift, &chooseFolder,
+                                                                          &clearFolder, &relink, &autoDuck, &depth, &threshold, &attack, &hold, &release })
+        c->setVisible (! remote);
+    const auto rig = owner.player.getRig() != nullptr;
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &oscOn, &oscPort, &phone, &phonePort, &sendAll, &history })
+        c->setVisible (remote && rig);
+    repaint();
+}
+
+void RKPlayEditor::Settings::applyOsc()
+{
+    auto* rig = owner.player.getRig();
+    if (rig == nullptr)
+        return;
+    PlayRig::Osc o;
+    o.on = oscOn.getToggleState();
+    o.port = juce::jlimit (1024, 65535, oscPort.getText().getIntValue());
+    o.phone = phone.getText().trim();
+    o.phonePort = juce::jlimit (1, 65535, phonePort.getText().getIntValue());
+    rig->setOsc (o);
+    refresh();
+}
+
 void RKPlayEditor::Settings::refresh()
 {
+    if (auto* rig = owner.player.getRig())
+    {
+        const auto& o = rig->getOsc();
+        oscOn.setToggleState (o.on, juce::dontSendNotification);
+        if (! oscPort.hasKeyboardFocus (false))   oscPort.setText (juce::String (o.port), false);
+        if (! phone.hasKeyboardFocus (false))     phone.setText (o.phone, false);
+        if (! phonePort.hasKeyboardFocus (false)) phonePort.setText (juce::String (o.phonePort), false);
+    }
     const auto& show = owner.player.getShow();
     fadeOutTime.setValue (show.fadeOutSeconds, juce::dontSendNotification);
     target.setValue (show.level.targetLufs, juce::dontSendNotification);
@@ -1165,6 +1386,8 @@ void RKPlayEditor::Settings::refresh()
 
 void RKPlayEditor::showSettings (bool shown)
 {
+    if (shown && ! settings.isVisible())
+        settings.setPage (settings.remote);
     settings.setVisible (shown);
     if (shown)
         settings.toFront (false);
@@ -1331,6 +1554,16 @@ void RKPlayEditor::tick()
     const auto dipped = player.getDuckDb() < -0.5f;
     duckButton.setToggleState (player.isManualDuck() || dipped, juce::dontSendNotification);
     duckButton.setButtonText (dipped ? "Duck " + juce::String (juce::roundToInt (player.getDuckDb())) + " dB" : juce::String ("Duck"));
+
+    // MIDI learned (or OSC changed): the Remote page and a note.
+    if (auto* rig = player.getRig(); rig != nullptr && rig->getVersion() != lastRigVersion)
+    {
+        const auto wasLearning = lastRigVersion >= 0;
+        lastRigVersion = rig->getVersion();
+        settings.refresh();
+        if (wasLearning && rig->getLearning() < 0 && note.getText().startsWith ("MIDI learn"))
+            player.showNote ("MIDI learned");
+    }
 
     // A note shows for 8 seconds.
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;

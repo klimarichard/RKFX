@@ -46,7 +46,7 @@ set_target_properties(RKFXSnapshot_RKPlay PROPERTIES EXCLUDE_FROM_ALL TRUE)
 target_sources(RKFXSnapshot_RKPlay PRIVATE Snapshot.cpp ${RKPLAY_SOURCES})
 target_include_directories(RKFXSnapshot_RKPlay PRIVATE ${RKPLAY_INCLUDE_DIRS})
 target_compile_definitions(RKFXSnapshot_RKPlay PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0)
-target_link_libraries(RKFXSnapshot_RKPlay PRIVATE rkplay_factory_presets rkfx_core juce::juce_audio_formats
+target_link_libraries(RKFXSnapshot_RKPlay PRIVATE rkplay_factory_presets rkfx_core juce::juce_audio_formats juce::juce_osc
                       juce::juce_audio_processors juce::juce_gui_basics
                       PUBLIC juce::juce_recommended_config_flags)
 add_dependencies(RKFXSnapshots RKFXSnapshot_RKPlay)

@@ -1,0 +1,27 @@
+{
+  "plugin": "RKMix",
+  "version": 1,
+  "name": "Recording Feed",
+  "params": {},
+  "extra": {
+    "settings": {
+      "main_lim_on": true,
+      "ch1_direct_out": "17",
+      "ch2_direct_out": "18",
+      "ch3_direct_out": "19",
+      "ch4_direct_out": "20",
+      "ch5_direct_out": "21",
+      "ch6_direct_out": "22",
+      "ch7_direct_out": "23",
+      "ch8_direct_out": "24",
+      "ch9_direct_out": "25",
+      "ch10_direct_out": "26",
+      "ch11_direct_out": "27",
+      "ch12_direct_out": "28",
+      "ch13_direct_out": "29",
+      "ch14_direct_out": "30",
+      "ch15_direct_out": "31",
+      "ch16_direct_out": "32"
+    }
+  }
+}

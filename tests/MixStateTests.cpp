@@ -306,6 +306,31 @@ public:
             expectEquals (s.choice (mix::channelId (4, "direct_out")), 9, "unlinked: Out 9");
         }
 
+        beginTest ("Factory mixes all load cleanly, with what their manual promises");
+        {
+            RKMixProcessor p;
+            const auto dir = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins/RKMix/presets");
+            expectEquals ((int) p.getFactoryPresets().size(), dir.findChildFiles (juce::File::findFiles, false, "*.json").size());
+            expect (p.getFactoryPresets().size() >= 4);
+            for (int i = 0; i < (int) p.getFactoryPresets().size(); ++i)
+            {
+                const auto& preset = p.getFactoryPresets()[(size_t) i];
+                const auto r = p.loadFactoryPreset (i);
+                expect (r.ok && r.message.isEmpty(), preset.name + ": " + r.message);
+                expectEquals (p.getPresetName(), preset.name);
+                expect (! p.isPresetModified(), preset.name + " unmodified");
+                if (preset.name == "Band with In-Ears")
+                {
+                    expect (p.isLinked (2) && p.getBusType (0) == mix::BusType::group && p.getBusType (1) == mix::BusType::fx);
+                    expectEquals (p.getSettings().choice (mix::busId (2, "out")), mix::pairTarget (2), "IEM Vocals on Out 3/4");
+                    expect (p.getRack().get ({ InsertRack::Strip::bus, 1, 0 }) != nullptr, "a reverb on the FX bus");
+                    expectEquals (p.getUserPage (0).size(), 6);
+                }
+                if (preset.name == "Recording Feed")
+                    expectEquals (p.getSettings().choice (mix::channelId (15, "direct_out")), 32);
+            }
+        }
+
         beginTest ("User pages: kept in the session in the order chosen; at most 16 strips, no repeats");
         {
             RKMixProcessor a;

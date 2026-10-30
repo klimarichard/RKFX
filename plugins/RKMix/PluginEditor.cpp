@@ -612,6 +612,8 @@ void RKMixEditor::updateMeters()
                 b->repaint();
         if (insertView != nullptr)
             insertView->refresh();
+        if (routingPanel.isVisible())
+            routingPanel.repaint();   // the MIDI out list
     }
 
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
@@ -703,11 +705,21 @@ void RKMixEditor::InsertButton::paint (juce::Graphics& g)
     }
 
     const auto on = rack.isOn (slot);
-    g.setColour (rkfx::Palette::familyColour (type->family).withAlpha (on ? 1.0f : 0.35f));
+    const auto conflict = type->sendsMidi && rack.isInConflict (slot);
+    g.setColour ((conflict ? rkfx::Palette::warning : rkfx::Palette::familyColour (type->family)).withAlpha (on ? 1.0f : 0.35f));
     g.fillRoundedRectangle (r.withWidth (4.0f), 2.0f);
+
+    auto text = getLocalBounds().withTrimmedLeft (6).withTrimmedRight (2);
+    if (type->sendsMidi)
+    {
+        // A MIDI tag (in the warning colour when it clashes with another MIDI insert).
+        g.setColour (conflict ? rkfx::Palette::warning : rkfx::Palette::familyColour (type->family));
+        g.setFont (rkfx::Fonts::bold (8.5f));
+        g.drawText ("MIDI", text.removeFromRight (22), juce::Justification::centredRight);
+    }
     g.setColour (on ? rkfx::Palette::text : rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (10.5f));
-    g.drawFittedText (type->shortName, getLocalBounds().withTrimmedLeft (6).withTrimmedRight (2), juce::Justification::centredLeft, 1);
+    g.drawFittedText (type->shortName, text, juce::Justification::centredLeft, 1);
 }
 
 void RKMixEditor::InsertButton::mouseDown (const juce::MouseEvent& e)
@@ -783,7 +795,28 @@ void RKMixEditor::InsertView::paint (juce::Graphics& g)
     g.fillRect (getLocalBounds().removeFromTop (34));
     g.setColour (rkfx::Palette::text);
     g.setFont (rkfx::Fonts::bold (15.0f));
-    g.drawText (owner.slotName (slot) + ": " + plugin.getConfig().name, 12, 0, getWidth() - 280, 34, juce::Justification::centredLeft);
+    const auto title = owner.slotName (slot) + ": " + plugin.getConfig().name;
+    g.drawText (title, 12, 0, getWidth() - 280, 34, juce::Justification::centredLeft);
+
+    // A MIDI insert: what it sends, and what it clashes with.
+    auto& rack = owner.mixer.getRack();
+    if (rack.sendsMidi (slot))
+    {
+        auto line = juce::String::fromUTF8 ("MIDI \xe2\x86\x92 ") + rack.footprintOf (slot).describe();
+        auto colour = rkfx::Palette::textDim;
+        for (const auto& c : rack.getConflicts())
+            if ((c.a.strip == slot.strip && c.a.index == slot.index && c.a.slot == slot.slot)
+                || (c.b.strip == slot.strip && c.b.index == slot.index && c.b.slot == slot.slot))
+            {
+                const auto& other = c.a.strip == slot.strip && c.a.index == slot.index && c.a.slot == slot.slot ? c.b : c.a;
+                line << "   Clashes with " << owner.slotName (other) << ": " << c.where.joinIntoString (", ");
+                colour = rkfx::Palette::warning;
+            }
+        g.setColour (colour);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        const auto x = 24 + juce::roundToInt (juce::GlyphArrangement::getStringWidth (rkfx::Fonts::bold (15.0f), title));
+        g.drawFittedText (line, x, 0, getWidth() - 280 - x, 34, juce::Justification::centredLeft, 1);
+    }
 }
 
 juce::String RKMixEditor::slotName (InsertRack::Slot slot) const

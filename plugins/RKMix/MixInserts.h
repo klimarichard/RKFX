@@ -6,6 +6,7 @@
 #include "host/PedalRegistry.h"
 
 #include <array>
+#include <bitset>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -19,10 +20,17 @@
     Threads: plugins are created, prepared and removed on the message
     thread; the audio thread sees them through a table swapped under a short
     spin lock, which the processor holds while the engine runs a block. A
-    removed plugin is deleted after the swap. */
+    removed plugin is deleted after the swap.
+
+    MIDI: what inserts that send MIDI (RKTrigger, RKFollow) send is collected
+    for RKMix's MIDI output. The notes each one sounds are tracked, so taking
+    it out of play (removed, prepared again, a channel or note changed, the
+    mix bypassed) ends them with note-offs. Two of them conflict when they can
+    send the same note or controller on the same channel (a warning only). */
 class InsertRack : public MixEngine::Inserts,
                    private juce::AudioProcessorListener,
-                   private juce::AudioProcessorParameter::Listener
+                   private juce::AudioProcessorParameter::Listener,
+                   private juce::AsyncUpdater
 {
 public:
     using Strip = MixEngine::Inserts::Strip;
@@ -86,6 +94,28 @@ public:
     static juce::String stripKey (Strip);
 
     //==============================================================================
+    // MIDI (message thread)
+
+    /** True when the plugin in @p slot sends MIDI. */
+    bool sendsMidi (Slot) const;
+    /** What it can send now. */
+    rkfx::MidiFootprint footprintOf (Slot) const;
+
+    struct Conflict
+    {
+        Slot a, b;
+        juce::StringArray where;    // "Ch 10, C1 (36)"
+    };
+    const std::vector<Conflict>& getConflicts() const noexcept { return conflicts; }
+    bool isInConflict (Slot) const;
+
+    /** Every slot holding a plugin that sends MIDI. */
+    std::vector<Slot> midiSlots() const;
+
+    /** Tests: brings the footprints up to date now (what the message loop would do). */
+    void flushPendingUpdate() { handleUpdateNowIfNeeded(); }
+
+    //==============================================================================
     // Audio thread
 
     /** Held by the processor while the engine runs a block. */
@@ -97,6 +127,13 @@ public:
     void process (Strip, int index, float* const* io, int numSides, int numSamples) noexcept override;
     bool isActive (Strip, int index) const noexcept override;
 
+    /** Moves this block's MIDI from the inserts (and note-offs waiting from the
+        message thread) into @p dest, at their positions in the block. */
+    void takeMidi (juce::MidiBuffer& dest) noexcept;
+
+    /** Note-offs for every note an insert is sounding, into @p dest at 0 (the mix is bypassed). */
+    void releaseAllMidi (juce::MidiBuffer& dest) noexcept;
+
 private:
     static int flatIndex (Slot) noexcept;
     static int firstSlot (Strip, int index) noexcept;
@@ -105,6 +142,20 @@ private:
     std::array<const rkfx::pedals::PedalType*, kTotalSlots> types {};
     std::array<rkfx::ProcessorBase*, kTotalSlots> live {};                    // audio thread view (under lock)
     std::array<juce::RangedAudioParameter*, kTotalSlots> liveBypass {};
+    std::array<bool, kTotalSlots> liveSendsMidi {};
+
+    // MIDI: the notes each slot sounds (audio thread, or under the lock), what
+    // the inserts sent this block, note-offs waiting for the audio thread.
+    using HeldNotes = std::array<std::bitset<128>, 16>;
+    std::array<HeldNotes, kTotalSlots> held {};
+    juce::MidiBuffer collected, pendingOffs;
+    std::array<rkfx::MidiFootprint, kTotalSlots> footprints;
+    std::vector<Conflict> conflicts;
+
+    /** Note-offs for slot @p flat's notes (all, or those outside @p keep), into pendingOffs. Under the lock. */
+    void releaseHeld (int flat, const rkfx::MidiFootprint* keep = nullptr);
+    void updateFootprints();
+    void handleAsyncUpdate() override { updateFootprints(); }
     juce::SpinLock lock;
 
     double sampleRate = 48000.0;

@@ -57,6 +57,8 @@ InsertRack::InsertRack()
 {
     rkfx::pedals::registerFactoryPresets();
     pedalMidi.ensureSize (4096);
+    collected.ensureSize (8192);
+    pendingOffs.ensureSize (8192);
 }
 
 InsertRack::~InsertRack()
@@ -113,9 +115,25 @@ void InsertRack::detach (rkfx::ProcessorBase& p)
 void InsertRack::publish (int flat, rkfx::ProcessorBase* p)
 {
     auto* bypass = p != nullptr ? bypassOf (*p) : nullptr;
+    const auto midi = p != nullptr && types[(size_t) flat] != nullptr && types[(size_t) flat]->sendsMidi;
     const juce::SpinLock::ScopedLockType sl (lock);
+    if (live[(size_t) flat] != nullptr && live[(size_t) flat] != p)
+        releaseHeld (flat);   // its notes end as it leaves play
     live[(size_t) flat] = p;
     liveBypass[(size_t) flat] = bypass;
+    liveSendsMidi[(size_t) flat] = midi;
+}
+
+void InsertRack::releaseHeld (int flat, const rkfx::MidiFootprint* keep)
+{
+    auto& notes = held[(size_t) flat];
+    for (int ch = 0; ch < 16; ++ch)
+        for (int n = 0; n < 128; ++n)
+            if (notes[(size_t) ch][(size_t) n] && (keep == nullptr || ! keep->notes[(size_t) ch][(size_t) n]))
+            {
+                pendingOffs.addEvent (juce::MidiMessage::noteOff (ch + 1, n), 0);
+                notes[(size_t) ch].reset ((size_t) n);
+            }
 }
 
 rkfx::ProcessorBase* InsertRack::get (Slot s) const
@@ -150,6 +168,7 @@ rkfx::ProcessorBase* InsertRack::insert (Slot s, const juce::String& typeName, i
         if (onChange != nullptr) onChange();
         if (onLatencyChange != nullptr) onLatencyChange();
     }
+    updateFootprints();
     return owned[(size_t) flat].get();
 }
 
@@ -162,7 +181,7 @@ void InsertRack::remove (Slot s)
     if (aboutToRemove != nullptr)
         aboutToRemove (owned[(size_t) flat].get());
 
-    publish (flat, nullptr);   // the audio thread lets go first
+    publish (flat, nullptr);   // the audio thread lets go first (its notes end)
     detach (*owned[(size_t) flat]);
     owned[(size_t) flat].reset();
     types[(size_t) flat] = nullptr;
@@ -173,6 +192,7 @@ void InsertRack::remove (Slot s)
         if (onChange != nullptr) onChange();
         if (onLatencyChange != nullptr) onLatencyChange();
     }
+    updateFootprints();
 }
 
 void InsertRack::clear()
@@ -190,6 +210,7 @@ void InsertRack::clear()
     ++version;
     if (onLatencyChange != nullptr)
         onLatencyChange();
+    updateFootprints();
 }
 
 bool InsertRack::isOn (Slot s) const
@@ -217,7 +238,7 @@ void InsertRack::setChannels (Strip strip, int index, int numChannels)
         if (p == nullptr || p->getTotalNumOutputChannels() == numChannels)
             continue;
 
-        // Out of the audio path while it is prepared again.
+        // Out of the audio path while it is prepared again (its notes end).
         publish (flat, nullptr);
         prepare (*p, numChannels);
         publish (flat, p);
@@ -342,6 +363,73 @@ void InsertRack::parameterValueChanged (int, float)
     ++version;
     if (! loading && onChange != nullptr)
         onChange();
+    triggerAsyncUpdate();   // what the MIDI inserts send may have changed
+}
+
+//==============================================================================
+bool InsertRack::sendsMidi (Slot s) const
+{
+    const auto* type = typeOf (s);
+    return type != nullptr && type->sendsMidi;
+}
+
+rkfx::MidiFootprint InsertRack::footprintOf (Slot s) const
+{
+    auto* p = get (s);
+    return p != nullptr && sendsMidi (s) ? p->getMidiOutputFootprint() : rkfx::MidiFootprint {};
+}
+
+std::vector<InsertRack::Slot> InsertRack::midiSlots() const
+{
+    std::vector<Slot> slots;
+    const auto add = [&] (Strip strip, int index)
+    {
+        for (int slot = 0; slot < numSlots (strip); ++slot)
+            if (sendsMidi ({ strip, index, slot }))
+                slots.push_back ({ strip, index, slot });
+    };
+    for (int ch = 0; ch < mix::kChannels; ++ch)
+        add (Strip::channel, ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        add (Strip::bus, bus);
+    add (Strip::main, 0);
+    add (Strip::mono, 0);
+    return slots;
+}
+
+bool InsertRack::isInConflict (Slot s) const
+{
+    const auto flat = flatIndex (s);
+    for (const auto& c : conflicts)
+        if (flatIndex (c.a) == flat || flatIndex (c.b) == flat)
+            return true;
+    return false;
+}
+
+void InsertRack::updateFootprints()
+{
+    // Notes a changed channel or note leaves behind end; then the conflicts.
+    const auto slots = midiSlots();
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        for (const auto& s : slots)
+        {
+            const auto flat = flatIndex (s);
+            footprints[(size_t) flat] = footprintOf (s);
+            releaseHeld (flat, &footprints[(size_t) flat]);
+        }
+    }
+
+    conflicts.clear();
+    for (size_t i = 0; i < slots.size(); ++i)
+        for (size_t j = i + 1; j < slots.size(); ++j)
+        {
+            const auto where = rkfx::MidiFootprint::conflicts (footprints[(size_t) flatIndex (slots[i])],
+                                                               footprints[(size_t) flatIndex (slots[j])]);
+            if (! where.isEmpty())
+                conflicts.push_back ({ slots[i], slots[j], where });
+        }
+    ++version;
 }
 
 //==============================================================================
@@ -369,7 +457,38 @@ void InsertRack::process (Strip strip, int index, float* const* io, int numSides
         p->setPlayHead (playHead);
         juce::AudioBuffer<float> view (io, numSides, numSamples);
         p->processBlock (view, pedalMidi);
+
+        // What it sent (a plugin without MIDI output leaves the buffer empty).
+        if (liveSendsMidi[(size_t) (first + slot)])
+        {
+            auto& notes = held[(size_t) (first + slot)];
+            for (const auto metadata : pedalMidi)
+            {
+                const auto m = metadata.getMessage();
+                if (m.isNoteOn())
+                    notes[(size_t) (m.getChannel() - 1)].set ((size_t) m.getNoteNumber());
+                else if (m.isNoteOff())
+                    notes[(size_t) (m.getChannel() - 1)].reset ((size_t) m.getNoteNumber());
+                collected.addEvent (m, metadata.samplePosition);
+            }
+        }
     }
+}
+
+void InsertRack::takeMidi (juce::MidiBuffer& dest) noexcept
+{
+    dest.addEvents (pendingOffs, 0, -1, 0);
+    dest.addEvents (collected, 0, -1, 0);
+    pendingOffs.clear();
+    collected.clear();
+}
+
+void InsertRack::releaseAllMidi (juce::MidiBuffer& dest) noexcept
+{
+    for (int flat = 0; flat < kTotalSlots; ++flat)
+        releaseHeld (flat);
+    dest.addEvents (pendingOffs, 0, -1, 0);
+    pendingOffs.clear();
 }
 
 bool InsertRack::isActive (Strip strip, int index) const noexcept

@@ -932,6 +932,9 @@ RKMixEditor::RoutingPanel::RoutingPanel (RKMixEditor& o) : Panel (o)
     balance = std::make_unique<rkfx::Knob> (s.param ("main_bal"), "Balance");
     addAndMakeVisible (*balance);
 
+    midiThru = std::make_unique<rkfx::ToggleSwitch> (s.param ("midi_thru"), o.accent(), "MIDI thru");
+    addAndMakeVisible (*midiThru);
+
     for (int out = 0; out < kChannels; ++out)
     {
         auto& label = outputNames[(size_t) out];
@@ -974,9 +977,12 @@ void RKMixEditor::RoutingPanel::refresh()
 void RKMixEditor::RoutingPanel::resized()
 {
     auto r = getLocalBounds();
-    mainArea = r.removeFromLeft (290);
+    auto left = r.removeFromLeft (290);
     r.removeFromLeft (kGap);
     outputsArea = r;
+    mainArea = left.removeFromTop (180);
+    left.removeFromTop (kGap);
+    midiArea = left;
 
     auto a = inner (mainArea).reduced (4, 4);
     auto row = a.removeFromTop (26);
@@ -986,8 +992,10 @@ void RKMixEditor::RoutingPanel::resized()
     row = a.removeFromTop (26);
     row.removeFromLeft (100);
     monoOutput->setBounds (row);
-    a.removeFromTop (8);
+    a.removeFromTop (4);
     balance->setBounds (a.removeFromTop (kKnobH).withWidth (kKnobW).withX (a.getX() + 100));
+
+    midiThru->setBounds (inner (midiArea).reduced (4, 2).removeFromTop (kSwitchH).removeFromRight (90));
 
     auto grid = inner (outputsArea);
     const auto cellW = grid.getWidth() / 4, cellH = grid.getHeight() / 8;
@@ -1007,12 +1015,34 @@ void RKMixEditor::RoutingPanel::paint (juce::Graphics& g)
     g.drawText ("Main output", a.removeFromTop (26), juce::Justification::centredLeft);
     a.removeFromTop (8);
     g.drawText ("Mono output", a.removeFromTop (26), juce::Justification::centredLeft);
-    a.removeFromTop (8 + kKnobH + 6);
-    g.setColour (rkfx::Palette::textDim);
-    g.setFont (rkfx::Fonts::regular (12.0f));
-    g.drawFittedText ("The mono sum is (L + R) / 2 of the main after its fader. A stereo source on a single output "
-                      "is summed the same way; several sources on one output add up.",
-                      a, juce::Justification::topLeft, 5);
+
+    // MIDI out: the inserts that send MIDI, and what clashes.
+    rkfx::drawPanel (g, midiArea, owner.panelColour(), "MIDI out");
+    auto m = inner (midiArea).reduced (4, 2);
+    m.removeFromTop (kSwitchH + 6);
+    auto& rack = owner.mixer.getRack();
+    const auto slots = rack.midiSlots();
+    g.setFont (rkfx::Fonts::regular (11.5f));
+    if (slots.empty())
+    {
+        g.setColour (rkfx::Palette::textDim);
+        g.drawFittedText ("RKTrigger and RKFollow inserts send MIDI out of RKMix. None yet.", m, juce::Justification::topLeft, 3);
+    }
+    for (const auto& slot : slots)
+    {
+        if (m.getHeight() < 14)
+            break;
+        g.setColour (rack.isInConflict (slot) ? rkfx::Palette::warning : rkfx::Palette::text);
+        g.drawFittedText (owner.slotName (slot) + ": " + rack.footprintOf (slot).describe(), m.removeFromTop (16),
+                          juce::Justification::centredLeft, 1);
+    }
+    for (const auto& c : rack.getConflicts())
+    {
+        if (m.getHeight() < 14)
+            break;
+        g.setColour (rkfx::Palette::warning);
+        g.drawFittedText ("Clash: " + c.where.joinIntoString (", "), m.removeFromTop (16), juce::Justification::centredLeft, 1);
+    }
 
     rkfx::drawPanel (g, outputsArea, owner.panelColour(), "Outputs");
     auto grid = inner (outputsArea);

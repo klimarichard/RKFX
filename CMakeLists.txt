@@ -69,19 +69,9 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})
 endforeach()
 
-# The pedal host: every plugin above built in, for RKBoard and RKMix (after
-# them: it uses their factory preset lists).
-add_subdirectory(host)
-
-# The pedalboard, holding every plugin above.
-add_subdirectory(plugins/RKBoard)
-
-# The mixing console (after RKBoard: not a pedal, its 32 channels don't fit a board).
-add_subdirectory(plugins/RKMix)
-
 # The MIDI family: MIDI effects (MIDI in, MIDI out, no audio), and audio
-# effects that send MIDI (RKFollow, RKTrigger). Not on the pedalboard, whose
-# pedals pass audio only.
+# effects that send MIDI (RKFollow, RKTrigger). Not on the pedalboard, which
+# has no MIDI output; RKFollow and RKTrigger are RKMix inserts.
 set(RKFX_MIDI_PLUGINS
     RKHarmonize
     RKArpeggiate
@@ -95,6 +85,19 @@ set(RKFX_MIDI_PLUGINS
 foreach(plugin IN LISTS RKFX_MIDI_PLUGINS)
     add_subdirectory(plugins/${plugin})
 endforeach()
+
+# The audio effects that send MIDI, built into the pedal host for RKMix's inserts.
+set(RKFX_HOST_MIDI_PLUGINS RKFollow RKTrigger)
+
+# The pedal host: every plugin above built in, for RKBoard and RKMix (after
+# them: it uses their factory preset lists).
+add_subdirectory(host)
+
+# The pedalboard, holding every plugin above.
+add_subdirectory(plugins/RKBoard)
+
+# The mixing console (after RKBoard: not a pedal, its 32 channels don't fit a board).
+add_subdirectory(plugins/RKMix)
 
 # RKRemap step 0: two throwaway 64-channel test plugins (off by default).
 option(RKFX_BUILD_REMAP_TEST "Build the RKRemap 64-channel test plugins" OFF)

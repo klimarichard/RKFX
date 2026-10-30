@@ -8,6 +8,7 @@
 #include "../plugins/RKDeEss/PluginProcessor.h"
 #include "../plugins/RKDelay/PluginProcessor.h"
 #include "../plugins/RKDistort/PluginProcessor.h"
+#include "../plugins/RKFollow/PluginProcessor.h"
 #include "../plugins/RKDouble/PluginProcessor.h"
 #include "../plugins/RKFilter/PluginProcessor.h"
 #include "../plugins/RKFlange/PluginProcessor.h"
@@ -29,6 +30,7 @@
 #include "../plugins/RKSynth/PluginProcessor.h"
 #include "../plugins/RKTransient/PluginProcessor.h"
 #include "../plugins/RKTremolo/PluginProcessor.h"
+#include "../plugins/RKTrigger/PluginProcessor.h"
 #include "../plugins/RKUtility/PluginProcessor.h"
 #include "../plugins/RKVerb/PluginProcessor.h"
 #include "../plugins/RKOctave/PluginProcessor.h"
@@ -78,6 +80,8 @@
     X (RKVibrato) \
     X (RKVocode) \
     X (RKVoice) \
+    X (RKFollow) \
+    X (RKTrigger) \
     X (RKVolume) \
     X (RKWah)
 
@@ -129,6 +133,8 @@ namespace
     std::unique_ptr<rkfx::ProcessorBase> makeRKDelay() { return std::make_unique<RKDelayProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKVerb() { return std::make_unique<RKVerbProcessor>(); }
     std::unique_ptr<rkfx::ProcessorBase> makeRKUtility() { return std::make_unique<RKUtilityProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKTrigger() { return std::make_unique<RKTriggerProcessor>(); }
+    std::unique_ptr<rkfx::ProcessorBase> makeRKFollow() { return std::make_unique<RKFollowProcessor>(); }
 }
 
 const std::vector<PedalType>& pedalTypes()
@@ -172,7 +178,9 @@ const std::vector<PedalType>& pedalTypes()
         { "RKHold", "Hold", Family::delay, makeRKHold },
         { "RKVerb", "Verb", Family::reverb, makeRKVerb, 10.0 },
         { "RKVolume", "Volume", Family::utility, makeRKVolume },
-        { "RKUtility", "Utility", Family::utility, makeRKUtility }
+        { "RKUtility", "Utility", Family::utility, makeRKUtility },
+        { "RKTrigger", "Trigger", Family::midi, makeRKTrigger, 0.0, true },
+        { "RKFollow", "Follow", Family::midi, makeRKFollow, 0.0, true }
     };
     return types;
 }

@@ -19,6 +19,7 @@ namespace
         c.hasMix = false;
         c.hasOutput = false;                  // the main and mono faders are the output
         c.midiInput = true;                   // inserts with MIDI input, scenes by program change
+        c.midiOutput = true;                  // what RKTrigger and RKFollow inserts send, and MIDI thru
         c.extraInPresets = true;              // a preset is the whole console
         c.bypassMutes = true;                 // raw inputs must never reach the PA or the in-ears
         c.accent = juce::Colour (0xff6b8ca6); // Utility family, steel
@@ -88,6 +89,7 @@ RKMixProcessor::RKMixProcessor()
     mainBalance = &settings.param ("main_bal");
     mainOutput = &settings.param ("main_out");
     monoOutput = &settings.param ("mono_out");
+    midiThru = &settings.param ("midi_thru");
 
     mainFader = findParam ("main_fader");
     mainMute = findParam ("main_mute");
@@ -519,8 +521,16 @@ MixEngine::Levels RKMixProcessor::readLevels() const
     return levels;
 }
 
+void RKMixProcessor::releaseMidi (juce::MidiBuffer& midi)
+{
+    // Bypass engaged: every note the inserts are sounding ends.
+    const juce::SpinLock::ScopedLockType sl (rack.getLock());
+    rack.releaseAllMidi (midi);
+}
+
 void RKMixProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
+    insertMidi.ensureSize (8192);
     rack.prepare (sampleRate, maxBlockSize);
     updateLatencies();
     changed = 0;
@@ -575,7 +585,18 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         const juce::SpinLock::ScopedLockType sl (rack.getLock());
         rack.setBlockContext (getPlayHead(), getMidi(), getChunkStart());
         engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
+        insertMidi.clear();
+        rack.takeMidi (insertMidi);
     }
+
+    // MIDI out: what the inserts sent, and the MIDI in when MIDI thru is on.
+    for (const auto metadata : insertMidi)
+        sendMidi (metadata.getMessage(), metadata.samplePosition);
+    if (valueOf (midiThru) >= 0.5f)
+        if (const auto* midi = getMidi())
+            for (const auto metadata : *midi)
+                if (metadata.samplePosition >= getChunkStart() && metadata.samplePosition < getChunkStart() + buffer.getNumSamples())
+                    sendMidi (metadata.getMessage(), metadata.samplePosition - getChunkStart());
     if (! measure)
         return;
 

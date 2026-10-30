@@ -16,6 +16,7 @@ struct PedalType
     rkfx::Palette::Family family;
     std::unique_ptr<rkfx::ProcessorBase> (*create)();
     double tailSeconds = 0.0;                  // how long it rings on after the input stops
+    bool sendsMidi = false;                    // sends MIDI (RKTrigger, RKFollow): RKMix's inserts only, RKBoard has no MIDI out
 };
 
 /** Every pedal type, grouped by family in menu order. */

@@ -31,8 +31,9 @@ foreach(pedal RKVolume RKWah)
     list(APPEND hostSources "${CMAKE_CURRENT_BINARY_DIR}/${pedal}FactoryPresetList.cpp")
 endforeach()
 
-# Every plugin's own sources, factory preset list and preset data.
-foreach(plugin IN LISTS RKFX_PLUGINS)
+# Every plugin's own sources, factory preset list and preset data (and the
+# audio effects that send MIDI, for RKMix's inserts).
+foreach(plugin IN LISTS RKFX_PLUGINS RKFX_HOST_MIDI_PLUGINS)
     file(GLOB pluginSources CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/plugins/${plugin}/*.cpp")
     list(APPEND hostSources ${pluginSources} "${CMAKE_BINARY_DIR}/plugins/${plugin}/FactoryPresetList.cpp")
     if(TARGET ${plugin}_FactoryPresets)

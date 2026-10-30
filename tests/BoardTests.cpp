@@ -97,6 +97,11 @@ public:
                 BoardProcessor board;
                 board.clearBoard();
                 prepare (board);
+                if (type.sendsMidi)
+                {
+                    expectEquals (board.addPedal (type.name), 0, type.name + ": not on the board (no MIDI out)");
+                    continue;
+                }
                 const auto id = board.addPedal (type.name);
                 expect (id == 1, type.name);
 

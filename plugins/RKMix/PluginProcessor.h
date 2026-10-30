@@ -107,6 +107,7 @@ protected:
 
     juce::var getExtraState() const override;
     void setExtraState (const juce::var&) override;
+    void releaseMidi (juce::MidiBuffer&) override;
 
 private:
     MixSettings settings;
@@ -124,7 +125,8 @@ private:
     using ChannelParams = std::array<juce::RangedAudioParameter*, numChannelFields>;
     std::array<ChannelParams, kChannels> channelParams {};
     std::array<juce::RangedAudioParameter*, mix::kPairs> linkParams {};
-    juce::RangedAudioParameter *mainBalance = nullptr, *mainOutput = nullptr, *monoOutput = nullptr;
+    juce::RangedAudioParameter *mainBalance = nullptr, *mainOutput = nullptr, *monoOutput = nullptr, *midiThru = nullptr;
+    juce::MidiBuffer insertMidi;                        // audio thread: what the inserts sent this block
 
     std::array<juce::RangedAudioParameter*, kChannels> channelFaders {}, channelMutes {};
     std::array<juce::RangedAudioParameter*, mix::kBuses> busFaders {}, busMutes {};

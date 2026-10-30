@@ -81,6 +81,40 @@ void RKFollowProcessor::resetDsp()
     engine.reset();
 }
 
+rkfx::MidiFootprint RKFollowProcessor::getMidiOutputFootprint() const
+{
+    rkfx::MidiFootprint f;
+    const auto bendMode = juce::roundToInt (valueOf (bend));     // 0 off, 1 on, 2 MPE
+    const auto mpe = bendMode == 2;
+    const auto own = juce::roundToInt (valueOf (channel));
+    const auto sendsNotes = valueOf (notes) >= 0.5f;
+    const auto sendsExpression = valueOf (expr) >= 0.5f;
+    const auto controller = juce::roundToInt (valueOf (exprCc));
+
+    for (int ch = 1; ch <= 16; ++ch)
+    {
+        if (! mpe && ch != own)
+            continue;
+        if (sendsNotes)
+            for (int n = 0; n < 128; ++n)
+                f.addNote (ch, n);
+        if (bendMode > 0)
+        {
+            f.addChannelWide (ch);
+            for (auto cc : { 100, 101, 6 })    // the bend range, as an RPN
+                f.addController (ch, cc);
+        }
+        if (sendsExpression && (! mpe || ch == 1))
+        {
+            if (controller >= FollowParams::kPressure)
+                f.addChannelWide (ch);
+            else
+                f.addController (ch, controller);
+        }
+    }
+    return f;
+}
+
 void RKFollowProcessor::releaseMidi (juce::MidiBuffer& midi)
 {
     engine.release (midi, 0);

@@ -321,6 +321,80 @@ public:
             expectEquals (c.getSettings().choice (mix::busId (0, "panmode")), (int) mix::PanMode::mirror);
         }
 
+        beginTest ("MIDI out: an RKTrigger insert's notes leave RKMix; conflicts; note-offs when it leaves play");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            expect (p.producesMidi() && p.acceptsMidi());
+            p.prepareToPlay (48000.0, 128);
+            auto& rack = p.getRack();
+            auto* kick = rack.insert ({ Strip::channel, 0, 0 }, "RKTrigger", 1);
+            expect (kick != nullptr && rack.sendsMidi ({ Strip::channel, 0, 0 }));
+            setParam (*kick->findParam ("t1_threshold"), -40.0f);
+            setParam (*kick->findParam ("t1_length"), 500.0f);       // still sounding when it is removed
+
+            // A hit on input 1: a note-on, channel 10, C1 (36), at its position.
+            juce::AudioBuffer<float> b (32, 128);
+            juce::MidiBuffer midi;
+            int noteOnAt = -1;
+            for (int n = 0; n < 4; ++n)
+            {
+                b.clear();
+                midi.clear();
+                if (n == 1)
+                    for (int i = 20; i < 60; ++i)
+                        b.setSample (0, i, 0.8f * (float) std::sin (i * 0.3));
+                p.processBlock (b, midi);
+                for (const auto m : midi)
+                    if (m.getMessage().isNoteOn())
+                    {
+                        expectEquals (m.getMessage().getChannel(), 10);
+                        expectEquals (m.getMessage().getNoteNumber(), 36);
+                        noteOnAt = n * 128 + m.samplePosition;
+                    }
+            }
+            expect (noteOnAt >= 128 + 20 && noteOnAt < 256, "the note-on comes with the hit");
+
+            // A second trigger on the same note conflicts; on another note it doesn't.
+            auto* snare = rack.insert ({ Strip::channel, 1, 0 }, "RKTrigger", 1);
+            expectEquals ((int) rack.getConflicts().size(), 1, "both on Ch 10, C1 (36)");
+            setParam (*snare->findParam ("t1_note"), 38.0f);
+            rack.flushPendingUpdate();
+            expect (rack.getConflicts().empty(), "C1 and D1 on Ch 10: fine");
+            auto* follow = rack.insert ({ Strip::channel, 2, 0 }, "RKFollow", 1);
+            setParam (*follow->findParam ("channel"), 10.0f);
+            rack.flushPendingUpdate();
+            expectEquals ((int) rack.getConflicts().size(), 2, "RKFollow on Ch 10 clashes with both triggers");
+
+            // Removing the sounding trigger sends its note-off.
+            rack.remove ({ Strip::channel, 0, 0 });
+            b.clear();
+            midi.clear();
+            p.processBlock (b, midi);
+            bool noteOff = false;
+            for (const auto m : midi)
+                noteOff = noteOff || (m.getMessage().isNoteOff() && m.getMessage().getNoteNumber() == 36 && m.getMessage().getChannel() == 10);
+            expect (noteOff, "no hung note");
+        }
+
+        beginTest ("MIDI thru: MIDI in reaches the output only when on");
+        {
+            RKMixProcessor p;
+            p.prepareToPlay (48000.0, 128);
+            juce::AudioBuffer<float> b (32, 128);
+            juce::MidiBuffer midi;
+            b.clear();
+            midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 5);
+            p.processBlock (b, midi);
+            expect (midi.isEmpty(), "off: nothing passes");
+
+            setParam (p.getSettings().param ("midi_thru"), 1.0f);
+            midi.clear();
+            midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 5);
+            p.processBlock (b, midi);
+            expectEquals (midi.getNumEvents(), 1, "on: it passes");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

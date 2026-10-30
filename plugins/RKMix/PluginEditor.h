@@ -298,6 +298,8 @@ private:
 
         std::unique_ptr<ChoiceBox> mainOutput, monoOutput;
         std::unique_ptr<rkfx::Knob> balance;
+        std::unique_ptr<rkfx::ToggleSwitch> midiThru;
+        juce::Rectangle<int> midiArea;
         std::array<juce::Label, mix::kChannels> outputNames;
         std::array<juce::String, mix::kChannels> sources;
         std::array<int, mix::kChannels> sourceCount {};

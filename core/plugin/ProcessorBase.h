@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "FactoryPresets.h"
+#include "MidiFootprint.h"
 #include "OutputStage.h"
 #include "dsp/TempoSync.h"
 #include "ParamBuilder.h"
@@ -63,6 +64,10 @@ public:
     ~ProcessorBase() override;
 
     const PluginConfig& getConfig() const noexcept { return config; }
+
+    /** Plugins with MIDI output: what they can send at their current settings
+        (message thread; RKMix warns when two of its inserts clash). */
+    virtual MidiFootprint getMidiOutputFootprint() const { return {}; }
 
     /** Lookup by ID (set up at construction; safe to call any time). */
     juce::RangedAudioParameter* findParam (const juce::String& id) const;

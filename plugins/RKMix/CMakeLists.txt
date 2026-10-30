@@ -11,7 +11,7 @@ juce_add_plugin(RKMix
     FORMATS                  AU VST3
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         TRUE      # inserts with MIDI input; scenes by program change
-    NEEDS_MIDI_OUTPUT        FALSE
+    NEEDS_MIDI_OUTPUT        TRUE      # what RKTrigger and RKFollow inserts send; MIDI thru
     IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     AU_MAIN_TYPE             kAudioUnitType_MusicEffect

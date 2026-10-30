@@ -259,6 +259,9 @@ namespace MixParams
         for (int chain = 0; chain < kProcessingChains; ++chain)
             addProcessing (p, chain);
 
+        // MIDI in passed on to the MIDI output (appended).
+        p.addBool ("midi_thru", "MIDI Thru", false);
+
         return p;
     }
 }

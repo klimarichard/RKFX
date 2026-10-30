@@ -194,6 +194,16 @@ RKMix has a **MIDI output**. It carries what its **audio-to-MIDI inserts** send:
 - **RKBoard** hides RKTrigger and RKFollow in its pedal menu (the board has no MIDI output): the registry marks them `sendsMidi`.
 - **Standalone:** a MIDI output device, chosen in the audio/MIDI settings.
 
+### As built (feat/rkmix-midi, 2026-10-30)
+
+- RKMix is built with MIDI out (`NEEDS_MIDI_OUTPUT`, `PluginConfig::midiOutput`); still a music effect (`aumf`).
+- RKTrigger and RKFollow joined the pedal host (`RKFX_HOST_MIDI_PLUGINS`; the MIDI plugins are now configured before the host) in a **MIDI** family of the insert menu, flagged `sendsMidi`. RKBoard hides them and refuses to add them (its tests check it).
+- **Core:** `rkfx::MidiFootprint` (`core/plugin/MidiFootprint.h`) and `ProcessorBase::getMidiOutputFootprint()`. RKTrigger reports trigger 1 (Mono) or both (Dual): channel and note. RKFollow reports every note on its channel (if Notes is on), its expression controller (or pressure: channel-wide), pitch bend (channel-wide) and the RPN controllers 100, 101, 6 that set its bend range, on every channel in MPE mode.
+- The rack tracks each MIDI insert's sounding notes; leaving play (removed, prepared again for mono/stereo, a mix loaded) or a channel/note change sends note-offs for them; RKMix's bypass ends them all (`releaseMidi`).
+- **Window:** a MIDI insert's slot shows a MIDI tag, in the warning colour while it clashes; the insert view's header says what it sends and what it clashes with; the routing page has a **MIDI out** box: MIDI thru, the MIDI inserts with what they send, the clashes.
+- **Tests:** a hit on input 1 through an RKTrigger insert leaves RKMix as a note-on (Ch 10, C1) at the hit; two triggers on one note conflict, on two notes they don't, RKFollow on their channel clashes with both; removing a sounding trigger sends its note-off (checked to fail without); MIDI thru off and on. auval (Mix1, Brd1, Trg1, Flw1) and pluginval pass.
+- **Still open:** Step 0 below (the user's check of MIDI out from an audio effect in Gig Performer), and the MIDI output device in the standalone app (phase 8).
+
 ### Step 0 for MIDI
 
 RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked in Gig Performer yet. Before the MIDI phase, the user loads **RKTrigger as AU and VST3** in Gig Performer and checks that its MIDI output can be wired to an instrument and triggers it. If one format can't send MIDI from an audio effect, the design is revisited for that format.

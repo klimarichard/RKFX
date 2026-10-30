@@ -82,6 +82,7 @@ Choosing another playlist while music plays offers **Crossfade now** (default) o
 - **Analysis:** each song's integrated loudness (EBU R128 / ITU-R BS.1770: K-weighting, gating), its peak (sample peak, 4x oversampled for true peak), music start and end, fade-out point, and a waveform overview (1,000 points), measured once on a background thread when the song is added.
 - **Cache:** results are kept in `Application Support/RKFX/RKPlay/analysis.json`, keyed by file path, size and modification date, so a show with 500 songs opens instantly and a changed file is measured again.
 - **Level match** (on by default): each song plays at the **Target** loudness (-23 to -14 LUFS, default **-18 LUFS**, the user's archive standard in `~/Music/OFFLINE MUSIC ARCHIVE/LOUDNESS-TARGET.txt`). **Pure gain:** a song's gain never lifts its true peak above the **Peak ceiling** (default **-0.5 dBTP**, as the archive); a song too dynamic to reach the target plays as loud as that allows, never limited. Files already normalised to the archive standard play at 0 dB gain (within ±0.05 dB they are treated as exactly 0 dB, bit-exact).
+- **Lift quiet songs** (Off, up to 3 dB, up to 6 dB; default **up to 3 dB**): a song too dynamic to reach the target by gain alone is lifted further and its peaks limited, by at most that much. The limiter runs on the reading thread, seconds ahead of playback, so it looks ahead generously and moves its gain slowly (a mastering-style limiter: lookahead about 5 ms, release program-dependent, true-peak ceiling at the Peak ceiling) and adds no latency. The analysis simulates it and stores the lift each song needs, so playback guesses nothing. A song needing more than the cap is lifted by the cap and stays a little short. Songs that reach the target by gain alone are never limited (bit-exact). The song list marks limited songs with their limiting in dB. On the user's archive at -18 LUFS this touches one song (Green Flower Street, 0.3 dB); it matters for outside files (wedding requests, live recordings).
 - **Make up the level at the desk or the amp, never by boosting songs** (as the archive notes say): RKPlay's output sits about 4 dB below commercial masters on purpose. The master **Level** (up to +6 dB) is a plain gain after everything.
 - **Per-playlist gain** (±12 dB, default 0): a quieter Dinner list is the same target played 4 dB down, not a different target (a different target would make the dynamic songs uneven again).
 - **Per-song gain** (±12 dB) adjusts on top: a karaoke or instrumental backing track a singer performs over is often best 2-3 dB lower.
@@ -183,7 +184,8 @@ Fixed, in this order (IDs permanent, append only):
 
 ## Decisions (2026-10-30)
 
-- **Loudness:** -18 LUFS target, -0.5 dBTP peak ceiling, pure gain, as the user's offline music archive (`~/Music/OFFLINE MUSIC ARCHIVE`); every factory show uses it, quieter lists use playlist gain.
+- **Lift quiet songs** up to 3 dB by default (lookahead limiting on the reading thread), Off and up to 6 dB as choices.
+- **Loudness:** -18 LUFS target, -0.5 dBTP peak ceiling, pure gain otherwise, as the user's offline music archive (`~/Music/OFFLINE MUSIC ARCHIVE`); every factory show uses it, quieter lists use playlist gain.
 - **Accent:** sage `#6FA58A`.
 - **Zones** (two rooms, two playlists) are not in v1; two RKPlay instances do it.
 - **The input is only the duck key**, never passed to the output.

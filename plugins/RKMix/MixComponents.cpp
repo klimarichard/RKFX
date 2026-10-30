@@ -82,9 +82,14 @@ void Fader::paint (juce::Graphics& g)
     if (showScale)
     {
         g.setFont (rkfx::Fonts::regular (9.5f));
+        auto lastY = -100.0f;
         for (const auto db : { 10.0f, 0.0f, -10.0f, -20.0f, -40.0f, -60.0f, -100.0f })
         {
+            // A short fader skips the marks that would crowd the one above.
             const auto y = yFor (mix::faderPositionOf (db));
+            if (y - lastY < 11.0f && db > -100.0f)
+                continue;
+            lastY = y;
             g.setColour (juce::exactlyEqual (db, 0.0f) ? rkfx::Palette::text : rkfx::Palette::textDim);
             g.drawText (db <= -100.0f ? juce::String ("-inf") : juce::String ((int) db), 0, (int) y - 6, (int) trackX - 9, 12,
                         juce::Justification::centredRight);

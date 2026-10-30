@@ -37,6 +37,7 @@
 #include "HoldEngine.h"
 #include "PolyPitchEngine.h"
 #include "RemapEngine.h"
+#include "MixEngine.h"
 
 #include <cstdio>
 #include <functional>
@@ -46,7 +47,8 @@
 /** CPU benchmarks at 48 kHz with 64-sample blocks (the spec's reference
     setting), stereo. Prints microseconds per block and the share of the
     block's real-time budget. With --record <file>, appends a CSV line per
-    case so builds can be compared over time. */
+    case so builds can be compared over time; --only <Plugin> runs one
+    plugin's cases. */
 
 namespace
 {
@@ -500,6 +502,31 @@ int main (int argc, char** argv)
                   engine->process (buffer->getArrayOfWritePointers(), RemapEngine::kChannels, kBlock);
               });
           } },
+        { "RKMix", "32 mono channels to the main and mono sum, delay on", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+              {
+                  s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
+                  s.channels[(size_t) ch].delayOn = true;
+                  s.channels[(size_t) ch].delayMs = 1.5f;
+              }
+              s.main.monoOutput = 3;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
         { "RKSwell", "default", []
           {
               return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });
@@ -655,14 +682,24 @@ int main (int argc, char** argv)
           } },
     };
 
+    // --record <csv>: append the results; --only <Plugin>: run that plugin's cases alone.
     juce::File recordFile;
-    if (argc >= 3 && juce::String (argv[1]) == "--record")
-        recordFile = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
+    juce::String only;
+    for (int i = 1; i + 1 < argc; ++i)
+    {
+        if (juce::String (argv[i]) == "--record")
+            recordFile = juce::File::getCurrentWorkingDirectory().getChildFile (argv[i + 1]);
+        else if (juce::String (argv[i]) == "--only")
+            only = argv[i + 1];
+    }
 
     const auto budget = kBlock * 1.0e6 / kRate;
 
     for (const auto& c : cases)
     {
+        if (only.isNotEmpty() && only != c.plugin)
+            continue;
+
         const auto us = run (c);
         std::printf ("%-12s %-28s %7.2f us/block  %5.2f %% of real time\n", c.plugin, c.name, us, 100.0 * us / budget);
 

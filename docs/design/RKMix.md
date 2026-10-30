@@ -311,6 +311,29 @@ Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the websi
 - **CPU:** the budget above, in the benchmark.
 - **Validation:** auval (`aumf Mix1 RKMu`), pluginval at strictness 10, RKBoardTests still pass after the shared-hosting refactor.
 
+## As built: phases 1-4 (2026-10-30)
+
+Branches, stacked: `docs/rkmix-design` → `feat/rkmix` (console core) → `feat/rkmix-strip` → `feat/rkmix-buses` → `feat/rkmix-inserts`. Not merged; the manual, factory presets and the README come before the merge.
+
+- **Window 1280 × 900.** Instead of a "Channels shown" setting, the fader area has **layers**: Inputs 1-16, Inputs 17-32, Buses (bottom row). The top panel has pages: **Channel** (or **Bus** when a bus is selected), **Sends**, **Routing**. Strips show H/G/E/C section lights (G and C light up while they reduce), a pan slider, the insert slots, Mute, the fader and a meter (pre-fader for channels, post-fader for buses and the main).
+- **Settings:** about 3,700 mix settings, held as parameters of a never-processing processor (as RKBoard's routing), so the suite's knobs and switches work with them; a change rebuilds only its channel, bus or the main. The host sees 134 parameters plus Bypass, as decided.
+- **Fader law:** -inf (the bottom) to +10 dB, 0 dB at three quarters of the travel.
+- **The fixed strip's DSP** is the suite's, made cheap for 32 channels: RKGate's gate and RKCompress's compressor logic (curves, hysteresis, hold, log-domain timing from `core/dsp/Dynamics.h`) with the gain computed every 8 samples and interpolated (`MixDynamics.h`); the HPF is Butterworth biquads (12 or 24 dB/oct); the EQ bands the matched bells and shelves, all active bands run in one loop with their state in registers. 32 channels with every section on and 16 stereo buses with 32 sends: **1.9% of a core** (64-sample blocks); the console with nothing on: 0.3%.
+- **The gate's gain-reduction meter** isn't on the channel page (no room); the strip's G lights while the gate reduces. The compressor's is.
+- **Shelf Q:** the Low and High bands' Q applies only as bells (a shelf is 0.707; its Q knob dims).
+- **Strip presets** (the fixed strip, inserts, name and colour; not pan, Main, keys or sends) are in the `RKMix Channels` preset folder; the channel page's Strip presets menu saves, loads, resets.
+- **Bus Main defaults on** for Group and FX buses (a group usually feeds the main; the spec said Group off).
+- **Send tap points** are chosen on the Sends page in a short list per Aux send; the bus's default tap is marked with a dot. A tap change isn't crossfaded (it is structure, like the spec says).
+- **Bus-to-bus sends** take the source bus after its fader and pan (Group → Aux/FX, FX → Aux); a mono bus into a stereo bus is panned by its Pan.
+- **Unfed buses are skipped** (no CPU) unless an insert on them is on (a reverb's tail).
+- **Inserts:** 2 per channel, 4 per bus, 4 on the main, 2 on the mono sum; every RKBoard pedal (stereo RKFX plugins, Volume, Wah). A click on a slot opens the plugin's own editor over the console (scaled to fit) with On, Remove and Close; right-click switches it, replaces or removes it. On/off is the plugin's own Bypass (its 10 ms crossfade; off costs nothing).
+- **Pedal host:** RKBoard's registry and its Volume and Wah pedals moved to `host/` (`rkfx_pedal_host`), which RKBoard and RKMix both link; RKBoard's own presets register on top. RKMix is its own `juce_add_plugin` target, like RKBoard.
+- **Latency alignment** as designed: channels lined up with the slowest (pre-insert taps too), each bus's channel part and bus inputs, the main's, and every output at the same total, reported to the host. Limits: 512 samples for a channel's inserts, 4096 for a path (RKFX plugins report at most 63 each). Lines cost about 4.6 MB, allocated in prepare. With no latency anywhere nothing is delayed (bit-exact).
+- **Core changes:** `PluginConfig::bypassMutes` (Bypass fades to silence); a plugin with it has no dry delay and may report up to 65,536 samples of latency (`ProcessorBase::kMaxMutedLatency`).
+- **Snapshot tool:** several clicks, separated by semicolons.
+- **Validation:** RKFXTests, RKBoardTests (RKMix's state, inserts and RKBoard after the refactor), RKFXPresetTests pass; auval (`aumf Mix1 RKMu`, `aumf Brd1 RKMu`) and pluginval at strictness 10 pass for RKMix and RKBoard.
+- **To look at in Gig Performer:** the bus layer's faders are short (4 insert rows); the window's overall size at 1280 × 900.
+
 ## Decisions (2026-10-30)
 
 - **Host:** both, plugin first; the standalone works on an audio interface as RKBoard's does.

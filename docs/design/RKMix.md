@@ -15,6 +15,7 @@ RKMix is a small digital mixing console in one plugin, mainly for Gig Performer,
 - **Main stereo L/R plus a mono sum**, each on any of the 32 outputs.
 - **Solo** either to a cue output (PFL/AFL, the main mix is never touched) or in place, selectable.
 - **16 scenes** with a glide, **32 assignables**, and host parameters for every channel and bus fader and mute.
+- **MIDI out from audio-to-MIDI inserts:** RKTrigger and RKFollow in a channel's insert slots send their MIDI out of RKMix (a kick mic triggering a drum sampler), with a warning when two of them can send the same note on the same channel.
 - **Latency is aligned inside:** when an insert adds latency, the other paths are delayed to match at every point where signals meet.
 
 RKMix with nothing switched on (sections off, faders at 0 dB, centred, all channels to the main) is a plain summing mixer.
@@ -175,6 +176,28 @@ Solo is never saved (in presets, scenes or the session) and clears when a mix is
 - **A mono channel or mono bus** runs its inserts in mono. Effects whose point is stereo (ping-pong delay, chorus spread) belong on a stereo FX bus; the slot menu marks them "stereo effect".
 - **Insert on/off** fades over 20 ms (the plugin is fed silence and idles while off, as RKBoard's bypass does).
 
+## MIDI out
+
+RKMix has a **MIDI output**. It carries what its **audio-to-MIDI inserts** send: **RKTrigger** (a kick or snare mic triggering a drum sampler) and **RKFollow** (a voice or violin playing a synth). Both pass their audio through unchanged, so they sit in any channel's or bus's insert slots like any other effect.
+
+- **Channel and notes come from the plugin itself:** RKTrigger's channel and note per trigger, RKFollow's channel. RKMix doesn't add a second Channel Out setting. The slot shows what the plugin sends ("MIDI → Ch 10 · C1 (36), D1 (38)") and clicking it opens the plugin's editor.
+- **Merging:** after each insert runs, RKMix collects the MIDI it sent (into a buffer allocated in `prepare()`) and merges it into the output at the same sample positions. Sources are independent; RKMix doesn't filter or change their messages.
+- **Conflict warning:** two sources **conflict** when they can send the **same note, or the same controller, on the same channel**, or when one sends a **channel-wide message** (pitch bend, channel pressure) on a channel the other uses: a bend would bend the other source's notes too. Kick on C1 (36) and snare on D1 (38), both on channel 10, is fine; two triggers on channel 10, note 36, conflict; RKFollow can send any note (and bends), so it conflicts with any other source on its channel, and in **MPE** mode with any source on any channel. Each conflicting slot shows a warning mark, and the routing page lists the conflicts ("Ch 10, C1 (36): Kick › Trigger, Kick Sub › Trigger"). It only warns, never blocks: doubling a note can be intended.
+- **What each plugin can send** comes from a new core hook, `ProcessorBase::getMidiOutputFootprint()`: per channel, the notes and controllers the plugin can currently send (a 128-bit note mask and a 128-bit controller mask) and whether it sends channel-wide messages (pitch bend, channel pressure). RKTrigger reports its triggers' channels and notes. RKFollow reports every note, its expression controller (or pressure) and pitch bend when Bend is on, plus the RPN controllers (100, 101, 6) it uses to set the bend range, on its channel; in MPE mode, on all 16 channels. The footprint is re-read on the message thread when an insert's parameters change.
+- **No hung notes:** switching a MIDI insert off (by hand, by a scene or by an assignable), removing it, changing its channel or note, or loading a mix first sends note-offs for what it started (the core's `releaseMidi`).
+- **Mute and solo don't stop MIDI:** inserts come before Mute, so a muted kick channel still triggers its sample, which is usually the point (the kick mic is off in the PA). To stop a trigger, switch its insert off.
+- **Timing:** MIDI is sent as soon as the insert produces it, never delayed by latency alignment, for the fastest triggering.
+- **RKMix bypassed:** silence on every output and no MIDI out (note-offs first).
+- **MIDI in** reaches the MIDI-input inserts (RKVoice, RKVocode, RKSynth) but is **not passed to the output** unless the **MIDI thru** setting is on (default off), so Gig Performer wiring doesn't double notes.
+- **Scenes** can switch MIDI inserts on and off, but their channel and note parameters can't be scene-controlled (a choice must never glide through values).
+- **Pure MIDI effects** (RKHarmonize, RKArpeggiate, RKStrum, RKSustain, RKEcho, RKConduct) have no audio and aren't hosted in v1. They stay as their own plugins in Gig Performer, after RKMix's MIDI output.
+- **RKBoard** hides RKTrigger and RKFollow in its pedal menu (the board has no MIDI output): the registry marks them `sendsMidi`.
+- **Standalone:** a MIDI output device, chosen in the audio/MIDI settings.
+
+### Step 0 for MIDI
+
+RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked in Gig Performer yet. Before the MIDI phase, the user loads **RKTrigger as AU and VST3** in Gig Performer and checks that its MIDI output can be wired to an instrument and triggers it. If one format can't send MIDI from an audio effect, the design is revisited for that format.
+
 ## Latency
 
 - Most RKFX plugins have **zero latency**. A few report some (RKPolyPitch, RKLimit's lookahead), and the fixed strip has none (the channel Delay is the user's own alignment, not latency).
@@ -227,7 +250,7 @@ Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is
 
 ## Identity
 
-- **AU code** `Mix1`, bundle ID `com.rkmusic.rkmix`, a music effect (`aumf`) with MIDI in, as RKBoard (inserts with MIDI input, program change for scenes). AU, VST3, Standalone.
+- **AU code** `Mix1`, bundle ID `com.rkmusic.rkmix`, a music effect (`aumf`) with MIDI in, as RKBoard (inserts with MIDI input, program change for scenes), and MIDI out (`PluginConfig::midiOutput`, see MIDI out). AU, VST3, Standalone.
 - **Utility family**, accent proposal **steel `#6B8CA6`** (not used by another plugin).
 - **One bus of 32 discrete channels** each way (`PluginConfig::channels = 32`). RKRemap's Step 0 confirmed in Gig Performer that one 64-channel bus works as AU and VST3, so no new step 0 is needed.
 - **Not an RKBoard pedal**: the board's chain is stereo. RKBoard can't be an insert either.
@@ -238,7 +261,7 @@ Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is
 - **Message thread owns the mix;** the audio thread reads an immutable **render plan** (per channel: active sections and coefficients; per summing point: the list of sources with gains and alignment delays), rebuilt only when something changes and swapped atomically. Steady state reads no parameters and allocates nothing.
 - **Inserts** are owned and swapped as on RKBoard. Lesson from RKBoard: the chain lock is a non-reentrant `SpinLock`, so never set an Assign parameter (its listener takes the lock) while holding it.
 - **Gliding values** (fader, pan, send, trim, EQ during a scene glide) are smoothed per sample. A summing point whose sources are all steady is a plain multiply-add per source.
-- **Code shared with RKBoard** (pedal hosting, assignables, scenes, MIDI learn, play head) moves to a shared library (e.g. `core/host/`) rather than being copied. This refactor is the first commit of phase 4 (inserts), phases 6 and 7 build on it, and it must leave RKBoard's tests passing.
+- **Code shared with RKBoard** (pedal hosting, assignables, scenes, MIDI learn, play head) moves to a shared library (e.g. `core/host/`) rather than being copied. This refactor is the first commit of phase 4 (inserts), phases 5, 7 and 8 build on it, and it must leave RKBoard's tests passing.
 
 ## Build phases
 
@@ -248,9 +271,10 @@ As RKBoard: one stacked branch per phase, the user tests in Gig Performer betwee
 2. **Fixed strip** (`feat/rkmix-strip`): HPF, gate, EQ, comp, keys, the channel view, channel presets.
 3. **Buses** (`feat/rkmix-buses`): 16 buses with types, formats, sends, sends on fader, groups to later groups, outputs, the routing page.
 4. **Inserts** (`feat/rkmix-inserts`): the shared pedal-hosting refactor, insert slots, hosted editors, latency alignment.
-5. **Solo, talkback, oscillator** (`feat/rkmix-solo`): cue PFL/AFL, solo in place, solo safe, talkback, sine/pink-noise oscillator.
-6. **Scenes and assignables** (`feat/rkmix-scenes`): scenes, glide, recall safe, scene-controlled insert knobs, assignables.
-7. **Standalone** (`feat/rkmix-standalone`): MIDI learn, program change, tempo/tap/clock.
+5. **MIDI out** (`feat/rkmix-midi`, after MIDI's Step 0): MIDI output, RKTrigger and RKFollow as inserts, the merge, footprints and conflict warnings, note-offs, MIDI thru.
+6. **Solo, talkback, oscillator** (`feat/rkmix-solo`): cue PFL/AFL, solo in place, solo safe, talkback, sine/pink-noise oscillator.
+7. **Scenes and assignables** (`feat/rkmix-scenes`): scenes, glide, recall safe, scene-controlled insert knobs, assignables.
+8. **Standalone** (`feat/rkmix-standalone`): MIDI learn, program change, tempo/tap/clock, MIDI output device.
 
 Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the website entry, the README last.
 
@@ -278,7 +302,8 @@ Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the websi
 - **Buses:** Group assigns post-fader; every Aux tap point takes the signal at its place in the strip (e.g. Pre-Comp is uncompressed while the same channel's Pre-Fader send is compressed), per-send overrides beat the bus default, every tap follows mute, a pre-insert tap is latency-aligned with post-insert sends; FX always post; pan follows; groups feed only higher groups (the GUI and the state loader refuse otherwise); several sources on one output add up.
 - **Solo:** cue PFL/AFL taps, cue source with nothing soloed, the main untouched in Cue mode; solo in place mutes the rest except solo-safe; solo never saved.
 - **Talkback and oscillator:** reach only their chosen destinations; sine frequency and level; pink noise slope (−3 dB/octave within ±1 dB, 50 Hz–10 kHz); both off after loading a mix saved with them on.
-- **Bypass:** every output silent, with a fade.
+- **Bypass:** every output silent, with a fade, and no MIDI out.
+- **MIDI out:** an RKTrigger insert's notes leave RKMix at their sample positions, merged with a second source's; conflicts found for the same channel and note (and controller), none for different notes on one channel, RKFollow conflicting with anything on its channel (on every channel in MPE mode), a pitch-bending source conflicting with a trigger on its channel; note-offs when a MIDI insert is switched off, removed, re-channelled or the mix is loaded or bypassed; a muted channel still sends MIDI; MIDI in reaches the output only with MIDI thru; RKBoard's menu hides `sendsMidi` plugins.
 - **Latency:** a latent insert on one channel: every summing point aligned (impulse on two channels arrives together at the main, in an Aux pre and post, and at the cue output); reported latency; zero latency with no latent insert.
 - **No clicks:** fader, mute, section switches, insert on/off, solo and scene changes on a sustained tone produce no step beyond the signal's own.
 - **Scenes:** recall restores values not structure; recall safe; glide; host fader parameters follow a scene.
@@ -300,7 +325,8 @@ Before merging: the manual (`docs/manuals/RKMix.md`), factory presets, the websi
 - **Bypass:** silence on every output.
 - **Mono channels** run inserts in mono.
 - **Send tap point per send** (channel × Aux bus), the bus supplying the default: so the singer's in-ear can take the vocal before the compressor while the other mixes take it after.
-- **Talkback** and an **oscillator** (sine and pink noise) are in v1 (phase 5).
+- **Talkback** and an **oscillator** (sine and pink noise) are in v1 (phase 6).
+- **MIDI out** from audio-to-MIDI inserts (RKTrigger, RKFollow): each plugin's own channel and notes (no separate Channel Out), a warning only for the same note or controller on the same channel; pure MIDI effects not hosted in v1. RKTrigger's MIDI out in Gig Performer is checked first (MIDI's Step 0).
 - **Not in v1:** mid/side input pairs, a comp-before-EQ switch, direct outs (an RKRemap before RKMix can split raw inputs for recording).
 
 ## Open questions

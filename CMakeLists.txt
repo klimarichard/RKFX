@@ -73,6 +73,10 @@ endforeach()
 # factory preset lists).
 add_subdirectory(plugins/RKBoard)
 
+# The mixing console (after RKBoard: not a pedal, its 32 channels don't fit a board).
+set(RKFX_OTHER_PLUGINS RKMix)
+add_subdirectory(plugins/RKMix)
+
 # The MIDI family: MIDI effects (MIDI in, MIDI out, no audio), and audio
 # effects that send MIDI (RKFollow, RKTrigger). Not on the pedalboard, whose
 # pedals pass audio only.

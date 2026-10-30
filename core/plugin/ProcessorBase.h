@@ -31,6 +31,7 @@ struct PluginConfig
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
     int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKRemap); 0 = mono/stereo
     bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
+    bool bypassMutes = false;        // Bypass fades to silence instead of passing the input (RKMix: raw inputs must never reach the PA)
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };

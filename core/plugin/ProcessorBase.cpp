@@ -331,6 +331,11 @@ void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
         wetWasIdle = true;
     }
 
+    // Bypass to silence: the dry signal the bypass fades to is cleared
+    // (after processDsp(), which may read it through getDryInput()).
+    if (config.bypassMutes && outputStage.isBypassActive())
+        dryBuffer.clear (0, numSamples);
+
     outputStage.process (dryBuffer.getArrayOfReadPointers(), chunk.getArrayOfWritePointers(), numChannels, numSamples);
 
     // NaN or infinity arriving from upstream: never pass it on.

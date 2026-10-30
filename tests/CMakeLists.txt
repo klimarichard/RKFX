@@ -39,6 +39,7 @@ set(RKFX_ENGINE_PLUGINS
     RKEcho/EchoEngine
     RKPolyPitch/PolyPitchEngine
     RKRemap/RemapEngine
+    RKMix/MixEngine
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -111,6 +112,7 @@ target_sources(RKFXTests PRIVATE
     EchoTests.cpp
     PolyPitchTests.cpp
     RemapTests.cpp
+    MixTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 
@@ -178,6 +180,8 @@ juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
 target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
     RemapStateTests.cpp
+    MixStateTests.cpp
+    ${RKMIX_SOURCES}
     ${RKBOARD_SOURCES}
     ${RKBOARD_PEDAL_SOURCES}
 )
@@ -188,8 +192,9 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
     endif()
 endforeach()
 target_compile_definitions(RKBoardTests PRIVATE
-    RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_BOARD=1 RKMIX_NO_ENTRY_POINT=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
     RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKMix)
 target_link_libraries(RKBoardTests
     PRIVATE
         rkboard_factory_presets

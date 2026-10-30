@@ -3,7 +3,7 @@
 # Each tool compiles the plugin's own sources as a plain app.
 add_custom_target(RKFXSnapshots)
 
-foreach(plugin IN LISTS RKFX_PLUGINS RKFX_MIDI_PLUGINS)
+foreach(plugin IN LISTS RKFX_PLUGINS RKFX_MIDI_PLUGINS RKFX_OTHER_PLUGINS)
     set(tool RKFXSnapshot_${plugin})
     juce_add_console_app(${tool} PRODUCT_NAME "${tool}")
     set_target_properties(${tool} PROPERTIES EXCLUDE_FROM_ALL TRUE)

@@ -10,15 +10,20 @@
         | RKPlay                                 [Show v] [Save] [As] |
         +-------------------------------------------------------------+
         | Title (large)                              elapsed  -remain |
-        | Artist                                                      |
-        | [============ progress (click to seek) ===============]     |
+        | Artist        [~~~~~~~~ waveform, click to seek ~~~~~~~~]   |
         | Next: ...                                                   |
-        | [ |< ] [ PLAY ] [ >| ] [ Fade out ] [ Stop ]                |
+        | [|<] [ PLAY ] [>|] [Fade out] [Stop]   End at ..  [Settings]|
         +-------------------------------------------------------------+
-        | Playlist (drop files and folders here)       Crossfade, ... |
+        | [Dinner >] [Party] [+]                        | Queue       |
+        | [In order|Shuffle] At end [..] Stop after each| ...         |
+        | songs                                         | End at      |
+        | [Add files] [Add folder]              [Clear] |             |
         +-------------------------------------------------------------+
-        | [Level]   note                                     [Bypass] |
-        +-------------------------------------------------------------+ */
+        | [Level]   note / status                            [Bypass] |
+        +-------------------------------------------------------------+
+
+    Settings (fade out, smart crossfade, loudness, the Music folder) open
+    over the lower half. */
 class RKPlayEditor : public rkfx::EditorBase,
                      public juce::FileDragAndDropTarget,
                      private juce::ListBoxModel
@@ -39,7 +44,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;   // right-click Stop: Panic
 
 private:
-    /** The now-playing area: names, times, the progress bar (click to seek), what's next. */
+    /** The now-playing area: names, times, the waveform (click to seek), what's next. */
     struct NowPlaying : public juce::Component
     {
         explicit NowPlaying (RKPlayEditor& o) : owner (o) {}
@@ -49,28 +54,81 @@ private:
         RKPlayEditor& owner;
     };
 
+    /** The playlists as tabs: click to show one, double-click to rename, right-click for more. */
+    struct Tabs : public juce::Component
+    {
+        explicit Tabs (RKPlayEditor& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+        int tabAt (juce::Point<int>) const;            // -2: the + tab
+        juce::Rectangle<int> tabBounds (int index) const;
+        RKPlayEditor& owner;
+    };
+
+    /** The queue's list. */
+    struct QueueModel : public juce::ListBoxModel
+    {
+        explicit QueueModel (RKPlayEditor& o) : owner (o) {}
+        int getNumRows() override;
+        void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
+        void listBoxItemClicked (int row, const juce::MouseEvent&) override;
+        void deleteKeyPressed (int row) override;
+        RKPlayEditor& owner;
+    };
+
+    /** Settings for the whole show, over the lower half of the window. */
+    struct Settings : public juce::Component
+    {
+        explicit Settings (RKPlayEditor&);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void refresh();
+
+        RKPlayEditor& owner;
+        juce::Slider fadeOutTime, target;
+        juce::ToggleButton smart { "Smart crossfade" }, match { "Level match" }, safety { "Safety limiter" };
+        juce::ComboBox lift;
+        juce::TextButton chooseFolder { "Choose..." }, clearFolder { "None" }, relink { "Relink missing songs..." },
+                         close { "Close" };
+        juce::Rectangle<int> transportArea, loudnessArea, folderArea;
+    };
+
     RKPlayProcessor& player;
+    int viewed = 0;                       // the playlist the list shows
     NowPlaying nowPlaying { *this };
     juce::TextButton prevButton { "|<" }, playButton { "Play" }, nextButton { ">|" },
-                     fadeButton { "Fade out" }, stopButton { "Stop" };
+                     fadeButton { "Fade out" }, stopButton { "Stop" }, settingsButton { "Settings" };
+    Tabs tabs { *this };
+    juce::TextButton inOrderButton { "In order" }, shuffleButton { "Shuffle" };
+    juce::ComboBox atEnd;
+    juce::ToggleButton stopAfterEach { "Stop after each" };
+    juce::Slider crossfade, listGain;
     juce::ListBox list { "Playlist", this };
     juce::TextButton addFilesButton { "Add files..." }, addFolderButton { "Add folder..." }, clearButton { "Clear" };
-    juce::Slider crossfade, fadeOutTime, target;
-    juce::ToggleButton smart { "Smart crossfade" }, match { "Level match" }, safety { "Safety limiter" };
-    juce::ComboBox lift;
+    QueueModel queueModel { *this };
+    juce::ListBox queueList { "Queue", &queueModel };
+    juce::TextButton clearQueueButton { "Clear queue" };
+    juce::ToggleButton endAtOn { "End at" };
+    juce::TextEditor endAtTime;
+    juce::ComboBox endAtMode;
     std::unique_ptr<rkfx::Knob> level;
     juce::Label note, status;
-    float limiterDb = 0.0f;
-    double limiterTime = 0.0;
+    Settings settings { *this };
     std::unique_ptr<juce::FileChooser> chooser;
 
-    juce::Rectangle<int> listArea, playlistArea, loudnessArea;
+    juce::Rectangle<int> infoArea, listArea, queueArea, endAtArea;
     bool dropHighlight = false;
     int lastShowVersion = -1, lastNoteVersion = -1;
     double noteTime = 0.0;
+    float limiterDb = 0.0f;
+    double limiterTime = 0.0;
+    RKPlayProcessor::Item nextItem;       // what plays next (refreshed with the show)
     juce::TimedCallback timer { [this] { tick(); } };
 
-    // juce::ListBoxModel
+    const PlayPlaylist& viewedList() const { return player.getShow().playlists[(size_t) juce::jlimit (0, (int) player.getShow().playlists.size() - 1, viewed)]; }
+
+    // juce::ListBoxModel (the songs)
     int getNumRows() override;
     void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
     void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
@@ -82,7 +140,13 @@ private:
     void tick();
     void refresh();
     void showSongMenu (int row);
+    void showTabMenu (int playlist);
+    void showSettings (bool);
+    void renamePlaylist (int playlist);
     void chooseFiles (bool folders);
+    void chooseLink (int playlist, bool folder);
+    void exportPlaylist (int playlist);
+    void applyEndAt();
 
     static juce::String timeText (double seconds);
 };

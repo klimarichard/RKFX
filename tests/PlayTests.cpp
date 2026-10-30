@@ -70,6 +70,60 @@ namespace
         }
     }
 
+
+    /** A folder of short songs, each a steady level of its own (song n plays 0.01 * (first + n + 1)). */
+    juce::Array<juce::File> songsIn (const juce::String& folder, int count, double seconds = 0.5, int first = 0)
+    {
+        juce::Array<juce::File> files;
+        for (int n = 0; n < count; ++n)
+            files.add (writeWav (folder + "/Song " + juce::String (n + 1).paddedLeft ('0', 2), kRate, (int) (seconds * kRate),
+                                 [n, first] (int, int) { return 0.01f * (float) (first + n + 1); }));
+        return files;
+    }
+
+    /** A player for tests: plain gain, no smart crossfade, streams filled on the calling thread. */
+    struct TestPlayer : public RKPlayProcessor
+    {
+        TestPlayer()
+        {
+            useAnalysisCache (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/analysis.json"));
+            setSynchronousDiskForTesting (true);
+            setPlayConfigDetails (2, 2, kRate, kBlock);
+            prepareToPlay (kRate, kBlock);
+            setLevelMatch (false);
+            setSmartCrossfade (false);
+        }
+
+        /** Runs for @p seconds; returns the songs heard, in turn (their numbers, 0 = silence),
+            each once it has been steady for two blocks (past its fade-in). */
+        std::vector<int> runFor (double seconds)
+        {
+            std::vector<int> heard;
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::MidiBuffer midi;
+            int previous = -1;
+            for (int b = 0; b < (int) (seconds * kRate) / kBlock; ++b)
+            {
+                buffer.clear();
+                processBlock (buffer, midi);
+                update();
+                const auto n = juce::roundToInt (buffer.getSample (0, kBlock - 1) / 0.01f);
+                if (n == previous && (heard.empty() || heard.back() != n))
+                    heard.push_back (n);
+                previous = n;
+            }
+            return heard;
+        }
+    };
+
+    juce::String sequence (const std::vector<int>& v)
+    {
+        juce::StringArray s;
+        for (auto n : v)
+            s.add (juce::String (n));
+        return s.joinIntoString (" ");
+    }
+
     juce::File tempCache()
     {
         return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests").getChildFile ("analysis.json");
@@ -296,9 +350,9 @@ public:
             p.prepareToPlay (kRate, kBlock);
             p.addFiles (files);
             p.setCrossfade (0.0);
-            expectEquals ((int) p.getShow().songs.size(), 3);
-            expectEquals (p.getShow().songs[1].artist, juce::String ("Artist"));
-            expectEquals (p.getShow().songs[1].title, juce::String ("Song 2"));
+            expectEquals ((int) p.getShow().playlists[0].songs.size(), 3);
+            expectEquals (p.getShow().playlists[0].songs[1].artist, juce::String ("Artist"));
+            expectEquals (p.getShow().playlists[0].songs[1].title, juce::String ("Song 2"));
 
             p.play();
             juce::AudioBuffer<float> buffer (2, kBlock);
@@ -321,9 +375,9 @@ public:
             RKPlayProcessor q;
             q.useAnalysisCache (tempCache());
             q.setStateInformation (state.getData(), (int) state.getSize());
-            expectEquals ((int) q.getShow().songs.size(), 3);
-            expectEquals (q.getShow().crossfadeSeconds, 0.0);
-            expect (q.getShow().songs[2].file == files[2]);
+            expectEquals ((int) q.getShow().playlists[0].songs.size(), 3);
+            expectEquals (q.getShow().playlists[0].crossfadeSeconds, 0.0);
+            expect (q.getShow().playlists[0].songs[2].file == files[2]);
             expect (q.getState() == RKPlayProcessor::State::stopped, "a loaded show never starts playing by itself");
         }
 
@@ -348,10 +402,10 @@ public:
             q.setPlayConfigDetails (2, 2, kRate, kBlock);
             q.prepareToPlay (kRate, kBlock);
             q.setStateInformation (state.getData(), (int) state.getSize());
-            expect (q.getShow().songs[1].status == PlaySong::Status::missing);
+            expect (q.getShow().playlists[0].songs[1].status == PlaySong::Status::missing);
             expect (q.getNote().contains ("1 file"));
             q.play();
-            expectEquals (q.getNextIndex(), 2, "the next playable song");
+            expectEquals (q.peekNext().index, 2, "the next playable song");
         }
 
         //==============================================================================
@@ -543,6 +597,242 @@ public:
 
             writeWav ("cached", kRate, 24000, [] (int i, int ch) { return noise (i, ch, 9); });
             expect (! again.find (file, found), "a changed file is measured again");
+        }
+
+        //==============================================================================
+        // Phase 3: playlists, the queue, End at, links
+
+        beginTest ("A playlist in order: repeat, stop, or go on to another playlist at its end");
+        {
+            const auto first = songsIn ("lists/a", 3);
+            const auto second = songsIn ("lists/b", 2, 0.5, 10);
+            TestPlayer p;
+            p.addFiles (0, first);
+            p.setCrossfade (0.0);
+
+            p.play();
+            expectEquals (sequence (p.runFor (3.4)), juce::String ("1 2 3 1 2 3 1"), "repeat (the default)");
+
+            p.stop();
+            p.runFor (0.2);
+            p.setAtEnd (0, PlayPlaylist::AtEnd::stop);
+            p.jumpTo (0, 0);
+            expectEquals (sequence (p.runFor (2.0)), juce::String ("1 2 3 0"), "stop at the end");
+            expect (p.getState() == RKPlayProcessor::State::stopped);
+
+            const auto b = p.addPlaylist ("Party");
+            p.addFiles (b, second);
+            p.setPlaylistCrossfade (b, 0.0);
+            p.setAtEnd (0, PlayPlaylist::AtEnd::goTo, b);
+            p.setAtEnd (b, PlayPlaylist::AtEnd::stop);
+            p.jumpTo (0, 0);
+            expectEquals (sequence (p.runFor (3.0)), juce::String ("1 2 3 11 12 0"), "then the Party list");
+            expectEquals (p.getShow().active, b, "the Party list is playing now");
+        }
+
+        beginTest ("Shuffle: every song once a round, and a new round never starts with the last song");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("shuffle", 6));
+            p.setOrder (0, PlayPlaylist::Order::shuffle);
+            p.setCrossfade (0.0);
+            p.play();
+            std::vector<int> order;
+            for (int k = 0; k < 18; ++k)
+            {
+                order.push_back (p.getCurrent().index);
+                p.runFor (0.02);
+                p.next();
+                p.runFor (0.02);
+            }
+            for (int round = 0; round < 3; ++round)
+            {
+                std::vector<int> r (order.begin() + round * 6, order.begin() + round * 6 + 6);
+                std::sort (r.begin(), r.end());
+                expect (r == std::vector<int> ({ 0, 1, 2, 3, 4, 5 }), "round " + juce::String (round + 1) + ": " + sequence (order));
+            }
+            expect (order[6] != order[5] && order[12] != order[11], "no repeat across rounds: " + sequence (order));
+        }
+
+        beginTest ("The queue plays before the playlist goes on where it was; Play now is a one-off");
+        {
+            TestPlayer p;
+            const auto main = songsIn ("queue/main", 4, 0.5);
+            p.addFiles (0, main);
+            const auto other = p.addPlaylist ("Requests");
+            p.addFiles (other, songsIn ("queue/other", 3, 0.5, 10));
+            p.setCrossfade (0.0);
+
+            p.play();
+            p.runFor (0.1);
+            p.queueNext (other, 2);   // song 3 of the other list
+            p.queueNext (other, 1);   // song 2
+            expectEquals ((int) p.getQueue().size(), 2);
+            expectEquals (sequence (p.runFor (1.95)), juce::String ("1 13 12 2 3"), "song 1, the two requests, then the list goes on");
+            expect (p.getQueue().empty());
+            expectEquals (p.getShow().active, 0, "the list never changed");
+
+            p.playNow (other, 0);
+            p.runFor (0.05);
+            expect (p.getCurrent().song.file == p.getShow().playlists[(size_t) other].songs[0].file);
+            expect (p.getCurrent().queued);
+            expectEquals (p.peekNext().index, 3, "then the list goes on after its song 3");
+        }
+
+        beginTest ("Switching playlists: after this song, and each list remembers where it was");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("switch/a", 4));
+            const auto b = p.addPlaylist();
+            p.addFiles (b, songsIn ("switch/b", 4));
+            p.setPlaylistCrossfade (b, 0.0);
+            p.setCrossfade (0.0);
+
+            p.play();
+            p.runFor (0.6);                                  // into list A's song 2
+            expectEquals (p.getCurrent().index, 1);
+            p.switchPlaylist (b, false);
+            expectEquals (p.peekNext().playlist, b, "list B next");
+            p.runFor (0.5);
+            expectEquals (p.getCurrent().playlist, b);
+            expectEquals (p.getCurrent().index, 0);
+
+            p.switchPlaylist (0, true);                      // now: back to A
+            p.runFor (0.05);
+            expectEquals (p.getCurrent().playlist, 0);
+            expectEquals (p.getCurrent().index, 2, "A goes on after its song 2");
+        }
+
+        beginTest ("Stop after each song: the next waits for Play");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("each", 3));
+            p.setStopAfterEach (0, true);
+            p.play();
+            expectEquals (sequence (p.runFor (1.0)), juce::String ("1 0"));
+            expect (p.getState() == RKPlayProcessor::State::stopped);
+            p.play();
+            expectEquals (sequence (p.runFor (1.0)), juce::String ("2 0"));
+        }
+
+        beginTest ("End at: fades out at the time, or stops after the song playing then");
+        {
+            auto now = juce::Time (2026, 9, 30, 21, 59, 59, 0, true);
+            TestPlayer p;
+            p.setClockForTesting ([&now] { return now; });
+            p.addFiles (0, songsIn ("endat", 3, 2.0));
+            p.setCrossfade (0.0);
+            p.setFadeOut (0.5);
+            p.setEndAt (true, 22 * 60, false);
+            expectWithinAbsoluteError (p.getEndAtRemaining(), 1.0, 0.01);
+            p.play();
+            p.runFor (0.5);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (1.0);
+            expect (p.getState() == RKPlayProcessor::State::stopped, "faded out at 22:00");
+            expect (! p.getShow().endAt.on, "once");
+
+            now = juce::Time (2026, 9, 30, 21, 59, 59, 0, true);
+            p.setEndAt (true, 22 * 60, true);
+            p.jumpTo (0, 0);
+            p.runFor (0.5);
+            now = now + juce::RelativeTime::seconds (2.0);
+            const auto heard = p.runFor (3.0);
+            expectEquals (sequence (heard), juce::String ("1 0"), "song 1 to its end, then nothing");
+        }
+
+        beginTest (".m3u8: a linked playlist reads it (relative paths, comments), and exports it back");
+        {
+            const auto files = songsIn ("m3u/songs", 3);
+            const auto list = files[0].getParentDirectory().getParentDirectory().getChildFile ("set.m3u8");
+            list.replaceWithText ("#EXTM3U\n#EXTINF:1,Three\nsongs/Song 03.wav\n\nsongs/Song 01.wav\n#a comment\nsongs/Missing.wav\n");
+            TestPlayer p;
+            expect (p.linkPlaylist (0, list));
+            const auto& songs = p.getShow().playlists[0].songs;
+            expectEquals ((int) songs.size(), 3);
+            expect (songs[0].file == files[2] && songs[1].file == files[0]);
+            expect (songs[2].status == PlaySong::Status::missing);
+
+            const auto out = list.getSiblingFile ("out.m3u8");
+            expect (p.exportPlaylist (0, out));
+            expect (out.loadFileAsString().contains ("songs/Song 03.wav"), "relative to the file");
+            expect (PlayShow::filesIn (out, false, p.getFormats())[1] == files[0]);
+        }
+
+        beginTest ("A linked folder: its songs, sorted, again on Rescan");
+        {
+            const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/linked");
+            folder.deleteRecursively();
+            songsIn ("linked", 2);
+            TestPlayer p;
+            p.linkPlaylist (0, folder);
+            expectEquals ((int) p.getShow().playlists[0].songs.size(), 2);
+            expect (p.getShow().playlists[0].isLinked());
+            songsIn ("linked", 3);
+            p.rescan (0);
+            expectEquals ((int) p.getShow().playlists[0].songs.size(), 3, "a song added to the folder");
+            p.addFiles (0, songsIn ("elsewhere", 1));
+            expectEquals ((int) p.getShow().playlists[0].songs.size(), 3, "a linked list takes nothing by hand");
+        }
+
+        beginTest ("A moved Music folder: the songs are found by their place in it; Relink finds others by name");
+        {
+            const auto base = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests/music");
+            base.deleteRecursively();
+            const auto files = songsIn ("music/Library", 2);
+            juce::MemoryBlock state;
+            {
+                TestPlayer p;
+                p.setMusicFolder (base.getChildFile ("Library"));
+                p.addFiles (0, files);
+                p.getStateInformation (state);
+            }
+            // Another Mac: the folder somewhere else.
+            const auto moved = base.getChildFile ("Elsewhere/Library");
+            moved.getParentDirectory().createDirectory();
+            base.getChildFile ("Library").moveFileTo (moved);
+
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getShow().playlists[0].songs[0].status == PlaySong::Status::missing);
+            q.setMusicFolder (moved);
+            expect (q.getShow().playlists[0].songs[0].isPlayable() && q.getShow().playlists[0].songs[1].isPlayable());
+
+            // A song moved within the library: Relink finds it by name.
+            const auto sub = moved.getChildFile ("Sub");
+            sub.createDirectory();
+            moved.getChildFile ("Song 02.wav").moveFileTo (sub.getChildFile ("Song 02.wav"));
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            q.setMusicFolder (moved);
+            expect (q.getShow().playlists[0].songs[1].status == PlaySong::Status::missing);
+            expectEquals (q.relink (moved), 1);
+            expect (q.getShow().playlists[0].songs[1].isPlayable());
+        }
+
+        beginTest ("The Playlist host parameter crossfades into that list; a show keeps its playlists");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("param/a", 3, 2.0));
+            const auto b = p.addPlaylist ("Second");
+            p.addFiles (b, songsIn ("param/b", 3, 2.0));
+            p.setOrder (b, PlayPlaylist::Order::shuffle);
+            p.setAtEnd (0, PlayPlaylist::AtEnd::goTo, b);
+            p.play();
+            p.runFor (0.2);
+            auto* param = p.findParam ("playlist");
+            param->setValueNotifyingHost (param->convertTo0to1 (2.0f));
+            p.runFor (0.2);
+            expectEquals (p.getCurrent().playlist, b);
+
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals ((int) q.getShow().playlists.size(), 2);
+            expectEquals (q.getShow().playlists[1].name, juce::String ("Second"));
+            expect (q.getShow().playlists[1].order == PlayPlaylist::Order::shuffle);
+            expect (q.getShow().playlists[0].atEnd == PlayPlaylist::AtEnd::goTo && q.getShow().playlists[0].goTo == 1);
+            expect (q.getState() == RKPlayProcessor::State::stopped);
         }
     }
 };

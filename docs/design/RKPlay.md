@@ -70,6 +70,18 @@ Right-click any song (in any playlist) or drag it to the queue:
 
 Choosing another playlist while music plays offers **Crossfade now** (default) or **After this song**. The old playlist remembers its position (and its shuffle bag), so going back continues it.
 
+### As built (phase 3, feat/rkplay-playlists)
+
+- **Up to 8 playlists** as tabs (click to show, double-click to rename, right-click: play now, play after this song, link to a folder or an .m3u8, rescan, unlink, export, delete; + adds one). The playing list's tab has a play mark and an accent line.
+- **Each list** has its order, At the end (stop, repeat, or "Then:" another list), Stop after each, its crossfade and its gain. A list remembers its place (its cursor, and whether that song was played) and its shuffle bag while another plays; going back continues after the song it was on.
+- **Shuffle**: a bag per round; the next round's order is made once (when its first song is chosen) and never starts with the song just played.
+- **Three ways to play a song**: double-click, or **Go on from here**, moves the list there; **Play now** is a one-off request, after which the list goes on where it was; **Play next** adds it to the queue. The queue (right) plays before the list goes on; it isn't saved with the show.
+- **End at** (right): a time and Fade out exactly then / After the song playing then; it acts once, then turns itself off. A countdown shows in the transport row.
+- **The Music folder** (Settings): songs inside it are stored relative to it too. Choosing a new Music folder after the old one moved (another Mac, another user name) finds missing songs by their path inside it; **Relink missing songs** finds others by file name (several of one name: by size).
+- **Linked lists** are read again when the show loads or on Rescan, keep each song's gain by its path, and take no songs by hand. Dropping an .m3u8 on a list adds its songs.
+- **Settings** (a panel over the lower half): Fade out, Smart crossfade, Loudness, the Music folder and Relink.
+- **Host parameter** `playlist` (1-8) is appended after `level` (the table above has it before; the IDs are what they are): another value crossfades into that list (stopped: makes it the one Play starts).
+
 ## Crossfades and smart transitions
 
 - **Music start and end:** the analysis finds where the music really starts (the first moment above -50 dBFS, after any silence) and ends (the last moment above -50 dBFS). Playback starts at the music start; the crossfade is timed to the music end, so there is no gap even when a file ends with 10 s of silence.

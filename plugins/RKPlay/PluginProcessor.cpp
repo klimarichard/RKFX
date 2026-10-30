@@ -32,6 +32,8 @@ namespace
         p.addBool ("fade", "Fade Out", false);
         p.addBool ("stop", "Stop", false);
         p.addDecibels ("level", "Level", -60.0f, 6.0f, 0.0f);   // -60 = silence
+        // Appended (phase 3): the playing playlist; changing it crossfades into that list.
+        p.addInt ("playlist", "Playlist", 1, PlayShow::kMaxPlaylists, 1);
         return p;
     }
 
@@ -48,6 +50,8 @@ RKPlayProcessor::RKPlayProcessor()
     for (size_t i = 0; i < triggers.size(); ++i)
         triggers[i] = findParam (ids[i]);
     levelParam = findParam ("level");
+    playlistParam = findParam ("playlist");
+    cursorPlayed.assign (show.playlists.size(), false);
 
     for (int slot = 0; slot < PlayEngine::kSlots; ++slot)
         engine.setStream (slot, &streams[(size_t) slot]);
@@ -88,7 +92,8 @@ void RKPlayProcessor::prepareDsp (double newRate, int maxBlockSize, int /*numCha
         stream.prepare (sampleRate);
     engine.prepare (sampleRate, maxBlockSize);
     slots = {};
-    currentSlot = armedSlot = armedIndex = -1;
+    currentSlot = armedSlot = -1;
+    current = armed = {};
     state = State::stopped;
 }
 
@@ -114,9 +119,9 @@ void RKPlayProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 //==============================================================================
 // Slots
 
-int RKPlayProcessor::load (int song, double startSeconds)
+int RKPlayProcessor::load (const Item& item, double startSeconds)
 {
-    if (song < 0 || song >= (int) show.songs.size() || sampleRate <= 0.0)
+    if (! item.isValid() || ! item.song.isPlayable() || sampleRate <= 0.0)
         return -1;
 
     int slot = -1;
@@ -126,17 +131,21 @@ int RKPlayProcessor::load (int song, double startSeconds)
     if (slot < 0)
         return -1;   // every stream busy (a burst of skips): the next tick tries again
 
-    auto& entry = show.songs[(size_t) song];
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (entry.file));
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (item.song.file));
     if (reader == nullptr)
     {
-        entry.status = entry.file.existsAsFile() ? PlaySong::Status::unreadable : PlaySong::Status::missing;
-        setNote ("Skipped " + entry.displayName() + ": the file is " + (entry.file.existsAsFile() ? "unreadable" : "missing"));
+        // Gone since the show was checked: marked wherever it is, and skipped.
+        const auto status = item.song.file.existsAsFile() ? PlaySong::Status::unreadable : PlaySong::Status::missing;
+        for (auto& p : show.playlists)
+            for (auto& s : p.songs)
+                if (s.file == item.song.file)
+                    s.status = status;
+        setNote ("Skipped " + item.song.displayName() + ": the file is " + (status == PlaySong::Status::missing ? "missing" : "unreadable"));
         showChanged();
         return -1;
     }
 
-    const auto options = optionsFor (song, startSeconds);
+    const auto options = optionsFor (item, startSeconds);
     auto& stream = streams[(size_t) slot];
     diskThread.removeTimeSliceClient (&stream);
     stream.open (std::move (reader), options);
@@ -149,23 +158,27 @@ int RKPlayProcessor::load (int song, double startSeconds)
         stream.prefill (kPrefillSeconds);
         diskThread.addTimeSliceClient (&stream);
     }
-    slots[(size_t) slot] = { true, song, engine.commandsSent(), options };
+    auto& entry = slots[(size_t) slot];
+    entry.loaded = true;
+    entry.lastCommand = engine.commandsSent();
+    entry.options = options;
+    entry.song = item.song;
     return slot;
 }
 
-PlayLevel RKPlayProcessor::levelOf (const PlaySong& song) const
+PlayLevel RKPlayProcessor::levelOf (const PlaySong& song, int playlist) const
 {
-    return PlayLevel::plan (song.analysis, show.level, song.gainDb);
+    const auto listGain = playlist >= 0 && playlist < (int) show.playlists.size() ? show.playlists[(size_t) playlist].gainDb : 0.0;
+    return PlayLevel::plan (song.analysis, show.level, song.gainDb + listGain);
 }
 
-PlayStream::Options RKPlayProcessor::optionsFor (int song, double startSeconds) const
+PlayStream::Options RKPlayProcessor::optionsFor (const Item& item, double startSeconds) const
 {
-    const auto& entry = show.songs[(size_t) song];
-    const auto span = show.spanOf (entry);
-    const auto level = levelOf (entry);
+    const auto span = show.spanOf (item.song);
+    const auto level = levelOf (item.song, item.playlist);
     PlayStream::Options o;
     o.startSeconds = startSeconds < 0.0 ? span.start : startSeconds;
-    o.endSeconds = entry.analysis.valid && show.smartCrossfade ? span.end : -1.0;
+    o.endSeconds = item.song.analysis.valid && show.smartCrossfade ? span.end : -1.0;
     o.gainDb = level.gainDb;
     o.limitCeilingDb = level.limitDb > 0.0 ? show.level.peakCeilingDb : 1.0;
     return o;
@@ -174,13 +187,13 @@ PlayStream::Options RKPlayProcessor::optionsFor (int song, double startSeconds) 
 double RKPlayProcessor::leadOf (int slot) const
 {
     // Smart crossfade: the song is over at its fade-out point, before the stream's end.
-    const auto song = slots[(size_t) slot].song;
-    if (! show.smartCrossfade || song < 0 || song >= (int) show.songs.size())
+    if (slot < 0 || ! show.smartCrossfade)
         return 0.0;
-    const auto& entry = show.songs[(size_t) song];
-    const auto& o = slots[(size_t) slot].options;
-    const auto streamEnd = o.endSeconds < 0.0 ? entry.lengthSeconds : o.endSeconds;
-    return entry.analysis.valid ? juce::jmax (0.0, streamEnd - entry.analysis.fadeOutPoint) : 0.0;
+    const auto& entry = slots[(size_t) slot];
+    if (! entry.song.analysis.valid)
+        return 0.0;
+    const auto streamEnd = entry.options.endSeconds < 0.0 ? entry.song.lengthSeconds : entry.options.endSeconds;
+    return juce::jmax (0.0, streamEnd - entry.song.analysis.fadeOutPoint);
 }
 
 void RKPlayProcessor::drop (int& slot)
@@ -198,7 +211,7 @@ void RKPlayProcessor::disarm()
         markSent (armedSlot);
     }
     drop (armedSlot);
-    armedIndex = -1;
+    armed = {};
     armedCrossfade = -1.0;
     armedLead = 0.0;
 }
@@ -206,41 +219,255 @@ void RKPlayProcessor::disarm()
 //==============================================================================
 // What plays next
 
-int RKPlayProcessor::nextPlayable (int from) const
+RKPlayProcessor::Item RKPlayProcessor::itemAt (int playlist, int index) const
 {
-    const auto n = (int) show.songs.size();
-    for (int i = 1; i <= n; ++i)
-    {
-        const auto index = ((from + i) % n + n) % n;   // the playlist repeats
-        if (show.songs[(size_t) index].isPlayable())
-            return index;
-    }
-    return -1;
+    Item item;
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return item;
+    const auto& p = show.playlists[(size_t) playlist];
+    if (index < 0 || index >= (int) p.songs.size())
+        return item;
+    item.song = p.songs[(size_t) index];
+    item.playlist = playlist;
+    item.index = index;
+    return item;
 }
 
-int RKPlayProcessor::previousPlayable (int from) const
+void RKPlayProcessor::setPlayed (int playlist, bool played)
 {
-    const auto n = (int) show.songs.size();
-    for (int i = 1; i <= n; ++i)
-    {
-        const auto index = ((from - i) % n + n) % n;
-        if (show.songs[(size_t) index].isPlayable())
-            return index;
-    }
-    return -1;
+    if (playlist < 0)
+        return;
+    if ((int) cursorPlayed.size() < (int) show.playlists.size())
+        cursorPlayed.resize (show.playlists.size(), false);
+    cursorPlayed[(size_t) playlist] = played;
 }
 
-double RKPlayProcessor::crossfadeBetween (int a, int b) const
+void RKPlayProcessor::ensureBag (int playlist)
 {
-    // Never longer than half of either song.
-    auto seconds = show.crossfadeSeconds;
-    for (const auto i : { a, b })
-        if (i >= 0 && i < (int) show.songs.size())
+    auto& p = show.playlists[(size_t) playlist];
+    if (p.order != PlayPlaylist::Order::shuffle || p.bag.size() == p.songs.size())
+        return;
+    PlayShow::reshuffle (p, -1, random);
+    p.nextBag.clear();
+    // A list already playing: the song now playing counts as this round's first.
+    if (isPlayed (playlist))
+        if (const auto it = std::find (p.bag.begin(), p.bag.end(), p.cursor); it != p.bag.end())
         {
-            const auto span = show.spanOf (show.songs[(size_t) i]);
-            seconds = juce::jmin (seconds, (span.endPoint - span.start) * 0.5);
+            std::iter_swap (p.bag.begin(), it);
+            p.bagPos = 0;
         }
-    return juce::jmax (0.0, seconds);
+}
+
+RKPlayProcessor::Item RKPlayProcessor::following (int playlist, int depth)
+{
+    if (playlist < 0 || playlist >= (int) show.playlists.size() || depth > PlayShow::kMaxPlaylists)
+        return {};
+    auto& p = show.playlists[(size_t) playlist];
+    ensureBag (playlist);
+
+    // Not started yet: its cursor song (the first of a shuffle round), if it plays.
+    if (! isPlayed (playlist) && ! p.songs.empty())
+    {
+        const auto first = p.order == PlayPlaylist::Order::shuffle && p.bagPos < 0 && ! p.bag.empty() ? p.bag.front() : p.cursor;
+        if (first >= 0 && first < (int) p.songs.size() && p.songs[(size_t) first].isPlayable())
+            return itemAt (playlist, first);
+        return stepFrom (playlist, first, depth);
+    }
+    return stepFrom (playlist, p.cursor, depth);
+}
+
+RKPlayProcessor::Item RKPlayProcessor::stepFrom (int playlist, int index, int depth)
+{
+    auto& p = show.playlists[(size_t) playlist];
+    const auto n = (int) p.songs.size();
+    const auto playable = [&p] (int i) { return i >= 0 && i < (int) p.songs.size() && p.songs[(size_t) i].isPlayable(); };
+
+    if (p.order == PlayPlaylist::Order::inOrder)
+    {
+        for (int i = index + 1; i < n; ++i)
+            if (playable (i))
+                return itemAt (playlist, i);
+    }
+    else
+    {
+        ensureBag (playlist);
+        auto pos = p.bagPos;
+        if (pos < 0 || pos >= (int) p.bag.size() || p.bag[(size_t) pos] != index)
+        {
+            const auto it = std::find (p.bag.begin(), p.bag.end(), index);
+            pos = it != p.bag.end() ? (int) (it - p.bag.begin()) : -1;
+        }
+        for (int k = pos + 1; k < (int) p.bag.size(); ++k)
+            if (playable (p.bag[(size_t) k]))
+                return itemAt (playlist, p.bag[(size_t) k]);
+    }
+
+    // The end of the list (or of the shuffle round).
+    switch (p.atEnd)
+    {
+        case PlayPlaylist::AtEnd::stop:
+            return {};
+
+        case PlayPlaylist::AtEnd::goTo:
+            if (p.goTo != playlist && p.goTo >= 0 && p.goTo < (int) show.playlists.size())
+                return following (p.goTo, depth + 1);
+            [[fallthrough]];
+
+        case PlayPlaylist::AtEnd::repeat:
+            if (p.order == PlayPlaylist::Order::inOrder)
+            {
+                for (int i = 0; i <= juce::jmin (index, n - 1); ++i)
+                    if (playable (i))
+                        return itemAt (playlist, i);
+                return {};
+            }
+            // Shuffle: the next round's order (made once, kept until it starts).
+            if (p.nextBag.size() != p.songs.size())
+            {
+                auto copy = p;
+                PlayShow::reshuffle (copy, index, random);
+                p.nextBag = copy.bag;
+            }
+            for (const auto i : p.nextBag)
+                if (playable (i))
+                    return itemAt (playlist, i);
+            return {};
+    }
+    return {};
+}
+
+RKPlayProcessor::Item RKPlayProcessor::previousOf (const Item& item)
+{
+    const auto playlist = item.isValid() && ! item.queued ? item.playlist : show.active;
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return {};
+    auto& p = show.playlists[(size_t) playlist];
+    const auto index = item.isValid() && ! item.queued ? item.index : p.cursor;
+    if (item.queued && isPlayed (playlist))
+        return itemAt (playlist, p.cursor);   // a request: back to the playlist's song
+    const auto playable = [&p] (int i) { return i >= 0 && i < (int) p.songs.size() && p.songs[(size_t) i].isPlayable(); };
+
+    if (p.order == PlayPlaylist::Order::inOrder)
+    {
+        for (int i = index - 1; i >= 0; --i)
+            if (playable (i))
+                return itemAt (playlist, i);
+        return {};
+    }
+    ensureBag (playlist);
+    const auto it = std::find (p.bag.begin(), p.bag.end(), index);
+    for (auto k = (int) (it - p.bag.begin()) - 1; k >= 0; --k)
+        if (playable (p.bag[(size_t) k]))
+            return itemAt (playlist, p.bag[(size_t) k]);
+    return {};
+}
+
+RKPlayProcessor::Item RKPlayProcessor::peekNext()
+{
+    if (endingAtSongEnd)
+        return {};
+    // Stop after each song (the playing list's setting): nothing follows by itself.
+    if (state != State::stopped && show.current().stopAfterEach)
+        return {};
+    if (! queue.empty())
+        return queue.front();
+    if (pendingSwitch >= 0)
+        return following (pendingSwitch);
+    return following (show.active);
+}
+
+void RKPlayProcessor::commit (const Item& item)
+{
+    if (item.queued)
+    {
+        // A request: off the queue; the playlist stays where it was.
+        for (auto it = queue.begin(); it != queue.end(); ++it)
+            if (it->queueId == item.queueId && item.queueId != 0)
+            {
+                queue.erase (it);
+                break;
+            }
+        return;
+    }
+
+    const auto playlist = item.playlist;
+    auto& p = show.playlists[(size_t) playlist];
+    p.cursor = item.index;
+    if (p.order == PlayPlaylist::Order::shuffle)
+    {
+        ensureBag (playlist);
+        if (const auto it = std::find (p.bag.begin() + juce::jmax (0, p.bagPos + 1), p.bag.end(), item.index); it != p.bag.end())
+        {
+            p.bagPos = (int) (it - p.bag.begin());
+        }
+        else if (const auto inNext = std::find (p.nextBag.begin(), p.nextBag.end(), item.index); inNext != p.nextBag.end())
+        {
+            // A new round.
+            const auto position = (int) (inNext - p.nextBag.begin());
+            p.bag = std::exchange (p.nextBag, {});
+            p.bagPos = position;
+        }
+        else if (const auto anywhere = std::find (p.bag.begin(), p.bag.end(), item.index); anywhere != p.bag.end())
+        {
+            p.bagPos = (int) (anywhere - p.bag.begin());   // jumped back to one played this round
+        }
+    }
+    setPlayed (playlist, true);
+    if (show.active != playlist)
+    {
+        show.active = playlist;
+        syncPlaylistParam();
+    }
+    if (pendingSwitch == playlist)
+        pendingSwitch = -1;
+}
+
+double RKPlayProcessor::crossfadeInto (const Item& item) const
+{
+    const auto playlist = item.playlist >= 0 && item.playlist < (int) show.playlists.size() && ! item.queued ? item.playlist : show.active;
+    return show.playlists[(size_t) playlist].crossfadeSeconds;
+}
+
+void RKPlayProcessor::startItem (const Item& item, double crossfade)
+{
+    if (! item.isValid())
+        return;
+    const auto slot = load (item, -1.0);
+    if (slot < 0)
+    {
+        // Unreadable now (load said why): go on to the one after it.
+        if (! item.queued && item.playlist >= 0)
+        {
+            const auto after = stepFrom (item.playlist, item.index, 0);
+            if (after.isValid() && ! after.sameAs (item) && ! after.sameAs (current))
+                startItem (after, crossfade);
+        }
+        return;
+    }
+
+    // Never longer than half of either song.
+    for (const PlaySong* song : { &item.song, current.isValid() ? static_cast<const PlaySong*> (&current.song) : nullptr })
+        if (song != nullptr)
+        {
+            const auto span = show.spanOf (*song);
+            crossfade = juce::jmin (crossfade, (span.endPoint - span.start) * 0.5);
+        }
+
+    disarm();
+    if (state == State::stopped)
+        engine.start (slot, 0.01, 1.0f);
+    else
+        engine.crossfadeTo (slot, state == State::paused ? kSeekFade : juce::jmax (0.0, crossfade), 1.0f);
+    markSent (slot);
+    markSent (currentSlot);
+    drop (currentSlot);
+    current = item;
+    currentSlot = slot;
+    state = State::playing;
+    underran = false;
+    commit (item);
+    keepArmed();
+    showChanged();
 }
 
 void RKPlayProcessor::keepArmed()
@@ -248,19 +475,24 @@ void RKPlayProcessor::keepArmed()
     if (state == State::stopped || currentSlot < 0)
         return;
 
-    const auto want = nextPlayable (currentIndex);
-    if (want < 0)
+    const auto want = peekNext();
+    if (! want.isValid())
     {
         disarm();
         return;
     }
-    const auto seconds = crossfadeBetween (currentIndex, want);
-
+    auto seconds = crossfadeInto (want);
+    for (const PlaySong* song : { static_cast<const PlaySong*> (&current.song), &want.song })
+    {
+        const auto span = show.spanOf (*song);
+        seconds = juce::jmin (seconds, (span.endPoint - span.start) * 0.5);
+    }
+    seconds = juce::jmax (0.0, seconds);
     const auto lead = leadOf (currentSlot);
 
     // Already armed with that song, opened as it should be now (the analysis
     // or the loudness settings may have changed how).
-    if (armedSlot >= 0 && armedIndex == want && slots[(size_t) armedSlot].song == want)
+    if (armedSlot >= 0 && armed.sameAs (want))
     {
         const auto& have = slots[(size_t) armedSlot].options;
         const auto wantOptions = optionsFor (want, -1.0);
@@ -287,40 +519,10 @@ void RKPlayProcessor::keepArmed()
         return;
     engine.arm (slot, seconds, 1.0f, lead);
     markSent (slot);
+    armed = want;
     armedSlot = slot;
-    armedIndex = want;
     armedCrossfade = seconds;
     armedLead = lead;
-}
-
-void RKPlayProcessor::startSong (int index, double crossfade)
-{
-    const auto slot = load (index, -1.0);
-    if (slot < 0)
-    {
-        if (show.songs.empty() || index < 0)
-            return;
-        // Unreadable now (load said why): go on to the one after it.
-        const auto after = nextPlayable (index);
-        if (after >= 0 && after != index && after != currentIndex)
-            startSong (after, crossfade);
-        return;
-    }
-
-    disarm();
-    if (state == State::stopped)
-        engine.start (slot, 0.01, 1.0f);
-    else
-        engine.crossfadeTo (slot, state == State::paused ? kSeekFade : crossfade, 1.0f);
-    markSent (slot);
-    markSent (currentSlot);
-    drop (currentSlot);
-    currentSlot = slot;
-    currentIndex = index;
-    state = State::playing;
-    underran = false;
-    keepArmed();
-    showChanged();
 }
 
 //==============================================================================
@@ -335,17 +537,17 @@ void RKPlayProcessor::play()
         showChanged();
         return;
     }
-    if (state == State::playing || show.songs.empty())
+    if (state == State::playing)
         return;
 
-    currentIndex = juce::jlimit (0, (int) show.songs.size() - 1, currentIndex);
-    const auto index = show.songs[(size_t) currentIndex].isPlayable() ? currentIndex : nextPlayable (currentIndex);
-    if (index < 0)
+    const auto item = ! queue.empty() ? queue.front() : following (show.active);
+    if (! item.isValid())
     {
-        setNote ("Nothing to play: every file is missing or unreadable");
+        setNote (show.current().songs.empty() ? "Nothing to play: the playlist is empty"
+                                             : "Nothing to play: the playlist has ended (or every file is missing)");
         return;
     }
-    startSong (index, 0.0);
+    startItem (item, 0.0);
 }
 
 void RKPlayProcessor::pause()
@@ -359,35 +561,43 @@ void RKPlayProcessor::pause()
 
 void RKPlayProcessor::next()
 {
-    const auto index = nextPlayable (currentIndex);
-    if (index < 0)
-        return;
     if (state == State::stopped)
     {
-        currentIndex = index;
-        showChanged();
+        // Stopped: the next song becomes the one Play starts.
+        const auto n = following (show.active);
+        if (n.isValid())
+        {
+            show.playlists[(size_t) n.playlist].cursor = n.index;
+            show.active = n.playlist;
+            setPlayed (n.playlist, false);
+            showChanged();
+        }
         return;
     }
-    startSong (index, crossfadeBetween (currentIndex, index));
+    // Stop after each: Next still goes on (by hand).
+    auto n = ! queue.empty() ? queue.front() : pendingSwitch >= 0 ? following (pendingSwitch) : following (show.active);
+    if (n.isValid())
+        startItem (n, crossfadeInto (n));
 }
 
 void RKPlayProcessor::previous()
 {
     if (state != State::stopped && getPositionSeconds() > kRestartAfter)
     {
-        startSong (currentIndex, kRestartFade);
+        startItem (current, kRestartFade);
         return;
     }
-    const auto index = previousPlayable (currentIndex);
-    if (index < 0)
+    const auto p = previousOf (current.isValid() ? current : Item {});
+    if (! p.isValid())
         return;
     if (state == State::stopped)
     {
-        currentIndex = index;
+        show.playlists[(size_t) p.playlist].cursor = p.index;
+        setPlayed (p.playlist, false);
         showChanged();
         return;
     }
-    startSong (index, crossfadeBetween (currentIndex, index));
+    startItem (p, crossfadeInto (p));
 }
 
 void RKPlayProcessor::fadeOut()
@@ -398,10 +608,8 @@ void RKPlayProcessor::fadeOut()
     engine.fadeOutAll (show.fadeOutSeconds);
     markSent (currentSlot);
     drop (currentSlot);
-    state = State::stopped;
-    // Play goes on with the next song.
-    if (const auto index = nextPlayable (currentIndex); index >= 0)
-        currentIndex = index;
+    current = {};
+    state = State::stopped;   // Play goes on with the next song (the list's cursor was played)
     showChanged();
 }
 
@@ -413,6 +621,12 @@ void RKPlayProcessor::stop()
     engine.fadeOutAll (kStopFade);
     markSent (currentSlot);
     drop (currentSlot);
+    // Play starts the same song again: a request goes back to the queue's front.
+    if (current.queued && current.queueId != 0)
+        queue.push_front (current);
+    else if (! current.queued)
+        setPlayed (current.playlist, false);
+    current = {};
     state = State::stopped;
     showChanged();
 }
@@ -423,22 +637,33 @@ void RKPlayProcessor::panic()
     engine.fadeOutAll (kPanicFade);
     markSent (currentSlot);
     drop (currentSlot);
+    current = {};
     state = State::stopped;
     showChanged();
 }
 
-void RKPlayProcessor::playSong (int index)
+void RKPlayProcessor::jumpTo (int playlist, int index)
 {
-    if (index < 0 || index >= (int) show.songs.size() || ! show.songs[(size_t) index].isPlayable())
+    const auto item = itemAt (playlist, index);
+    if (! item.isValid() || ! item.song.isPlayable())
         return;
-    startSong (index, state == State::playing ? crossfadeBetween (currentIndex, index) : 0.0);
+    startItem (item, state == State::playing ? crossfadeInto (item) : 0.0);
+}
+
+void RKPlayProcessor::playNow (int playlist, int index)
+{
+    auto item = itemAt (playlist, index);
+    if (! item.isValid() || ! item.song.isPlayable())
+        return;
+    item.queued = true;   // a one-off: the playlist goes on where it was after it
+    startItem (item, state == State::playing ? crossfadeInto (item) : 0.0);
 }
 
 void RKPlayProcessor::seek (double seconds)
 {
     if (state == State::stopped || currentSlot < 0)
         return;
-    const auto slot = load (currentIndex, seconds);
+    const auto slot = load (current, seconds);
     if (slot < 0)
         return;
     disarm();
@@ -452,6 +677,30 @@ void RKPlayProcessor::seek (double seconds)
     keepArmed();
 }
 
+void RKPlayProcessor::switchPlaylist (int playlist, bool now)
+{
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return;
+    if (state == State::stopped)
+    {
+        show.active = playlist;
+        pendingSwitch = -1;
+        syncPlaylistParam();
+        showChanged();
+        return;
+    }
+    if (now)
+    {
+        const auto item = following (playlist);
+        if (item.isValid())
+            startItem (item, crossfadeInto (item));
+        return;
+    }
+    pendingSwitch = playlist == show.active ? -1 : playlist;
+    keepArmed();
+    showChanged();
+}
+
 double RKPlayProcessor::getPositionSeconds() const
 {
     return currentSlot >= 0 ? streams[(size_t) currentSlot].getPositionSeconds() : 0.0;
@@ -459,7 +708,100 @@ double RKPlayProcessor::getPositionSeconds() const
 
 double RKPlayProcessor::getLengthSeconds() const
 {
-    return currentIndex >= 0 && currentIndex < (int) show.songs.size() ? show.songs[(size_t) currentIndex].lengthSeconds : 0.0;
+    if (current.isValid())
+        return current.song.lengthSeconds;
+    const auto& p = show.current();
+    return p.cursor >= 0 && p.cursor < (int) p.songs.size() ? p.songs[(size_t) p.cursor].lengthSeconds : 0.0;
+}
+
+//==============================================================================
+// The queue
+
+void RKPlayProcessor::queueNext (int playlist, int index)
+{
+    auto item = itemAt (playlist, index);
+    if (! item.isValid())
+        return;
+    item.queued = true;
+    item.queueId = nextQueueId++;
+    queue.push_back (item);
+    showChanged();
+}
+
+void RKPlayProcessor::removeQueued (int position)
+{
+    if (position < 0 || position >= (int) queue.size())
+        return;
+    queue.erase (queue.begin() + position);
+    showChanged();
+}
+
+void RKPlayProcessor::moveQueued (int from, int to)
+{
+    const auto n = (int) queue.size();
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to)
+        return;
+    auto item = queue[(size_t) from];
+    queue.erase (queue.begin() + from);
+    queue.insert (queue.begin() + to, item);
+    showChanged();
+}
+
+void RKPlayProcessor::clearQueue()
+{
+    queue.clear();
+    showChanged();
+}
+
+//==============================================================================
+// End at
+
+void RKPlayProcessor::setEndAt (bool on, int minutes, bool atSongEnd)
+{
+    show.endAt = { on, juce::jlimit (0, 24 * 60 - 1, minutes), atSongEnd };
+    endingAtSongEnd = false;
+    findEndAtDeadline();
+    edited();
+}
+
+void RKPlayProcessor::findEndAtDeadline()
+{
+    // The next time the clock shows it (today, or tomorrow if it has passed).
+    const auto now = clock();
+    const auto minutes = show.endAt.minutes;
+    auto deadline = juce::Time (now.getYear(), now.getMonth(), now.getDayOfMonth(), minutes / 60, minutes % 60, 0, 0, true);
+    if (deadline <= now)
+        deadline += juce::RelativeTime::days (1);
+    endAtDeadline = deadline;
+}
+
+double RKPlayProcessor::getEndAtRemaining() const
+{
+    return show.endAt.on ? (endAtDeadline - clock()).inSeconds() : -1.0;
+}
+
+void RKPlayProcessor::checkEndAt()
+{
+    if (! show.endAt.on || clock() < endAtDeadline)
+        return;
+    show.endAt.on = false;   // once
+    if (state == State::stopped)
+    {
+        showChanged();
+        return;
+    }
+    if (show.endAt.atSongEnd)
+    {
+        endingAtSongEnd = true;
+        disarm();
+        setNote ("End at: the music stops after this song");
+    }
+    else
+    {
+        fadeOut();
+        setNote ("End at: the music faded out");
+    }
+    showChanged();
 }
 
 //==============================================================================
@@ -474,11 +816,30 @@ void RKPlayProcessor::update()
     pollTriggers();
     handleEvents();
     takeAnalyses();
+    checkEndAt();
     keepArmed();
     engine.setSafetyLimiter (show.safetyLimiter);
 
     const auto db = valueOf (levelParam);
     engine.setLevel (db <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (db));
+
+    // The Playlist host parameter: another value crossfades into that list.
+    const auto wanted = juce::roundToInt (valueOf (playlistParam));
+    if (wanted != lastPlaylistParam)
+    {
+        lastPlaylistParam = wanted;
+        if (wanted - 1 < (int) show.playlists.size() && wanted - 1 != show.active)
+            switchPlaylist (wanted - 1, true);
+    }
+}
+
+void RKPlayProcessor::syncPlaylistParam()
+{
+    const auto v = show.active + 1;
+    if (juce::roundToInt (valueOf (playlistParam)) == v)
+        return;
+    lastPlaylistParam = v;
+    playlistParam->setValueNotifyingHost (playlistParam->convertTo0to1 ((float) v));
 }
 
 void RKPlayProcessor::pollTriggers()
@@ -513,11 +874,12 @@ void RKPlayProcessor::handleEvents()
                 if (e.slot == armedSlot)
                 {
                     drop (currentSlot);
+                    current = armed;
                     currentSlot = armedSlot;
-                    currentIndex = armedIndex;
+                    armed = {};
                     armedSlot = -1;
-                    armedIndex = -1;
                     armedCrossfade = -1.0;
+                    commit (current);
                     showChanged();
                 }
                 break;
@@ -526,8 +888,7 @@ void RKPlayProcessor::handleEvents()
                 if (e.slot == currentSlot)
                 {
                     underran = true;
-                    setNote ("The disk couldn't keep up with " + show.songs[(size_t) currentIndex].displayName()
-                             + ": went on to the next song");
+                    setNote ("The disk couldn't keep up with " + current.song.displayName() + ": went on to the next song");
                 }
                 break;
 
@@ -538,11 +899,17 @@ void RKPlayProcessor::handleEvents()
                     drop (currentSlot);
                     const auto wasPlaying = state == State::playing;
                     state = State::stopped;
-                    const auto after = nextPlayable (currentIndex);
-                    if (wasPlaying && underran && after >= 0)
-                        startSong (after, 0.0);
-                    else if (after >= 0)
-                        currentIndex = after;
+                    current = {};
+                    if (endingAtSongEnd)
+                    {
+                        endingAtSongEnd = false;
+                        setNote ("End at: the music stopped");
+                    }
+                    else if (wasPlaying && underran)
+                    {
+                        if (const auto n = peekNext(); n.isValid())
+                            startItem (n, 0.0);
+                    }
                     underran = false;
                     showChanged();
                 }
@@ -555,160 +922,282 @@ void RKPlayProcessor::handleEvents()
 }
 
 //==============================================================================
-// The show
+// Playlists
 
-void RKPlayProcessor::addFiles (const juce::Array<juce::File>& files, int index)
+void RKPlayProcessor::playlistEdited (int playlist, const std::function<int (int)>& moveIndex)
 {
-    const auto wildcard = formats.getWildcardForAllFormats();
+    // Indices into the list moved: the current and armed songs, its cursor; a new shuffle round.
+    auto& p = show.playlists[(size_t) playlist];
+    if (current.isValid() && ! current.queued && current.playlist == playlist)
+        current.index = moveIndex (current.index);
+    if (armed.isValid() && ! armed.queued && armed.playlist == playlist)
+        armed.index = moveIndex (armed.index);
+    const auto cursor = moveIndex (p.cursor);
+    p.cursor = juce::jlimit (0, juce::jmax (0, (int) p.songs.size() - 1), cursor < 0 ? p.cursor : cursor);
+    if (cursor < 0)
+        setPlayed (playlist, false);
+    p.bag.clear();
+    p.nextBag.clear();
+    p.bagPos = -1;
+    attachAnalyses();
+    edited();
+}
+
+int RKPlayProcessor::addPlaylist (const juce::String& name)
+{
+    if ((int) show.playlists.size() >= PlayShow::kMaxPlaylists)
+        return -1;
+    PlayPlaylist p;
+    p.name = name.isNotEmpty() ? name : "Playlist " + juce::String ((int) show.playlists.size() + 1);
+    show.playlists.push_back (std::move (p));
+    cursorPlayed.resize (show.playlists.size(), false);
+    edited();
+    return (int) show.playlists.size() - 1;
+}
+
+void RKPlayProcessor::removePlaylist (int index)
+{
+    if (show.playlists.size() <= 1 || index < 0 || index >= (int) show.playlists.size())
+        return;
+    if ((current.isValid() && current.playlist == index && ! current.queued) || (index == show.active && state != State::stopped))
+        stop();
+
+    const auto moved = [index] (int i) { return i > index ? i - 1 : i == index ? -1 : i; };
+    show.playlists.erase (show.playlists.begin() + index);
+    cursorPlayed.erase (cursorPlayed.begin() + index);
+    show.active = juce::jlimit (0, (int) show.playlists.size() - 1, moved (show.active) < 0 ? 0 : moved (show.active));
+    for (auto& p : show.playlists)
+        p.goTo = juce::jmax (0, moved (p.goTo));
+    if (current.isValid())
+        current.playlist = moved (current.playlist);
+    for (auto& q : queue)
+        q.playlist = moved (q.playlist);
+    if (pendingSwitch >= 0)
+        pendingSwitch = moved (pendingSwitch);
+    disarm();
+    syncPlaylistParam();
+    edited();
+}
+
+void RKPlayProcessor::renamePlaylist (int index, const juce::String& name)
+{
+    if (index < 0 || index >= (int) show.playlists.size() || name.trim().isEmpty())
+        return;
+    show.playlists[(size_t) index].name = name.trim();
+    edited();
+}
+
+void RKPlayProcessor::setOrder (int index, PlayPlaylist::Order order)
+{
+    auto& p = show.playlists[(size_t) index];
+    p.order = order;
+    p.bag.clear();
+    p.nextBag.clear();
+    p.bagPos = -1;
+    edited();
+}
+
+void RKPlayProcessor::setAtEnd (int index, PlayPlaylist::AtEnd atEnd, int goTo)
+{
+    auto& p = show.playlists[(size_t) index];
+    p.atEnd = atEnd;
+    p.goTo = juce::jlimit (0, (int) show.playlists.size() - 1, goTo);
+    p.nextBag.clear();
+    edited();
+}
+
+void RKPlayProcessor::setStopAfterEach (int index, bool on)
+{
+    show.playlists[(size_t) index].stopAfterEach = on;
+    edited();
+}
+
+void RKPlayProcessor::setPlaylistCrossfade (int index, double seconds)
+{
+    show.playlists[(size_t) index].crossfadeSeconds = juce::jlimit (0.0, PlayShow::kMaxCrossfade, seconds);
+    edited();
+}
+
+void RKPlayProcessor::setPlaylistGain (int index, double db)
+{
+    show.playlists[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
+    edited();
+}
+
+bool RKPlayProcessor::linkPlaylist (int index, const juce::File& source)
+{
+    if (index < 0 || index >= (int) show.playlists.size() || ! (source.isDirectory() || PlayShow::isPlaylistFile (source)))
+        return false;
+    if (current.isValid() && current.playlist == index && ! current.queued && state != State::stopped)
+        stop();
+    auto& p = show.playlists[(size_t) index];
+    p.link = source.isDirectory() ? PlayPlaylist::Link::folder : PlayPlaylist::Link::m3u;
+    p.linkFile = source;
+    if (p.name.startsWith ("Playlist "))
+        p.name = source.getFileNameWithoutExtension();
+    show.rescan (index, formats);
+    setPlayed (index, false);
+    playlistEdited (index, [] (int) { return 0; });
+    return true;
+}
+
+void RKPlayProcessor::unlinkPlaylist (int index)
+{
+    auto& p = show.playlists[(size_t) index];
+    p.link = PlayPlaylist::Link::none;
+    p.linkFile = juce::File();
+    edited();
+}
+
+void RKPlayProcessor::rescan (int index)
+{
+    if (index < 0 || index >= (int) show.playlists.size() || ! show.playlists[(size_t) index].isLinked())
+        return;
+    // The playing song keeps playing; its place is found again by file.
+    const auto playingFile = current.isValid() && ! current.queued && current.playlist == index ? current.song.file : juce::File();
+    show.rescan (index, formats);
+    const auto& songs = show.playlists[(size_t) index].songs;
+    playlistEdited (index, [&songs, playingFile] (int i)
+    {
+        for (int k = 0; k < (int) songs.size(); ++k)
+            if (playingFile != juce::File() && songs[(size_t) k].file == playingFile)
+                return k;
+        return juce::jmin (i, (int) songs.size() - 1);
+    });
+}
+
+//==============================================================================
+// Songs
+
+void RKPlayProcessor::addFiles (int playlist, const juce::Array<juce::File>& files, int index)
+{
+    if (playlist < 0 || playlist >= (int) show.playlists.size() || show.playlists[(size_t) playlist].isLinked())
+        return;
+
     juce::Array<juce::File> found;
     for (const auto& f : files)
     {
-        if (f.isDirectory())
-        {
-            auto inFolder = f.findChildFiles (juce::File::findFiles, true, wildcard);
-            inFolder.sort();
-            found.addArray (inFolder);
-        }
+        if (f.isDirectory() || PlayShow::isPlaylistFile (f))
+            found.addArray (PlayShow::filesIn (f, true, formats));
         else if (f.existsAsFile())
-        {
             found.add (f);
-        }
     }
     if (found.isEmpty())
         return;
 
-    index = index < 0 || index > (int) show.songs.size() ? (int) show.songs.size() : index;
+    auto& songs = show.playlists[(size_t) playlist].songs;
+    index = index < 0 || index > (int) songs.size() ? (int) songs.size() : index;
     std::vector<PlaySong> added;
     for (const auto& f : found)
         added.push_back (PlayShow::makeSong (f, formats));
-    show.songs.insert (show.songs.begin() + index, added.begin(), added.end());
-
-    // The songs after the insert point moved down (an empty list just starts at its first song).
-    const auto wasEmpty = show.songs.size() == added.size();
-    const auto shift = [&] (int& i) { if (! wasEmpty && i >= index) i += (int) added.size(); };
-    shift (currentIndex);
-    shift (armedIndex);
-    for (auto& s : slots)
-        shift (s.song);
-    attachAnalyses();
+    const auto wasEmpty = songs.empty();
+    songs.insert (songs.begin() + index, added.begin(), added.end());
 
     if (const auto problems = (int) std::count_if (added.begin(), added.end(), [] (const PlaySong& s) { return ! s.isPlayable(); }))
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " can't be played (marked in red)");
-    markPresetModified();
-    showChanged();
+
+    // The songs after the insert point moved down (an empty list just starts at its first song).
+    const auto count = (int) added.size();
+    playlistEdited (playlist, [wasEmpty, index, count] (int i) { return ! wasEmpty && i >= index ? i + count : i; });
 }
 
-void RKPlayProcessor::removeSong (int index)
+void RKPlayProcessor::removeSong (int playlist, int index)
 {
-    if (index < 0 || index >= (int) show.songs.size())
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
         return;
-    if (index == currentIndex && state != State::stopped)
+    auto& p = show.playlists[(size_t) playlist];
+    if (p.isLinked() || index < 0 || index >= (int) p.songs.size())
+        return;
+    if (current.isValid() && ! current.queued && current.playlist == playlist && current.index == index)
         return;   // the playing song stays (the window doesn't offer it)
 
-    show.songs.erase (show.songs.begin() + index);
-    const auto shift = [index] (int& i) { if (i > index) --i; else if (i == index) i = -1; };
-    if (currentIndex > index)
-        --currentIndex;
-    shift (armedIndex);
-    for (auto& s : slots)
-        shift (s.song);
-    currentIndex = juce::jlimit (0, juce::jmax (0, (int) show.songs.size() - 1), currentIndex);
-    markPresetModified();
-    showChanged();
+    p.songs.erase (p.songs.begin() + index);
+    playlistEdited (playlist, [index] (int i) { return i > index ? i - 1 : i == index ? -1 : i; });
 }
 
-void RKPlayProcessor::moveSong (int from, int to)
+void RKPlayProcessor::moveSong (int playlist, int from, int to)
 {
-    const auto n = (int) show.songs.size();
-    if (from < 0 || from >= n || to < 0 || to >= n || from == to)
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
         return;
-    auto song = std::move (show.songs[(size_t) from]);
-    show.songs.erase (show.songs.begin() + from);
-    show.songs.insert (show.songs.begin() + to, std::move (song));
-
-    const auto moved = [from, to] (int i)
+    auto& songs = show.playlists[(size_t) playlist].songs;
+    const auto n = (int) songs.size();
+    if (show.playlists[(size_t) playlist].isLinked() || from < 0 || from >= n || to < 0 || to >= n || from == to)
+        return;
+    auto song = std::move (songs[(size_t) from]);
+    songs.erase (songs.begin() + from);
+    songs.insert (songs.begin() + to, std::move (song));
+    playlistEdited (playlist, [from, to] (int i)
     {
         if (i == from) return to;
         if (from < to && i > from && i <= to) return i - 1;
         if (from > to && i >= to && i < from) return i + 1;
         return i;
-    };
-    currentIndex = moved (currentIndex);
-    if (armedIndex >= 0)
-        armedIndex = moved (armedIndex);
-    for (auto& s : slots)
-        if (s.song >= 0)
-            s.song = moved (s.song);
-    markPresetModified();
-    showChanged();
+    });
 }
 
-void RKPlayProcessor::clearSongs()
+void RKPlayProcessor::clearSongs (int playlist)
 {
-    if (state != State::stopped)
-        stop();
-    show.songs.clear();
-    currentIndex = 0;
-    markPresetModified();
-    showChanged();
-}
-
-void RKPlayProcessor::setCrossfade (double seconds)
-{
-    show.crossfadeSeconds = juce::jlimit (0.0, PlayShow::kMaxCrossfade, seconds);
-    markPresetModified();
-    showChanged();
-}
-
-void RKPlayProcessor::setFadeOut (double seconds)
-{
-    show.fadeOutSeconds = juce::jlimit (0.5, 30.0, seconds);
-    markPresetModified();
-    showChanged();
-}
-
-void RKPlayProcessor::setSmartCrossfade (bool on)
-{
-    show.smartCrossfade = on;
-    markPresetModified();
-    showChanged();
-}
-
-void RKPlayProcessor::setSongGain (int index, double db)
-{
-    if (index < 0 || index >= (int) show.songs.size())
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
         return;
-    show.songs[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
-    markPresetModified();
-    showChanged();
+    if (current.isValid() && ! current.queued && current.playlist == playlist && state != State::stopped)
+        stop();
+    auto& p = show.playlists[(size_t) playlist];
+    p.songs.clear();
+    p.link = PlayPlaylist::Link::none;
+    setPlayed (playlist, false);
+    playlistEdited (playlist, [] (int) { return 0; });
 }
 
-void RKPlayProcessor::setLevelMatch (bool on)
+void RKPlayProcessor::setSongGain (int playlist, int index, double db)
 {
-    show.level.match = on;
-    markPresetModified();
-    showChanged();
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return;
+    auto& songs = show.playlists[(size_t) playlist].songs;
+    if (index < 0 || index >= (int) songs.size())
+        return;
+    songs[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
+    // The copies of it (playing, armed, queued) follow.
+    for (auto* item : { &current, &armed })
+        if (item->isValid() && item->song.file == songs[(size_t) index].file)
+            item->song.gainDb = songs[(size_t) index].gainDb;
+    for (auto& q : queue)
+        if (q.song.file == songs[(size_t) index].file)
+            q.song.gainDb = songs[(size_t) index].gainDb;
+    edited();
 }
 
-void RKPlayProcessor::setTarget (double lufs)
+//==============================================================================
+// Show-wide settings
+
+void RKPlayProcessor::setFadeOut (double seconds)  { show.fadeOutSeconds = juce::jlimit (0.5, 30.0, seconds); edited(); }
+void RKPlayProcessor::setSmartCrossfade (bool on)  { show.smartCrossfade = on; edited(); }
+void RKPlayProcessor::setLevelMatch (bool on)      { show.level.match = on; edited(); }
+void RKPlayProcessor::setTarget (double lufs)      { show.level.targetLufs = juce::jlimit (-23.0, -14.0, lufs); edited(); }
+void RKPlayProcessor::setLift (double db)          { show.level.liftDb = juce::jlimit (0.0, 6.0, db); edited(); }
+void RKPlayProcessor::setSafetyLimiter (bool on)   { show.safetyLimiter = on; edited(); }
+
+void RKPlayProcessor::setMusicFolder (const juce::File& folder)
 {
-    show.level.targetLufs = juce::jlimit (-23.0, -14.0, lufs);
-    markPresetModified();
-    showChanged();
+    if (const auto found = show.setMusicFolder (folder, formats); found > 0)
+    {
+        setNote ("Found " + juce::String (found) + (found == 1 ? " song" : " songs") + " in the new Music folder");
+        attachAnalyses();
+    }
+    edited();
 }
 
-void RKPlayProcessor::setLift (double db)
+int RKPlayProcessor::relink (const juce::File& folder)
 {
-    show.level.liftDb = juce::jlimit (0.0, 6.0, db);
-    markPresetModified();
-    showChanged();
-}
-
-void RKPlayProcessor::setSafetyLimiter (bool on)
-{
-    show.safetyLimiter = on;
-    markPresetModified();
-    showChanged();
+    const auto found = show.relink (folder, formats);
+    if (found > 0)
+    {
+        attachAnalyses();
+        edited();
+    }
+    const auto left = show.numProblems();
+    setNote ("Relink: found " + juce::String (found) + (found == 1 ? " song" : " songs")
+             + (left > 0 ? ", " + juce::String (left) + " still missing" : juce::String()));
+    return found;
 }
 
 //==============================================================================
@@ -716,14 +1205,15 @@ void RKPlayProcessor::setSafetyLimiter (bool on)
 
 void RKPlayProcessor::attachAnalyses()
 {
-    for (auto& song : show.songs)
-    {
-        if (song.analysis.valid || ! song.isPlayable())
-            continue;
-        if (cache == nullptr || ! cache->find (song.file, song.analysis))
-            if (analyser != nullptr)
-                analyser->add (song.file);
-    }
+    for (auto& p : show.playlists)
+        for (auto& song : p.songs)
+        {
+            if (song.analysis.valid || ! song.isPlayable())
+                continue;
+            if (cache == nullptr || ! cache->find (song.file, song.analysis))
+                if (analyser != nullptr)
+                    analyser->add (song.file);
+        }
 }
 
 void RKPlayProcessor::takeAnalyses()
@@ -739,9 +1229,17 @@ void RKPlayProcessor::takeAnalyses()
             continue;
         if (cache != nullptr)
             cache->store (r.file, r.analysis);
-        for (auto& song : show.songs)
-            if (song.file == r.file)
-                song.analysis = r.analysis;
+        for (auto& p : show.playlists)
+            for (auto& song : p.songs)
+                if (song.file == r.file)
+                    song.analysis = r.analysis;
+        // The copies: playing, armed, queued.
+        for (auto* item : { &current, &armed })
+            if (item->song.file == r.file)
+                item->song.analysis = r.analysis;
+        for (auto& q : queue)
+            if (q.song.file == r.file)
+                q.song.analysis = r.analysis;
     }
     // Saved once the queue is through (not after every song).
     if (cache != nullptr && analyser->pending() == 0)
@@ -751,15 +1249,16 @@ void RKPlayProcessor::takeAnalyses()
 
 void RKPlayProcessor::analyseNow()
 {
-    for (auto& song : show.songs)
-    {
-        if (song.analysis.valid || ! song.isPlayable())
-            continue;
-        if (std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (song.file)); reader != nullptr)
-            song.analysis = PlayAnalysis::analyse (*reader);
-        if (cache != nullptr && song.analysis.valid)
-            cache->store (song.file, song.analysis);
-    }
+    for (auto& p : show.playlists)
+        for (auto& song : p.songs)
+        {
+            if (song.analysis.valid || ! song.isPlayable())
+                continue;
+            if (std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (song.file)); reader != nullptr)
+                song.analysis = PlayAnalysis::analyse (*reader);
+            if (cache != nullptr && song.analysis.valid)
+                cache->store (song.file, song.analysis);
+        }
     if (cache != nullptr)
         cache->save();
     showChanged();
@@ -771,33 +1270,32 @@ void RKPlayProcessor::setNote (const juce::String& text)
     ++noteVersion;
 }
 
-void RKPlayProcessor::showChanged()
-{
-    ++showVersion;
-}
-
 //==============================================================================
 // State
 
 juce::var RKPlayProcessor::getExtraState() const
 {
-    auto v = show.toVar();
-    v.getDynamicObject()->setProperty ("current", currentIndex);
-    return v;
+    return show.toVar();
 }
 
 void RKPlayProcessor::setExtraState (const juce::var& extra)
 {
-    // A show loading: the music stops (quickly) and the new list is checked.
+    // A show loading: the music stops (quickly) and the new lists are checked.
     if (state != State::stopped)
         panic();
+    queue.clear();
+    pendingSwitch = -1;
+    endingAtSongEnd = false;
     show = {};
     if (extra.isObject())
         show.fromVar (extra, formats);
-    currentIndex = juce::jlimit (0, juce::jmax (0, (int) show.songs.size() - 1), (int) extra.getProperty ("current", 0));
+    cursorPlayed.assign (show.playlists.size(), false);
+    findEndAtDeadline();
     if (const auto problems = show.numProblems())
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable (marked in red)");
     attachAnalyses();
+    lastPlaylistParam = juce::roundToInt (valueOf (playlistParam));
+    syncPlaylistParam();
     showChanged();
 }
 

@@ -97,6 +97,27 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     keyBuffer.setSize (2, maxBlock);
     curveBuffer.setSize (numRows, maxBlock);
     busBuffers.setSize (2 * kBuses, maxBlock);
+    busChannelBuffers.setSize (2 * kBuses, maxBlock);
+    mainChannelBuffer.setSize (2, maxBlock);
+    delayScratch.setSize (2, maxBlock);
+
+    // Latency alignment lines (used only while an insert reports latency).
+    for (auto& ch : channelPadLines)
+        for (auto& line : ch)
+            line.prepare (kMaxChannelLatency, maxBlock);
+    for (auto& ch : channelTapLines)
+        for (auto& tap : ch)
+            for (auto& line : tap)
+                line.prepare (kMaxChannelLatency, maxBlock);
+    for (auto* lines : { &busChannelLines, &busHistory })
+        for (auto& bus : *lines)
+            for (auto& line : bus)
+                line.prepare (kMaxPathLatency, maxBlock);
+    for (auto& line : mainChannelLines)
+        line.prepare (kMaxPathLatency, maxBlock);
+    for (auto& line : mainPadLines)
+        line.prepare (kMaxPathLatency, maxBlock);
+    monoPadLine.prepare (kMaxPathLatency, maxBlock);
 
     reset();
 }
@@ -108,6 +129,24 @@ void MixEngine::reset()
     for (int bus = 0; bus < kBuses; ++bus)
         applyBus (bus, true);
     applyMain (true);
+    for (auto& ch : channelPadLines)
+        for (auto& line : ch)
+            line.clear();
+    for (auto& ch : channelTapLines)
+        for (auto& tap : ch)
+            for (auto& line : tap)
+                line.clear();
+    for (auto* lines : { &busChannelLines, &busHistory })
+        for (auto& bus : *lines)
+            for (auto& line : bus)
+                line.clear();
+    for (auto& line : mainChannelLines)
+        line.clear();
+    for (auto& line : mainPadLines)
+        line.clear();
+    monoPadLine.clear();
+    computePlan();
+
     channelPeaks.fill (0.0f);
     for (auto& p : busPeaks)
         p.fill (0.0f);
@@ -154,6 +193,73 @@ void MixEngine::setSettings (const Settings& newSettings, std::uint64_t changed)
             applyBus (bus, (reshaped & busBit (bus)) != 0);
     if ((changed & kMainBit) != 0)
         applyMain (false);
+
+    computePlan();
+}
+
+void MixEngine::setLatencies (const Latencies& l)
+{
+    latencies = l;
+    computePlan();
+}
+
+bool MixEngine::feeds (int from, int to) const noexcept
+{
+    const auto& b = settings.buses[(size_t) from];
+    return (canAssign (settings, from, to) && b.assign[(size_t) to])
+        || (canSend (settings, from, to) && b.sendDb[(size_t) to] > mix::kFaderMinDb + 0.001f);
+}
+
+void MixEngine::computePlan() noexcept
+{
+    Plan p;
+
+    // Channels: every one lined up with the slowest.
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (! isFollower (ch))
+            p.channelLatency = juce::jmax (p.channelLatency, juce::jlimit (0, kMaxChannelLatency, latencies.channels[(size_t) ch]));
+    for (int ch = 0; ch < kChannels; ++ch)
+        p.channelPad[(size_t) ch] = isFollower (ch) ? 0 : p.channelLatency - juce::jlimit (0, kMaxChannelLatency, latencies.channels[(size_t) ch]);
+
+    // Buses in processing order: each one's inputs meet at the latest of them.
+    std::array<bool, kBuses> done {};
+    for (const auto type : { BusType::group, BusType::fx, BusType::aux })
+        for (int bus = 0; bus < kBuses; ++bus)
+        {
+            if (settings.buses[(size_t) bus].type != type)
+                continue;
+            auto input = p.channelLatency;
+            for (int from = 0; from < kBuses; ++from)
+                if (done[(size_t) from] && feeds (from, bus))
+                    input = juce::jmax (input, p.busLatency[(size_t) from]);
+            p.busInput[(size_t) bus] = input;
+            p.busLatency[(size_t) bus] = juce::jmin (kMaxPathLatency, input + juce::jmax (0, latencies.buses[(size_t) bus]));
+            done[(size_t) bus] = true;
+        }
+
+    // The main: the channels and the groups and FX buses feeding it.
+    p.mainInput = p.channelLatency;
+    for (int bus = 0; bus < kBuses; ++bus)
+        if (settings.buses[(size_t) bus].type != BusType::aux && settings.buses[(size_t) bus].toMain)
+            p.mainInput = juce::jmax (p.mainInput, p.busLatency[(size_t) bus]);
+    p.mainLatency = juce::jmin (kMaxPathLatency, p.mainInput + juce::jmax (0, latencies.main));
+    const auto monoLatency = juce::jmin (kMaxPathLatency, p.mainLatency + juce::jmax (0, latencies.mono));
+
+    // Every output at the same total.
+    p.total = p.mainLatency;
+    if (settings.main.monoOutput != mix::kTargetOff)
+        p.total = juce::jmax (p.total, monoLatency);
+    for (int bus = 0; bus < kBuses; ++bus)
+        if (settings.buses[(size_t) bus].output != mix::kTargetOff)
+            p.total = juce::jmax (p.total, p.busLatency[(size_t) bus]);
+
+    p.mainOutputPad = p.total - p.mainLatency;
+    p.monoOutputPad = juce::jmax (0, p.total - monoLatency);
+    for (int bus = 0; bus < kBuses; ++bus)
+        p.busOutputPad[(size_t) bus] = juce::jmax (0, p.total - p.busLatency[(size_t) bus]);
+
+    p.active = p.total > 0 || p.channelLatency > 0;
+    plan = p;
 }
 
 void MixEngine::setLevels (const Levels& newLevels)
@@ -308,9 +414,11 @@ void MixEngine::accumulate (float* dest, const float* source, std::initializer_l
 }
 
 void MixEngine::addToBus (int bus, const float* const* source, int numSides, const Curve& panLeft, const Curve& panRight,
-                          std::initializer_list<const Curve*> gains, int numSamples) noexcept
+                          std::initializer_list<const Curve*> gains, int numSamples, bool fromChannel) noexcept
 {
     busFed[(size_t) bus] = true;
+    const auto apart = fromChannel && plan.active;
+    const auto dest = [&] (int side) { return apart ? busChannelData (bus, side) : busData (bus, side); };
     const auto* g = gains.begin();
     const auto one = constant (1.0f);
     const auto* g0 = gains.size() > 0 ? g[0] : &one;
@@ -319,14 +427,14 @@ void MixEngine::addToBus (int bus, const float* const* source, int numSides, con
 
     if (settings.buses[(size_t) bus].stereo)
     {
-        accumulate (busData (bus, 0), source[0], { g0, g1, g2, &panLeft }, numSamples);
-        accumulate (busData (bus, 1), source[numSides - 1], { g0, g1, g2, &panRight }, numSamples);
+        accumulate (dest (0), source[0], { g0, g1, g2, &panLeft }, numSamples);
+        accumulate (dest (1), source[numSides - 1], { g0, g1, g2, &panRight }, numSamples);
         return;
     }
 
     if (numSides == 1)
     {
-        accumulate (busData (bus, 0), source[0], { g0, g1, g2 }, numSamples);
+        accumulate (dest (0), source[0], { g0, g1, g2 }, numSamples);
         return;
     }
 
@@ -334,7 +442,7 @@ void MixEngine::addToBus (int bus, const float* const* source, int numSides, con
     auto* mono = curveBuffer.getWritePointer (monoRow);
     FVO::add (mono, source[0], source[1], numSamples);
     const auto half = constant (0.5f);
-    accumulate (busData (bus, 0), mono, { g0, g1, g2, &half }, numSamples);
+    accumulate (dest (0), mono, { g0, g1, g2, &half }, numSamples);
 }
 
 void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const float* const* io, int numSides,
@@ -398,11 +506,37 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
     s.strip.process (in + ch, io, numSides, numSamples, scratchBuffer, gateKey, compKey,
                      [&] (StripDsp::Tap stripTap, float* const* signal)
                      {
-                         if (active.count > 0)
-                             sendAtTap (ch, active, (Tap) (int) stripTap, signal, numSides, mute, fader, panLeft, panRight, numSamples);
+                         const auto tap = (Tap) (int) stripTap;
+                         if (active.count == 0 || ! active.uses (tap))
+                             return;
+
+                         // Before the inserts: as late as the channels after theirs.
+                         if (plan.channelLatency > 0)
+                         {
+                             float* delayed[2] = { delayScratch.getWritePointer (0), delayScratch.getWritePointer (1) };
+                             for (int side = 0; side < numSides; ++side)
+                             {
+                                 auto& line = channelTapLines[(size_t) ch][(size_t) stripTap][(size_t) side];
+                                 line.write (signal[side], numSamples);
+                                 line.read (delayed[side], numSamples, plan.channelLatency);
+                             }
+                             sendAtTap (ch, active, tap, delayed, numSides, mute, fader, panLeft, panRight, numSamples);
+                             return;
+                         }
+                         sendAtTap (ch, active, tap, signal, numSides, mute, fader, panLeft, panRight, numSamples);
                      });
 
-    // (Inserts go here.)
+    // Inserts, then lined up with the slowest channel.
+    if (inserts != nullptr)
+        inserts->process (Inserts::Strip::channel, ch, io, numSides, numSamples);
+    if (const auto pad = plan.channelPad[(size_t) ch]; pad > 0)
+        for (int side = 0; side < numSides; ++side)
+        {
+            auto& line = channelPadLines[(size_t) ch][(size_t) side];
+            line.write (io[side], numSamples);
+            line.read (io[side], numSamples, pad);
+        }
+
     if (active.count > 0)
         sendAtTap (ch, active, Tap::preFader, io, numSides, mute, fader, panLeft, panRight, numSamples);
 
@@ -424,8 +558,9 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
     if (isActive (s.toMain))
     {
         const auto toMain = curveOf (s.toMain, productRow, numSamples);
+        auto& dest = plan.active ? mainChannelBuffer : mainBuffer;
         for (int side = 0; side < 2; ++side)
-            accumulate (mainBuffer.getWritePointer (side), post[side], { &toMain }, numSamples);
+            accumulate (dest.getWritePointer (side), post[side], { &toMain }, numSamples);
     }
 
     // Post-fader: the groups it is assigned to, Aux sends taken there, FX sends.
@@ -440,6 +575,21 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
         sendAtTap (ch, active, Tap::postFader, io, numSides, mute, fader, panLeft, panRight, numSamples);
 }
 
+void MixEngine::delayedBusOutput (int bus, float* const* io, int numSides, int delay,
+                                  const float* (&result)[2], int numSamples) noexcept
+{
+    if (delay <= 0)
+    {
+        result[0] = io[0];
+        result[1] = io[numSides - 1];
+        return;
+    }
+    for (int side = 0; side < numSides; ++side)
+        busHistory[(size_t) bus][(size_t) side].read (delayScratch.getWritePointer (side), numSamples, delay);
+    result[0] = delayScratch.getReadPointer (0);
+    result[1] = delayScratch.getReadPointer (numSides - 1);
+}
+
 void MixEngine::processBus (int bus, float* const* out, int numSamples, bool measure) noexcept
 {
     auto& b = busStates[(size_t) bus];
@@ -447,11 +597,24 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
     const auto numSides = s.stereo ? 2 : 1;
     float* io[2] = { busData (bus, 0), busData (bus, numSides - 1) };
 
-    // Nothing fed it and nothing glides: silent, nothing to do.
-    if (! busFed[(size_t) bus] && ! b.fader.isSmoothing() && ! b.mute.isSmoothing())
+    // The channels' part, lined up with the bus inputs that arrive later.
+    if (plan.active)
+        for (int side = 0; side < numSides; ++side)
+        {
+            auto& line = busChannelLines[(size_t) bus][(size_t) side];
+            line.write (busChannelData (bus, side), numSamples);
+            line.read (delayScratch.getWritePointer (side), numSamples, plan.busInput[(size_t) bus] - plan.channelLatency);
+            FVO::add (io[side], delayScratch.getReadPointer (side), numSamples);
+        }
+
+    // Nothing fed it, nothing glides, no insert rings on: silent, nothing to do.
+    // (While lining up, every bus runs: its history must stay continuous.)
+    const auto insertsActive = inserts != nullptr && inserts->isActive (Inserts::Strip::bus, bus);
+    if (! plan.active && ! busFed[(size_t) bus] && ! insertsActive && ! b.fader.isSmoothing() && ! b.mute.isSmoothing())
         return;
 
-    // (Inserts go here.)
+    if (inserts != nullptr)
+        inserts->process (Inserts::Strip::bus, bus, io, numSides, numSamples);
 
     // Mute and fader in place: the bus's output signal.
     const auto mute = curveOf (b.mute, muteRow, numSamples);
@@ -475,7 +638,14 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
         for (int side = 0; side < numSides; ++side)
             raisePeak (busPeaks[(size_t) bus][(size_t) side], io[side], numSamples);
 
-    addToTarget (out, s.output, io[0], numSides == 2 ? io[1] : nullptr, numSamples);
+    if (plan.active)
+        for (int side = 0; side < numSides; ++side)
+            busHistory[(size_t) bus][(size_t) side].write (io[side], numSamples);
+
+    // Its own output, lined up with every other output.
+    const float* source[2];
+    delayedBusOutput (bus, io, numSides, plan.active ? plan.busOutputPad[(size_t) bus] : 0, source, numSamples);
+    addToTarget (out, s.output, source[0], numSides == 2 ? source[1] : nullptr, numSamples);
 
     if (s.type == BusType::aux)
         return;
@@ -486,21 +656,29 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
     if (isActive (b.toMain))
     {
         const auto toMain = curveOf (b.toMain, productRow, numSamples);
-        accumulate (mainBuffer.getWritePointer (0), io[0], { &toMain, &panLeft }, numSamples);
-        accumulate (mainBuffer.getWritePointer (1), io[numSides - 1], { &toMain, &panRight }, numSamples);
+        delayedBusOutput (bus, io, numSides, plan.active ? plan.mainInput - plan.busLatency[(size_t) bus] : 0, source, numSamples);
+        accumulate (mainBuffer.getWritePointer (0), source[0], { &toMain, &panLeft }, numSamples);
+        accumulate (mainBuffer.getWritePointer (1), source[1], { &toMain, &panRight }, numSamples);
     }
 
     for (int to = 0; to < kBuses; ++to)
     {
-        if (isActive (b.assigns[(size_t) to]))
+        const auto assigned = isActive (b.assigns[(size_t) to]);
+        const auto sent = isActive (b.sends[(size_t) to]);
+        if (! assigned && ! sent)
+            continue;
+
+        delayedBusOutput (bus, io, numSides, plan.active ? plan.busInput[(size_t) to] - plan.busLatency[(size_t) bus] : 0,
+                          source, numSamples);
+        if (assigned)
         {
             const auto assign = curveOf (b.assigns[(size_t) to], productRow, numSamples);
-            addToBus (to, io, numSides, panLeft, panRight, { &assign }, numSamples);
+            addToBus (to, source, numSides, panLeft, panRight, { &assign }, numSamples, false);
         }
-        if (isActive (b.sends[(size_t) to]))
+        if (sent)
         {
             const auto send = curveOf (b.sends[(size_t) to], productRow, numSamples);
-            addToBus (to, io, numSides, panLeft, panRight, { &send }, numSamples);
+            addToBus (to, source, numSides, panLeft, panRight, { &send }, numSamples, false);
         }
     }
 }
@@ -509,6 +687,18 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
 {
     float* main[2] = { mainBuffer.getWritePointer (0), mainBuffer.getWritePointer (1) };
     auto* mono = monoBuffer.getWritePointer (0);
+
+    // The channels' part, lined up with the groups and FX buses arriving later.
+    if (plan.active)
+        for (int side = 0; side < 2; ++side)
+        {
+            mainChannelLines[(size_t) side].write (mainChannelBuffer.getReadPointer (side), numSamples);
+            mainChannelLines[(size_t) side].read (delayScratch.getWritePointer (side), numSamples, plan.mainInput - plan.channelLatency);
+            FVO::add (main[side], delayScratch.getReadPointer (side), numSamples);
+        }
+
+    if (inserts != nullptr)
+        inserts->process (Inserts::Strip::main, 0, main, 2, numSamples);
 
     if (! (mainFader.isSmoothing() || mainMute.isSmoothing() || mainBalance.isSmoothing()))
     {
@@ -532,17 +722,21 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
         }
     }
 
-    // The mono sum: (L + R) / 2 of the main after its fader.
+    // The mono sum: (L + R) / 2 of the main after its fader, its inserts, mute and fader.
+    FVO::add (mono, main[0], main[1], numSamples);
+    FVO::multiply (mono, 0.5f, numSamples);
+    if (inserts != nullptr)
+        inserts->process (Inserts::Strip::mono, 0, &mono, 1, numSamples);
     if (! (monoFader.isSmoothing() || monoMute.isSmoothing()))
     {
-        const auto level = 0.5f * monoFader.getTargetValue() * monoMute.getTargetValue();
-        FVO::add (mono, main[0], main[1], numSamples);
-        FVO::multiply (mono, level, numSamples);
+        const auto level = monoFader.getTargetValue() * monoMute.getTargetValue();
+        if (! juce::exactlyEqual (level, 1.0f))
+            FVO::multiply (mono, level, numSamples);
     }
     else
     {
         for (int i = 0; i < numSamples; ++i)
-            mono[i] = 0.5f * (main[0][i] + main[1][i]) * monoFader.getNextValue() * monoMute.getNextValue();
+            mono[i] *= monoFader.getNextValue() * monoMute.getNextValue();
     }
 
     if (measure)
@@ -550,6 +744,19 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
         raisePeak (mainPeaks[0], main[0], numSamples);
         raisePeak (mainPeaks[1], main[1], numSamples);
         raisePeak (monoPeak, mono, numSamples);
+    }
+
+    // Lined up with every other output.
+    if (plan.active && plan.mainOutputPad > 0)
+        for (int side = 0; side < 2; ++side)
+        {
+            mainPadLines[(size_t) side].write (main[side], numSamples);
+            mainPadLines[(size_t) side].read (main[side], numSamples, plan.mainOutputPad);
+        }
+    if (plan.active && plan.monoOutputPad > 0)
+    {
+        monoPadLine.write (mono, numSamples);
+        monoPadLine.read (mono, numSamples, plan.monoOutputPad);
     }
 
     addToTarget (out, settings.main.output, main[0], main[1], numSamples);
@@ -590,6 +797,11 @@ void MixEngine::process (const float* const* in, float* const* out, int numSampl
     mainBuffer.clear (0, numSamples);
     busBuffers.clear (0, numSamples);
     busFed.fill (false);
+    if (plan.active)
+    {
+        busChannelBuffers.clear (0, numSamples);
+        mainChannelBuffer.clear (0, numSamples);
+    }
 
     for (int ch = 0; ch < kChannels; ++ch)
         if (! isFollower (ch))

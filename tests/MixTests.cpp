@@ -76,6 +76,50 @@ namespace
     }
 }
 
+/** Stand-in inserts: a pure delay of a set length on chosen strips (latency without sound). */
+struct DelayInserts : public MixEngine::Inserts
+{
+    using Strip = MixEngine::Inserts::Strip;
+
+    std::array<int, MixEngine::kChannels> channelDelay {};
+    std::array<int, MixEngine::kBuses> busDelay {};
+    int mainDelay = 0;
+    std::array<std::array<BlockDelay, 2>, MixEngine::kChannels + MixEngine::kBuses + 1> lines;
+
+    DelayInserts()
+    {
+        for (auto& strip : lines)
+            for (auto& line : strip)
+                line.prepare (256, 512);
+    }
+
+    MixEngine::Latencies latencies() const
+    {
+        MixEngine::Latencies l;
+        l.channels = channelDelay;
+        l.buses = busDelay;
+        l.main = mainDelay;
+        return l;
+    }
+
+    void process (Strip strip, int index, float* const* io, int numSides, int numSamples) noexcept override
+    {
+        const auto delay = strip == Strip::channel ? channelDelay[(size_t) index]
+                         : strip == Strip::bus ? busDelay[(size_t) index] : strip == Strip::main ? mainDelay : 0;
+        if (delay == 0)
+            return;
+        auto& strips = lines[(size_t) (strip == Strip::channel ? index : strip == Strip::bus ? MixEngine::kChannels + index
+                                                                                              : MixEngine::kChannels + MixEngine::kBuses)];
+        for (int side = 0; side < numSides; ++side)
+        {
+            strips[(size_t) side].write (io[side], numSamples);
+            strips[(size_t) side].read (io[side], numSamples, delay);
+        }
+    }
+
+    bool isActive (Strip, int) const noexcept override { return false; }
+};
+
 /** RKMix phase 1: channels to the main and mono sum, pan laws, fader, mute,
     trim, polarity, delay, links, output targets, and click-free changes. */
 class MixTests : public juce::UnitTest
@@ -618,6 +662,114 @@ public:
             levels.busMute[1] = true;         e.setLevels (levels); run (3);
             s.channels[0].sendDb[0] = mix::kFaderMinDb; e.setSettings (s); run (3);
             expectLessThan (worstStep, 0.03f);
+        }
+
+        //==============================================================================
+        // Inserts and latency
+
+        // An impulse at sample 10 on the given inputs; the first sample each output peaks.
+        const auto impulse = [] (MixEngine& e, std::initializer_list<int> inputs, std::array<float, kChannels>& peakValue)
+        {
+            std::array<int, kChannels> peakAt {};
+            peakAt.fill (-1);
+            peakValue.fill (0.0f);
+            juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+            for (int b = 0; b < 3; ++b)
+            {
+                in.clear();
+                if (b == 0)
+                    for (auto ch : inputs)
+                        in.setSample (ch, 10, 1.0f);
+                e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                for (int ch = 0; ch < kChannels; ++ch)
+                    for (int i = 0; i < kBlock; ++i)
+                        if (std::abs (out.getSample (ch, i)) > std::abs (peakValue[(size_t) ch]) + 1.0e-6f)
+                        {
+                            peakValue[(size_t) ch] = out.getSample (ch, i);
+                            peakAt[(size_t) ch] = b * kBlock + i;
+                        }
+            }
+            return peakAt;
+        };
+
+        beginTest ("Latency: channels line up with the slowest; the total is reported");
+        {
+            auto s = only ({ 0, 2 });
+            DelayInserts inserts;
+            inserts.channelDelay[0] = 32;
+            auto e = makeEngine (s);
+            e.setInserts (&inserts);
+            e.setLatencies (inserts.latencies());
+            expectEquals (e.getLatency(), 32);
+
+            std::array<float, kChannels> value {};
+            const auto at = impulse (e, { 0, 2 }, value);
+            expectEquals (at[0], 42, "both impulses at 10 + 32");
+            expectWithinAbsoluteError (value[0], 2.0f * std::sqrt (0.5f), 1.0e-5f, "...together: one peak of both");
+        }
+
+        beginTest ("Latency: a send before the inserts lines up with sends after them");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].stereo = false;
+            s.buses[0].output = 5;
+            s.channels[0].sendDb[0] = 0.0f;
+            s.channels[0].tap[0] = (int) mix::Tap::input;      // before channel 1's latent insert
+            s.channels[2].sendDb[0] = 0.0f;                    // channel 3, pre-fader (after its inserts)
+            DelayInserts inserts;
+            inserts.channelDelay[0] = 32;
+            auto e = makeEngine (s);
+            e.setInserts (&inserts);
+            e.setLatencies (inserts.latencies());
+            std::array<float, kChannels> value {};
+            const auto at = impulse (e, { 0, 2 }, value);
+            expectEquals (at[4], 42);
+            expectWithinAbsoluteError (value[4], 2.0f, 1.0e-5f, "both sends arrive together");
+        }
+
+        beginTest ("Latency: a group's inserts delay the channels going straight to the main; parallel paths stay together");
+        {
+            auto s = only ({ 0, 2 });
+            s.links[0] = true;
+            s.links[1] = true;
+            s.buses[1] = {};
+            s.buses[1].type = mix::BusType::group;
+            s.channels[2].assign[1] = true;                    // channels 3/4 also through the group (parallel)
+            DelayInserts inserts;
+            inserts.channelDelay[0] = 32;
+            inserts.busDelay[1] = 16;
+            auto e = makeEngine (s);
+            e.setInserts (&inserts);
+            e.setLatencies (inserts.latencies());
+            expectEquals (e.getLatency(), 48);
+
+            std::array<float, kChannels> value {};
+            auto at = impulse (e, { 0 }, value);
+            expectEquals (at[0], 58, "channel 1 waits for the group");
+            at = impulse (e, { 2 }, value);
+            expectEquals (at[0], 58);
+            expectWithinAbsoluteError (value[0], 2.0f, 1.0e-5f, "direct and through the group: one peak");
+        }
+
+        beginTest ("Latency: every output at the same total");
+        {
+            auto s = only ({ 0 });
+            s.links[0] = true;
+            s.buses[0] = {};
+            s.buses[0].output = mix::pairTarget (4);           // Out 5/6, an Aux with no latency of its own
+            s.channels[0].sendDb[0] = 0.0f;
+            s.channels[0].tap[0] = (int) mix::Tap::input;
+            DelayInserts inserts;
+            inserts.mainDelay = 20;
+            auto e = makeEngine (s);
+            e.setInserts (&inserts);
+            e.setLatencies (inserts.latencies());
+            expectEquals (e.getLatency(), 20);
+            std::array<float, kChannels> value {};
+            const auto at = impulse (e, { 0 }, value);
+            expectEquals (at[0], 30, "the main: its inserts' latency");
+            expectEquals (at[4], 30, "the Aux output waits for the main");
         }
 
         beginTest ("The fader law: 0 dB at three quarters, the bottom is silence, positions invert");

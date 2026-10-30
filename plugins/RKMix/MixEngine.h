@@ -2,6 +2,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "MixDelay.h"
 #include "MixLayout.h"
 #include "MixStrip.h"
 #include "safety/Smoothing.h"
@@ -29,6 +30,14 @@
     bus is (L + R) / 2. A stereo pair at its defaults is a bit-exact copy to
     the main. Several sources on one output add up.
 
+    Inserts (the processor's RKFX plugins) run where an Inserts object
+    says: after a channel's strip, before a bus's or the main's fader, on the
+    mono sum. When some report latency, every path is lined up where signals
+    meet: channels with less latency are delayed to the slowest (sends taken
+    before the inserts too), each bus's channel inputs and bus inputs are
+    delayed to arrive together, and every output is delayed to the same total,
+    which getLatency() reports. With no latency nothing is delayed.
+
     GUI-free and allocation-free after prepare(). */
 class MixEngine
 {
@@ -37,6 +46,30 @@ public:
     static constexpr int kPairs = mix::kPairs;
     static constexpr int kBuses = mix::kBuses;
     static constexpr double kMuteFadeSeconds = 0.01;
+    static constexpr int kMaxChannelLatency = 512;     // samples, a channel's inserts (lined up to the slowest)
+    static constexpr int kMaxPathLatency = 4096;       // samples, any path to an output
+
+    /** The inserts, run by the engine where they sit (implemented by the processor). */
+    class Inserts
+    {
+    public:
+        enum class Strip { channel, bus, main, mono };
+        virtual ~Inserts() = default;
+
+        /** Runs the inserts of channel / bus @p index (or the main, mono) in place. */
+        virtual void process (Strip, int index, float* const* io, int numSides, int numSamples) noexcept = 0;
+
+        /** True when the strip has an insert that must run even on silence (a reverb's tail). */
+        virtual bool isActive (Strip, int index) const noexcept = 0;
+    };
+
+    /** The latency the inserts of each strip add (leaders of linked pairs only). */
+    struct Latencies
+    {
+        std::array<int, kChannels> channels {};
+        std::array<int, kBuses> buses {};
+        int main = 0, mono = 0;
+    };
 
     struct Channel
     {
@@ -103,6 +136,15 @@ public:
     void setLevels (const Levels&);
     const Settings& getSettings() const noexcept { return settings; }
 
+    /** The inserts to run (nullptr: none). Set before processing. */
+    void setInserts (Inserts* i) noexcept { inserts = i; }
+
+    /** The inserts' latencies; the paths are lined up again from the next block. */
+    void setLatencies (const Latencies&);
+
+    /** The latency of every output (samples): the slowest path's. */
+    int getLatency() const noexcept { return plan.total; }
+
     /** @param in   the 32 inputs (left untouched)
         @param out  the 32 outputs (overwritten; may not alias @p in)
         @param measure  update the meters (only while a window shows them) */
@@ -149,6 +191,19 @@ private:
         std::array<rkfx::Smoothed, kBuses> sends, assigns;
     };
 
+    /** Where each path is lined up (see computePlan). */
+    struct Plan
+    {
+        bool active = false;                          // some insert has latency
+        int channelLatency = 0;                       // every channel's, after lining up
+        std::array<int, kChannels> channelPad {};     // added after a channel's inserts
+        std::array<int, kBuses> busInput {};          // when a bus's inputs meet
+        std::array<int, kBuses> busLatency {};        // a bus's output
+        std::array<int, kBuses> busOutputPad {};
+        int mainInput = 0, mainLatency = 0, mainOutputPad = 0, monoOutputPad = 0;
+        int total = 0;
+    };
+
     // Rows of the per-block gain buffer
     enum Row { muteRow, faderRow, panLeftRow, panRightRow, productRow, monoRow, numRows };
 
@@ -163,6 +218,17 @@ private:
 
     juce::AudioBuffer<float> channelBuffer, scratchBuffer, postBuffer, mainBuffer, monoBuffer, keyBuffer, curveBuffer;
     juce::AudioBuffer<float> busBuffers;              // 2 channels per bus
+    juce::AudioBuffer<float> busChannelBuffers;       // the channels' part, lined up separately while a plan is active
+    juce::AudioBuffer<float> mainChannelBuffer, delayScratch;
+
+    Inserts* inserts = nullptr;
+    Latencies latencies;
+    Plan plan;
+    std::array<std::array<BlockDelay, 2>, kChannels> channelPadLines;
+    std::array<std::array<std::array<BlockDelay, 2>, 4>, kChannels> channelTapLines;   // the taps before the inserts
+    std::array<std::array<BlockDelay, 2>, kBuses> busChannelLines, busHistory;
+    std::array<BlockDelay, 2> mainChannelLines, mainPadLines;
+    BlockDelay monoPadLine;
     std::array<bool, kBuses> busFed {};               // something was added to the bus this block
 
     std::array<float, kChannels> channelPeaks {};
@@ -173,6 +239,9 @@ private:
     bool isStereo (int ch) const noexcept { return ch % 2 == 0 && settings.links[(size_t) (ch / 2)]; }
     bool isFollower (int ch) const noexcept { return ch % 2 == 1 && settings.links[(size_t) (ch / 2)]; }
     float* busData (int bus, int side) noexcept { return busBuffers.getWritePointer (bus * 2 + side); }
+    float* busChannelData (int bus, int side) noexcept { return busChannelBuffers.getWritePointer (bus * 2 + side); }
+    bool feeds (int from, int to) const noexcept;
+    void computePlan() noexcept;
     mix::Tap tapOf (int ch, int bus) const noexcept;
 
     void applyChannel (int ch, bool snap);
@@ -189,6 +258,13 @@ private:
     {
         std::array<std::pair<int, mix::Tap>, kBuses> sends {};
         int count = 0;
+        bool uses (mix::Tap tap) const noexcept
+        {
+            for (int n = 0; n < count; ++n)
+                if (sends[(size_t) n].second == tap)
+                    return true;
+            return false;
+        }
     };
 
     /** The channel's sends taken at @p tap (the Aux sends set there; post-fader: the FX sends too). */
@@ -196,9 +272,14 @@ private:
                     const Curve& fader, const Curve& panLeft, const Curve& panRight, int numSamples) noexcept;
 
     /** Adds a mono or stereo source to bus @p bus: into a stereo bus panned by
-        @p panLeft/@p panRight, into a mono bus summed, times every gain. */
+        @p panLeft/@p panRight, into a mono bus summed, times every gain. A
+        channel's contribution (@p fromChannel) is kept apart while a plan is
+        active, to be lined up with the bus's other inputs. */
     void addToBus (int bus, const float* const* source, int numSides, const Curve& panLeft, const Curve& panRight,
-                   std::initializer_list<const Curve*> gains, int numSamples) noexcept;
+                   std::initializer_list<const Curve*> gains, int numSamples, bool fromChannel = true) noexcept;
+
+    /** A bus's output @p delay samples later (its history), in delayScratch; or the output itself. */
+    void delayedBusOutput (int bus, float* const* io, int numSides, int delay, const float* (&result)[2], int numSamples) noexcept;
 
     Curve curveOf (rkfx::Smoothed&, Row, int numSamples) noexcept;
     void panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, Curve& right, int numSamples) noexcept;

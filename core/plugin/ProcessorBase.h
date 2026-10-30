@@ -188,9 +188,12 @@ protected:
     /** Declares the latency the plugin's DSP adds (oversampling only; every
         other plugin reports 0). Safe from any thread: the dry signal (used by
         dry/wet and bypass) is delayed to match from the next block on, and
-        the host is told on the message thread. Up to kMaxLatency samples. */
+        the host is told on the message thread. Up to kMaxLatency samples;
+        a plugin whose bypass mutes (config.bypassMutes) has no dry signal to
+        delay and may report up to kMaxMutedLatency (RKMix's inserts). */
     void reportLatency (int samples);
     static constexpr int kMaxLatency = 63;
+    static constexpr int kMaxMutedLatency = 1 << 16;
 
     /** State beyond the parameters (RKConduct's MIDI file, RKRemap's names):
         saved with the host state (as "extra"), and in preset files too when

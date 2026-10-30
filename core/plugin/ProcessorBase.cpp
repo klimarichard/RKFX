@@ -265,7 +265,7 @@ void ProcessorBase::updateTransport()
 
 void ProcessorBase::reportLatency (int samples)
 {
-    samples = juce::jlimit (0, kMaxLatency, samples);
+    samples = juce::jlimit (0, config.bypassMutes ? kMaxMutedLatency : kMaxLatency, samples);
     if (latency.exchange (samples) == samples && getLatencySamples() == samples)
         return;
 
@@ -277,8 +277,9 @@ void ProcessorBase::reportLatency (int samples)
 
 void ProcessorBase::delayDry (int numChannels, int numSamples) noexcept
 {
+    // Bypass to silence: no dry signal to line up (and getDryInput() stays the input).
     const auto delay = latency.load();
-    if (delay == 0)
+    if (delay == 0 || config.bypassMutes)
         return;
 
     // Ring of kMaxLatency + 1 samples: write each dry sample, read the one `delay` samples older.

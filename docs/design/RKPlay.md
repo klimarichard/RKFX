@@ -134,6 +134,13 @@ The music dips while someone speaks.
 - Pads play over the music and through the safety limiter. Each pad's file is loaded fully into memory (limit 60 s per pad; longer files stream like songs).
 - Pads are part of the show.
 
+### As built (phase 4, feat/rkplay-extras)
+
+- **The Cue output** is RKPlay's second stereo output bus, "Cue" (a core option, `PluginConfig::auxOutput`, off for every other plugin). In Gig Performer it is the plugin's outputs 3/4; in the standalone app, the device's outputs that follow the main pair (choose them in the audio settings). The Pre-listen panel says when the host has it switched off.
+- **Ducking**: Duck from the input (a setting) and the **Duck** button (latching, also the host parameter `duck`), plus pads that duck. The button lights, and reads the dip in dB, whenever the music is dipped. Switching Duck from the input off ends its hold at once. The music alone is ducked (songs, not pads), before the Level and the safety limiter.
+- **Pads** hold files of up to a minute, decoded and resampled into memory (and loudness-matched by gain) when loaded; a longer file is refused with a note, not streamed (a fanfare or an entrance is short; a song belongs in a playlist). Click plays from the start, a second click stops (30 ms); right-click: load, rename, level, loop, duck, fade out the music, colour, clear; drop a file on a pad to load it. Host parameters `pad1`..`pad8` (triggers), appended after `duck`.
+- **Pre-listen**: right-click a song, Pre-listen; the panel shows it with its place (click to seek), Stop and its level. Pre-listening uses a stream like a song (loudness matched as it will play) and stops when that song is played for real.
+
 ## Live safety
 
 - **Checked at load:** when a show loads, every file is checked (exists, readable, a supported format). Problem songs are marked in red, listed in a **Show check** panel, and skipped when their turn comes (never stopping the music).

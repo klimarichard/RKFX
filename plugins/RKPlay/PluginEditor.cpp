@@ -13,6 +13,10 @@ namespace
     constexpr int kTabWidth = 130;
     constexpr int kGap = 10;
     const juce::Colour kProblem { 0xffe05050 };
+    const juce::Colour kPadColours[] = { juce::Colour (0xff5a5f68), juce::Colour (0xffd9534f), juce::Colour (0xffe8913a),
+                                         juce::Colour (0xffe3c341), juce::Colour (0xff5cb85c), juce::Colour (0xff46b8c8),
+                                         juce::Colour (0xff5b8def), juce::Colour (0xffa86ad9) };
+    const char* const kPadColourNames[] = { "Grey", "Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Violet" };
 
     void setUpSlider (juce::Slider& s, double min, double max, double step, const juce::String& suffix, int textWidth)
     {
@@ -47,7 +51,9 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     fadeButton.onClick = [this] { player.fadeOut(); refresh(); };
     stopButton.onClick = [this] { player.stop(); refresh(); };
     settingsButton.onClick = [this] { showSettings (! settings.isVisible()); };
-    for (auto* b : { &prevButton, &playButton, &nextButton, &fadeButton, &stopButton, &settingsButton })
+    duckButton.setTooltip ("Dip the music (an announcement), until pressed again; lights while the music is dipped");
+    duckButton.onClick = [this] { player.setManualDuck (! player.isManualDuck()); };
+    for (auto* b : { &prevButton, &playButton, &nextButton, &fadeButton, &stopButton, &settingsButton, &duckButton })
         addToCanvas (*b);
 
     // The viewed playlist: tabs, its settings, its songs
@@ -110,6 +116,13 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     for (juce::Component* c : std::initializer_list<juce::Component*> { &endAtOn, &endAtTime, &endAtMode })
         addToCanvas (*c);
 
+    addToCanvas (preListen);
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+    {
+        padButtons.push_back (std::make_unique<PadButton> (*this, pad));
+        addToCanvas (*padButtons.back());
+    }
+
     level = std::make_unique<rkfx::Knob> (*player.findParam ("level"), "Level");
     addToCanvas (*level);
 
@@ -154,22 +167,27 @@ void RKPlayEditor::layoutContent()
 
     auto transport = r.removeFromTop (kTransportHeight);
     settingsButton.setBounds (transport.removeFromRight (110));
-    const int widths[] = { 80, 180, 80, 140, 100 };
-    juce::TextButton* buttons[] = { &prevButton, &playButton, &nextButton, &fadeButton, &stopButton };
-    for (int i = 0; i < 5; ++i)
+    transport.removeFromRight (kGap);
+    const int widths[] = { 70, 170, 70, 120, 90, 110 };
+    juce::TextButton* buttons[] = { &prevButton, &playButton, &nextButton, &fadeButton, &stopButton, &duckButton };
+    for (int i = 0; i < 6; ++i)
     {
         buttons[i]->setBounds (transport.removeFromLeft (widths[i]));
         transport.removeFromLeft (kGap);
     }
+    messageArea = transport;
     r.removeFromTop (kGap);
     const auto lower = r;
 
     // Right: the queue, then End at.
     auto side = r.removeFromRight (kSideWidth);
     r.removeFromRight (kGap);
-    endAtArea = side.removeFromBottom (128);
+    endAtArea = side.removeFromBottom (146);
+    side.removeFromBottom (kGap);
+    preListenArea = side.removeFromBottom (104);
     side.removeFromBottom (kGap);
     queueArea = side;
+    preListen.setBounds (preListenArea);
     {
         auto q = queueArea.reduced (10, 8).withTrimmedTop (22);
         clearQueueButton.setBounds (q.removeFromBottom (28));
@@ -216,9 +234,17 @@ void RKPlayEditor::layoutContent()
 
     auto g = globalArea();
     level->setBounds (g.removeFromLeft (90));
-    g.removeFromLeft (16);
-    auto texts = g.withTrimmedRight (140).withSizeKeepingCentre (g.getWidth() - 140, 52);
-    note.setBounds (texts.removeFromTop (26));
+    g.removeFromLeft (12);
+    auto padRow = g.withTrimmedRight (130).withSizeKeepingCentre (g.getWidth() - 130, 64);
+    const auto padWidth = (padRow.getWidth() - (PlayEngine::kPads - 1) * 6) / PlayEngine::kPads;
+    for (auto& b : padButtons)
+    {
+        b->setBounds (padRow.removeFromLeft (padWidth));
+        padRow.removeFromLeft (6);
+    }
+
+    auto texts = messageArea.withSizeKeepingCentre (messageArea.getWidth(), 48);
+    note.setBounds (texts.removeFromTop (24));
     status.setBounds (texts);
 }
 
@@ -251,11 +277,10 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
 
     if (const auto left = player.getEndAtRemaining(); left >= 0.0)
     {
-        const auto at = juce::String (player.getShow().endAt.minutes / 60) + ":" + juce::String (player.getShow().endAt.minutes % 60).paddedLeft ('0', 2);
         g.setColour (accent());
-        g.setFont (rkfx::Fonts::bold (16.0f));
-        g.drawText ("End at " + at + "  ·  in " + timeText (left), stopButton.getBounds().withX (stopButton.getRight() + 20).withRight (settingsButton.getX() - 12),
-                    juce::Justification::centredRight);
+        g.setFont (rkfx::Fonts::bold (15.0f));
+        g.drawText ("The music ends in " + timeText (left), endAtMode.getBounds().translated (0, 30).withHeight (22),
+                    juce::Justification::centredLeft);
     }
 
     // An empty playlist says how to fill it; a drag over the window lights it up.
@@ -636,6 +661,7 @@ void RKPlayEditor::showSongMenu (int row)
     menu.addItem (1, "Play now (then back to the playlist)", playable);
     menu.addItem (2, "Play next (add to the queue)", playable);
     menu.addItem (3, "Go on from here", playable);
+    menu.addItem (8, "Pre-listen (on the cue output)", playable);
     menu.addSeparator();
     menu.addItem (4, "Move up", row > 0 && ! p.isLinked());
     menu.addItem (5, "Move down", row < (int) songs.size() - 1 && ! p.isLinked());
@@ -664,6 +690,11 @@ void RKPlayEditor::showSongMenu (int row)
             case 5: pl.moveSong (playlist, row, row + 1); safe->list.selectRow (row + 1); break;
             case 6: pl.removeSong (playlist, row); break;
             case 7: pl.getShow().playlists[(size_t) playlist].songs[(size_t) row].file.revealToUser(); break;
+            case 8:
+                pl.preListen (playlist, row);
+                safe->preListen.playlist = playlist;
+                safe->preListen.index = row;
+                break;
             default:
                 if (result >= 100)
                     pl.setSongGain (playlist, row, result - 100 - 12);
@@ -726,6 +757,203 @@ void RKPlayEditor::QueueModel::deleteKeyPressed (int row)
 }
 
 //==============================================================================
+// Pads
+
+void RKPlayEditor::PadButton::paint (juce::Graphics& g)
+{
+    const auto& pad = owner.player.getShow().pads[(size_t) index];
+    const auto playing = owner.player.isPadPlaying (index);
+    const auto colour = kPadColours[juce::jlimit (0, 7, pad.colour)];
+    auto r = getLocalBounds().toFloat().reduced (1.0f);
+
+    g.setColour (pad.isEmpty() ? owner.panelColour() : colour.withAlpha (playing ? 0.9f : 0.35f));
+    g.fillRoundedRectangle (r, 6.0f);
+    if (playing)
+    {
+        // What's left of it, as a bar along the bottom.
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.fillRect (r.getX() + 6.0f, r.getBottom() - 6.0f, (r.getWidth() - 12.0f) * owner.player.getPadProgress (index), 3.0f);
+    }
+    g.setColour (pad.isEmpty() ? rkfx::Palette::outline : colour);
+    g.drawRoundedRectangle (r, 6.0f, 1.5f);
+
+    g.setColour (pad.isEmpty() ? rkfx::Palette::textDim : rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (13.0f));
+    auto text = getLocalBounds().reduced (6, 4);
+    g.drawFittedText (pad.isEmpty() ? "Pad " + juce::String (index + 1) : pad.name, text.removeFromTop (34), juce::Justification::centred, 2, 0.8f);
+    g.setFont (rkfx::Fonts::regular (11.0f));
+    g.setColour (rkfx::Palette::textDim.brighter (pad.isEmpty() ? 0.0f : 0.4f));
+    juce::StringArray marks;
+    if (pad.isEmpty())
+        marks.add ("drop a file");
+    else
+    {
+        if (pad.loop) marks.add ("loop");
+        if (pad.ducksMusic) marks.add ("ducks");
+        if (pad.stopsMusic) marks.add ("stops");
+    }
+    g.drawText (marks.joinIntoString (" · "), text, juce::Justification::centredTop);
+}
+
+void RKPlayEditor::PadButton::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+        owner.showPadMenu (index);
+    else if (owner.player.getShow().pads[(size_t) index].isEmpty())
+        owner.choosePadFile (index);
+    else
+        owner.player.triggerPad (index);
+    repaint();
+}
+
+void RKPlayEditor::showPadMenu (int index)
+{
+    const auto& pad = player.getShow().pads[(size_t) index];
+    juce::PopupMenu menu;
+    menu.addItem (1, "Load a file...");
+    menu.addItem (2, "Rename...", ! pad.isEmpty());
+    juce::PopupMenu levels;
+    for (int db = 6; db >= -18; db -= 3)
+        levels.addItem (100 + db + 18, (db > 0 ? "+" : "") + juce::String (db) + " dB", true, std::abs (pad.levelDb - db) < 0.01);
+    menu.addSubMenu ("Level", levels, ! pad.isEmpty());
+    menu.addItem (3, "Loop", ! pad.isEmpty(), pad.loop);
+    menu.addItem (4, "Duck the music while it plays", ! pad.isEmpty(), pad.ducksMusic);
+    menu.addItem (5, "Fade out the music when it starts", ! pad.isEmpty(), pad.stopsMusic);
+    juce::PopupMenu colours;
+    for (int c = 0; c < 8; ++c)
+        colours.addColouredItem (200 + c, kPadColourNames[c], kPadColours[c], true, pad.colour == c);
+    menu.addSubMenu ("Colour", colours, ! pad.isEmpty());
+    menu.addSeparator();
+    menu.addItem (6, "Clear", ! pad.isEmpty());
+
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, index] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        auto& pl = safe->player;
+        auto options = pl.getShow().pads[(size_t) index];
+        switch (result)
+        {
+            case 1: safe->choosePadFile (index); return;
+            case 2: safe->renamePad (index); return;
+            case 3: options.loop = ! options.loop; break;
+            case 4: options.ducksMusic = ! options.ducksMusic; break;
+            case 5: options.stopsMusic = ! options.stopsMusic; break;
+            case 6: pl.clearPad (index); safe->refresh(); return;
+            default:
+                if (result >= 200)
+                    options.colour = result - 200;
+                else if (result >= 100)
+                    options.levelDb = result - 100 - 18;
+                break;
+        }
+        pl.setPadOptions (index, options);
+        safe->refresh();
+    });
+}
+
+void RKPlayEditor::choosePadFile (int index)
+{
+    chooser = std::make_unique<juce::FileChooser> ("A sound for pad " + juce::String (index + 1) + " (up to a minute)",
+                                                   juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                   player.getFormats().getWildcardForAllFormats());
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe, index] (const juce::FileChooser& fc)
+    {
+        if (safe != nullptr && fc.getResult() != juce::File())
+        {
+            safe->player.loadPad (index, fc.getResult());
+            safe->refresh();
+        }
+    });
+}
+
+void RKPlayEditor::renamePad (int index)
+{
+    auto* window = new juce::AlertWindow ("Rename pad", {}, juce::MessageBoxIconType::NoIcon);
+    window->addTextEditor ("name", player.getShow().pads[(size_t) index].name);
+    window->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, index] (int result)
+    {
+        if (safe != nullptr && result == 1)
+        {
+            auto options = safe->player.getShow().pads[(size_t) index];
+            options.name = window->getTextEditorContents ("name").trim();
+            safe->player.setPadOptions (index, options);
+            safe->refresh();
+        }
+    }), true);
+}
+
+//==============================================================================
+// Pre-listen
+
+RKPlayEditor::PreListen::PreListen (RKPlayEditor& o) : owner (o)
+{
+    stop.setTooltip ("Stop pre-listening");
+    stop.onClick = [this] { owner.player.stopPreListen(); owner.refresh(); };
+    setUpSlider (level, -24.0, 6.0, 0.5, " dB", 60);
+    level.setTooltip ("The pre-listen level (on the cue output only)");
+    level.onValueChange = [this] { owner.player.setCueLevel (level.getValue()); };
+    addAndMakeVisible (stop);
+    addAndMakeVisible (level);
+}
+
+juce::Rectangle<int> RKPlayEditor::PreListen::barArea() const
+{
+    return getLocalBounds().reduced (10, 0).withTrimmedTop (48).withHeight (14);
+}
+
+void RKPlayEditor::PreListen::resized()
+{
+    auto r = getLocalBounds().reduced (10, 8);
+    auto row = r.removeFromBottom (26);
+    stop.setBounds (row.removeFromLeft (70));
+    row.removeFromLeft (8);
+    level.setBounds (row);
+}
+
+void RKPlayEditor::PreListen::paint (juce::Graphics& g)
+{
+    owner.drawSection (g, getLocalBounds(), "Pre-listen");
+    auto& p = owner.player;
+    auto text = getLocalBounds().reduced (10, 0).withTrimmedTop (26).withHeight (20);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    if (! p.hasCueOutput())
+    {
+        g.setColour (rkfx::Palette::warning);
+        g.drawFittedText ("The Cue output is off (the host's or app's output settings)", text.withHeight (36), juce::Justification::topLeft, 2);
+        return;
+    }
+    if (! p.isPreListening())
+    {
+        g.setColour (rkfx::Palette::textDim);
+        g.drawFittedText ("Right-click a song: Pre-listen", text, juce::Justification::centredLeft, 1);
+        return;
+    }
+    const auto& song = p.getPreListenSong();
+    g.setColour (rkfx::Palette::text);
+    g.drawFittedText (song.displayName(), text, juce::Justification::centredLeft, 1);
+    const auto bar = barArea().toFloat();
+    g.setColour (rkfx::Palette::background);
+    g.fillRoundedRectangle (bar, 3.0f);
+    const auto played = song.lengthSeconds > 0.0 ? (float) juce::jlimit (0.0, 1.0, p.getPreListenPosition() / song.lengthSeconds) : 0.0f;
+    g.setColour (owner.accent().withAlpha (0.7f));
+    g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * played), 3.0f);
+}
+
+void RKPlayEditor::PreListen::mouseDown (const juce::MouseEvent& e)
+{
+    // Click the bar: pre-listen from there.
+    const auto& song = owner.player.getPreListenSong();
+    if (owner.player.isPreListening() && barArea().expanded (0, 6).contains (e.getPosition()) && song.lengthSeconds > 0.0)
+        owner.player.preListen (playlist, index, song.lengthSeconds * juce::jlimit (0.0, 1.0, (double) (e.x - barArea().getX()) / barArea().getWidth()));
+}
+
+//==============================================================================
 // End at
 
 void RKPlayEditor::applyEndAt()
@@ -763,6 +991,33 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     lift.setTooltip ("Lift songs too dynamic to reach the target by gain: their peaks are limited by at most this much");
     lift.onChange = [this, &p] { p.setLift (lift.getSelectedId() == 3 ? 6.0 : lift.getSelectedId() == 2 ? 3.0 : 0.0); };
 
+    // Ducking: one setter for all of it.
+    const auto applyDuck = [this, &p]
+    {
+        PlayShow::Duck d;
+        d.automatic = autoDuck.getToggleState();
+        d.depthDb = depth.getValue();
+        d.thresholdDb = threshold.getValue();
+        d.attackSeconds = attack.getValue();
+        d.holdSeconds = hold.getValue();
+        d.releaseSeconds = release.getValue();
+        p.setDuck (d);
+    };
+    autoDuck.setTooltip ("The music dips while the input (an announcement mic) is above the threshold");
+    autoDuck.onClick = applyDuck;
+    setUpSlider (depth, -30.0, 0.0, 1.0, " dB", 56);
+    setUpSlider (threshold, -60.0, 0.0, 1.0, " dB", 56);
+    setUpSlider (attack, 0.05, 1.0, 0.05, " s", 56);
+    setUpSlider (hold, 0.0, 5.0, 0.1, " s", 56);
+    setUpSlider (release, 0.2, 5.0, 0.1, " s", 56);
+    depth.setTooltip ("How far the music dips");
+    threshold.setTooltip ("How loud the input must be to dip the music");
+    attack.setTooltip ("How fast the music dips");
+    hold.setTooltip ("How long it stays down after the voice stops (pauses between sentences)");
+    release.setTooltip ("How fast the music comes back");
+    for (auto* s : { &depth, &threshold, &attack, &hold, &release })
+        s->onValueChange = applyDuck;
+
     chooseFolder.setTooltip ("Songs inside this folder are kept relative to it: the show works wherever the folder is");
     chooseFolder.onClick = [this]
     {
@@ -797,7 +1052,8 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     close.onClick = [this] { owner.showSettings (false); };
 
     for (juce::Component* c : std::initializer_list<juce::Component*> { &fadeOutTime, &target, &smart, &match, &safety, &lift,
-                                                                          &chooseFolder, &clearFolder, &relink, &close })
+                                                                          &chooseFolder, &clearFolder, &relink, &close,
+                                                                          &autoDuck, &depth, &threshold, &attack, &hold, &release })
         addAndMakeVisible (*c);
 }
 
@@ -806,12 +1062,22 @@ void RKPlayEditor::Settings::resized()
     auto r = getLocalBounds().reduced (16);
     close.setBounds (r.removeFromBottom (32).removeFromRight (110));
     r.removeFromBottom (10);
-    const auto third = (r.getWidth() - 2 * kGap) / 3;
-    transportArea = r.removeFromLeft (third);
+    const auto quarter = (r.getWidth() - 3 * kGap) / 4;
+    transportArea = r.removeFromLeft (quarter);
     r.removeFromLeft (kGap);
-    loudnessArea = r.removeFromLeft (third);
+    loudnessArea = r.removeFromLeft (quarter);
+    r.removeFromLeft (kGap);
+    duckArea = r.removeFromLeft (quarter);
     r.removeFromLeft (kGap);
     folderArea = r;
+
+    auto d = duckArea.reduced (14, 10).withTrimmedTop (30);
+    autoDuck.setBounds (d.removeFromTop (28));
+    for (auto* s : { &depth, &threshold, &attack, &hold, &release })
+    {
+        d.removeFromTop (18);
+        s->setBounds (d.removeFromTop (26));
+    }
 
     auto t = transportArea.reduced (14, 10).withTrimmedTop (30);
     t.removeFromTop (18);
@@ -844,6 +1110,7 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
     g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
     owner.drawSection (g, transportArea, "Playback");
     owner.drawSection (g, loudnessArea, "Loudness");
+    owner.drawSection (g, duckArea, "Ducking");
     owner.drawSection (g, folderArea, "Music folder");
 
     g.setColour (rkfx::Palette::textDim);
@@ -855,6 +1122,11 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
     label (fadeOutTime, "Fade out");
     label (target, "Target");
     label (lift, "Lift quiet songs");
+    label (depth, "Depth");
+    label (threshold, "Threshold (the input)");
+    label (attack, "Attack");
+    label (hold, "Hold");
+    label (release, "Release");
 
     const auto& folder = owner.player.getShow().musicFolder;
     auto text = folderArea.reduced (14, 10).withTrimmedTop (30).removeFromTop (54);
@@ -881,6 +1153,13 @@ void RKPlayEditor::Settings::refresh()
     target.setEnabled (show.level.match);
     lift.setEnabled (show.level.match);
     clearFolder.setEnabled (show.musicFolder != juce::File());
+    autoDuck.setToggleState (show.duck.automatic, juce::dontSendNotification);
+    depth.setValue (show.duck.depthDb, juce::dontSendNotification);
+    threshold.setValue (show.duck.thresholdDb, juce::dontSendNotification);
+    attack.setValue (show.duck.attackSeconds, juce::dontSendNotification);
+    hold.setValue (show.duck.holdSeconds, juce::dontSendNotification);
+    release.setValue (show.duck.releaseSeconds, juce::dontSendNotification);
+    threshold.setEnabled (show.duck.automatic);
     repaint();
 }
 
@@ -902,6 +1181,15 @@ void RKPlayEditor::filesDropped (const juce::StringArray& paths, int x, int y)
     juce::Array<juce::File> files;
     for (const auto& path : paths)
         files.add (juce::File (path));
+
+    // Onto a pad: its sound.
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+        if (padButtons[(size_t) pad]->getLocalBounds().contains (padButtons[(size_t) pad]->getLocalPoint (this, juce::Point<int> (x, y))))
+        {
+            player.loadPad (pad, files[0]);
+            refresh();
+            return;
+        }
 
     // Onto a row: before it; anywhere else: at the end. A linked list takes nothing.
     if (viewedList().isLinked())
@@ -1008,6 +1296,11 @@ void RKPlayEditor::refresh()
     queueList.repaint();
     queueList.setVisible (! player.getQueue().empty());   // empty: the hint shows instead
     clearQueueButton.setEnabled (! player.getQueue().empty());
+    preListen.level.setValue (show.cueLevelDb, juce::dontSendNotification);
+    preListen.stop.setEnabled (player.isPreListening());
+    preListen.repaint();
+    for (auto& b : padButtons)
+        b->repaint();
     settings.refresh();
     tabs.repaint();
     nowPlaying.repaint();
@@ -1022,8 +1315,22 @@ void RKPlayEditor::tick()
     {
         nowPlaying.repaint();
         if (player.getShow().endAt.on)
-            repaint (stopButton.getBounds().withRight (settingsButton.getX()));
+            repaint (endAtArea);
     }
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+        if (player.isPadPlaying (pad) || padButtons[(size_t) pad]->getProperties().contains ("lit"))
+        {
+            padButtons[(size_t) pad]->repaint();
+            if (player.isPadPlaying (pad))
+                padButtons[(size_t) pad]->getProperties().set ("lit", true);
+            else
+                padButtons[(size_t) pad]->getProperties().remove ("lit");
+        }
+    if (player.isPreListening())
+        preListen.repaint();
+    const auto dipped = player.getDuckDb() < -0.5f;
+    duckButton.setToggleState (player.isManualDuck() || dipped, juce::dontSendNotification);
+    duckButton.setButtonText (dipped ? "Duck " + juce::String (juce::roundToInt (player.getDuckDb())) + " dB" : juce::String ("Duck"));
 
     // A note shows for 8 seconds.
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;

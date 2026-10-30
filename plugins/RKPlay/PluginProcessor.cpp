@@ -16,6 +16,7 @@ namespace
         c.midiInput = true;                   // MIDI learn and program changes (later phases)
         c.extraInPresets = true;              // a preset is the whole show
         c.bypassMutes = true;                 // the input is only the duck key: never passed on
+        c.auxOutput = "Cue";                  // pre-listen (headphones)
         c.accent = juce::Colour (0xff6fa58a); // Utility family, sage
         c.family = rkfx::Palette::Family::utility;
         return c;
@@ -34,6 +35,10 @@ namespace
         p.addDecibels ("level", "Level", -60.0f, 6.0f, 0.0f);   // -60 = silence
         // Appended (phase 3): the playing playlist; changing it crossfades into that list.
         p.addInt ("playlist", "Playlist", 1, PlayShow::kMaxPlaylists, 1);
+        // Appended (phase 4): Duck (latching), and the pads (triggers).
+        p.addBool ("duck", "Duck", false);
+        for (int pad = 1; pad <= PlayEngine::kPads; ++pad)
+            p.addBool ("pad" + juce::String (pad), "Pad " + juce::String (pad), false);
         return p;
     }
 
@@ -51,6 +56,9 @@ RKPlayProcessor::RKPlayProcessor()
         triggers[i] = findParam (ids[i]);
     levelParam = findParam ("level");
     playlistParam = findParam ("playlist");
+    duckParam = findParam ("duck");
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+        padParams[(size_t) pad] = findParam ("pad" + juce::String (pad + 1));
     cursorPlayed.assign (show.playlists.size(), false);
 
     for (int slot = 0; slot < PlayEngine::kSlots; ++slot)
@@ -76,6 +84,7 @@ RKPlayProcessor::~RKPlayProcessor()
 void RKPlayProcessor::prepareDsp (double newRate, int maxBlockSize, int /*numChannels*/)
 {
     monoScratch.setSize (2, maxBlockSize);
+    keyBuffer.setSize (2, maxBlockSize);
 
     // Same rate: keep playing (a host may prepare again for a new block size).
     if (juce::exactlyEqual (newRate, sampleRate))
@@ -92,25 +101,32 @@ void RKPlayProcessor::prepareDsp (double newRate, int maxBlockSize, int /*numCha
         stream.prepare (sampleRate);
     engine.prepare (sampleRate, maxBlockSize);
     slots = {};
-    currentSlot = armedSlot = -1;
+    currentSlot = armedSlot = cueSlot = -1;
     current = armed = {};
     state = State::stopped;
+    padsDirty = true;   // rendered again at the new rate (message thread)
 }
 
 void RKPlayProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
     // The input is only ever the duck key: the output is the music alone.
+    const auto n = buffer.getNumSamples();
+    const auto keyChannels = juce::jmin (2, getMainBusNumInputChannels(), buffer.getNumChannels());
+    for (int ch = 0; ch < keyChannels; ++ch)
+        keyBuffer.copyFrom (ch, 0, buffer, ch, 0, n);
     buffer.clear();
     if (sampleRate <= 0.0)
         return;
-    const auto n = buffer.getNumSamples();
+    const float* key[2] = { keyBuffer.getReadPointer (0), keyBuffer.getReadPointer (1) };
+    auto* cue = getAuxOutput();
+    float* const* cuePointers = cue != nullptr && cue->getNumChannels() >= 2 ? cue->getArrayOfWritePointers() : nullptr;
     if (buffer.getNumChannels() >= 2)
     {
-        engine.process (buffer.getArrayOfWritePointers(), n);
+        engine.process (buffer.getArrayOfWritePointers(), n, keyChannels > 0 ? key : nullptr, keyChannels, cuePointers);
         return;
     }
     monoScratch.clear (0, n);
-    engine.process (monoScratch.getArrayOfWritePointers(), n);
+    engine.process (monoScratch.getArrayOfWritePointers(), n, keyChannels > 0 ? key : nullptr, keyChannels, cuePointers);
     buffer.copyFrom (0, 0, monoScratch, 0, 0, n);
     buffer.addFrom (0, 0, monoScratch, 1, 0, n);
     buffer.applyGain (0, 0, n, 0.5f);
@@ -465,6 +481,8 @@ void RKPlayProcessor::startItem (const Item& item, double crossfade)
     currentSlot = slot;
     state = State::playing;
     underran = false;
+    if (cueSlot >= 0 && cueSong.file == item.song.file)
+        stopPreListen();   // it's played for real now
     commit (item);
     keepArmed();
     showChanged();
@@ -819,6 +837,22 @@ void RKPlayProcessor::update()
     checkEndAt();
     keepArmed();
     engine.setSafetyLimiter (show.safetyLimiter);
+    engine.setManualDuck (valueOf (duckParam) >= 0.5f);
+    engine.setDuck ({ show.duck.automatic, (float) show.duck.depthDb, (float) show.duck.thresholdDb,
+                      (float) show.duck.attackSeconds, (float) show.duck.holdSeconds, (float) show.duck.releaseSeconds });
+    engine.setCueLevel (juce::Decibels::decibelsToGain ((float) show.cueLevelDb));
+
+    // Pads: rendered again for a new rate; old sounds let go once the engine has moved on.
+    if (padsDirty.exchange (false))
+        for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+            if (! show.pads[(size_t) pad].isEmpty())
+            {
+                juce::String problem;
+                installPad (pad, renderPad (show.pads[(size_t) pad], problem));
+            }
+    retiredPads.erase (std::remove_if (retiredPads.begin(), retiredPads.end(),
+                                       [this] (const auto& r) { return engine.isHandled (r.first); }),
+                       retiredPads.end());
 
     const auto db = valueOf (levelParam);
     engine.setLevel (db <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (db));
@@ -860,6 +894,14 @@ void RKPlayProcessor::pollTriggers()
             case 5: stop(); break;
             default: break;
         }
+    }
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+    {
+        auto* p = padParams[(size_t) pad];
+        if (p->getValue() < 0.5f)
+            continue;
+        p->setValueNotifyingHost (0.0f);
+        triggerPad (pad);
     }
 }
 
@@ -911,6 +953,15 @@ void RKPlayProcessor::handleEvents()
                             startItem (n, 0.0);
                     }
                     underran = false;
+                    showChanged();
+                }
+                break;
+
+            case PlayEngine::Event::Type::cueEnded:
+                if (e.slot == cueSlot)
+                {
+                    drop (cueSlot);
+                    cueSong = {};
                     showChanged();
                 }
                 break;
@@ -1264,6 +1315,176 @@ void RKPlayProcessor::analyseNow()
     showChanged();
 }
 
+//==============================================================================
+// Pads
+
+std::shared_ptr<PlayEngine::PadSound> RKPlayProcessor::renderPad (const PlayPad& pad, juce::String& problem)
+{
+    if (sampleRate <= 0.0)
+        return {};
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (pad.file));
+    if (reader == nullptr || reader->sampleRate <= 0.0)
+    {
+        problem = "Pad " + pad.name + ": the file is " + (pad.file.existsAsFile() ? "unreadable" : "missing");
+        return {};
+    }
+    const auto length = (int) reader->lengthInSamples;
+    if (length / reader->sampleRate > kMaxPadSeconds)
+    {
+        problem = "Pad " + pad.name + ": the file is longer than a minute (pads hold up to 60 s)";
+        return {};
+    }
+
+    // Loudness matched like the songs (gain only: a pad never needs lifting).
+    auto levelSettings = show.level;
+    levelSettings.liftDb = 0.0;
+    const auto gain = juce::Decibels::decibelsToGain ((float) PlayLevel::plan (PlayAnalysis::analyse (*reader), levelSettings, 0.0).gainDb);
+
+    // The whole file, then to the device rate (the interpolator's delay dropped).
+    constexpr int latency = (int) juce::WindowedSincInterpolator::getBaseLatency();
+    juce::AudioBuffer<float> source (2, length + 2 * latency);
+    source.clear();
+    reader->read (&source, 0, length, 0, true, true);
+    auto sound = std::make_shared<PlayEngine::PadSound>();
+    const auto ratio = reader->sampleRate / sampleRate;
+    if (juce::exactlyEqual (ratio, 1.0))
+    {
+        sound->audio.setSize (2, length);
+        for (int ch = 0; ch < 2; ++ch)
+            sound->audio.copyFromWithRamp (ch, 0, source.getReadPointer (ch), length, gain, gain);
+        return sound;
+    }
+    const auto frames = (int) ((length + latency) / ratio);
+    const auto lead = (int) std::lround (latency / ratio);
+    juce::AudioBuffer<float> resampled (2, frames);
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        juce::WindowedSincInterpolator interpolator;
+        interpolator.process (ratio, source.getReadPointer (ch), resampled.getWritePointer (ch), frames);
+    }
+    sound->audio.setSize (2, juce::jmax (0, frames - lead));
+    for (int ch = 0; ch < 2; ++ch)
+        sound->audio.copyFromWithRamp (ch, 0, resampled.getReadPointer (ch, lead), sound->audio.getNumSamples(), gain, gain);
+    return sound;
+}
+
+void RKPlayProcessor::installPad (int pad, std::shared_ptr<PlayEngine::PadSound> sound)
+{
+    engine.setPad (pad, sound.get());
+    // The old sound lives until the engine has handled the command that replaced it.
+    if (padSounds[(size_t) pad] != nullptr)
+        retiredPads.push_back ({ engine.commandsSent(), padSounds[(size_t) pad] });
+    padSounds[(size_t) pad] = std::move (sound);
+}
+
+bool RKPlayProcessor::loadPad (int pad, const juce::File& file)
+{
+    if (pad < 0 || pad >= PlayEngine::kPads)
+        return false;
+    PlayPad options = show.pads[(size_t) pad];
+    options.file = file;
+    options.name = file.getFileNameWithoutExtension();
+    options.colour = options.colour == 0 ? (pad % 7) + 1 : options.colour;
+    juce::String problem;
+    auto sound = renderPad (options, problem);
+    if (sound == nullptr && sampleRate > 0.0)
+    {
+        setNote (problem);
+        return false;
+    }
+    show.pads[(size_t) pad] = options;
+    installPad (pad, std::move (sound));
+    edited();
+    return true;
+}
+
+void RKPlayProcessor::clearPad (int pad)
+{
+    if (pad < 0 || pad >= PlayEngine::kPads)
+        return;
+    show.pads[(size_t) pad] = {};
+    installPad (pad, nullptr);
+    edited();
+}
+
+void RKPlayProcessor::setPadOptions (int pad, const PlayPad& options)
+{
+    if (pad < 0 || pad >= PlayEngine::kPads)
+        return;
+    auto& p = show.pads[(size_t) pad];
+    const auto file = p.file;
+    p = options;
+    p.file = file;
+    p.levelDb = juce::jlimit (-24.0, 12.0, p.levelDb);
+    edited();
+}
+
+void RKPlayProcessor::triggerPad (int pad)
+{
+    if (pad < 0 || pad >= PlayEngine::kPads || padSounds[(size_t) pad] == nullptr)
+        return;
+    const auto& p = show.pads[(size_t) pad];
+    // Stop the music: when it starts (not when a second press stops it).
+    if (p.stopsMusic && ! engine.isPadPlaying (pad))
+        fadeOut();
+    engine.triggerPad (pad, juce::Decibels::decibelsToGain ((float) p.levelDb), p.loop, p.ducksMusic);
+}
+
+//==============================================================================
+// Ducking and pre-listen
+
+void RKPlayProcessor::setDuck (const PlayShow::Duck& d)
+{
+    show.duck = d;
+    edited();
+}
+
+void RKPlayProcessor::setManualDuck (bool on)
+{
+    duckParam->setValueNotifyingHost (on ? 1.0f : 0.0f);
+    engine.setManualDuck (on);
+    showChanged();
+}
+
+void RKPlayProcessor::preListen (int playlist, int index, double startSeconds)
+{
+    const auto item = itemAt (playlist, index);
+    if (! item.isValid() || ! item.song.isPlayable())
+        return;
+    const auto slot = load (item, juce::jmax (0.0, startSeconds));
+    if (slot < 0)
+        return;
+    engine.cueStart (slot, 1.0f);
+    markSent (slot);
+    drop (cueSlot);   // the one it replaces is let go by the engine
+    cueSlot = slot;
+    cueSong = item.song;
+    showChanged();
+}
+
+void RKPlayProcessor::stopPreListen()
+{
+    if (cueSlot < 0)
+        return;
+    engine.cueStop();
+    markSent (cueSlot);
+    drop (cueSlot);
+    cueSong = {};
+    showChanged();
+}
+
+void RKPlayProcessor::setCueLevel (double db)
+{
+    show.cueLevelDb = juce::jlimit (-24.0, 6.0, db);
+    edited();
+}
+
+bool RKPlayProcessor::hasCueOutput() const
+{
+    const auto* bus = getBus (false, 1);
+    return bus != nullptr && bus->isEnabled();
+}
+
 void RKPlayProcessor::setNote (const juce::String& text)
 {
     note = text;
@@ -1294,6 +1515,14 @@ void RKPlayProcessor::setExtraState (const juce::var& extra)
     if (const auto problems = show.numProblems())
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable (marked in red)");
     attachAnalyses();
+    stopPreListen();
+    for (int pad = 0; pad < PlayEngine::kPads; ++pad)
+    {
+        juce::String problem;
+        installPad (pad, show.pads[(size_t) pad].isEmpty() ? nullptr : renderPad (show.pads[(size_t) pad], problem));
+        if (problem.isNotEmpty())
+            setNote (problem);
+    }
     lastPlaylistParam = juce::roundToInt (valueOf (playlistParam));
     syncPlaylistParam();
     showChanged();

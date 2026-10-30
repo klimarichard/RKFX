@@ -8,7 +8,11 @@
 #include <atomic>
 
 /** RKPlay's audio thread: up to four song voices playing PlayStreams, with
-    equal-power fades and crossfades, a global pause, and the master level.
+    equal-power fades and crossfades, a global pause, ducking, eight one-shot
+    pads, a pre-listen voice on the cue output, and the master level.
+
+        songs (fades, crossfades, pause) -> duck -> + pads -> level -> safety limiter -> out
+        pre-listen -> its level -> cue output (untouched by the rest)
 
     The message thread decides what plays (the processor) and sends commands
     through a lock-free FIFO; the engine reports back (a voice let its stream
@@ -27,11 +31,35 @@ public:
     static constexpr int kVoices = 4;
     static constexpr double kUnderrunSeconds = 0.25; // a stream with less left (not at its end) fades out
     static constexpr double kUnderrunFade = 0.2;
+    static constexpr int kPads = 8;
+    static constexpr double kPadFadeIn = 0.002, kPadFadeOut = 0.03, kCueFade = 0.03;
+
+    /** A pad's sound: the whole file at the device rate, its level applied. */
+    struct PadSound
+    {
+        juce::AudioBuffer<float> audio;   // 2 channels
+    };
+
+    /** Ducking: the music dips while the key (the input) is above the
+        threshold, while Duck is on, or while a pad that ducks plays. */
+    struct DuckSettings
+    {
+        bool automatic = false;           // from the key input
+        float depthDb = -12.0f, thresholdDb = -35.0f;
+        float attackSeconds = 0.2f, holdSeconds = 1.0f, releaseSeconds = 1.5f;
+    };
 
     void prepare (double sampleRate, int maxBlock);
 
     /** A new block size at the same rate: playback carries on. Not while processing. */
-    void prepareBlock (int maxBlock) { if (scratch.getNumSamples() < maxBlock) scratch.setSize (2, maxBlock); }
+    void prepareBlock (int maxBlock)
+    {
+        if (scratch.getNumSamples() < maxBlock)
+        {
+            scratch.setSize (2, maxBlock);
+            songs.setSize (2, maxBlock);
+        }
+    }
     void setStream (int slot, PlayStream* stream) noexcept { streams[(size_t) slot] = stream; }
 
     //==============================================================================
@@ -55,6 +83,26 @@ public:
     void pause (double seconds);
     void resume (double seconds);
 
+    // Pads (the sound stays alive until a later command has been handled: see isHandled)
+    void setPad (int pad, const PadSound*);
+    /** Starts @p pad from its beginning, or stops it (a short fade) if it plays. */
+    void triggerPad (int pad, float gain, bool loop, bool ducksMusic);
+    void stopPads();
+    bool isPadPlaying (int pad) const noexcept { return padPlaying[(size_t) pad].load(); }
+    float getPadProgress (int pad) const noexcept { return padProgress[(size_t) pad].load(); }
+
+    // Pre-listen, on the cue output
+    void cueStart (int slot, float gain);
+    void cueStop();
+    void setCueLevel (float gain) noexcept { cueLevel = gain; }
+    bool isCueing() const noexcept { return cueState.load(); }
+
+    // Ducking
+    void setDuck (const DuckSettings& s) noexcept;
+    void setManualDuck (bool on) noexcept { manualDuck = on; }
+    /** The music's dip now (dB, <= 0). */
+    float getDuckDb() const noexcept { return duckShown.load(); }
+
     void setLevel (float gain) noexcept { level.setTargetValue (gain); }
 
     /** The safety limiter on the output (on by default, -0.3 dBFS): only for
@@ -69,7 +117,7 @@ public:
     // Events (message thread)
     struct Event
     {
-        enum class Type { released, advanced, ended, underrun };
+        enum class Type { released, advanced, ended, underrun, cueEnded };
         Type type = Type::released;
         int slot = -1;
     };
@@ -89,19 +137,45 @@ public:
     }
     bool isPaused() const noexcept { return pausedState.load(); }
 
+    /** True once the audio thread has handled every command up to @p sentCount. */
+    bool isHandled (juce::uint32 sentCount) const noexcept { return handled.load() >= sentCount; }
+
     //==============================================================================
-    /** Adds the music to @p out (2 channels, cleared by the caller). Audio thread. */
-    void process (float* const* out, int numSamples) noexcept;
+    /** Adds the music to @p out (2 channels, cleared by the caller); listens to
+        @p key (the duck key, may be nullptr); writes pre-listen to @p cue (may
+        be nullptr). Audio thread. */
+    void process (float* const* out, int numSamples, const float* const* key = nullptr, int keyChannels = 0,
+                  float* const* cue = nullptr) noexcept;
 
 private:
     struct Command
     {
-        enum class Type { start, crossfade, arm, disarm, fadeOutAll, pause, resume };
+        enum class Type { start, crossfade, arm, disarm, fadeOutAll, pause, resume,
+                          setPad, triggerPad, stopPads, cueStart, cueStop };
         Type type = Type::start;
-        int slot = -1;
+        int slot = -1;              // a slot, or a pad
         double seconds = 0.0;
         float gain = 1.0f;
         double lead = 0.0;
+        const PadSound* sound = nullptr;
+        bool loop = false, ducks = false;
+    };
+
+    struct Pad
+    {
+        const PadSound* sound = nullptr;
+        bool playing = false, loop = false, ducks = false, stopping = false;
+        int position = 0;
+        float gain = 1.0f;
+        double fade = 0.0, fadeStep = 0.0;
+    };
+
+    struct Cue
+    {
+        int slot = -1;
+        float gain = 1.0f;
+        double fade = 0.0, fadeStep = 0.0;
+        bool stopping = false;
     };
 
     struct Voice
@@ -130,7 +204,25 @@ private:
     std::atomic<bool> limiterOn { true };
     std::atomic<float> reduction { 0.0f };
 
-    juce::AudioBuffer<float> scratch;
+    juce::AudioBuffer<float> scratch, songs;
+
+    std::array<Pad, kPads> pads;
+    std::array<std::atomic<bool>, kPads> padPlaying {};
+    std::array<std::atomic<float>, kPads> padProgress {};
+    Cue cue;
+    std::atomic<bool> cueState { false };
+    std::atomic<float> cueLevel { 1.0f };
+
+    // Ducking (settings from the message thread, state on the audio thread)
+    std::atomic<bool> duckAuto { false }, manualDuck { false };
+    std::atomic<float> duckDepth { -12.0f }, duckThreshold { -35.0f }, duckAttack { 0.2f }, duckHold { 1.0f }, duckRelease { 1.5f };
+    std::atomic<float> duckShown { 0.0f };
+    double keyEnvelope = 0.0, keyCoef = 0.0;
+    double hpX1 = 0.0, hpX2 = 0.0, hpY1 = 0.0, hpY2 = 0.0;   // the key's 100 Hz high-pass
+    double hpB0 = 1.0, hpB1 = 0.0, hpB2 = 0.0, hpA1 = 0.0, hpA2 = 0.0;
+    bool keyActive = false;
+    int holdLeft = 0;
+    float duckDb = 0.0f;
 
     juce::AbstractFifo commandFifo { 128 }, eventFifo { 128 };
     std::array<Command, 128> commands;
@@ -149,6 +241,9 @@ private:
     void advance() noexcept;
     juce::int64 framesLeft (const Voice&) const noexcept;
     void render (float* const* out, int offset, int numSamples) noexcept;
+    void renderPads (float* const* out, int numSamples) noexcept;
+    void renderCue (float* const* out, int numSamples) noexcept;
+    void duck (float* const* music, int numSamples, const float* const* key, int keyChannels) noexcept;
     void release (int voice) noexcept;
     double stepFor (double seconds) const noexcept { return seconds > 0.0 ? 1.0 / (seconds * sampleRate) : 1.0; }
 };

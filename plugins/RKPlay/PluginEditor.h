@@ -77,6 +77,30 @@ private:
         RKPlayEditor& owner;
     };
 
+    /** A pad: click to play (again to stop), right-click for its options; drop a file on it. */
+    struct PadButton : public juce::Component
+    {
+        PadButton (RKPlayEditor& o, int i) : owner (o), index (i) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        RKPlayEditor& owner;
+        const int index;
+    };
+
+    /** Pre-listen: the song on the cue output, its place (click to seek), Stop, its level. */
+    struct PreListen : public juce::Component
+    {
+        explicit PreListen (RKPlayEditor&);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
+        juce::Rectangle<int> barArea() const;
+        RKPlayEditor& owner;
+        juce::TextButton stop { "Stop" };
+        juce::Slider level;
+        int playlist = -1, index = -1;   // what it plays (to seek within it)
+    };
+
     /** Settings for the whole show, over the lower half of the window. */
     struct Settings : public juce::Component
     {
@@ -86,19 +110,20 @@ private:
         void refresh();
 
         RKPlayEditor& owner;
-        juce::Slider fadeOutTime, target;
+        juce::Slider fadeOutTime, target, depth, threshold, attack, hold, release;
+        juce::ToggleButton autoDuck { "Duck from the input" };
         juce::ToggleButton smart { "Smart crossfade" }, match { "Level match" }, safety { "Safety limiter" };
         juce::ComboBox lift;
         juce::TextButton chooseFolder { "Choose..." }, clearFolder { "None" }, relink { "Relink missing songs..." },
                          close { "Close" };
-        juce::Rectangle<int> transportArea, loudnessArea, folderArea;
+        juce::Rectangle<int> transportArea, loudnessArea, duckArea, folderArea;
     };
 
     RKPlayProcessor& player;
     int viewed = 0;                       // the playlist the list shows
     NowPlaying nowPlaying { *this };
     juce::TextButton prevButton { "|<" }, playButton { "Play" }, nextButton { ">|" },
-                     fadeButton { "Fade out" }, stopButton { "Stop" }, settingsButton { "Settings" };
+                     fadeButton { "Fade out" }, stopButton { "Stop" }, settingsButton { "Settings" }, duckButton { "Duck" };
     Tabs tabs { *this };
     juce::TextButton inOrderButton { "In order" }, shuffleButton { "Shuffle" };
     juce::ComboBox atEnd;
@@ -109,6 +134,8 @@ private:
     QueueModel queueModel { *this };
     juce::ListBox queueList { "Queue", &queueModel };
     juce::TextButton clearQueueButton { "Clear queue" };
+    PreListen preListen { *this };
+    std::vector<std::unique_ptr<PadButton>> padButtons;
     juce::ToggleButton endAtOn { "End at" };
     juce::TextEditor endAtTime;
     juce::ComboBox endAtMode;
@@ -117,7 +144,7 @@ private:
     Settings settings { *this };
     std::unique_ptr<juce::FileChooser> chooser;
 
-    juce::Rectangle<int> infoArea, listArea, queueArea, endAtArea;
+    juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;
     bool dropHighlight = false;
     int lastShowVersion = -1, lastNoteVersion = -1;
     double noteTime = 0.0;
@@ -147,6 +174,9 @@ private:
     void chooseLink (int playlist, bool folder);
     void exportPlaylist (int playlist);
     void applyEndAt();
+    void showPadMenu (int pad);
+    void choosePadFile (int pad);
+    void renamePad (int pad);
 
     static juce::String timeText (double seconds);
 };

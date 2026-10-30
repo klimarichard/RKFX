@@ -834,6 +834,149 @@ public:
             expect (q.getShow().playlists[0].atEnd == PlayPlaylist::AtEnd::goTo && q.getShow().playlists[0].goTo == 1);
             expect (q.getState() == RKPlayProcessor::State::stopped);
         }
+
+        //==============================================================================
+        // Phase 4: ducking, pads, pre-listen
+
+        // Runs @p p for @p seconds with @p key on its input; returns the main output's level at the end (RMS of the last block).
+        const auto levelAfter = [] (TestPlayer& p, double seconds, float key = 0.0f)
+        {
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::MidiBuffer midi;
+            double level = 0.0;
+            for (int b = 0; b < (int) (seconds * kRate) / kBlock; ++b)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < kBlock; ++i)
+                        buffer.setSample (ch, i, key * (float) std::sin (juce::MathConstants<double>::twoPi * 1000.0 * (b * kBlock + i) / kRate));
+                p.processBlock (buffer, midi);
+                p.update();
+                level = buffer.getRMSLevel (0, 0, kBlock);
+            }
+            return level;
+        };
+
+        beginTest ("Duck by hand: the music dips by the depth over the attack, and comes back over the release");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("duck", 1, 8.0));
+            PlayShow::Duck d;
+            d.depthDb = -12.0;
+            d.attackSeconds = 0.2;
+            d.releaseSeconds = 0.5;
+            p.setDuck (d);
+            p.play();
+            const auto full = levelAfter (p, 0.3);
+            p.setManualDuck (true);
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (levelAfter (p, 0.3) / full), -12.0, 0.1, "down 12 dB after the attack");
+            p.setManualDuck (false);
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (levelAfter (p, 0.25) / full), -6.0, 1.0, "halfway back at half the release");
+            expectWithinAbsoluteError (levelAfter (p, 0.4), full, 1.0e-6, "back");
+        }
+
+        beginTest ("Duck from the input: a voice dips the music, the hold covers pauses, and the input is never heard");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("autoduck", 1, 10.0));
+            PlayShow::Duck d;
+            d.automatic = true;
+            d.thresholdDb = -35.0;
+            d.holdSeconds = 1.0;
+            d.attackSeconds = 0.1;
+            d.releaseSeconds = 0.2;
+            p.setDuck (d);
+            p.play();
+            const auto full = levelAfter (p, 0.3);
+            const auto ducked = levelAfter (p, 0.5, 0.1f);   // a -23 dB "voice"
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (ducked / full), -12.0, 0.2, "ducked (and the voice itself not in the output)");
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (levelAfter (p, 0.6) / full), -12.0, 0.2, "held through a pause");
+            expectWithinAbsoluteError (levelAfter (p, 1.0), full, 1.0e-6, "back after the hold and release");
+
+            d.automatic = false;
+            p.setDuck (d);
+            p.update();
+            expectWithinAbsoluteError (levelAfter (p, 0.5, 0.1f), full, 1.0e-6, "off: the input changes nothing");
+        }
+
+        beginTest ("Pads: play over the music (ducking it if set), stop on a second press; Stop the music fades it out");
+        {
+            TestPlayer p;
+            p.addFiles (0, songsIn ("padmusic", 1, 20.0));
+            const auto pad = writeWav ("pad", 44100.0, 44100, [] (int, int) { return 0.2f; });   // 1 s, another rate
+            expect (p.loadPad (0, pad));
+            expectEquals (p.getShow().pads[0].name, juce::String ("pad"));
+            p.play();
+            const auto music = levelAfter (p, 0.3);
+            auto options = p.getShow().pads[0];
+            options.ducksMusic = false;
+            p.setPadOptions (0, options);
+            p.triggerPad (0);
+            expectWithinAbsoluteError (levelAfter (p, 0.3), music + 0.2, 0.002, "the pad over the music");
+            expect (p.isPadPlaying (0));
+            expectWithinAbsoluteError (levelAfter (p, 1.0), music, 1.0e-6, "a one-shot: over after its second");
+
+            options.ducksMusic = true;
+            p.setPadOptions (0, options);
+            p.triggerPad (0);
+            expectWithinAbsoluteError (levelAfter (p, 0.5), music * juce::Decibels::decibelsToGain (-12.0) + 0.2, 0.003, "ducking the music");
+            p.triggerPad (0);
+            levelAfter (p, 0.1);
+            expect (! p.isPadPlaying (0), "a second press stops it");
+
+            options.stopsMusic = true;
+            p.setPadOptions (0, options);
+            p.setFadeOut (0.5);
+            p.triggerPad (0);
+            expect (p.getState() == RKPlayProcessor::State::stopped, "the music fades out");
+
+            const auto tooLong = writeWav ("long", kRate, (int) (61 * kRate), [] (int, int) { return 0.1f; });
+            expect (! p.loadPad (1, tooLong), "a pad holds up to a minute");
+            expect (p.getNote().contains ("minute"));
+
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getShow().pads[0].file == pad && q.getShow().pads[0].stopsMusic);
+        }
+
+        beginTest ("Pre-listen: a song on the cue output while the main plays on, untouched; it stops when the song is played");
+        {
+            TestPlayer p;
+            juce::AudioProcessor::BusesLayout layout;
+            layout.inputBuses.add (juce::AudioChannelSet::stereo());
+            layout.outputBuses.add (juce::AudioChannelSet::stereo());
+            layout.outputBuses.add (juce::AudioChannelSet::stereo());
+            expect (p.setBusesLayout (layout));
+            p.prepareToPlay (kRate, kBlock);
+            expect (p.hasCueOutput());
+
+            p.addFiles (0, songsIn ("cue", 3, 4.0));
+            p.setCrossfade (0.0);
+            p.play();
+            p.preListen (0, 2);
+            juce::AudioBuffer<float> buffer (4, kBlock);
+            juce::MidiBuffer midi;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                p.processBlock (buffer, midi);
+                p.update();
+            }
+            expectWithinAbsoluteError (buffer.getSample (0, 100), 0.01f, 1.0e-6f, "the main: song 1");
+            expectWithinAbsoluteError (buffer.getSample (2, 100), 0.03f, 1.0e-6f, "the cue: song 3");
+            expect (p.isPreListening());
+
+            p.jumpTo (0, 2);
+            for (int b = 0; b < 10; ++b)
+            {
+                buffer.clear();
+                p.processBlock (buffer, midi);
+                p.update();
+            }
+            expect (! p.isPreListening(), "played for real: pre-listen stops");
+            expectEquals (buffer.getSample (2, 100), 0.0f);
+        }
     }
 };
 

@@ -283,6 +283,36 @@ juce::var PlayShow::toVar() const
     root->setProperty ("endAtOn", endAt.on);
     root->setProperty ("endAt", juce::String (endAt.minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (endAt.minutes % 60).paddedLeft ('0', 2));
     root->setProperty ("endAtSongEnd", endAt.atSongEnd);
+
+    auto* d = new juce::DynamicObject();
+    d->setProperty ("auto", duck.automatic);
+    d->setProperty ("depth", duck.depthDb);
+    d->setProperty ("threshold", duck.thresholdDb);
+    d->setProperty ("attack", duck.attackSeconds);
+    d->setProperty ("hold", duck.holdSeconds);
+    d->setProperty ("release", duck.releaseSeconds);
+    root->setProperty ("duck", juce::var (d));
+    root->setProperty ("cueLevel", cueLevelDb);
+
+    juce::Array<juce::var> padList;
+    for (const auto& pad : pads)
+    {
+        auto* o = new juce::DynamicObject();
+        if (! pad.isEmpty())
+        {
+            o->setProperty ("file", pad.file.getFullPathName());
+            if (musicFolder.isDirectory() && pad.file.isAChildOf (musicFolder))
+                o->setProperty ("rel", pad.file.getRelativePathFrom (musicFolder));
+            o->setProperty ("name", pad.name);
+            o->setProperty ("level", pad.levelDb);
+            o->setProperty ("loop", pad.loop);
+            o->setProperty ("ducks", pad.ducksMusic);
+            o->setProperty ("stops", pad.stopsMusic);
+            o->setProperty ("colour", pad.colour);
+        }
+        padList.add (juce::var (o));
+    }
+    root->setProperty ("pads", padList);
     return juce::var (root);
 }
 
@@ -303,6 +333,35 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
     endAt.atSongEnd = v.getProperty ("endAtSongEnd", false);
     if (const auto t = juce::StringArray::fromTokens (v["endAt"].toString(), ":", {}); t.size() == 2)
         endAt.minutes = juce::jlimit (0, 24 * 60 - 1, t[0].getIntValue() * 60 + t[1].getIntValue());
+
+    const auto& d = v["duck"];
+    duck.automatic = d.getProperty ("auto", false);
+    duck.depthDb = juce::jlimit (-30.0, 0.0, (double) d.getProperty ("depth", -12.0));
+    duck.thresholdDb = juce::jlimit (-60.0, 0.0, (double) d.getProperty ("threshold", -35.0));
+    duck.attackSeconds = juce::jlimit (0.05, 1.0, (double) d.getProperty ("attack", 0.2));
+    duck.holdSeconds = juce::jlimit (0.0, 5.0, (double) d.getProperty ("hold", 1.0));
+    duck.releaseSeconds = juce::jlimit (0.2, 5.0, (double) d.getProperty ("release", 1.5));
+    cueLevelDb = juce::jlimit (-24.0, 6.0, (double) v.getProperty ("cueLevel", 0.0));
+
+    if (const auto* padList = v["pads"].getArray())
+        for (int i = 0; i < juce::jmin (kPads, padList->size()); ++i)
+        {
+            const auto& item = padList->getReference (i);
+            auto& pad = pads[(size_t) i];
+            auto file = juce::File (item["file"].toString());
+            if (const auto rel = item["rel"].toString(); rel.isNotEmpty() && musicFolder != juce::File())
+                if (const auto inFolder = musicFolder.getChildFile (rel); inFolder.existsAsFile() || ! file.existsAsFile())
+                    file = inFolder;
+            if (! juce::File::isAbsolutePath (item["file"].toString()))
+                continue;
+            pad.file = file;
+            pad.name = item["name"].toString();
+            pad.levelDb = juce::jlimit (-24.0, 12.0, (double) item.getProperty ("level", 0.0));
+            pad.loop = item.getProperty ("loop", false);
+            pad.ducksMusic = item.getProperty ("ducks", true);
+            pad.stopsMusic = item.getProperty ("stops", false);
+            pad.colour = juce::jlimit (0, 7, (int) item.getProperty ("colour", 0));
+        }
 
     const auto readSongs = [&] (PlayPlaylist& p, const juce::var& list)
     {

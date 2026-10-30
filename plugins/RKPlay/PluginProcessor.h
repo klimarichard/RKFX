@@ -79,6 +79,31 @@ public:
     void clearSongs (int playlist);
     void setSongGain (int playlist, int index, double db);
 
+    // Pads
+    static constexpr double kMaxPadSeconds = 60.0;
+    bool loadPad (int pad, const juce::File&);       // false: unreadable or longer than a minute (the note says)
+    void clearPad (int pad);
+    void setPadOptions (int pad, const PlayPad&);     // everything but the file
+    void triggerPad (int pad);                       // starts it, or stops it if it plays
+    void stopPads() { engine.stopPads(); }
+    bool isPadPlaying (int pad) const noexcept { return engine.isPadPlaying (pad); }
+    float getPadProgress (int pad) const noexcept { return engine.getPadProgress (pad); }
+
+    // Ducking
+    void setDuck (const PlayShow::Duck&);
+    void setManualDuck (bool on);                    // the Duck button (and host parameter)
+    bool isManualDuck() const { return valueOf (duckParam) >= 0.5f; }
+    float getDuckDb() const noexcept { return engine.getDuckDb(); }
+
+    // Pre-listen, on the cue output
+    void preListen (int playlist, int index, double startSeconds = 0.0);
+    void stopPreListen();
+    bool isPreListening() const noexcept { return cueSlot >= 0; }
+    const PlaySong& getPreListenSong() const noexcept { return cueSong; }
+    double getPreListenPosition() const { return cueSlot >= 0 ? streams[(size_t) cueSlot].getPositionSeconds() : 0.0; }
+    void setCueLevel (double db);
+    bool hasCueOutput() const;
+
     // Show-wide settings
     void setCrossfade (double seconds) { setPlaylistCrossfade (show.active, seconds); }
     void setFadeOut (double seconds);
@@ -169,7 +194,7 @@ private:
     std::array<PlayStream, PlayEngine::kSlots> streams;
     PlayEngine engine;
     double sampleRate = 0.0;
-    juce::AudioBuffer<float> monoScratch;
+    juce::AudioBuffer<float> monoScratch, keyBuffer;
 
     // Slots: whether a stream holds a song the processor means to use, and the last command that named it.
     struct Slot
@@ -207,7 +232,19 @@ private:
     int noteVersion = 0;
 
     std::array<juce::RangedAudioParameter*, 6> triggers {};   // play, pause, next, prev, fade, stop
-    juce::RangedAudioParameter *levelParam = nullptr, *playlistParam = nullptr;
+    juce::RangedAudioParameter *levelParam = nullptr, *playlistParam = nullptr, *duckParam = nullptr;
+    std::array<juce::RangedAudioParameter*, PlayEngine::kPads> padParams {};
+
+    // Pads: their sounds, kept alive until the engine has let the old ones go
+    std::array<std::shared_ptr<PlayEngine::PadSound>, PlayEngine::kPads> padSounds;
+    std::vector<std::pair<juce::uint32, std::shared_ptr<PlayEngine::PadSound>>> retiredPads;
+    std::atomic<bool> padsDirty { false };     // the device rate changed: render them again
+    std::shared_ptr<PlayEngine::PadSound> renderPad (const PlayPad&, juce::String& problem);
+    void installPad (int pad, std::shared_ptr<PlayEngine::PadSound>);
+
+    // Pre-listen
+    int cueSlot = -1;
+    PlaySong cueSong;
     int lastPlaylistParam = 1;
 
     void timerCallback() override { update(); }

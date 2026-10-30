@@ -4,6 +4,7 @@
 
 #include "PlayAnalysis.h"
 
+#include <array>
 #include <random>
 #include <vector>
 
@@ -55,8 +56,23 @@ struct PlayPlaylist
     bool isLinked() const noexcept { return link != Link::none; }
 };
 
+/** A one-shot pad: a short file (a fanfare, the couple's entrance), played over the music. */
+struct PlayPad
+{
+    juce::File file;
+    juce::String name;
+    double levelDb = 0.0;            // on top of loudness matching
+    bool loop = false;
+    bool ducksMusic = true;          // the music dips while it plays
+    bool stopsMusic = false;         // the music fades out when it starts
+    int colour = 0;
+
+    bool isEmpty() const noexcept { return file == juce::File(); }
+};
+
 /** What RKPlay holds: up to 8 playlists, the transport's times, the loudness
-    settings, the Music folder and End at. Message thread only. */
+    settings, the Music folder, End at, ducking, pre-listen and the pads.
+    Message thread only. */
 struct PlayShow
 {
     static constexpr int kMaxPlaylists = 8;
@@ -72,6 +88,18 @@ struct PlayShow
 
     /** Songs inside it are stored relative to it, so a show works wherever the folder is. */
     juce::File musicFolder;
+
+    static constexpr int kPads = 8;
+    std::array<PlayPad, kPads> pads;
+
+    struct Duck
+    {
+        bool automatic = false;      // from the input (an announcement mic); the Duck button works anyway
+        double depthDb = -12.0, thresholdDb = -35.0;
+        double attackSeconds = 0.2, holdSeconds = 1.0, releaseSeconds = 1.5;
+    } duck;
+
+    double cueLevelDb = 0.0;         // pre-listen, on the cue output
 
     struct EndAt
     {

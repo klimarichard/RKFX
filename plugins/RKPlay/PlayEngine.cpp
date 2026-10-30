@@ -15,6 +15,34 @@ void PlayEngine::prepare (double rate, int maxBlock)
 {
     sampleRate = rate;
     scratch.setSize (2, maxBlock);
+    songs.setSize (2, maxBlock);
+    for (int p = 0; p < kPads; ++p)
+    {
+        pads[(size_t) p] = {};
+        padPlaying[(size_t) p] = false;
+        padProgress[(size_t) p] = 0.0f;
+    }
+    cue = {};
+    cueState = false;
+
+    // The duck key: a 100 Hz high-pass (Butterworth), then a 50 ms RMS.
+    {
+        const auto k = std::tan (juce::MathConstants<double>::pi * 100.0 / rate);
+        const auto q = juce::MathConstants<double>::sqrt2 * 0.5;
+        const auto norm = 1.0 / (1.0 + k / q + k * k);
+        hpB0 = norm;
+        hpB1 = -2.0 * norm;
+        hpB2 = norm;
+        hpA1 = 2.0 * (k * k - 1.0) * norm;
+        hpA2 = (1.0 - k / q + k * k) * norm;
+        hpX1 = hpX2 = hpY1 = hpY2 = 0.0;
+        keyCoef = std::exp (-1.0 / (0.05 * rate));
+        keyEnvelope = 0.0;
+        keyActive = false;
+        holdLeft = 0;
+        duckDb = 0.0f;
+        duckShown = 0.0f;
+    }
     level.reset (sampleRate, 0.05);
     limiter.prepare (sampleRate);
     limiter.setSettings ({ kSafetyCeilingDb, 100.0f });
@@ -54,6 +82,34 @@ void PlayEngine::disarm()                                           { push ({ Co
 void PlayEngine::fadeOutAll (double seconds)                        { push ({ Command::Type::fadeOutAll, -1, seconds, 1.0f }); }
 void PlayEngine::pause (double seconds)                             { push ({ Command::Type::pause, -1, seconds, 1.0f }); }
 void PlayEngine::resume (double seconds)                            { push ({ Command::Type::resume, -1, seconds, 1.0f }); }
+void PlayEngine::stopPads()                                         { push ({ Command::Type::stopPads }); }
+void PlayEngine::cueStop()                                          { push ({ Command::Type::cueStop }); }
+void PlayEngine::cueStart (int slot, float gain)                    { push ({ Command::Type::cueStart, slot, 0.0, gain }); }
+
+void PlayEngine::setPad (int pad, const PadSound* sound)
+{
+    Command c { Command::Type::setPad, pad };
+    c.sound = sound;
+    push (c);
+}
+
+void PlayEngine::triggerPad (int pad, float gain, bool loop, bool ducksMusic)
+{
+    Command c { Command::Type::triggerPad, pad, 0.0, gain };
+    c.loop = loop;
+    c.ducks = ducksMusic;
+    push (c);
+}
+
+void PlayEngine::setDuck (const DuckSettings& s) noexcept
+{
+    duckAuto = s.automatic;
+    duckDepth = juce::jlimit (-30.0f, 0.0f, s.depthDb);
+    duckThreshold = s.thresholdDb;
+    duckAttack = juce::jmax (0.01f, s.attackSeconds);
+    duckHold = juce::jmax (0.0f, s.holdSeconds);
+    duckRelease = juce::jmax (0.05f, s.releaseSeconds);
+}
 
 void PlayEngine::post (Event::Type type, int slot) noexcept
 {
@@ -209,6 +265,64 @@ void PlayEngine::handle (const Command& c) noexcept
             paused = false;
             pauseStep = stepFor (c.seconds);
             break;
+
+        case Command::Type::setPad:
+        {
+            auto& pad = pads[(size_t) c.slot];
+            pad = {};
+            pad.sound = c.sound;
+            padPlaying[(size_t) c.slot] = false;
+            break;
+        }
+        case Command::Type::triggerPad:
+        {
+            auto& pad = pads[(size_t) c.slot];
+            if (pad.sound == nullptr)
+                break;
+            if (pad.playing && ! pad.stopping)
+            {
+                // Playing: a second press stops it.
+                pad.stopping = true;
+                pad.fadeStep = -stepFor (kPadFadeOut);
+                break;
+            }
+            pad.playing = true;
+            pad.stopping = false;
+            pad.position = 0;
+            pad.gain = c.gain;
+            pad.loop = c.loop;
+            pad.ducks = c.ducks;
+            pad.fade = 0.0;
+            pad.fadeStep = stepFor (kPadFadeIn);
+            padPlaying[(size_t) c.slot] = true;
+            break;
+        }
+        case Command::Type::stopPads:
+            for (auto& pad : pads)
+                if (pad.playing)
+                {
+                    pad.stopping = true;
+                    pad.fadeStep = -stepFor (kPadFadeOut);
+                }
+            break;
+
+        case Command::Type::cueStart:
+            if (c.slot >= 0 && c.slot < kSlots && streams[(size_t) c.slot] != nullptr)
+            {
+                // A pre-listen already playing goes at once (it's only the headphones).
+                if (cue.slot >= 0)
+                    post (Event::Type::cueEnded, cue.slot);
+                cue = { c.slot, c.gain, 0.0, stepFor (kCueFade), false };
+                cueState = true;
+            }
+            break;
+        case Command::Type::cueStop:
+            if (cue.slot >= 0)
+            {
+                cue.stopping = true;
+                cue.fadeStep = -stepFor (kCueFade);
+            }
+            break;
     }
     pausedState = paused || pauseStep < 0.0;
 }
@@ -320,7 +434,8 @@ void PlayEngine::render (float* const* out, int offset, int numSamples) noexcept
     }
 }
 
-void PlayEngine::process (float* const* out, int numSamples) noexcept
+void PlayEngine::process (float* const* out, int numSamples, const float* const* key, int keyChannels,
+                          float* const* cueOut) noexcept
 {
     {
         int start1, size1, start2, size2;
@@ -333,6 +448,11 @@ void PlayEngine::process (float* const* out, int numSamples) noexcept
         commandFifo.finishedRead (size1 + size2);
         handled += (juce::uint32) (size1 + size2);
     }
+
+    // The songs, on their own bus.
+    float* music[2] = { songs.getWritePointer (0), songs.getWritePointer (1) };
+    for (auto* m : music)
+        juce::FloatVectorOperations::clear (m, numSamples);
 
     // In pieces, so the next song starts exactly when the current one has its crossfade left.
     int pos = 0;
@@ -349,14 +469,21 @@ void PlayEngine::process (float* const* out, int numSamples) noexcept
             }
             chunk = (int) juce::jmin<juce::int64> (chunk, until);
         }
-        render (out, pos, chunk);
+        render (music, pos, chunk);
         pos += chunk;
     }
+
+    // The music dips (ducking), the pads go over it, then the level and the limiter.
+    duck (music, numSamples, key, keyChannels);
+    for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::add (out[ch], music[ch], numSamples);
+    renderPads (out, numSamples);
+    renderCue (cueOut, numSamples);
 
     // Which streams are in use (the message thread reuses only idle ones).
     for (int slot = 0; slot < kSlots; ++slot)
     {
-        auto inUse = slot == armedSlot;
+        auto inUse = slot == armedSlot || slot == cue.slot;
         for (const auto& v : voices)
             inUse = inUse || (v.active && v.slot == slot);
         busy[(size_t) slot] = inUse;
@@ -376,5 +503,141 @@ void PlayEngine::process (float* const* out, int numSamples) noexcept
         const auto db = limiter.takeGainReductionDb();
         if (db < reduction.load())
             reduction = db;
+    }
+}
+
+//==============================================================================
+void PlayEngine::duck (float* const* music, int numSamples, const float* const* key, int keyChannels) noexcept
+{
+    // The key: high-passed, its RMS against the threshold (3 dB of hysteresis).
+    const auto threshold = duckThreshold.load();
+    if (key != nullptr && keyChannels > 0 && duckAuto.load())
+    {
+        for (int i = 0; i < numSamples; ++i)
+        {
+            double x = 0.0;
+            for (int ch = 0; ch < keyChannels; ++ch)
+                x += key[ch][i];
+            x /= keyChannels;
+            const auto y = hpB0 * x + hpB1 * hpX1 + hpB2 * hpX2 - hpA1 * hpY1 - hpA2 * hpY2;
+            hpX2 = hpX1; hpX1 = x;
+            hpY2 = hpY1; hpY1 = y;
+            keyEnvelope = y * y + keyCoef * (keyEnvelope - y * y);
+        }
+        const auto db = 10.0 * std::log10 (keyEnvelope + 1.0e-20);
+        keyActive = db > threshold || (keyActive && db > threshold - 3.0f);
+    }
+    else
+    {
+        keyActive = false;
+        if (! duckAuto.load())
+            holdLeft = 0;   // switched off: no hold left over from the input
+    }
+    if (keyActive)
+        holdLeft = (int) (duckHold.load() * sampleRate);
+    else
+        holdLeft = juce::jmax (0, holdLeft - numSamples);
+
+    bool padDucks = false;
+    for (const auto& pad : pads)
+        padDucks = padDucks || (pad.playing && pad.ducks && ! pad.stopping);
+
+    const auto depth = duckDepth.load();
+    const auto ducking = manualDuck.load() || keyActive || holdLeft > 0 || padDucks;
+    const auto target = ducking ? depth : 0.0f;
+
+    // The dip moves in dB: down over the attack, back over the release.
+    const auto start = duckDb;
+    if (! juce::exactlyEqual (duckDb, target))
+    {
+        const auto step = std::abs (depth) * (float) numSamples
+                        / (float) ((target < duckDb ? duckAttack.load() : duckRelease.load()) * sampleRate);
+        duckDb = target < duckDb ? juce::jmax (target, duckDb - step) : juce::jmin (target, duckDb + step);
+    }
+    duckShown = duckDb;
+    if (juce::exactlyEqual (start, 0.0f) && juce::exactlyEqual (duckDb, 0.0f))
+        return;   // not ducking: the music untouched
+
+    const auto from = juce::Decibels::decibelsToGain (start), to = juce::Decibels::decibelsToGain (duckDb);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto g = from + (to - from) * (float) i / (float) numSamples;
+        music[0][i] *= g;
+        music[1][i] *= g;
+    }
+}
+
+void PlayEngine::renderPads (float* const* out, int numSamples) noexcept
+{
+    for (int p = 0; p < kPads; ++p)
+    {
+        auto& pad = pads[(size_t) p];
+        if (! pad.playing || pad.sound == nullptr)
+            continue;
+        const auto& audio = pad.sound->audio;
+        const auto length = audio.getNumSamples();
+        if (length == 0)
+        {
+            pad.playing = false;
+            padPlaying[(size_t) p] = false;
+            continue;
+        }
+        for (int i = 0; i < numSamples; ++i)
+        {
+            if (pad.position >= length)
+            {
+                if (! pad.loop)
+                {
+                    pad.playing = false;
+                    break;
+                }
+                pad.position = 0;
+            }
+            const auto g = pad.gain * curve (pad.fade);
+            out[0][i] += audio.getSample (0, pad.position) * g;
+            out[1][i] += audio.getSample (1, pad.position) * g;
+            ++pad.position;
+            pad.fade = juce::jlimit (0.0, 1.0, pad.fade + pad.fadeStep);
+            if (pad.stopping && pad.fade <= 0.0)
+            {
+                pad.playing = false;
+                break;
+            }
+        }
+        padPlaying[(size_t) p] = pad.playing;
+        padProgress[(size_t) p] = pad.playing ? (float) pad.position / (float) length : 0.0f;
+    }
+}
+
+void PlayEngine::renderCue (float* const* cueOut, int numSamples) noexcept
+{
+    if (cue.slot < 0)
+        return;
+    auto* stream = streams[(size_t) cue.slot];
+    float* tmp[2] = { scratch.getWritePointer (0), scratch.getWritePointer (1) };
+    const auto got = stream->read (tmp, 0, numSamples);
+    for (int ch = 0; ch < 2; ++ch)
+        if (got < numSamples)
+            juce::FloatVectorOperations::clear (tmp[ch] + got, numSamples - got);
+
+    const auto level = cueLevel.load() * cue.gain;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto g = level * curve (cue.fade);
+        if (cueOut != nullptr)
+        {
+            cueOut[0][i] += tmp[0][i] * g;
+            cueOut[1][i] += tmp[1][i] * g;
+        }
+        cue.fade = juce::jlimit (0.0, 1.0, cue.fade + cue.fadeStep);
+    }
+
+    // Done: stopped, or the song's end (or a slow disk: it's only the headphones).
+    if ((cue.stopping && cue.fade <= 0.0) || (stream->isSourceDone() && stream->available() == 0)
+        || (got < numSamples && ! stream->isSourceDone()))
+    {
+        post (Event::Type::cueEnded, cue.slot);
+        cue = {};
+        cueState = false;
     }
 }

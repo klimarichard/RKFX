@@ -148,6 +148,7 @@ private:
     int reportedLatency = -1;                           // audio thread
     void updateLatencies();                             // message thread
     void syncInsertLayouts();                           // strips that changed between mono and stereo
+    void matchBusOutputs();                             // a mono bus on one output, a stereo bus on a pair
 
     struct LayoutSync : public juce::AsyncUpdater
     {

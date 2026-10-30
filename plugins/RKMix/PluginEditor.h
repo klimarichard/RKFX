@@ -75,7 +75,13 @@ private:
     struct ChoiceBox : public juce::ComboBox
     {
         ChoiceBox (juce::RangedAudioParameter&, const std::function<juce::String (int)>& itemName, int separatorBefore = -1);
+
+        /** Offers only the values @p offered accepts (and Off, value 0, always). */
+        void filter (const std::function<bool (int)>& offered);
+
         std::unique_ptr<juce::ParameterAttachment> attachment;
+        std::function<juce::String (int)> nameOf;
+        int numValues = 0;
     };
 
     /** A strip: a channel (a linked pair's left channel shows the pair) or a bus. */

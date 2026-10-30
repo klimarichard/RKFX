@@ -281,6 +281,18 @@ public:
             expectEquals (at, 128 + 10 + latency, "channel 3 lined up with channel 1's insert");
         }
 
+        beginTest ("A bus switched between mono and stereo keeps its place: Out 5/6 <-> Out 5");
+        {
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param (mix::busId (2, "out")), (float) mix::pairTarget (4));   // stereo bus on Out 5/6
+            setParam (s.param (mix::busId (2, "format")), 0.0f);
+            expectEquals (s.choice (mix::busId (2, "out")), 5, "mono: Out 5");
+            setParam (s.param (mix::busId (2, "out")), 6.0f);                          // Out 6
+            setParam (s.param (mix::busId (2, "format")), 1.0f);
+            expectEquals (s.choice (mix::busId (2, "out")), mix::pairTarget (4), "stereo: Out 5/6");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

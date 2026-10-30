@@ -97,6 +97,10 @@ RKMixProcessor::RKMixProcessor()
         if (! loadingMix.load())
             markPresetModified();
 
+        // A bus switched between mono and stereo keeps its place: Out 5/6 <-> Out 5.
+        if (! loadingMix.load() && (parts & (std::uint64_t (0xffff) << 32)) != 0)
+            matchBusOutputs();
+
         // A pair linked or unlinked, a bus mono or stereo: its inserts follow.
         if ((parts & (MixSettings::kMainBit | (std::uint64_t (0xffff) << 32))) != 0)
         {
@@ -118,6 +122,20 @@ RKMixProcessor::~RKMixProcessor()
     rack.onChange = nullptr;
     rack.onLatencyChange = nullptr;
     rack.clear();
+}
+
+void RKMixProcessor::matchBusOutputs()
+{
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+    {
+        auto& out = *busParams[(size_t) bus].output;
+        const auto target = juce::roundToInt (valueOf (&out));
+        const auto first = mix::firstOutputOf (target);
+        if (first < 0 || mix::isPairTarget (target) == isBusStereo (bus))
+            continue;
+        const auto matched = isBusStereo (bus) ? mix::pairTarget (first) : first + 1;
+        out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
+    }
 }
 
 int RKMixProcessor::channelsOf (InsertRack::Strip strip, int index) const

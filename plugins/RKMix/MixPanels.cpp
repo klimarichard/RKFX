@@ -30,8 +30,9 @@ namespace
 //==============================================================================
 RKMixEditor::ChoiceBox::ChoiceBox (juce::RangedAudioParameter& param, const std::function<juce::String (int)>& itemName,
                                    int separatorBefore)
+    : nameOf (itemName), numValues ((int) param.getNormalisableRange().end + 1)
 {
-    const auto numItems = (int) param.getNormalisableRange().end + 1;
+    const auto numItems = numValues;
     for (int v = 0; v < numItems; ++v)
     {
         if (v == separatorBefore)
@@ -50,6 +51,15 @@ RKMixEditor::ChoiceBox::ChoiceBox (juce::RangedAudioParameter& param, const std:
     };
     attachment->sendInitialUpdate();
     rkfx::tagParameter (*this, param.getParameterID());
+}
+
+void RKMixEditor::ChoiceBox::filter (const std::function<bool (int)>& offered)
+{
+    clear (juce::dontSendNotification);
+    for (int v = 0; v < numValues; ++v)
+        if (v == 0 || offered (v))
+            addItem (nameOf (v), v + 1);
+    attachment->sendInitialUpdate();
 }
 
 //==============================================================================
@@ -526,6 +536,8 @@ void RKMixEditor::BusPanel::refresh()
 
     const auto t = owner.mixer.getBusType (bus);
     const auto stereo = owner.mixer.isBusStereo (bus);
+    // A mono bus goes to one output, a stereo bus to an output pair.
+    output->filter ([stereo] (int target) { return isPairTarget (target) == stereo; });
     toMain->setVisible (t != BusType::aux);
     pan->setVisible (t != BusType::aux);
     defaultTap->setVisible (t == BusType::aux);

@@ -41,6 +41,7 @@ set(RKFX_ENGINE_PLUGINS
     RKRemap/RemapEngine
     RKMix/MixEngine
     RKMix/MixStrip
+    RKMix/MixBusDsp
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine

@@ -629,7 +629,7 @@ public:
             e = makeEngine (s);
             expectEquals (busLevel (e, 1, 0), 0.0f, "follows the channel's pan");
 
-            s.buses[0].panFollows = false;
+            s.buses[0].panMode = mix::PanMode::centre;
             e = makeEngine (s);
             expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f * std::sqrt (0.5f), 1.0e-4f, "centred, -3 dB");
         }
@@ -662,6 +662,87 @@ public:
             levels.busMute[1] = true;         e.setLevels (levels); run (3);
             s.channels[0].sendDb[0] = mix::kFaderMinDb; e.setSettings (s); run (3);
             expectLessThan (worstStep, 0.03f);
+        }
+
+        //==============================================================================
+        // Bus, main and mono processing; mirrored pan
+
+        beginTest ("Bus limiter: after the fader, the ceiling holds even with the fader at +10 dB");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].stereo = false;
+            s.buses[0].output = 1;
+            s.buses[0].dsp.limit = { true, -6.0f, 100.0f };
+            s.channels[0].sendDb[0] = 0.0f;
+            MixEngine::Levels levels;
+            levels.busDb[0] = 10.0f;
+            auto e = makeEngine (s, levels);
+            const auto loudest = busLevel (e, 0, 0, 0.9f);
+            expectLessOrEqual (loudest, std::pow (10.0f, -6.0f / 20.0f) + 1.0e-6f);
+            expectGreaterThan (loudest, 0.45f, "limited, not silenced");
+            expectLessThan (e.takeBusLimitReductionDb (0), -10.0f, "its gain reduction is reported");
+        }
+
+        beginTest ("Bus EQ: a band's gain and the cut filters, in the display and on the audio");
+        {
+            BusDsp::Eq eq;
+            eq.on = true;
+            eq.bands[3].gainDb = 6.0f;
+            expectWithinAbsoluteError ((float) BusDsp::responseDb (eq, 1000.0, kRate), 6.0f, 0.01f);
+            eq.lpfOn = true;
+            eq.lpfHz = 2000.0f;
+            eq.lpfSteep = true;
+            expectLessThan ((float) BusDsp::responseDb (eq, 8000.0, kRate), -40.0f, "24 dB/oct low-pass, two octaves up");
+            eq.on = false;
+            expectEquals (BusDsp::responseDb (eq, 8000.0, kRate), 0.0, "EQ off: flat (cut filters too)");
+        }
+
+        beginTest ("The mono sum's low-pass makes a sub feed");
+        {
+            const auto monoLevel = [&] (float hz)
+            {
+                auto s = only ({ 0 });
+                s.main.monoOutput = 3;
+                s.main.monoDsp.eq.on = true;
+                s.main.monoDsp.eq.lpfOn = true;
+                s.main.monoDsp.eq.lpfHz = 1000.0f;
+                s.main.monoDsp.eq.lpfSteep = true;
+                auto e = makeEngine (s);
+                juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+                float loudest = 0.0f;
+                for (int b = 0; b < 30; ++b)
+                {
+                    in.clear();
+                    for (int i = 0; i < kBlock; ++i)
+                        in.setSample (0, i, 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * hz * (b * kBlock + i) / kRate));
+                    e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                    if (b >= 25)
+                        loudest = juce::jmax (loudest, out.getMagnitude (2, 0, kBlock));
+                }
+                return loudest;
+            };
+            expectLessThan (monoLevel (8000.0f), 0.01f * monoLevel (100.0f), "8 kHz far below 100 Hz");
+        }
+
+        beginTest ("Pan: Follow, Mirror (left and right swapped), Centre");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].output = mix::pairTarget (0);
+            s.channels[0].sendDb[0] = 0.0f;
+            s.channels[0].pan = -1.0f;                         // hard left
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f, "Follow: left");
+            s.buses[0].panMode = mix::PanMode::mirror;
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 0, 0), 0.0f, "Mirror: not left...");
+            e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f, 1.0e-4f, "...but right");
+
+            s.links[0] = true;                                 // a stereo channel, balance hard left
+            e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f, 1.0e-4f, "a pair's balance is mirrored too");
         }
 
         //==============================================================================

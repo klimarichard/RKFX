@@ -3,6 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "MixDynamics.h"
+#include "MixFilters.h"
 #include "dsp/DelayLine.h"
 #include "dsp/MatchedBiquad.h"
 #include "safety/Smoothing.h"
@@ -124,43 +125,9 @@ public:
     static float compTransferDb (const Comp&, float inputDb);
 
 private:
-    /** A section switched on and off with a crossfade. */
-    struct SectionFade
-    {
-        rkfx::Smoothed amount;
-        bool isOff() const noexcept  { return ! amount.isSmoothing() && amount.getTargetValue() <= 0.0f; }
-        bool isFull() const noexcept { return ! amount.isSmoothing() && amount.getTargetValue() >= 1.0f; }
-        /** Returns true when the section wakes up from fully off (its state needs a reset). */
-        bool set (bool on, bool snap) noexcept
-        {
-            const auto wakes = on && isOff();
-            if (snap)
-                amount.setCurrentAndTargetValue (on ? 1.0f : 0.0f);
-            else
-                amount.setTargetValue (on ? 1.0f : 0.0f);
-            return wakes;
-        }
-    };
-
-    /** A transposed direct form II biquad for up to two channels. */
-    struct Biquad
-    {
-        float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
-        std::array<float, 2> z1 {}, z2 {};
-
-        void set (const rkfx::BiquadCoefficients& c) noexcept
-        {
-            b0 = (float) c.b0; b1 = (float) c.b1; b2 = (float) c.b2; a1 = (float) c.a1; a2 = (float) c.a2;
-        }
-        void clear() noexcept { z1 = z2 = {}; }
-    };
-
-    /** The HPF: one (12 dB/oct) or two (24 dB/oct) Butterworth sections. */
-    struct HighPass
-    {
-        std::array<Biquad, 2> stages;
-        int numStages = 1;
-    };
+    using SectionFade = MixFilters::SectionFade;
+    using Biquad = MixFilters::Biquad;
+    using HighPass = MixFilters::CutFilter;
 
     struct BandState
     {
@@ -195,12 +162,5 @@ private:
     void updateBand (int band) noexcept;
     void designHighPass (HighPass&, double hz, int stages) const noexcept;
     void startSlopeChange() noexcept;
-    static rkfx::BiquadCoefficients highPassSection (double hz, double q, double sampleRate);
     static rkfx::BiquadCoefficients designBand (int band, bool bell, double hz, double gainDb, double q, double sampleRate);
-    static void runHighPass (HighPass&, float* const* io, int numSides, int start, int length) noexcept;
-    static void runFilters (Biquad* const* filters, int count, float* const* io, int numSides, int start, int length) noexcept;
-    template <int N> static void runCascade (Biquad* const* filters, float* x, int side, int length) noexcept;
-
-    template <typename Process>
-    static void runSection (SectionFade&, float* const* io, int numSides, int numSamples, juce::AudioBuffer<float>& scratch, Process&&) noexcept;
 };

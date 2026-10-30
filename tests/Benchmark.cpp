@@ -562,6 +562,44 @@ int main (int argc, char** argv)
                   engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
               });
           } },
+        { "RKMix", "16 stereo buses and the main: EQ (6 bands, cuts), comp, limit all on", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              const auto full = []
+              {
+                  BusDsp::Settings d;
+                  d.eq.on = d.eq.hpfOn = d.eq.lpfOn = true;
+                  for (auto& band : d.eq.bands)
+                      band.gainDb = 2.0f;
+                  d.comp.on = true;
+                  d.limit.on = true;
+                  return d;
+              }();
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  s.channels[(size_t) ch].sendDb[(size_t) (ch % 16)] = -6.0f;
+              for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+              {
+                  s.buses[(size_t) bus].output = 1 + bus;
+                  s.buses[(size_t) bus].dsp = full;
+              }
+              s.main.dsp = full;
+              s.main.monoDsp = full;
+              s.main.monoOutput = 20;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
         { "RKSwell", "default", []
           {
               return makeEngine<SwellEngine> ([] (SwellEngine& e) { e.setSettings ({}); });

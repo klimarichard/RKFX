@@ -145,7 +145,8 @@ void RKMixEditor::Strip::resized()
 
 void RKMixEditor::Strip::paint (juce::Graphics& g)
 {
-    const auto isSelected = isBus() ? owner.selectedBus == bus : owner.selected == channel;
+    const auto isSelected = isBus() ? owner.selectedBus == bus
+                                    : owner.selected == channel && owner.selectedBus < 0 && owner.selectedChain < 0;
     const auto showingSend = sendBus >= 0;
     g.setColour (isSelected ? owner.accent().withAlpha (0.16f)
                             : showingSend ? MixGui::stripColour (owner.mixer.getBusColour (sendBus)).withAlpha (0.12f)
@@ -199,8 +200,8 @@ void RKMixEditor::Strip::mouseDown (const juce::MouseEvent& e)
 
 //==============================================================================
 RKMixEditor::MasterStrip::MasterStrip (RKMixEditor& o, const juce::String& t, const juce::String& faderId,
-                                       const juce::String& muteId, int bars, InsertRack::Strip strip)
-    : title (t), fader (*o.mixer.findParam (faderId)), meter (o.accent())
+                                       const juce::String& muteId, int bars, InsertRack::Strip strip, int c)
+    : owner (o), chain (c), title (t), fader (*o.mixer.findParam (faderId)), meter (o.accent())
 {
     for (int slot = 0; slot < InsertRack::numSlots (strip); ++slot)
     {
@@ -234,10 +235,21 @@ void RKMixEditor::MasterStrip::resized()
     meter.setScaleRange (fader.getTrackRange());
 }
 
+void RKMixEditor::MasterStrip::mouseDown (const juce::MouseEvent&)
+{
+    owner.selectMain (chain);
+}
+
 void RKMixEditor::MasterStrip::paint (juce::Graphics& g)
 {
-    g.setColour (rkfx::Palette::panel.brighter (0.06f));
+    const auto isSelected = owner.selectedChain == chain;
+    g.setColour (isSelected ? owner.accent().withAlpha (0.16f) : rkfx::Palette::panel.brighter (0.06f));
     g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
+    if (isSelected)
+    {
+        g.setColour (owner.accent());
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), rkfx::Style::kPanelRadius, 1.0f);
+    }
     g.setColour (rkfx::Palette::text);
     g.setFont (rkfx::Fonts::bold (13.0f));
     g.drawText (title, 0, kColourBar + 2, getWidth(), kStripNameHeight, juce::Justification::centred);
@@ -252,8 +264,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     : rkfx::EditorBase (p, kWidth, kHeight),
       mixer (p),
       watcher (p.getSettings(), [this] { onSettingsChange(); }),
-      mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main),
-      monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono),
+      mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main, kMainChain),
+      monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono, kMonoChain),
       routingPanel (*this)
 {
     for (int ch = 0; ch < kChannels; ++ch)
@@ -436,8 +448,15 @@ void RKMixEditor::rebuildPanels()
 {
     stripPanel.reset();
     sendsPanel.reset();
-    if (selectedBus >= 0)
+    if (selectedChain >= 0)
+    {
+        stripPanel = std::make_unique<MainPanel> (*this, selectedChain);
+    }
+    else if (selectedBus >= 0)
+    {
         stripPanel = std::make_unique<BusPanel> (*this, selectedBus);
+        sendsPanel = std::make_unique<BusSendsPanel> (*this, selectedBus);
+    }
     else
     {
         stripPanel = std::make_unique<ChannelPanel> (*this, selected);
@@ -451,18 +470,21 @@ void RKMixEditor::rebuildPanels()
             panel->setBounds (panelArea());
         }
 
-    stripPage.setButtonText (selectedBus >= 0 ? "Bus" : "Channel");
-    sendsPage.setEnabled (selectedBus < 0);
+    stripPage.setButtonText (selectedChain >= 0 ? "Main" : selectedBus >= 0 ? "Bus" : "Channel");
+    sendsPage.setEnabled (sendsPanel != nullptr);
     for (auto& s : strips)
         s->repaint();
     for (auto& s : busStrips)
         s->repaint();
+    mainStrip.repaint();
+    monoStrip.repaint();
 }
 
 void RKMixEditor::select (int channel)
 {
     selected = leaderOf (juce::jlimit (0, kChannels - 1, channel));
     selectedBus = -1;
+    selectedChain = -1;
     rebuildPanels();
     setPage (page == Page::routing ? Page::strip : page);
 }
@@ -470,8 +492,26 @@ void RKMixEditor::select (int channel)
 void RKMixEditor::selectBus (int bus)
 {
     selectedBus = juce::jlimit (0, kBuses - 1, bus);
+    selectedChain = -1;
+    rebuildPanels();
+    setPage (page == Page::sends ? Page::sends : Page::strip);
+}
+
+void RKMixEditor::selectMain (int chain)
+{
+    selectedChain = chain == kMonoChain ? kMonoChain : kMainChain;
+    selectedBus = -1;
     rebuildPanels();
     setPage (Page::strip);
+}
+
+RKMixEditor::ProcessingPanel* RKMixEditor::shownProcessing() const
+{
+    if (auto* bus = dynamic_cast<BusPanel*> (stripPanel.get()))
+        return bus->processing.get();
+    if (auto* main = dynamic_cast<MainPanel*> (stripPanel.get()))
+        return main->processing.get();
+    return nullptr;
 }
 
 void RKMixEditor::setPage (Page p)
@@ -539,7 +579,7 @@ void RKMixEditor::refreshAll()
 void RKMixEditor::onSettingsChange()
 {
     // A pair linked or unlinked changes which strips there are.
-    if (selectedBus < 0)
+    if (selectedBus < 0 && selectedChain < 0)
     {
         auto* panel = dynamic_cast<ChannelPanel*> (stripPanel.get());
         if (panel != nullptr && panel->stereo != isStereo (selected))
@@ -578,7 +618,17 @@ void RKMixEditor::updateMeters()
     const auto elapsed = (float) juce::jlimit (0.0, 0.5, now - lastMeterTime);
     lastMeterTime = now;
 
-    auto* channelPanel = selectedBus < 0 ? dynamic_cast<ChannelPanel*> (stripPanel.get()) : nullptr;
+    auto* channelPanel = dynamic_cast<ChannelPanel*> (stripPanel.get());
+
+    // The buses', main's and mono's compressor and limiter: the shown one's meters.
+    auto* processing = shownProcessing();
+    for (int chain = 0; chain < kProcessingChains; ++chain)
+    {
+        const auto compDb = mixer.takeChainCompReduction (chain);
+        const auto limitDb = mixer.takeChainLimitReduction (chain);
+        if (processing != nullptr && processing->chain == chain)
+            processing->updateMeters (compDb, limitDb, elapsed);
+    }
     for (int ch = 0; ch < kChannels; ++ch)
     {
         if (ch % 2 == 1 && isLinked (ch / 2))

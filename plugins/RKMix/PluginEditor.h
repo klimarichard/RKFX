@@ -116,13 +116,17 @@ private:
         juce::String label() const;
     };
 
-    /** The main or the mono sum: name, fader, meter, mute. */
+    /** The main or the mono sum: name, fader, meter, mute. Click: its page. */
     struct MasterStrip : public juce::Component
     {
         MasterStrip (RKMixEditor&, const juce::String& title, const juce::String& faderId, const juce::String& muteId, int bars,
-                     InsertRack::Strip);
+                     InsertRack::Strip, int chain);
         void resized() override;
         void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+        RKMixEditor& owner;
+        const int chain;
 
         juce::String title;
         juce::String targetText;
@@ -209,7 +213,30 @@ private:
         std::array<Column, mix::kBuses> columns;
     };
 
-    /** The selected bus in full: type, format, output, main, pan, tap and its own sends. */
+    /** The EQ, compressor and limiter of a bus, the main or the mono sum. */
+    struct ProcessingPanel : public Panel
+    {
+        ProcessingPanel (RKMixEditor&, int chain);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+        void updateMeters (float compDb, float limitDb, float seconds);
+
+        const int chain;
+        juce::Rectangle<int> eqArea, compArea, limitArea;
+        rkfx::ToggleSwitch *eqOn = nullptr, *hpfOn = nullptr, *lpfOn = nullptr, *compOn = nullptr, *compAuto = nullptr, *limitOn = nullptr;
+        rkfx::SegmentedSwitch *hpfSlope = nullptr, *lpfSlope = nullptr, *lowType = nullptr, *highType = nullptr;
+        rkfx::Knob *hpf = nullptr, *lpf = nullptr;
+        std::array<rkfx::Knob*, 18> bands {};
+        std::array<rkfx::Knob*, 6> comp {};
+        std::array<rkfx::Knob*, 2> limit {};
+        std::unique_ptr<rkfx::ResponseCurve> curve;
+        std::unique_ptr<rkfx::GainReductionMeter> compMeter, limitMeter;
+
+        rkfx::Knob* knob (const char* suffix, const juce::String& label);
+    };
+
+    /** The selected bus: type, format, output, main, pan, tap, and its processing. */
     struct BusPanel : public Panel
     {
         BusPanel (RKMixEditor&, int bus);
@@ -221,14 +248,44 @@ private:
         const int bus;
         juce::Label name;
         std::array<juce::Rectangle<int>, 8> swatches;
-        rkfx::SegmentedSwitch *type = nullptr, *format = nullptr;
+        rkfx::SegmentedSwitch *type = nullptr, *format = nullptr, *panMode = nullptr;
         ChoiceBox *output = nullptr, *defaultTap = nullptr;
-        rkfx::ToggleSwitch *toMain = nullptr, *panFollows = nullptr;
-        rkfx::Knob* pan = nullptr;
+        rkfx::ToggleSwitch* toMain = nullptr;
+        juce::Slider pan;
+        std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
         juce::TextButton sendsOnFader { "Sends on fader" };
+        std::unique_ptr<ProcessingPanel> processing;
+        juce::Rectangle<int> setupArea;
+    };
+
+    /** What the selected bus feeds: later groups (assign), Aux and FX buses (send). */
+    struct BusSendsPanel : public Panel
+    {
+        BusSendsPanel (RKMixEditor&, int bus);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+
+        const int bus;
         std::array<rkfx::ToggleSwitch*, mix::kBuses> assigns {};
         std::array<rkfx::Knob*, mix::kBuses> sends {};
-        juce::Rectangle<int> setupArea, routingArea;
+        std::array<juce::Rectangle<int>, mix::kBuses> columns;
+    };
+
+    /** The main or the mono sum: its output (and the main's balance) and its processing. */
+    struct MainPanel : public Panel
+    {
+        MainPanel (RKMixEditor&, int chain);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+
+        const int chain;
+        juce::TextButton mainButton { "Main" }, monoButton { "Mono" };
+        std::unique_ptr<ChoiceBox> output;
+        std::unique_ptr<rkfx::Knob> balance;
+        std::unique_ptr<ProcessingPanel> processing;
+        juce::Rectangle<int> setupArea;
     };
 
     /** Where the main and mono go, and what each output carries. */
@@ -266,6 +323,7 @@ private:
     int layer = 0;
     int selected = 0;          // a channel, or -1 while a bus is selected
     int selectedBus = -1;
+    int selectedChain = -1;    // the main or the mono sum's page (mix::kMainChain, kMonoChain), or -1
     int sendsOnFader = -1;     // the bus whose sends the channel faders show, or -1
     int lastNamesVersion = -1;
     double lastMeterTime = 0.0;
@@ -287,6 +345,8 @@ private:
 
     void select (int channel);
     void selectBus (int bus);
+    void selectMain (int chain);
+    ProcessingPanel* shownProcessing() const;
     void rebuildPanels();
     void setPage (Page);
     void setLayer (int);

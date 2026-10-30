@@ -72,7 +72,7 @@ RKMixProcessor::RKMixProcessor()
         b.output = &settings.param (busId (bus, "out"));
         b.toMain = &settings.param (busId (bus, "main"));
         b.tap = &settings.param (busId (bus, "tap"));
-        b.panFollows = &settings.param (busId (bus, "panfollow"));
+        b.panMode = &settings.param (busId (bus, "panmode"));
         b.pan = &settings.param (busId (bus, "pan"));
         for (int to = 0; to < kBuses; ++to)
         {
@@ -80,6 +80,9 @@ RKMixProcessor::RKMixProcessor()
             b.routing.assigns[(size_t) to] = &settings.param (busAssignId (bus, to));
         }
     }
+    for (int chain = 0; chain < kProcessingChains; ++chain)
+        for (const auto* field : MixParams::chainFields())
+            chainParams[(size_t) chain].push_back (&settings.param (chainId (chain, field)));
     for (int pair = 0; pair < kPairs; ++pair)
         linkParams[(size_t) pair] = &settings.param (linkId (pair));
     mainBalance = &settings.param ("main_bal");
@@ -399,7 +402,8 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         b.output = juce::roundToInt (valueOf (p.output));
         b.toMain = valueOf (p.toMain) >= 0.5f;
         b.defaultTap = (mix::Tap) juce::roundToInt (valueOf (p.tap));
-        b.panFollows = valueOf (p.panFollows) >= 0.5f;
+        b.panMode = (mix::PanMode) juce::roundToInt (valueOf (p.panMode));
+        b.dsp = chainSettings (bus);
         b.pan = valueOf (p.pan) * 0.01f;
         for (int to = 0; to < mix::kBuses; ++to)
         {
@@ -415,7 +419,41 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         engineSettings.main.balance = valueOf (mainBalance) * 0.01f;
         engineSettings.main.output = juce::roundToInt (valueOf (mainOutput));
         engineSettings.main.monoOutput = juce::roundToInt (valueOf (monoOutput));
+        engineSettings.main.dsp = chainSettings (mix::kMainChain);
+        engineSettings.main.monoDsp = chainSettings (mix::kMonoChain);
     }
+}
+
+BusDsp::Settings RKMixProcessor::chainSettings (int chain) const
+{
+    // In MixParams::chainFields() order.
+    enum { fEqOn, fHpfOn, fHpfHz, fHpfSlope, fLpfOn, fLpfHz, fLpfSlope, fLowType, fHighType, fBands,
+           fCompOn = fBands + 18, fCompThr, fCompRatio, fCompKnee, fCompAtt, fCompRel, fCompAuto, fCompMakeup,
+           fLimOn, fLimCeiling, fLimRel };
+
+    const auto& p = chainParams[(size_t) chain];
+    const auto get = [&p] (int field) { return valueOf (p[(size_t) field]); };
+    const auto on = [&p] (int field) { return valueOf (p[(size_t) field]) >= 0.5f; };
+
+    BusDsp::Settings s;
+    s.eq.on = on (fEqOn);
+    s.eq.hpfOn = on (fHpfOn);
+    s.eq.hpfHz = get (fHpfHz);
+    s.eq.hpfSteep = get (fHpfSlope) >= 0.5f;
+    s.eq.lpfOn = on (fLpfOn);
+    s.eq.lpfHz = get (fLpfHz);
+    s.eq.lpfSteep = get (fLpfSlope) >= 0.5f;
+    for (int b = 0; b < BusDsp::kEqBands; ++b)
+    {
+        auto& band = s.eq.bands[(size_t) b];
+        band.bell = b == 0 ? get (fLowType) >= 0.5f : b == BusDsp::kEqBands - 1 ? get (fHighType) >= 0.5f : true;
+        band.hz = get (fBands + 3 * b);
+        band.gainDb = get (fBands + 3 * b + 1);
+        band.q = get (fBands + 3 * b + 2);
+    }
+    s.comp = { on (fCompOn), get (fCompThr), get (fCompRatio), get (fCompKnee), get (fCompAtt), get (fCompRel), get (fCompMakeup), on (fCompAuto) };
+    s.limit = { on (fLimOn), get (fLimCeiling), get (fLimRel) };
+    return s;
 }
 
 MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
@@ -553,8 +591,16 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
+    {
         for (int side = 0; side < 2; ++side)
             raise (busPeaks[(size_t) bus][(size_t) side], engine.takeBusPeak (bus, side));
+        lower (chainCompReduction[(size_t) bus], engine.takeBusCompReductionDb (bus));
+        lower (chainLimitReduction[(size_t) bus], engine.takeBusLimitReductionDb (bus));
+    }
+    lower (chainCompReduction[(size_t) mix::kMainChain], engine.getMainDsp().takeCompReductionDb());
+    lower (chainLimitReduction[(size_t) mix::kMainChain], engine.getMainDsp().takeLimitReductionDb());
+    lower (chainCompReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeCompReductionDb());
+    lower (chainLimitReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeLimitReductionDb());
     raise (mainPeaks[0], engine.takeMainPeak (0));
     raise (mainPeaks[1], engine.takeMainPeak (1));
     raise (monoPeak, engine.takeMonoPeak());

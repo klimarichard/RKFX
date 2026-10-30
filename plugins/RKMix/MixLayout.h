@@ -156,6 +156,10 @@ namespace mix
         return t == BusType::group ? "Group" : t == BusType::aux ? "Aux" : "FX";
     }
 
+    /** How an Aux bus places the channels: centred, as their pans (the
+        audience's view), or mirrored (the band's view, facing the audience). */
+    enum class PanMode { centre = 0, follow, mirror };
+
     /** Where a send takes a channel's signal, in strip order. */
     enum class Tap { input = 0, preEq, preComp, preInserts, preFader, postFader };
     constexpr int kNumTaps = 6;
@@ -212,6 +216,15 @@ namespace mix
     inline juce::String channelTapId (int ch, int bus)    { return channelId (ch, ("tap" + num (bus)).toRawUTF8()); }
     inline juce::String channelAssignId (int ch, int bus) { return channelId (ch, ("grp" + num (bus)).toRawUTF8()); }
     inline juce::String busSendId (int bus, int to)       { return busId (bus, ("send" + num (to)).toRawUTF8()); }
+
+    // The EQ, compressor and limiter of a bus, the main or the mono sum: "bus3_eq_on", "main_eq_on", "mono_eq_on".
+    constexpr int kProcessingChains = kBuses + 2;                  // the buses, the main, the mono sum
+    constexpr int kMainChain = kBuses, kMonoChain = kBuses + 1;
+    inline juce::String chainOwner (int chain)
+    {
+        return chain == kMainChain ? juce::String ("main") : chain == kMonoChain ? juce::String ("mono") : "bus" + num (chain);
+    }
+    inline juce::String chainId (int chain, const char* name) { return chainOwner (chain) + "_" + name; }
     inline juce::String busAssignId (int bus, int to)     { return busId (bus, ("grp" + num (to)).toRawUTF8()); }
 
     /** The channel whose controls channel @p ch uses: the left of a linked pair. */

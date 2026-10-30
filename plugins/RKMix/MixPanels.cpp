@@ -495,6 +495,164 @@ void RKMixEditor::SendsPanel::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+// Processing: the EQ, compressor and limiter of a bus, the main or the mono sum
+
+namespace
+{
+    constexpr int kProcKnobW = 56, kProcKnobH = 75;
+}
+
+rkfx::Knob* RKMixEditor::ProcessingPanel::knob (const char* suffix, const juce::String& label)
+{
+    return make<rkfx::Knob> (owner.mixer.getSettings().param (chainId (chain, suffix)), label);
+}
+
+RKMixEditor::ProcessingPanel::ProcessingPanel (RKMixEditor& o, int c) : Panel (o), chain (c)
+{
+    auto& s = o.mixer.getSettings();
+    const auto accent = o.accent();
+    const auto param = [&] (const char* suffix) -> juce::RangedAudioParameter& { return s.param (chainId (chain, suffix)); };
+
+    eqOn = make<rkfx::ToggleSwitch> (param ("eq_on"), accent, "On");
+    lowType = make<rkfx::SegmentedSwitch> (param ("eq_low_type"), accent, juce::StringArray { "Shelf", "Bell" }, "Band 1");
+    highType = make<rkfx::SegmentedSwitch> (param ("eq_high_type"), accent, juce::StringArray { "Shelf", "Bell" }, "Band 6");
+    hpfOn = make<rkfx::ToggleSwitch> (param ("hpf_on"), accent, "HPF");
+    hpf = knob ("hpf", "Freq");
+    hpfSlope = make<rkfx::SegmentedSwitch> (param ("hpf_slope"), accent, juce::StringArray { "12", "24" });
+    lpfOn = make<rkfx::ToggleSwitch> (param ("lpf_on"), accent, "LPF");
+    lpf = knob ("lpf", "Freq");
+    lpfSlope = make<rkfx::SegmentedSwitch> (param ("lpf_slope"), accent, juce::StringArray { "12", "24" });
+    for (int b = 0; b < 6; ++b)
+    {
+        const auto band = "eq_b" + juce::String (b + 1);
+        bands[(size_t) (3 * b)] = knob ((band + "_freq").toRawUTF8(), juce::String (b + 1));
+        bands[(size_t) (3 * b + 1)] = knob ((band + "_gain").toRawUTF8(), "Gain");
+        bands[(size_t) (3 * b + 2)] = knob ((band + "_q").toRawUTF8(), "Q");
+    }
+    const auto rate = o.sampleRateForDisplay();
+    curve = std::make_unique<rkfx::ResponseCurve> ([this, rate] (double hz)
+    {
+        return BusDsp::responseDb (owner.mixer.chainSettings (chain).eq, hz, rate);
+    }, kEqRangeDb, accent);
+    addAndMakeVisible (*curve);
+
+    compOn = make<rkfx::ToggleSwitch> (param ("comp_on"), accent, "On");
+    compAuto = make<rkfx::ToggleSwitch> (param ("comp_auto"), accent, "Auto rel.");
+    const char* compIds[] = { "comp_thr", "comp_ratio", "comp_knee", "comp_att", "comp_rel", "comp_makeup" };
+    const char* compNames[] = { "Threshold", "Ratio", "Knee", "Attack", "Release", "Makeup" };
+    for (int k = 0; k < 6; ++k)
+        comp[(size_t) k] = knob (compIds[k], compNames[k]);
+    compMeter = std::make_unique<rkfx::GainReductionMeter> (accent, 24.0f);
+    addAndMakeVisible (*compMeter);
+
+    limitOn = make<rkfx::ToggleSwitch> (param ("lim_on"), accent, "On");
+    limit[0] = knob ("lim_ceiling", "Ceiling");
+    limit[1] = knob ("lim_rel", "Release");
+    limitMeter = std::make_unique<rkfx::GainReductionMeter> (accent, 24.0f);
+    addAndMakeVisible (*limitMeter);
+
+    refresh();
+}
+
+void RKMixEditor::ProcessingPanel::refresh()
+{
+    const auto& s = owner.mixer.getSettings();
+    const auto flag = [&] (const char* suffix) { return s.flag (chainId (chain, suffix)); };
+    const auto eq = flag ("eq_on");
+
+    for (auto* k : bands)
+        k->setDimmed (! eq);
+    hpf->setDimmed (! (eq && flag ("hpf_on")));
+    lpf->setDimmed (! (eq && flag ("lpf_on")));
+    if (eq)
+    {
+        bands[2]->setDimmed (s.choice (chainId (chain, "eq_low_type")) == 0);    // a shelf has no Q
+        bands[17]->setDimmed (s.choice (chainId (chain, "eq_high_type")) == 0);
+    }
+    for (auto* k : comp)
+        k->setDimmed (! flag ("comp_on"));
+    comp[4]->setDimmed (! flag ("comp_on") || flag ("comp_auto"));
+    for (auto* k : limit)
+        k->setDimmed (! flag ("lim_on"));
+
+    curve->refresh();
+    repaint();
+}
+
+void RKMixEditor::ProcessingPanel::updateMeters (float compDb, float limitDb, float seconds)
+{
+    compMeter->setReduction (compDb, seconds);
+    limitMeter->setReduction (limitDb, seconds);
+}
+
+void RKMixEditor::ProcessingPanel::resized()
+{
+    auto r = getLocalBounds();
+    limitArea = r.removeFromRight (128);
+    r.removeFromRight (kGap);
+    compArea = r.removeFromRight (214);
+    r.removeFromRight (kGap);
+    eqArea = r;
+
+    const auto column = [] (juce::Rectangle<int>& a, int width) { auto c = a.removeFromLeft (width); a.removeFromLeft (4); return c; };
+
+    // EQ: switches, curve, HPF, 6 bands (Freq, Gain, Q stacked), LPF
+    auto a = inner (eqArea);
+    auto switches = column (a, 64);
+    eqOn->setBounds (switches.removeFromTop (kSwitchH).withWidth (kSwitchW));
+    switches.removeFromTop (10);
+    lowType->setBounds (switches.removeFromTop (44));
+    switches.removeFromTop (8);
+    highType->setBounds (switches.removeFromTop (44));
+    curve->setBounds (column (a, juce::jmax (100, a.getWidth() - 8 * (kProcKnobW + 4))).reduced (0, 4));
+
+    auto hpfColumn = column (a, kProcKnobW);
+    hpfOn->setBounds (hpfColumn.removeFromTop (kSwitchH));
+    hpf->setBounds (hpfColumn.removeFromTop (kProcKnobH));
+    hpfSlope->setBounds (hpfColumn.removeFromTop (24));
+    for (int b = 0; b < 6; ++b)
+    {
+        auto band = column (a, kProcKnobW);
+        for (int k = 0; k < 3; ++k)
+            bands[(size_t) (3 * b + k)]->setBounds (band.removeFromTop (kProcKnobH));
+    }
+    auto lpfColumn = column (a, kProcKnobW);
+    lpfOn->setBounds (lpfColumn.removeFromTop (kSwitchH));
+    lpf->setBounds (lpfColumn.removeFromTop (kProcKnobH));
+    lpfSlope->setBounds (lpfColumn.removeFromTop (24));
+
+    // Compressor: On and Auto, two columns of knobs, gain reduction
+    a = inner (compArea);
+    auto compSwitches = column (a, 64);
+    compOn->setBounds (compSwitches.removeFromTop (kSwitchH).withWidth (kSwitchW));
+    compSwitches.removeFromTop (8);
+    compAuto->setBounds (compSwitches.removeFromTop (kSwitchH));
+    for (int c = 0; c < 2; ++c)
+    {
+        auto knobs = column (a, kProcKnobW);
+        for (int k = 0; k < 3; ++k)
+            comp[(size_t) (3 * c + k)]->setBounds (knobs.removeFromTop (kProcKnobH));
+    }
+    compMeter->setBounds (a.withWidth (24).withTrimmedBottom (10));
+
+    // Limiter: On, Ceiling, Release, gain reduction
+    a = inner (limitArea);
+    auto limitKnobs = column (a, kProcKnobW);
+    limitOn->setBounds (limitKnobs.removeFromTop (kSwitchH));
+    limitKnobs.removeFromTop (4);
+    limit[0]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
+    limit[1]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
+    limitMeter->setBounds (a.withWidth (24).withTrimmedBottom (10));
+}
+
+void RKMixEditor::ProcessingPanel::paint (juce::Graphics& g)
+{
+    rkfx::drawPanel (g, eqArea, owner.panelColour(), "EQ");
+    rkfx::drawPanel (g, compArea, owner.panelColour(), "Compressor");
+    rkfx::drawPanel (g, limitArea, owner.panelColour(), "Limiter");
+}
+
+//==============================================================================
 // Bus page
 
 RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
@@ -516,16 +674,20 @@ RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
     format = make<rkfx::SegmentedSwitch> (param ("format"), accent, juce::StringArray { "Mono", "Stereo" }, "Format");
     output = make<ChoiceBox> (param ("out"), targetName, kFirstPairTarget);
     toMain = make<rkfx::ToggleSwitch> (param ("main"), accent, "Main");
-    pan = make<rkfx::Knob> (param ("pan"), "Pan");
     defaultTap = make<ChoiceBox> (param ("tap"), [] (int v) { return tapName ((Tap) v); });
     defaultTap->setTooltip ("Where this bus's sends take the channels, unless a send says otherwise");
-    panFollows = make<rkfx::ToggleSwitch> (param ("panfollow"), accent, "Pan follows");
+    panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Centre", "Follow", "Mirror" }, "Pan");
 
-    for (int to = 0; to < kBuses; ++to)
-    {
-        assigns[(size_t) to] = make<rkfx::ToggleSwitch> (s.param (busAssignId (b, to)), accent, o.busDisplayName (to));
-        sends[(size_t) to] = make<rkfx::Knob> (s.param (busSendId (b, to)), o.busDisplayName (to));
-    }
+    auto& panParam = param ("pan");
+    pan.setSliderStyle (juce::Slider::LinearHorizontal);
+    pan.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 20);
+    panAttachment = std::make_unique<juce::SliderParameterAttachment> (panParam, pan);
+    pan.setDoubleClickReturnValue (true, 0.0);
+    rkfx::tagParameter (pan, panParam.getParameterID());
+    addAndMakeVisible (pan);
+
+    processing = std::make_unique<ProcessingPanel> (o, b);
+    addAndMakeVisible (*processing);
     refresh();
 }
 
@@ -539,18 +701,12 @@ void RKMixEditor::BusPanel::refresh()
     // A mono bus goes to one output, a stereo bus to an output pair.
     output->filter ([stereo] (int target) { return isPairTarget (target) == stereo; });
     toMain->setVisible (t != BusType::aux);
-    pan->setVisible (t != BusType::aux);
+    pan.setVisible (t != BusType::aux);
     defaultTap->setVisible (t == BusType::aux);
-    panFollows->setVisible (t == BusType::aux && stereo);
+    panMode->setVisible (t == BusType::aux && stereo);
     sendsOnFader.setVisible (t != BusType::group);
     sendsOnFader.setToggleState (owner.sendsOnFader == bus, juce::dontSendNotification);
-
-    // What this bus may feed: later groups (a group), Aux and FX buses (a group), Aux buses (an FX bus).
-    for (int to = 0; to < kBuses; ++to)
-    {
-        assigns[(size_t) to]->setVisible (owner.mixer.canAssign (bus, to));
-        sends[(size_t) to]->setVisible (owner.mixer.canSend (bus, to));
-    }
+    processing->refresh();
     resized();
     repaint();
 }
@@ -567,41 +723,28 @@ void RKMixEditor::BusPanel::resized()
     name.setBounds (header.withWidth (juce::jmin (header.getWidth(), 300)));
     r.removeFromTop (4);
 
-    setupArea = r.removeFromTop (kRowA);
+    setupArea = r.removeFromTop (70);
     r.removeFromTop (kGap);
-    {
-        auto a = inner (setupArea);
-        type->setBounds (a.removeFromLeft (190).withHeight (kKnobH).withSizeKeepingCentre (190, 44));
-        a.removeFromLeft (12);
-        format->setBounds (a.removeFromLeft (130).withHeight (kKnobH).withSizeKeepingCentre (130, 44));
-        a.removeFromLeft (12);
-        auto out = a.removeFromLeft (130).withHeight (kKnobH);
-        output->setBounds (out.withSizeKeepingCentre (130, kSwitchH).translated (0, 8));
-        a.removeFromLeft (16);
-        if (toMain->isVisible())
-        {
-            toMain->setBounds (switchIn (a, 60));
-            a.removeFromLeft (12);
-            pan->setBounds (a.removeFromLeft (kKnobW).withHeight (kKnobH));
-        }
-        else
-        {
-            auto tapArea = a.removeFromLeft (130).withHeight (kKnobH);
-            defaultTap->setBounds (tapArea.withSizeKeepingCentre (130, kSwitchH).translated (0, 8));
-            a.removeFromLeft (12);
-            panFollows->setBounds (switchIn (a, 100));
-        }
-    }
+    processing->setBounds (r);
 
-    routingArea = r;
-    auto a = inner (routingArea);
-    const auto width = (a.getWidth() - (kBuses - 1) * 2) / kBuses;
-    for (int to = 0; to < kBuses; ++to)
+    auto a = setupArea.withTrimmedTop (16).reduced (8, 2);
+    type->setBounds (a.removeFromLeft (190).withSizeKeepingCentre (190, 44));
+    a.removeFromLeft (12);
+    format->setBounds (a.removeFromLeft (130).withSizeKeepingCentre (130, 44));
+    a.removeFromLeft (12);
+    output->setBounds (a.removeFromLeft (130).withSizeKeepingCentre (130, kSwitchH).translated (0, 8));
+    a.removeFromLeft (16);
+    if (toMain->isVisible())
     {
-        auto column = a.removeFromLeft (width);
-        a.removeFromLeft (2);
-        sends[(size_t) to]->setBounds (column.removeFromTop (kKnobH));
-        assigns[(size_t) to]->setBounds (sends[(size_t) to]->getBounds().withSizeKeepingCentre (column.getWidth(), kSwitchH));
+        toMain->setBounds (a.removeFromLeft (60).withSizeKeepingCentre (60, kSwitchH).translated (0, 8));
+        a.removeFromLeft (16);
+        pan.setBounds (a.removeFromLeft (200).withSizeKeepingCentre (200, kSwitchH).translated (0, 8));
+    }
+    else
+    {
+        defaultTap->setBounds (a.removeFromLeft (130).withSizeKeepingCentre (130, kSwitchH).translated (0, 8));
+        a.removeFromLeft (12);
+        panMode->setBounds (a.removeFromLeft (210).withSizeKeepingCentre (210, 44));
     }
 }
 
@@ -617,29 +760,162 @@ void RKMixEditor::BusPanel::paint (juce::Graphics& g)
     }
     paintSwatches (g, swatches, owner.mixer.getBusColour (bus), MixGui::stripColour);
 
-    rkfx::drawPanel (g, setupArea, owner.panelColour(), "Setup");
-    const auto t = owner.mixer.getBusType (bus);
-    rkfx::drawPanel (g, routingArea, owner.panelColour(),
-               t == BusType::group ? "Feeds: later groups (assign) and Aux / FX buses (send)"
-                                   : t == BusType::fx ? "Feeds: Aux buses (send), e.g. the reverb into the in-ears" : "Feeds");
-
+    rkfx::drawPanel (g, setupArea, owner.panelColour());
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (12.0f));
-    auto setup = inner (setupArea);
-    g.drawText ("Output", setup.withX (setup.getX() + 332).withWidth (130).withHeight (24), juce::Justification::centred);
-    if (t == BusType::aux)
+    const auto label = [&] (juce::Component& c, const juce::String& text)
     {
-        g.drawText ("Default tap", setup.withX (setup.getX() + 478).withWidth (130).withHeight (24), juce::Justification::centred);
-        g.drawFittedText ("An Aux bus feeds only its own output: an in-ear or monitor mix, a recorder feed. "
-                          "Its sends take each channel at the tap set here, unless a send sets its own.",
-                          inner (routingArea).reduced (4), juce::Justification::topLeft, 3);
-    }
+        if (c.isVisible())
+            g.drawText (text, c.getBounds().withY (c.getY() - 20).withHeight (18), juce::Justification::centred);
+    };
+    label (*output, "Output");
+    label (*defaultTap, "Default tap");
+    label (pan, "Pan into the main");
 }
 
 void RKMixEditor::BusPanel::mouseDown (const juce::MouseEvent& e)
 {
     if (const auto i = swatchAt (swatches, e.getPosition()); i >= 0)
         owner.mixer.setBusColour (bus, i);
+}
+
+//==============================================================================
+// A bus's sends page: what it feeds
+
+RKMixEditor::BusSendsPanel::BusSendsPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
+{
+    auto& s = o.mixer.getSettings();
+    for (int to = 0; to < kBuses; ++to)
+    {
+        assigns[(size_t) to] = make<rkfx::ToggleSwitch> (s.param (busAssignId (b, to)), o.accent(), "Assign");
+        sends[(size_t) to] = make<rkfx::Knob> (s.param (busSendId (b, to)), "Send");
+    }
+    refresh();
+}
+
+void RKMixEditor::BusSendsPanel::refresh()
+{
+    for (int to = 0; to < kBuses; ++to)
+    {
+        assigns[(size_t) to]->setVisible (owner.mixer.canAssign (bus, to));
+        sends[(size_t) to]->setVisible (owner.mixer.canSend (bus, to));
+    }
+    repaint();
+}
+
+void RKMixEditor::BusSendsPanel::resized()
+{
+    auto r = getLocalBounds();
+    r.removeFromTop (kPanelHeader + 4);
+    const auto width = (r.getWidth() - (kBuses - 1) * 4) / kBuses;
+    for (int to = 0; to < kBuses; ++to)
+    {
+        columns[(size_t) to] = r.removeFromLeft (width);
+        r.removeFromLeft (4);
+        auto a = columns[(size_t) to].withTrimmedTop (48).reduced (2, 0);
+        sends[(size_t) to]->setBounds (a.removeFromTop (kKnobH));
+        assigns[(size_t) to]->setBounds (sends[(size_t) to]->getBounds().withSizeKeepingCentre (a.getWidth(), kSwitchH));
+    }
+}
+
+void RKMixEditor::BusSendsPanel::paint (juce::Graphics& g)
+{
+    const auto t = owner.mixer.getBusType (bus);
+    g.setColour (rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (15.0f));
+    g.drawText (owner.busDisplayName (bus) + " - feeds", 6, 2, 400, kPanelHeader, juce::Justification::centredLeft);
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    g.drawText (t == BusType::group ? "A group feeds later groups (assign) and Aux and FX buses (send), after its fader."
+                : t == BusType::fx ? "An FX bus feeds Aux buses (send), after its fader: the reverb into the in-ears."
+                                   : "An Aux bus feeds only its own output.",
+                getLocalBounds().removeFromTop (kPanelHeader).withTrimmedLeft (300).withTrimmedRight (6), juce::Justification::centredRight);
+
+    for (int to = 0; to < kBuses; ++to)
+    {
+        const auto area = columns[(size_t) to];
+        const auto usable = owner.mixer.canAssign (bus, to) || owner.mixer.canSend (bus, to);
+        rkfx::drawPanel (g, area, usable ? owner.panelColour() : owner.panelColour().darker (0.3f));
+        g.setColour (MixGui::stripColour (owner.mixer.getBusColour (to)).withMultipliedAlpha (usable ? 1.0f : 0.4f));
+        g.fillRoundedRectangle (area.withHeight (4).reduced (4, 0).toFloat().withY ((float) area.getY() + 2.0f), 2.0f);
+        g.setColour (usable ? rkfx::Palette::text : rkfx::Palette::knobTrack);
+        g.setFont (rkfx::Fonts::bold (11.5f));
+        g.drawFittedText (owner.busDisplayName (to), area.withHeight (22).withY (area.getY() + 8).reduced (2, 0),
+                          juce::Justification::centred, 1);
+        g.setFont (rkfx::Fonts::regular (10.5f));
+        g.drawText (to == bus ? juce::String ("this bus") : busTypeName (owner.mixer.getBusType (to)),
+                    area.withHeight (14).withY (area.getY() + 28), juce::Justification::centred);
+    }
+}
+
+//==============================================================================
+// Main page: the main or the mono sum
+
+RKMixEditor::MainPanel::MainPanel (RKMixEditor& o, int c) : Panel (o), chain (c)
+{
+    auto& s = o.mixer.getSettings();
+    for (auto* b : { &mainButton, &monoButton })
+    {
+        b->setClickingTogglesState (false);
+        addAndMakeVisible (*b);
+    }
+    mainButton.setToggleState (chain == kMainChain, juce::dontSendNotification);
+    monoButton.setToggleState (chain == kMonoChain, juce::dontSendNotification);
+    mainButton.onClick = [this] { owner.selectMain (kMainChain); };
+    monoButton.onClick = [this] { owner.selectMain (kMonoChain); };
+
+    output = std::make_unique<ChoiceBox> (s.param (chain == kMainChain ? "main_out" : "mono_out"), targetName, kFirstPairTarget);
+    addAndMakeVisible (*output);
+    if (chain == kMainChain)
+    {
+        balance = std::make_unique<rkfx::Knob> (s.param ("main_bal"), "Balance");
+        addAndMakeVisible (*balance);
+    }
+
+    processing = std::make_unique<ProcessingPanel> (o, chain);
+    addAndMakeVisible (*processing);
+    refresh();
+}
+
+void RKMixEditor::MainPanel::refresh()
+{
+    processing->refresh();
+    repaint();
+}
+
+void RKMixEditor::MainPanel::resized()
+{
+    auto r = getLocalBounds();
+    auto header = r.removeFromTop (kPanelHeader).reduced (4, 2);
+    mainButton.setBounds (header.removeFromLeft (90));
+    header.removeFromLeft (6);
+    monoButton.setBounds (header.removeFromLeft (90));
+    r.removeFromTop (4);
+
+    setupArea = r.removeFromTop (70);
+    r.removeFromTop (kGap);
+    processing->setBounds (r);
+
+    auto a = setupArea.reduced (8, 4);
+    a.removeFromLeft (90);
+    output->setBounds (a.removeFromLeft (140).withSizeKeepingCentre (140, kSwitchH));
+    a.removeFromLeft (24);
+    if (balance != nullptr)
+        balance->setBounds (a.removeFromLeft (kKnobW).withHeight (setupArea.getHeight()).withY (setupArea.getY()));
+}
+
+void RKMixEditor::MainPanel::paint (juce::Graphics& g)
+{
+    rkfx::drawPanel (g, setupArea, owner.panelColour());
+    g.setColour (rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    g.drawText ("Output", setupArea.reduced (12, 4).withWidth (80), juce::Justification::centredLeft);
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    g.drawFittedText (chain == kMainChain ? "EQ -> Comp -> inserts -> fader, balance -> Limit -> output"
+                                          : "(L + R) / 2 of the main -> EQ -> Comp -> inserts -> fader -> Limit -> output. "
+                                            "Its EQ's low-pass makes a sub feed.",
+                      setupArea.reduced (12, 4).withTrimmedLeft (balance != nullptr ? 330 : 260), juce::Justification::centredLeft, 2);
 }
 
 //==============================================================================

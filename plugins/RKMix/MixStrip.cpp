@@ -6,11 +6,9 @@ namespace
 {
     using FVO = juce::FloatVectorOperations;
 
-    constexpr double kSectionFadeSeconds = 0.02;
+    using MixFilters::kSectionFadeSeconds;
+    using MixFilters::kCoefficientInterval;
     constexpr double kDelayGlideSeconds = 0.05;
-    constexpr int kCoefficientInterval = 32;    // filters redesign while a setting glides
-    constexpr double kButterworth24[2] = { 0.54119610, 1.30656296 };
-    constexpr double kButterworth12 = 0.70710678;
 
     template <typename T>
     void setValue (rkfx::Smoothed& v, T target, bool snap)
@@ -128,29 +126,9 @@ float StripDsp::compTransferDb (const Comp& c, float inputDb)
 }
 
 //==============================================================================
-rkfx::BiquadCoefficients StripDsp::highPassSection (double hz, double q, double rate)
-{
-    // Bilinear (RBJ) high-pass section; with the Butterworth Qs a 12 or 24 dB/oct Butterworth filter.
-    const auto w0 = 2.0 * juce::MathConstants<double>::pi * juce::jlimit (1.0, 0.49 * rate, hz) / rate;
-    const auto cosW = std::cos (w0), alpha = std::sin (w0) / (2.0 * q);
-    const auto a0 = 1.0 + alpha;
-    rkfx::BiquadCoefficients c;
-    c.b0 = (1.0 + cosW) * 0.5 / a0;
-    c.b1 = -(1.0 + cosW) / a0;
-    c.b2 = c.b0;
-    c.a1 = -2.0 * cosW / a0;
-    c.a2 = (1.0 - alpha) / a0;
-    return c;
-}
-
 void StripDsp::designHighPass (HighPass& h, double hz, int stages) const noexcept
 {
-    h.numStages = stages;
-    if (stages == 1)
-        h.stages[0].set (highPassSection (hz, kButterworth12, sampleRate));
-    else
-        for (int s = 0; s < 2; ++s)
-            h.stages[(size_t) s].set (highPassSection (hz, kButterworth24[s], sampleRate));
+    h.design (true, hz, stages, sampleRate);
 }
 
 rkfx::BiquadCoefficients StripDsp::designBand (int band, bool bell, double hz, double gainDb, double q, double rate)
@@ -184,13 +162,7 @@ double StripDsp::responseDb (const Settings& s, double hz, double rate)
     double magnitude = 1.0;
 
     if (s.hpf.on)
-    {
-        if (s.hpf.steep)
-            for (auto q : kButterworth24)
-                magnitude *= highPassSection (s.hpf.hz, q, rate).magnitude (omega);
-        else
-            magnitude *= highPassSection (s.hpf.hz, kButterworth12, rate).magnitude (omega);
-    }
+        magnitude *= HighPass::magnitude (true, s.hpf.hz, s.hpf.steep, omega, rate);
 
     if (s.eq.on)
         for (int i = 0; i < kEqBands; ++i)
@@ -203,34 +175,7 @@ double StripDsp::responseDb (const Settings& s, double hz, double rate)
 }
 
 //==============================================================================
-template <typename Process>
-void StripDsp::runSection (SectionFade& fade, float* const* io, int numSides, int numSamples,
-                           juce::AudioBuffer<float>& scratch, Process&& process) noexcept
-{
-    if (fade.isOff())
-        return;
-
-    if (fade.isFull())
-    {
-        process();
-        return;
-    }
-
-    for (int side = 0; side < numSides; ++side)
-        FVO::copy (scratch.getWritePointer (side), io[side], numSamples);
-
-    process();
-
-    for (int i = 0; i < numSamples; ++i)
-    {
-        const auto amount = fade.amount.getNextValue();
-        for (int side = 0; side < numSides; ++side)
-        {
-            const auto dry = scratch.getSample (side, i);
-            io[side][i] = dry + amount * (io[side][i] - dry);
-        }
-    }
-}
+using MixFilters::runSection;
 
 void StripDsp::processInput (const float* const* source, float* const* io, int numSides, int numSamples,
                              juce::AudioBuffer<float>& scratch) noexcept
@@ -323,61 +268,6 @@ void StripDsp::startSlopeChange() noexcept
     slopeFade.setTargetValue (1.0f);
 }
 
-template <int N>
-void StripDsp::runCascade (Biquad* const* filters, float* x, int side, int length) noexcept
-{
-    // Coefficients and state in locals (registers): the filters' recursions
-    // overlap instead of waiting on memory every sample.
-    float b0[N], b1[N], b2[N], a1[N], a2[N], z1[N], z2[N];
-    for (int k = 0; k < N; ++k)
-    {
-        const auto& f = *filters[k];
-        b0[k] = f.b0; b1[k] = f.b1; b2[k] = f.b2; a1[k] = f.a1; a2[k] = f.a2;
-        z1[k] = f.z1[(size_t) side]; z2[k] = f.z2[(size_t) side];
-    }
-
-    for (int n = 0; n < length; ++n)
-    {
-        auto v = x[n];
-        for (int k = 0; k < N; ++k)
-        {
-            const auto y = b0[k] * v + z1[k];
-            z1[k] = b1[k] * v - a1[k] * y + z2[k];
-            z2[k] = b2[k] * v - a2[k] * y;
-            v = y;
-        }
-        x[n] = v;
-    }
-
-    for (int k = 0; k < N; ++k)
-    {
-        filters[k]->z1[(size_t) side] = z1[k];
-        filters[k]->z2[(size_t) side] = z2[k];
-    }
-}
-
-void StripDsp::runFilters (Biquad* const* filters, int count, float* const* io, int numSides, int start, int length) noexcept
-{
-    for (int side = 0; side < numSides; ++side)
-    {
-        auto* x = io[side] + start;
-        switch (count)
-        {
-            case 1: runCascade<1> (filters, x, side, length); break;
-            case 2: runCascade<2> (filters, x, side, length); break;
-            case 3: runCascade<3> (filters, x, side, length); break;
-            case 4: runCascade<4> (filters, x, side, length); break;
-            default: break;
-        }
-    }
-}
-
-void StripDsp::runHighPass (HighPass& h, float* const* io, int numSides, int start, int length) noexcept
-{
-    Biquad* filters[2] = { &h.stages[0], &h.stages[1] };
-    runFilters (filters, h.numStages, io, numSides, start, length);
-}
-
 void StripDsp::processHpfAndGate (float* const* io, int numSides, int numSamples,
                                   juce::AudioBuffer<float>& scratch, const float* key) noexcept
 {
@@ -399,7 +289,7 @@ void StripDsp::processHpfAndGate (float* const* io, int numSides, int numSamples
 
             if (! slopeFade.isSmoothing())
             {
-                runHighPass (active, io, numSides, start, length);
+                active.process (io, numSides, start, length);
                 continue;
             }
 
@@ -407,8 +297,8 @@ void StripDsp::processHpfAndGate (float* const* io, int numSides, int numSamples
             float* other[2] = { scratch.getWritePointer (0), scratch.getWritePointer (1) };
             for (int side = 0; side < numSides; ++side)
                 FVO::copy (other[side] + start, io[side] + start, length);
-            runHighPass (active, io, numSides, start, length);
-            runHighPass (highPass[(size_t) (1 - activeHighPass)], other, numSides, start, length);
+            active.process (io, numSides, start, length);
+            highPass[(size_t) (1 - activeHighPass)].process (other, numSides, start, length);
             for (int n = start; n < start + length; ++n)
             {
                 const auto t = slopeFade.getNextValue();
@@ -453,7 +343,7 @@ void StripDsp::processEq (float* const* io, int numSides, int numSamples, juce::
                 if (b.active)
                     active[(size_t) numActive++] = &b.filter;
             }
-            runFilters (active.data(), numActive, io, numSides, start, length);
+            MixFilters::runFilters (active.data(), numActive, io, numSides, start, length);
         }
     });
 }

@@ -2,6 +2,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "MixBusDsp.h"
 #include "MixDelay.h"
 #include "MixLayout.h"
 #include "MixStrip.h"
@@ -90,7 +91,8 @@ public:
         int output = mix::kTargetOff;
         bool toMain = true;                       // Group and FX
         mix::Tap defaultTap = mix::Tap::preFader; // Aux
-        bool panFollows = true;                   // stereo Aux: sends follow the channels' pans
+        mix::PanMode panMode = mix::PanMode::follow;   // Aux: how the channels sit in it
+        BusDsp::Settings dsp;                     // EQ, compressor, limiter
         float pan = 0.0f;                         // into the main (and stereo buses it feeds)
         std::array<float, kBuses> sendDb;         // Group -> Aux/FX, FX -> Aux
         std::array<bool, kBuses> assign;          // Group -> later Groups
@@ -101,6 +103,7 @@ public:
         float balance = 0.0f;                     // -1 .. +1
         int output = mix::pairTarget (0);         // Out 1/2
         int monoOutput = mix::kTargetOff;
+        BusDsp::Settings dsp, monoDsp;            // the main's and the mono sum's EQ, compressor, limiter
     };
 
     struct Settings
@@ -158,6 +161,12 @@ public:
     float takeMainPeak (int side) noexcept         { return std::exchange (mainPeaks[(size_t) side], 0.0f); }
     float takeMonoPeak() noexcept                  { return std::exchange (monoPeak, 0.0f); }
 
+    /** A bus's (or the main's, the mono sum's) compressor and limiter gain reduction since the last call (dB, <= 0). */
+    float takeBusCompReductionDb (int bus) noexcept  { return busStates[(size_t) bus].dsp.takeCompReductionDb(); }
+    float takeBusLimitReductionDb (int bus) noexcept { return busStates[(size_t) bus].dsp.takeLimitReductionDb(); }
+    BusDsp& getMainDsp() noexcept { return mainDsp; }
+    BusDsp& getMonoDsp() noexcept { return monoDsp; }
+
     /** A channel's gate and compressor gain reduction since the last call (dB, <= 0). */
     float takeGateReductionDb (int channel) noexcept { return states[(size_t) channel].strip.takeGateReductionDb(); }
     float takeCompReductionDb (int channel) noexcept { return states[(size_t) channel].strip.takeCompReductionDb(); }
@@ -187,6 +196,7 @@ private:
 
     struct BusState
     {
+        BusDsp dsp;
         rkfx::Smoothed fader, mute, pan, toMain;
         std::array<rkfx::Smoothed, kBuses> sends, assigns;
     };
@@ -215,6 +225,7 @@ private:
     std::array<ChannelState, kChannels> states;
     std::array<BusState, kBuses> busStates;
     rkfx::Smoothed mainFader, mainMute, mainBalance, monoFader, monoMute;
+    BusDsp mainDsp, monoDsp;
 
     juce::AudioBuffer<float> channelBuffer, scratchBuffer, postBuffer, mainBuffer, monoBuffer, keyBuffer, curveBuffer;
     juce::AudioBuffer<float> busBuffers;              // 2 channels per bus

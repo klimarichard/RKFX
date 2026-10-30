@@ -293,6 +293,34 @@ public:
             expectEquals (s.choice (mix::busId (2, "out")), mix::pairTarget (4), "stereo: Out 5/6");
         }
 
+        beginTest ("Bus and main processing reach the audio and are kept in the session; pan mode too");
+        {
+            RKMixProcessor a;
+            auto& s = a.getSettings();
+            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (2));     // Out 3/4
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
+            setParam (*a.findParam (mix::busFaderId (0)), 10.0f);
+            setParam (s.param (mix::chainId (0, "lim_on")), 1.0f);
+            setParam (s.param (mix::chainId (0, "lim_ceiling")), -12.0f);
+            setParam (s.param (mix::busId (0, "panmode")), (float) mix::PanMode::mirror);
+            setParam (s.param (mix::chainId (mix::kMainChain, "eq_on")), 1.0f);
+            setParam (s.param (mix::chainId (mix::kMonoChain, "lpf_on")), 1.0f);
+            a.prepareToPlay (48000.0, 128);
+            const auto b = run (a, 20);
+            expectLessOrEqual (juce::jmax (b.getMagnitude (2, 0, 128), b.getMagnitude (3, 0, 128)),
+                               std::pow (10.0f, -12.0f / 20.0f) + 1.0e-6f, "the bus limiter's ceiling, fader at +10 dB");
+
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor c;
+            c.setStateInformation (state.getData(), (int) state.getSize());
+            const auto bus = c.chainSettings (0);
+            expect (bus.limit.on);
+            expectWithinAbsoluteError (bus.limit.ceilingDb, -12.0f, 0.01f);
+            expect (c.chainSettings (mix::kMainChain).eq.on && c.chainSettings (mix::kMonoChain).eq.lpfOn);
+            expectEquals (c.getSettings().choice (mix::busId (0, "panmode")), (int) mix::PanMode::mirror);
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

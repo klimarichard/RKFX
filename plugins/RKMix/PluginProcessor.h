@@ -69,6 +69,13 @@ public:
     /** Channel @p ch's settings as the engine sees them (any thread; for the displays). */
     MixEngine::Channel channelSettings (int ch) const;
 
+    /** A bus's, the main's or the mono sum's EQ, compressor and limiter (mix::kMainChain, kMonoChain). */
+    BusDsp::Settings chainSettings (int chain) const;
+
+    /** A chain's compressor and limiter gain reduction since the last call (dB, <= 0; for the meters). */
+    float takeChainCompReduction (int chain) noexcept  { return chainCompReduction[(size_t) chain].exchange (0.0f); }
+    float takeChainLimitReduction (int chain) noexcept { return chainLimitReduction[(size_t) chain].exchange (0.0f); }
+
     /** The inserts (message thread, except what InsertRack says). */
     InsertRack& getRack() noexcept { return rack; }
 
@@ -131,10 +138,11 @@ private:
     struct BusParams
     {
         juce::RangedAudioParameter *type = nullptr, *format = nullptr, *output = nullptr, *toMain = nullptr,
-                                   *tap = nullptr, *panFollows = nullptr, *pan = nullptr;
+                                   *tap = nullptr, *panMode = nullptr, *pan = nullptr;
         RoutingParams routing;
     };
     std::array<BusParams, mix::kBuses> busParams {};
+    std::array<std::vector<juce::RangedAudioParameter*>, mix::kProcessingChains> chainParams;   // by MixParams::chainFields()
     juce::RangedAudioParameter *mainFader = nullptr, *mainMute = nullptr, *monoFader = nullptr, *monoMute = nullptr;
 
     InsertRack rack;
@@ -177,6 +185,7 @@ private:
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> busPeaks {};
     std::atomic<float> monoPeak { 0.0f };
     std::array<std::atomic<float>, kChannels> gateReduction {}, compReduction {};
+    std::array<std::atomic<float>, mix::kProcessingChains> chainCompReduction {}, chainLimitReduction {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKMixProcessor)
 };

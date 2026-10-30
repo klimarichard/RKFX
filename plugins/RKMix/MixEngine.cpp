@@ -74,6 +74,7 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     }
     for (auto& b : busStates)
     {
+        b.dsp.prepare (sampleRate, maxBlock);
         b.fader.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         b.mute.reset (sampleRate, kMuteFadeSeconds);
         b.pan.reset (sampleRate, rkfx::kParamSmoothingSeconds);
@@ -83,6 +84,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
         for (auto& v : b.assigns)
             v.reset (sampleRate, kMuteFadeSeconds);
     }
+    mainDsp.prepare (sampleRate, maxBlock);
+    monoDsp.prepare (sampleRate, maxBlock);
     mainFader.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     mainBalance.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     monoFader.reset (sampleRate, rkfx::kParamSmoothingSeconds);
@@ -127,7 +130,12 @@ void MixEngine::reset()
     for (int ch = 0; ch < kChannels; ++ch)
         resetChannel (ch);
     for (int bus = 0; bus < kBuses; ++bus)
+    {
+        busStates[(size_t) bus].dsp.reset();
         applyBus (bus, true);
+    }
+    mainDsp.reset();
+    monoDsp.reset();
     applyMain (true);
     for (auto& ch : channelPadLines)
         for (auto& line : ch)
@@ -312,6 +320,7 @@ void MixEngine::applyBus (int bus, bool snap)
     auto& b = busStates[(size_t) bus];
     const auto& s = settings.buses[(size_t) bus];
 
+    b.dsp.setSettings (s.dsp, snap);
     setValue (b.pan, s.pan, snap);
     setValue (b.toMain, s.type != BusType::aux && s.toMain ? 1.0f : 0.0f, snap);
     for (int to = 0; to < kBuses; ++to)
@@ -329,6 +338,9 @@ void MixEngine::applyBus (int bus, bool snap)
 
 void MixEngine::applyMain (bool snap)
 {
+    mainDsp.setSettings (settings.main.dsp, snap);
+    monoDsp.setSettings (settings.main.monoDsp, snap);
+
     if (snap)
     {
         mainBalance.setCurrentAndTargetValue (settings.main.balance);
@@ -460,9 +472,19 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
 
         const auto& b = settings.buses[(size_t) bus];
         const auto send = curveOf (s.sends[(size_t) bus], productRow, numSamples);
-        const auto follow = b.type == BusType::fx || b.panFollows;
-        addToBus (bus, io, numSides, follow ? panLeft : centre, follow ? panRight : centre,
-                  { &send, &mute, tap == Tap::postFader ? &fader : &one }, numSamples);
+        const auto mode = b.type == BusType::fx ? mix::PanMode::follow : b.panMode;
+        const auto* gain = tap == Tap::postFader ? &fader : &one;
+        if (mode == mix::PanMode::mirror)
+        {
+            // The band's view: left and right swapped (a pair's sides and its balance).
+            const float* swapped[2] = { io[numSides - 1], io[0] };
+            addToBus (bus, swapped, numSides, panRight, panLeft, { &send, &mute, gain }, numSamples);
+        }
+        else
+        {
+            const auto follow = mode == mix::PanMode::follow;
+            addToBus (bus, io, numSides, follow ? panLeft : centre, follow ? panRight : centre, { &send, &mute, gain }, numSamples);
+        }
     }
 }
 
@@ -613,10 +635,11 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
     if (! plan.active && ! busFed[(size_t) bus] && ! insertsActive && ! b.fader.isSmoothing() && ! b.mute.isSmoothing())
         return;
 
+    b.dsp.processBeforeFader (io, numSides, numSamples);
     if (inserts != nullptr)
         inserts->process (Inserts::Strip::bus, bus, io, numSides, numSamples);
 
-    // Mute and fader in place: the bus's output signal.
+    // Mute and fader in place, then the limiter: the bus's output signal.
     const auto mute = curveOf (b.mute, muteRow, numSamples);
     const auto fader = curveOf (b.fader, faderRow, numSamples);
     for (int side = 0; side < numSides; ++side)
@@ -633,6 +656,8 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
                 io[side][i] *= mute.at (i) * fader.at (i);
         }
     }
+
+    b.dsp.processLimiter (io, numSides, numSamples);
 
     if (measure)
         for (int side = 0; side < numSides; ++side)
@@ -697,6 +722,7 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
             FVO::add (main[side], delayScratch.getReadPointer (side), numSamples);
         }
 
+    mainDsp.processBeforeFader (main, 2, numSamples);
     if (inserts != nullptr)
         inserts->process (Inserts::Strip::main, 0, main, 2, numSamples);
 
@@ -722,9 +748,13 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
         }
     }
 
-    // The mono sum: (L + R) / 2 of the main after its fader, its inserts, mute and fader.
+    mainDsp.processLimiter (main, 2, numSamples);
+
+    // The mono sum: (L + R) / 2 of the main after its fader and limiter; its own
+    // EQ, compressor, inserts, mute, fader and limiter.
     FVO::add (mono, main[0], main[1], numSamples);
     FVO::multiply (mono, 0.5f, numSamples);
+    monoDsp.processBeforeFader (&mono, 1, numSamples);
     if (inserts != nullptr)
         inserts->process (Inserts::Strip::mono, 0, &mono, 1, numSamples);
     if (! (monoFader.isSmoothing() || monoMute.isSmoothing()))
@@ -738,6 +768,7 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
         for (int i = 0; i < numSamples; ++i)
             mono[i] *= monoFader.getNextValue() * monoMute.getNextValue();
     }
+    monoDsp.processLimiter (&mono, 1, numSamples);
 
     if (measure)
     {

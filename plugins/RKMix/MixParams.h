@@ -57,6 +57,62 @@ namespace MixParams
     }
 
     inline juce::String channelName (int ch) { return "Ch " + mix::num (ch) + " "; }
+
+    /** The ID suffixes of a processing chain (bus, main, mono), in the order
+        RKMixProcessor reads them (ChainField). */
+    inline const std::vector<const char*>& chainFields()
+    {
+        static const std::vector<const char*> fields {
+            "eq_on", "hpf_on", "hpf", "hpf_slope", "lpf_on", "lpf", "lpf_slope", "eq_low_type", "eq_high_type",
+            "eq_b1_freq", "eq_b1_gain", "eq_b1_q", "eq_b2_freq", "eq_b2_gain", "eq_b2_q", "eq_b3_freq", "eq_b3_gain", "eq_b3_q",
+            "eq_b4_freq", "eq_b4_gain", "eq_b4_q", "eq_b5_freq", "eq_b5_gain", "eq_b5_q", "eq_b6_freq", "eq_b6_gain", "eq_b6_q",
+            "comp_on", "comp_thr", "comp_ratio", "comp_knee", "comp_att", "comp_rel", "comp_auto", "comp_makeup",
+            "lim_on", "lim_ceiling", "lim_rel"
+        };
+        return fields;
+    }
+
+    inline void addProcessing (rkfx::ParamBuilder& p, int chain)
+    {
+        using namespace mix;
+        const auto name = chain == kMainChain ? juce::String ("Main ") : chain == kMonoChain ? juce::String ("Mono ") : "Bus " + num (chain) + " ";
+        const auto id = [chain] (const char* suffix) { return chainId (chain, suffix); };
+
+        p.addBool      (id ("eq_on"), name + "EQ", false);
+        p.addBool      (id ("hpf_on"), name + "HPF", false);
+        p.addFrequency (id ("hpf"), name + "HPF Frequency", 20.0f, 400.0f, 40.0f);
+        p.addChoice    (id ("hpf_slope"), name + "HPF Slope", { "12 dB", "24 dB" }, { "12", "24" }, 0);
+        p.addBool      (id ("lpf_on"), name + "LPF", false);
+        p.addFrequency (id ("lpf"), name + "LPF Frequency", 1000.0f, 20000.0f, 16000.0f);
+        p.addChoice    (id ("lpf_slope"), name + "LPF Slope", { "12 dB", "24 dB" }, { "12", "24" }, 0);
+        p.addChoice    (id ("eq_low_type"), name + "EQ Low Type", { "Shelf", "Bell" }, { "shelf", "bell" }, 0);
+        p.addChoice    (id ("eq_high_type"), name + "EQ High Type", { "Shelf", "Bell" }, { "shelf", "bell" }, 0);
+        const float freqs[] = { 80.0f, 160.0f, 400.0f, 1000.0f, 2500.0f, 6000.0f };
+        for (int b = 0; b < 6; ++b)
+        {
+            const auto band = "eq_b" + juce::String (b + 1);
+            const auto label = name + "EQ " + juce::String (b + 1) + " ";
+            const auto q = b == 0 || b == 5 ? 0.7f : 1.0f;
+            p.addFrequency (id ((band + "_freq").toRawUTF8()), label + "Frequency", 20.0f, 20000.0f, freqs[b]);
+            p.addDecibels  (id ((band + "_gain").toRawUTF8()), label + "Gain", -15.0f, 15.0f, 0.0f);
+            p.addFloat     (id ((band + "_q").toRawUTF8()), label + "Q", rkfx::Units::logRange (0.3f, 10.0f), q,
+                            [] (float v) { return juce::String (v, 2); }, rkfx::Units::parseNumber);
+        }
+
+        p.addBool     (id ("comp_on"), name + "Comp", false);
+        p.addDecibels (id ("comp_thr"), name + "Comp Threshold", -60.0f, 0.0f, -20.0f);
+        p.addFloat    (id ("comp_ratio"), name + "Comp Ratio", rkfx::Units::logRange (1.0f, 20.0f), 2.0f,
+                       [] (float r) { return juce::String (r, r < 10.0f ? 1 : 0) + ":1"; }, rkfx::Units::parseNumber);
+        p.addDecibels (id ("comp_knee"), name + "Comp Knee", 0.0f, 12.0f, 6.0f);
+        p.addTime     (id ("comp_att"), name + "Comp Attack", 0.1f, 100.0f, 30.0f);
+        p.addTime     (id ("comp_rel"), name + "Comp Release", 10.0f, 2000.0f, 150.0f);
+        p.addBool     (id ("comp_auto"), name + "Comp Auto Release", true);
+        p.addDecibels (id ("comp_makeup"), name + "Comp Makeup", 0.0f, 24.0f, 0.0f);
+
+        p.addBool     (id ("lim_on"), name + "Limit", false);
+        p.addDecibels (id ("lim_ceiling"), name + "Limit Ceiling", -20.0f, -0.1f, -1.0f);
+        p.addTime     (id ("lim_rel"), name + "Limit Release", 10.0f, 1000.0f, 100.0f);
+    }
     inline juce::String busName (int bus)    { return "Bus " + mix::num (bus) + " "; }
 
     /** The host parameters, in their permanent order. */
@@ -179,7 +235,8 @@ namespace MixParams
             addTarget   (p, busId (bus, "out"), name + "Output", kTargetOff);
             p.addBool   (busId (bus, "main"), name + "Main", true);
             p.addChoice (busId (bus, "tap"), name + "Default Tap", tapNames, tapKeys, (int) Tap::preFader);
-            p.addBool   (busId (bus, "panfollow"), name + "Pan Follows", true);
+            p.addChoice (busId (bus, "panmode"), name + "Pan", { "Centre", "Follow", "Mirror" }, { "centre", "follow", "mirror" },
+                         (int) PanMode::follow);
             addPan      (p, busId (bus, "pan"), name + "Pan");
             for (int to = 0; to < kBuses; ++to)
                 addFader (p, busSendId (bus, to), name + "Send " + num (to), kFaderMinDb);
@@ -197,6 +254,10 @@ namespace MixParams
             for (int bus = 0; bus < kBuses; ++bus)
                 p.addBool (channelAssignId (ch, bus), name + "To Group " + num (bus), false);
         }
+
+        // The buses', the main's and the mono sum's EQ, compressor and limiter (appended).
+        for (int chain = 0; chain < kProcessingChains; ++chain)
+            addProcessing (p, chain);
 
         return p;
     }

@@ -9,7 +9,7 @@ Goals, in priority order:
 3. **Live-safe.** No clicks, no runaway feedback, no broken sessions after updates.
 4. **Consistent.** Same look, same controls, same behavior in every plugin.
 
-Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard** puts them all together on one pedalboard, as a plugin or a standalone app.
+Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard** puts them all together on one pedalboard, and **RKMix** is a 32-channel mixing console with them as inserts; both work as a plugin or a standalone app.
 
 ## Plugins
 
@@ -70,6 +70,10 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 [RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding the plugins above as pedals, as many as you like (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain with up to four splits, each into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets, expression pedals and footswitches (knobs or pedal on/off), 16 scenes, and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app. Its app icon is the RKMusic name strip (RK over a warm white band).
 
+### RKMix
+
+[RKMix](docs/manuals/RKMix.md) is a live mixing console: 32 inputs (linkable into stereo pairs) and 32 outputs. Each channel has a full strip (trim, polarity, delay, high-pass, gate and compressor with key inputs, 4-band EQ) and 2 insert slots for any RKFX effect; 16 buses are Group, Aux (in-ear and monitor mixes, each send at its own tap point) or FX returns, each with an EQ, glue compressor, limiter and 4 inserts; the stereo main and its mono sum have the same. Channels also have direct outs at any tap point (for a recorder). It has solo (cue PFL/AFL or in place), talkback, a sine and pink-noise oscillator, MIDI out from RKTrigger and RKFollow inserts, 16 scenes, 32 assignable host parameters, two user pages of chosen strips, and latency alignment across every path. As a standalone app it adds tap tempo and MIDI clock, MIDI learn and program-change scene recall.
+
 ## Documentation
 
 - [Common Controls](docs/manuals/Common%20Controls.md): layout, knobs, Dry/Wet, Output, Bypass, presets and Gig Performer use, shared by every plugin.
@@ -77,7 +81,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 ## Formats and requirements
 
-- macOS, AU and VST3; RKBoard also as a standalone app. The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out; RKFollow and RKTrigger are AU music effects and VST3 effects with audio in and out and MIDI out.
+- macOS, AU and VST3; RKBoard and RKMix also as standalone apps. RKMix has 32 inputs and 32 outputs and MIDI out (an AU music effect, `aumf Mix1 RKMu`). The MIDI effects are AU MIDI processors and VST3 effects with MIDI in and out; RKFollow and RKTrigger are AU music effects and VST3 effects with audio in and out and MIDI out.
 - Mono and stereo (RKRemap: 64 channels each way); sample rates 44.1 to 192 kHz.
 - Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
@@ -106,7 +110,8 @@ auval -v aufx Fsh1 RKMu                                        # AU validation (
                                                                #   Trm1, Chr1, Dbl1, Flg1, Phs1,
                                                                #   Dly1, Sat1, Dst1, Vrb1, Lim1, Trn1,
                                                                #   Des1, Swl1, Rot1, Vib1, Utl1;
-                                                               #   RKVocode: auval -v aumf Voc1 RKMu)
+                                                               #   RKVocode: auval -v aumf Voc1 RKMu,
+                                                               #   RKMix: auval -v aumf Mix1 RKMu)
 /Applications/pluginval.app/Contents/MacOS/pluginval --strictness-level 10 \
     --validate-in-process ~/Library/Audio/Plug-Ins/VST3/RKFreqShift.vst3
 ```
@@ -115,7 +120,7 @@ Every release build of every plugin must pass the tests, auval and [pluginval](h
 
 To check a GUI without a host, `cmake --build build --target RKFXSnapshots` builds a snapshot tool per plugin; `build/tools/RKFXSnapshot_<Name>_artefacts/Release/RKFXSnapshot_<Name> out.png [scale]` saves that plugin's window as a PNG.
 
-`cmake --build build --target RKIconRender` builds the icon renderer for the RKMusic plugins (RKModular, RKSampler, RKTracks, RKBoard): `build/tools/RKIconRender_artefacts/Release/RKIconRender tools/icons/fonts <out dir>` writes each plugin's `icon_big.png` and `icon_small.png`, to copy into its resources folder (see `tools/icons/RenderIcons.cpp`).
+`cmake --build build --target RKIconRender` builds the icon renderer for the RKMusic plugins (RKModular, RKSampler, RKTracks, RKBoard, RKMix): `build/tools/RKIconRender_artefacts/Release/RKIconRender tools/icons/fonts <out dir>` writes each plugin's `icon_big.png` and `icon_small.png`, to copy into its resources folder (see `tools/icons/RenderIcons.cpp`).
 
 ## Repository layout
 
@@ -133,12 +138,15 @@ core/              shared code for every plugin
                    (standalone target, also used by RKTracks)
   plugin/          base processor and editor, parameters, presets, output stage
 plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
-plugins/RKBoard/   the pedalboard: hosts every plugin's processor as a pedal
-                   (pedals/ holds the board-only Wah and Volume)
+host/              the pedal host shared by RKBoard and RKMix: every plugin's
+                   processor as a pedal or insert, the Wah and Volume pedals,
+                   MIDI learn, tap tempo and MIDI clock
+plugins/RKBoard/   the pedalboard
+plugins/RKMix/     the mixing console (engine, strip, buses, inserts, scenes)
 tests/             DSP and format tests, CPU benchmark
 tools/             snapshot tool: renders a plugin's window to PNG; icons/: the RKMusic icon renderer and its fonts
 docs/manuals/      user manuals
-docs/design/       designs written before building (RKVoice)
+docs/design/       designs written before building (RKVoice, RKMix, ...)
 benchmarks/        recorded CPU benchmark results
 ```
 

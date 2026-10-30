@@ -12,6 +12,8 @@ namespace
         return value == 0 ? juce::String ("Self") : "Key: In " + juce::String (value);
     }
 
+    constexpr int kDirectLabelWidth = 70, kDirectAtWidth = 24;   // the sends page's "Direct out [..] at [..]"
+
     juce::Rectangle<int> inner (juce::Rectangle<int> a) { return a.withTrimmedTop (kSectionTitle).reduced (8, 2); }
 
     juce::Rectangle<int> place (juce::Rectangle<int>& row, int width)
@@ -431,6 +433,12 @@ RKMixEditor::SendsPanel::SendsPanel (RKMixEditor& o, int ch) : Panel (o), channe
                                           o.accent());
         c.tap->setTooltip ("Where this send takes the channel's signal: the bus's default (dot) unless set here");
     }
+
+    directOut = make<ChoiceBox> (s.param (channelId (ch, "direct_out")), targetName, kFirstPairTarget);
+    directOut->setTooltip ("Direct out: this channel straight to an output (as well as everywhere else it goes)");
+    directTap = make<ChoiceBox> (s.param (channelId (ch, "direct_tap")), [] (int v) { return tapName ((Tap) v); });
+    directTap->setTooltip ("Where the direct out takes the channel. Before Post-Fader it ignores mute and solo; "
+                           "Post-Fader follows the fader and mute. Never panned.");
     refresh();
 }
 
@@ -445,13 +453,22 @@ void RKMixEditor::SendsPanel::refresh()
         c.tap->setVisible (type == BusType::aux);
         c.tap->setMarked (1 + owner.mixer.getSettings().choice (busId (bus, "tap")));
     }
+
+    // A mono channel goes to one output, a stereo pair to an output pair.
+    const auto stereo = owner.isStereo (channel);
+    directOut->filter ([stereo] (int target) { return isPairTarget (target) == stereo; });
+    directTap->setEnabled (owner.mixer.getSettings().choice (channelId (channel, "direct_out")) != kTargetOff);
     repaint();
 }
 
 void RKMixEditor::SendsPanel::resized()
 {
     auto r = getLocalBounds();
-    r.removeFromTop (kPanelHeader + 4);
+    auto header = r.removeFromTop (kPanelHeader).reduced (4, 3);
+    directTap->setBounds (header.removeFromRight (120));
+    header.removeFromRight (kDirectAtWidth);
+    directOut->setBounds (header.removeFromRight (120));
+    r.removeFromTop (4);
     const auto width = (r.getWidth() - (kBuses - 1) * 4) / kBuses;
     for (int bus = 0; bus < kBuses; ++bus)
     {
@@ -473,8 +490,16 @@ void RKMixEditor::SendsPanel::paint (juce::Graphics& g)
     g.drawText (owner.displayName (channel) + " - sends", 6, 2, 600, kPanelHeader, juce::Justification::centredLeft);
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (12.0f));
-    g.drawText ("Groups take the channel after its fader; Aux sends take it at their tap; FX sends after the fader.",
-                getLocalBounds().removeFromTop (kPanelHeader).withTrimmedLeft (280).withTrimmedRight (6), juce::Justification::centredRight);
+    const auto label = [&] (const juce::String& text, juce::Rectangle<int> area)
+    {
+        g.drawText (text, area.withY (0).withHeight (kPanelHeader), juce::Justification::centred);
+    };
+    label ("Direct out", directOut->getBounds().withX (directOut->getX() - kDirectLabelWidth).withWidth (kDirectLabelWidth));
+    label ("at", directOut->getBounds().withX (directOut->getRight()).withWidth (kDirectAtWidth));
+    g.drawFittedText ("Groups after the fader, Aux sends at their tap, FX sends after the fader.",
+                      getLocalBounds().removeFromTop (kPanelHeader).withTrimmedLeft (280)
+                          .withRight (directOut->getX() - kDirectLabelWidth - 12),
+                      juce::Justification::centredRight, 1);
 
     for (int bus = 0; bus < kBuses; ++bus)
     {
@@ -1252,6 +1277,9 @@ void RKMixEditor::RoutingPanel::refresh()
     add (s.choice ("mono_out"), "Mono");
     for (int bus = 0; bus < kBuses; ++bus)
         add (s.choice (busId (bus, "out")), owner.busDisplayName (bus));
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (! (ch % 2 == 1 && owner.isLinked (ch / 2)))
+            add (s.choice (channelId (ch, "direct_out")), owner.displayName (ch) + " direct");
 
     for (int out = 0; out < kChannels; ++out)
         if (! outputNames[(size_t) out].isBeingEdited())

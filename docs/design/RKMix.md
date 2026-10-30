@@ -142,7 +142,17 @@ Selecting an **Aux or FX bus** in the mixer view switches every channel's fader 
 
 ## Outputs
 
-The 32 outputs are fed by the main pair, the mono sum, the buses' outputs and the cue output. **Several sources on one output add up**, and the routing page marks that output in the accent colour with a note ("Out 3: Bus 1 + Bus 4"). An output nothing feeds is silent. Outputs have names (as in RKRemap) for the routing page.
+The 32 outputs are fed by the main pair, the mono sum, the buses' outputs, the channels' direct outs and the cue output. **Several sources on one output add up**, and the routing page marks that output in the accent colour with a note ("Out 3: Bus 1 + Bus 4"). An output nothing feeds is silent. Outputs have names (as in RKRemap) for the routing page.
+
+### Direct outs (added 2026-10-30, feat/rkmix-directouts)
+
+- **Every channel can also go straight to an output** (a linked pair to an output pair), as well as everywhere else it goes: for a multitrack recorder, a broadcast feed, or an in-ear that needs one source alone.
+- **Tap point:** any send tap (Input, Pre-EQ = after the gate, Pre-Comp = after the EQ, Pre-Inserts = after the compressor, Pre-Fader = after the inserts, Post-Fader). Default Input.
+- **Never panned.** Before Post-Fader it **ignores mute and solo** (a recorder keeps recording when the channel is muted in the room); Post-Fader follows the fader and mute (in-place solo included).
+- **Latency:** lined up with every output (delayed to the total), whatever the tap.
+- **Structure, not scene:** the output and tap don't change with a scene.
+- **Settings** `ch<n>_direct_out` (an output target) and `ch<n>_direct_tap`, appended. Linking or unlinking a pair moves its direct out between one output and a pair (as a bus's format does).
+- **Window:** the channel's Sends page header, "Direct out [Out 9] at [Pre-EQ]"; the Routing page lists "<channel> direct" on its output.
 
 ## Solo
 
@@ -412,7 +422,7 @@ The limiter sits **after the fader**, so on an in-ear mix it protects the ears e
 - **Send tap point per send** (channel × Aux bus), the bus supplying the default: so the singer's in-ear can take the vocal before the compressor while the other mixes take it after.
 - **Talkback** and an **oscillator** (sine and pink noise) are in v1 (phase 6).
 - **MIDI out** from audio-to-MIDI inserts (RKTrigger, RKFollow): each plugin's own channel and notes (no separate Channel Out), a warning only for the same note or controller on the same channel; pure MIDI effects not hosted in v1. RKTrigger's MIDI out in Gig Performer is checked first (MIDI's Step 0).
-- **Not in v1:** mid/side input pairs, a comp-before-EQ switch, direct outs (an RKRemap before RKMix can split raw inputs for recording).
+- **Not in v1:** mid/side input pairs, a comp-before-EQ switch. (Direct outs were here too; the user asked for them after phase 8, see Outputs.)
 
 ## Open questions
 

@@ -1000,6 +1000,82 @@ public:
             expectEquals (at[4], 30, "the Aux output waits for the main");
         }
 
+        beginTest ("Latency: a direct out lines up with every output, before the inserts or after the fader");
+        {
+            auto s = only ({ 0 });
+            s.channels[0].directOut = 5;                       // Out 5
+            DelayInserts inserts;
+            inserts.channelDelay[0] = 32;
+            inserts.mainDelay = 20;
+            for (const auto tap : { mix::Tap::input, mix::Tap::preFader, mix::Tap::postFader })
+            {
+                s.channels[0].directTap = tap;
+                auto e = makeEngine (s);
+                e.setInserts (&inserts);
+                e.setLatencies (inserts.latencies());
+                std::array<float, kChannels> value {};
+                const auto at = impulse (e, { 0 }, value);
+                expectEquals (at[4], 62, "10 + 32 + 20, with the main");
+                expectEquals (at[0], 62);
+            }
+        }
+
+        //==============================================================================
+        beginTest ("Direct out: Input is the channel as it comes, past the fader and mute; never panned");
+        {
+            auto s = only ({ 0 });
+            s.channels[0].pan = -1.0f;
+            s.channels[0].directOut = 3;                       // Out 3
+            MixEngine::Levels levels;
+            levels.channelDb[0] = mix::kFaderMinDb;
+            levels.channelMute[0] = true;
+            auto e = makeEngine (s, levels);
+            const auto r = block (e);
+            expectLessThan (maxError (r, 2, [&r] (int i) { return r.inSample (0, i); }), 1.0e-6f);
+            expectEquals (peak (r, 0), 0.0f, "the main: fader down");
+        }
+
+        beginTest ("Direct out: Post-Fader follows the fader and mute, still unpanned");
+        {
+            auto s = only ({});
+            s.channels[0].pan = -1.0f;
+            s.channels[0].directOut = 3;
+            s.channels[0].directTap = mix::Tap::postFader;
+            MixEngine::Levels levels;
+            levels.channelDb[0] = -6.0f;
+            auto e = makeEngine (s, levels);
+            const auto gain = std::pow (10.0f, -0.3f);
+            auto r = block (e);
+            expectLessThan (maxError (r, 2, [&r, gain] (int i) { return gain * r.inSample (0, i); }), 1.0e-5f);
+
+            levels.channelMute[0] = true;
+            e = makeEngine (s, levels);
+            r = block (e);
+            expectEquals (peak (r, 2), 0.0f, "muted");
+        }
+
+        beginTest ("Direct out: Pre-Comp is uncompressed, Pre-Fader compressed; a pair goes to an output pair");
+        {
+            auto s = only ({});
+            auto& comp = s.channels[0].strip.comp;
+            comp = { true, -30.0f, 20.0f, 0.0f, 0.5f, 50.0f, 0.0f, 0 };
+            s.channels[0].directOut = 1;
+            s.channels[0].directTap = mix::Tap::preComp;
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-3f, "Pre-Comp");
+            s.channels[0].directTap = mix::Tap::preFader;
+            e = makeEngine (s);
+            expectLessThan (busLevel (e, 0, 0), 0.2f, "Pre-Fader");
+
+            auto pair = only ({});
+            pair.links[1] = true;
+            pair.channels[2].directOut = mix::pairTarget (6);  // channels 3/4 -> Out 7/8
+            e = makeEngine (pair);
+            const auto r = block (e);
+            expectLessThan (maxError (r, 6, [&r] (int i) { return r.inSample (2, i); }), 1.0e-6f);
+            expectLessThan (maxError (r, 7, [&r] (int i) { return r.inSample (3, i); }), 1.0e-6f);
+        }
+
         beginTest ("The fader law: 0 dB at three quarters, the bottom is silence, positions invert");
         {
             expectWithinAbsoluteError (mix::faderDbAt (0.75f), 0.0f, 1.0e-6f);

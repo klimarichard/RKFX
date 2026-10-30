@@ -22,6 +22,11 @@
         FX buses -> main, Aux buses
         Aux buses -> their outputs
         main -> fader, mute, balance -> main output; (L + R) / 2 -> mono sum
+        a channel's direct output: the strip at its tap -> an output, as it is
+
+    A direct output takes the channel at one tap (Input to Post-Fader) with no
+    pan; before the fader it ignores mute and solo (a feed for a recorder), at
+    Post-Fader it follows the fader and mute.
 
     A linked pair is one stereo channel with its left channel's settings.
     Every gain glides (faders, pans and sends 20 ms, mutes and switches
@@ -82,6 +87,8 @@ public:
         std::array<int, kBuses> tap;              // Aux sends: a Tap, or -1 = the bus's default
         std::array<bool, kBuses> assign;          // to Group buses
         bool soloSafe = false;                    // in-place solo never mutes it
+        int directOut = mix::kTargetOff;          // a direct output (a pair for a stereo channel)
+        mix::Tap directTap = mix::Tap::input;     // where the direct output takes the channel
     };
 
     struct Bus
@@ -275,6 +282,7 @@ private:
     juce::AudioBuffer<float> busBuffers;              // 2 channels per bus
     juce::AudioBuffer<float> busChannelBuffers;       // the channels' part, lined up separately while a plan is active
     juce::AudioBuffer<float> mainChannelBuffer, delayScratch;
+    juce::AudioBuffer<float> directBuffer;            // a direct output, gained and lined up
 
     Inserts* inserts = nullptr;
     Latencies latencies;
@@ -284,6 +292,7 @@ private:
     std::array<std::array<BlockDelay, 2>, kBuses> busChannelLines, busHistory;
     std::array<BlockDelay, 2> mainChannelLines, mainPadLines;
     BlockDelay monoPadLine;
+    std::array<std::array<BlockDelay, 2>, kChannels> directLines;   // direct outputs, lined up with every output
     std::array<bool, kBuses> busFed {};               // something was added to the bus this block
 
     std::array<float, kChannels> channelPeaks {};
@@ -310,7 +319,7 @@ private:
     Curve curveOf (rkfx::Smoothed&, rkfx::Smoothed&, Row, Row spare, int numSamples) noexcept;
     void resetChannel (int ch);
 
-    void processChannel (int ch, const float* const* in, int numSamples, bool measure) noexcept;
+    void processChannel (int ch, const float* const* in, float* const* out, int numSamples, bool measure) noexcept;
     void processBus (int bus, float* const* out, int numSamples, bool measure) noexcept;
     void processMain (float* const* out, int numSamples, bool measure) noexcept;
 
@@ -338,6 +347,9 @@ private:
         active, to be lined up with the bus's other inputs. */
     void addToBus (int bus, const float* const* source, int numSides, const Curve& panLeft, const Curve& panRight,
                    std::initializer_list<const Curve*> gains, int numSamples, bool fromChannel = true) noexcept;
+
+    /** Adds a channel's direct output (@p signal, @p delay samples later) to its output target. */
+    void addDirect (int ch, const float* const* signal, int numSides, int delay, float* const* out, int numSamples) noexcept;
 
     /** A bus's output @p delay samples later (its history), in delayScratch; or the output itself. */
     void delayedBusOutput (int bus, float* const* io, int numSides, int delay, const float* (&result)[2], int numSamples) noexcept;

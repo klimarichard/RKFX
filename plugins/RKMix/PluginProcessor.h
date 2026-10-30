@@ -183,6 +183,7 @@ private:
         gateOn, gateThr, gateRange, gateAtt, gateHold, gateRel, gateKey,
         eqOn, eqLowType, eqHighType, eqBands,                       // eqBands + 3 * band + (0 freq, 1 gain, 2 q)
         compOn = eqBands + 12, compThr, compRatio, compKnee, compAtt, compRel, compMakeup, compKey,
+        directOut, directTap,
         numChannelFields
     };
     using ChannelParams = std::array<juce::RangedAudioParameter*, numChannelFields>;
@@ -222,6 +223,7 @@ private:
     void updateLatencies();                             // message thread
     void syncInsertLayouts();                           // strips that changed between mono and stereo
     void matchBusOutputs();                             // a mono bus on one output, a stereo bus on a pair
+    void matchDirectOutputs();                          // the same for channels' direct outputs, as pairs link
 
     struct LayoutSync : public juce::AsyncUpdater
     {

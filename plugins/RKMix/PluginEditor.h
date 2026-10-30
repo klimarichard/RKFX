@@ -238,6 +238,8 @@ private:
             juce::Rectangle<int> area;
         };
         std::array<Column, mix::kBuses> columns;
+        ChoiceBox* directOut = nullptr;      // the channel straight to an output (header)
+        ChoiceBox* directTap = nullptr;
     };
 
     /** The EQ, compressor and limiter of a bus, the main or the mono sum. */

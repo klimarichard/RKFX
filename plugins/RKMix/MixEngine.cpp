@@ -109,6 +109,7 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     busChannelBuffers.setSize (2 * kBuses, maxBlock);
     mainChannelBuffer.setSize (2, maxBlock);
     delayScratch.setSize (2, maxBlock);
+    directBuffer.setSize (2, maxBlock);
     for (auto* b : { &cueBuffer, &cueChannelBuffer, &cueSourceBuffer })
         b->setSize (2, maxBlock);
     talkBuffer.setSize (1, maxBlock);
@@ -149,6 +150,9 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     for (auto& line : mainPadLines)
         line.prepare (kMaxPathLatency, maxBlock);
     monoPadLine.prepare (kMaxPathLatency, maxBlock);
+    for (auto& ch : directLines)
+        for (auto& line : ch)
+            line.prepare (kMaxPathLatency, maxBlock);
 
     reset();
 }
@@ -183,6 +187,9 @@ void MixEngine::reset()
     monoPadLine.clear();
     for (auto& line : cueChannelLines)
         line.clear();
+    for (auto& ch : directLines)
+        for (auto& line : ch)
+            line.clear();
     talkHighPass.clear();
     pink = {};
     oscPhase = 0.0;
@@ -217,6 +224,16 @@ void MixEngine::setSettings (const Settings& newSettings, std::uint64_t changed)
         if (settings.buses[(size_t) bus].type != newSettings.buses[(size_t) bus].type
             || settings.buses[(size_t) bus].stereo != newSettings.buses[(size_t) bus].stereo)
             reshaped |= busBit (bus);
+
+    // A direct output moved: its lining-up line starts silent.
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        const auto& was = settings.channels[(size_t) ch];
+        const auto& now = newSettings.channels[(size_t) ch];
+        if (was.directOut != now.directOut || was.directTap != now.directTap)
+            for (auto& line : directLines[(size_t) ch])
+                line.clear();
+    }
 
     settings = newSettings;
     if (reshaped != 0)
@@ -590,10 +607,11 @@ const float* MixEngine::keySignal (int key, int slot, const float* const* in, in
     return dest;
 }
 
-void MixEngine::processChannel (int ch, const float* const* in, int numSamples, bool measure) noexcept
+void MixEngine::processChannel (int ch, const float* const* in, float* const* out, int numSamples, bool measure) noexcept
 {
     auto& s = states[(size_t) ch];
     const auto& strip = settings.channels[(size_t) ch].strip;
+    const auto directTap = settings.channels[(size_t) ch].directOut != mix::kTargetOff ? (int) settings.channels[(size_t) ch].directTap : -1;
     const auto numSides = isStereo (ch) ? 2 : 1;
     float* io[2] = { channelBuffer.getWritePointer (0), channelBuffer.getWritePointer (1) };
 
@@ -616,6 +634,11 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
                      [&] (StripDsp::Tap stripTap, float* const* signal)
                      {
                          const auto tap = (Tap) (int) stripTap;
+
+                         // The direct output, before the inserts: lined up with every output.
+                         if (directTap == (int) tap)
+                             addDirect (ch, signal, numSides, plan.active ? plan.total : 0, out, numSamples);
+
                          if (active.count == 0 || ! active.uses (tap))
                              return;
 
@@ -648,6 +671,21 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
 
     if (active.count > 0)
         sendAtTap (ch, active, Tap::preFader, io, numSides, mute, fader, panLeft, panRight, numSamples);
+
+    // The direct output after the inserts (lined up with the slowest channel already).
+    if (directTap == (int) Tap::preFader)
+        addDirect (ch, io, numSides, plan.total - plan.channelLatency, out, numSamples);
+    else if (directTap == (int) Tap::postFader)
+    {
+        // Fed even when silent, so its line never holds old sound.
+        float* gained[2] = { directBuffer.getWritePointer (0), directBuffer.getWritePointer (1) };
+        for (int side = 0; side < numSides; ++side)
+        {
+            FVO::clear (gained[side], numSamples);
+            accumulate (gained[side], io[side], { &mute, &fader }, numSamples);
+        }
+        addDirect (ch, gained, numSides, plan.total - plan.channelLatency, out, numSamples);
+    }
 
     if (measure)
         for (int side = 0; side < numSides; ++side)
@@ -699,6 +737,22 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
 
     if (active.count > 0)
         sendAtTap (ch, active, Tap::postFader, io, numSides, mute, fader, panLeft, panRight, numSamples);
+}
+
+void MixEngine::addDirect (int ch, const float* const* signal, int numSides, int delay, float* const* out, int numSamples) noexcept
+{
+    const float* source[2] = { signal[0], signal[numSides - 1] };
+    if (delay > 0)
+        for (int side = 0; side < numSides; ++side)
+        {
+            // In place when the signal is directBuffer itself: written before it is read.
+            auto& line = directLines[(size_t) ch][(size_t) side];
+            line.write (signal[side], numSamples);
+            auto* dest = directBuffer.getWritePointer (side);
+            line.read (dest, numSamples, delay);
+            source[side] = dest;
+        }
+    addToTarget (out, settings.channels[(size_t) ch].directOut, source[0], numSides == 2 ? source[1] : nullptr, numSamples);
 }
 
 void MixEngine::delayedBusOutput (int bus, float* const* io, int numSides, int delay,
@@ -1061,7 +1115,7 @@ void MixEngine::process (const float* const* in, float* const* out, int numSampl
 
     for (int ch = 0; ch < kChannels; ++ch)
         if (! isFollower (ch))
-            processChannel (ch, in, numSamples, measure);
+            processChannel (ch, in, out, numSamples, measure);
 
     // Groups in number order (a group feeds only later groups), then FX, then Aux.
     for (const auto type : { BusType::group, BusType::fx, BusType::aux })

@@ -36,6 +36,7 @@ namespace
         "eq_low_freq", "eq_low_gain", "eq_low_q", "eq_lmid_freq", "eq_lmid_gain", "eq_lmid_q",
         "eq_hmid_freq", "eq_hmid_gain", "eq_hmid_q", "eq_high_freq", "eq_high_gain", "eq_high_q",
         "comp_on", "comp_thr", "comp_ratio", "comp_knee", "comp_att", "comp_rel", "comp_makeup", "comp_key",
+        "direct_out", "direct_tap",
     };
 
     void raise (std::atomic<float>& peak, float value) noexcept
@@ -144,9 +145,12 @@ RKMixProcessor::RKMixProcessor()
         if (! loadingMix.load())
             markPresetModified();
 
-        // A bus switched between mono and stereo keeps its place: Out 5/6 <-> Out 5.
+        // A bus switched between mono and stereo keeps its place: Out 5/6 <-> Out 5 (a
+        // channel's direct output too, as its pair links or unlinks).
         if (! loadingMix.load() && (parts & (std::uint64_t (0xffff) << 32)) != 0)
             matchBusOutputs();
+        if (! loadingMix.load() && (parts & MixSettings::kMainBit) != 0)
+            matchDirectOutputs();
 
         // A pair linked or unlinked, a bus mono or stereo: its inserts follow.
         if ((parts & (MixSettings::kMainBit | (std::uint64_t (0xffff) << 32))) != 0)
@@ -210,6 +214,23 @@ void RKMixProcessor::matchBusOutputs()
         if (first < 0 || mix::isPairTarget (target) == isBusStereo (bus))
             continue;
         const auto matched = isBusStereo (bus) ? mix::pairTarget (first) : first + 1;
+        out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
+    }
+}
+
+void RKMixProcessor::matchDirectOutputs()
+{
+    for (int ch = 0; ch < mix::kChannels; ++ch)
+    {
+        if (ch % 2 == 1 && isLinked (ch / 2))
+            continue;   // a linked pair's right channel: the left one's settings
+        auto& out = *channelParams[(size_t) ch][directOut];
+        const auto target = juce::roundToInt (valueOf (&out));
+        const auto first = mix::firstOutputOf (target);
+        const auto stereo = ch % 2 == 0 && isLinked (ch / 2);
+        if (first < 0 || mix::isPairTarget (target) == stereo)
+            continue;
+        const auto matched = stereo ? mix::pairTarget (first) : first + 1;
         out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
     }
 }
@@ -839,6 +860,8 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
     c.pan = get (pan) * 0.01f;
     c.toMain = on (toMain);
     c.soloSafe = valueOf (soloSafeParams[(size_t) ch]) >= 0.5f;
+    c.directOut = index (directOut);
+    c.directTap = (mix::Tap) index (directTap);
 
     const auto& routing = channelRouting[(size_t) ch];
     for (int bus = 0; bus < mix::kBuses; ++bus)

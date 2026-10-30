@@ -307,6 +307,13 @@ namespace MixParams
         for (int bus = 0; bus < kBuses; ++bus)
             p.addBool (busId (bus, "recallsafe"), busName (bus) + "Recall Safe", false);
 
+        // Direct outputs: a channel straight to an output, at a tap (appended).
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            addTarget   (p, channelId (ch, "direct_out"), channelName (ch) + "Direct Output", kTargetOff);
+            p.addChoice (channelId (ch, "direct_tap"), channelName (ch) + "Direct Tap", tapNames, tapKeys, (int) Tap::input);
+        }
+
         return p;
     }
 }

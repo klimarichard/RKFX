@@ -539,10 +539,13 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     label (*cueSource, "Cue with no solo");
     if (sendsOnFader >= 0)
     {
-        auto text = oscButton->getBounds().withY (oscButton->getBottom() + 8).withBottom (sendsBack.getY() - 4);
+        // Below the tempo row (standalone) or the OSC button, above Back to faders
+        const auto above = tempoField.isVisible() ? tempoField.getBottom() : oscButton->getBottom();
+        const auto text = oscButton->getBounds().withY (above + 4).withBottom (sendsBack.getY() - 2);
         g.setColour (MixGui::stripColour (mixer.getBusColour (sendsOnFader)).brighter (0.2f));
         g.setFont (rkfx::Fonts::bold (13.0f));
-        g.drawFittedText ("Faders: sends to " + busDisplayName (sendsOnFader), text, juce::Justification::topLeft, 2);
+        g.drawFittedText ("Faders: sends to " + busDisplayName (sendsOnFader), text, juce::Justification::centred,
+                          text.getHeight() >= 34 ? 2 : 1, 0.8f);
     }
 }
 

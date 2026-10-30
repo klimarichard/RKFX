@@ -45,6 +45,42 @@ namespace
     }
 }
 
+//==============================================================================
+juce::String MixLearn::key (int target)
+{
+    if (target >= firstAssign && target < firstAssign + 32) return "assign" + juce::String (target - firstAssign + 1);
+    if (target == scene) return "scene";
+    if (target == tap)   return "tap";
+    if (target == talk)  return "talk";
+    return {};
+}
+
+int MixLearn::fromKey (const juce::String& k)
+{
+    if (k.startsWith ("assign"))
+        if (const auto n = k.substring (6).getIntValue(); n >= 1 && n <= 32)
+            return firstAssign + n - 1;
+    if (k == "scene") return scene;
+    if (k == "tap")   return tap;
+    if (k == "talk")  return talk;
+    return -1;
+}
+
+juce::String MixLearn::describe (int target)
+{
+    if (target >= firstAssign && target < firstAssign + 32) return "Assign " + juce::String (target - firstAssign + 1);
+    if (target == scene) return "Scene";
+    if (target == tap)   return "Tap Tempo";
+    if (target == talk)  return "Talk";
+    return {};
+}
+
+bool MixLearn::isSwitch (int target)
+{
+    return target == tap || target == talk;
+}
+
+//==============================================================================
 RKMixProcessor::RKMixProcessor()
     : rkfx::ProcessorBase (makeConfig(), MixParams::createHost())
 {
@@ -132,6 +168,14 @@ RKMixProcessor::RKMixProcessor()
     sceneParam = findParam ("scene");
     sceneParam->addListener (&sceneSync);
 
+    // The standalone app: MIDI learn and its rig settings in Application Support/RKFX/RKMix.
+    standalone = wrapperType == wrapperType_Standalone;
+    if (standalone)
+    {
+        rigFolder = rkfx::PresetLibrary::defaultSettingsFile().getParentDirectory().getChildFile ("RKMix");
+        loadRig();
+    }
+
     // An insert leaving: its assignments and scene knobs go, and the editor closes it first.
     rack.aboutToRemove = [this] (rkfx::ProcessorBase* plugin)
     {
@@ -167,6 +211,165 @@ void RKMixProcessor::matchBusOutputs()
             continue;
         const auto matched = isBusStereo (bus) ? mix::pairTarget (first) : first + 1;
         out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
+    }
+}
+
+//==============================================================================
+void RKMixProcessor::setStandaloneForTesting (const juce::File& folder)
+{
+    standalone = true;
+    rigFolder = folder;
+    loadRig();
+}
+
+void RKMixProcessor::loadRig()
+{
+    midiMap = std::make_unique<rkfx::MidiMap> (rigFolder.getChildFile ("midi-map.json"),
+                                               rkfx::MidiMap::Targets { MixLearn::key, MixLearn::fromKey, MixLearn::isSwitch });
+    juce::var root;
+    if (juce::JSON::parse (rigFolder.getChildFile ("settings.json").loadFileAsString(), root).wasOk())
+        followClock = (bool) root.getProperty ("followClock", false);
+    standalonePlayHead.bpm = tempo.load();
+}
+
+void RKMixProcessor::saveRig() const
+{
+    auto* root = new juce::DynamicObject();
+    root->setProperty ("followClock", followClock.load());
+    rigFolder.createDirectory();
+    rkfx::PresetLibrary::writeAtomically (rigFolder.getChildFile ("settings.json"), juce::JSON::toString (juce::var (root)));
+}
+
+void RKMixProcessor::setTempo (double bpm)
+{
+    tempo = juce::jlimit (20.0, 300.0, bpm);
+    standalonePlayHead.bpm = tempo.load();
+    markPresetModified();
+}
+
+void RKMixProcessor::tapTempo()
+{
+    if (const auto bpm = tapper.tap (juce::Time::getMillisecondCounterHiRes() * 0.001))
+        setTempo (*bpm);
+}
+
+void RKMixProcessor::setFollowClock (bool follow)
+{
+    followClock = follow;
+    clock.reset();
+    saveRig();
+}
+
+void RKMixProcessor::LearnNotifier::handleAsyncUpdate()
+{
+    if (owner.midiMap != nullptr && owner.learnedTarget >= 0)
+        owner.midiMap->set ({ owner.learnedTarget, owner.learnedChannel, owner.learnedCC, false });
+    owner.learnedTarget = -1;
+    ++owner.learnVersion;
+}
+
+void RKMixProcessor::handleStandaloneMidi (int numSamples)
+{
+    const auto* midi = getMidi();
+    const auto rate = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    if (midi != nullptr)
+        for (const auto metadata : *midi)
+        {
+            if (metadata.samplePosition < getChunkStart() || metadata.samplePosition >= getChunkStart() + numSamples)
+                continue;
+            const auto message = metadata.getMessage();
+            const auto time = sampleTime + (metadata.samplePosition - getChunkStart()) / rate;
+
+            if (message.isMidiClock())
+            {
+                clock.tick (time);
+            }
+            else if (message.isProgramChange())
+            {
+                // Program changes 0-15 recall scenes 1-16.
+                if (message.getProgramChangeNumber() < MixScenes::kNumScenes)
+                    sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) message.getProgramChangeNumber() + 1.0f));
+            }
+            else if (message.isController())
+            {
+                const auto channel = message.getChannel(), cc = message.getControllerNumber();
+
+                // Learning: this controller is the one.
+                if (const auto target = learning.exchange (-1); target >= 0)
+                {
+                    learnedChannel = channel;
+                    learnedCC = cc;
+                    learnedTarget = target;
+                    learnNotifier.triggerAsyncUpdate();
+                    continue;
+                }
+                if (midiMap != nullptr)
+                    if (const auto code = midiMap->lookup (channel, cc); code >= 0)
+                        applyController (code % 1000, code >= 1000, message.getControllerValue(), time);
+            }
+        }
+
+    sampleTime += numSamples / rate;
+    if (followClock.load())
+        if (const auto bpm = clock.bpm (sampleTime))
+        {
+            tempo = *bpm;
+            standalonePlayHead.bpm = *bpm;
+        }
+}
+
+void RKMixProcessor::applyController (int target, bool momentary, int value, double time)
+{
+    const auto pressed = value >= 64;
+    const auto wasPressed = target < (int) switchHeld.size() && switchHeld[(size_t) target];
+    if (target < (int) switchHeld.size())
+        switchHeld[(size_t) target] = pressed;
+    const auto pressEdge = pressed && ! wasPressed;
+
+    if (target >= MixLearn::firstAssign && target < MixLearn::firstAssign + MixAssigns::kNumAssigns)
+    {
+        // An expression pedal: glide to it, so the 7-bit steps never zipper.
+        const auto slot = target - MixLearn::firstAssign;
+        ccTargets[(size_t) slot] = (float) value / 127.0f;
+        ccGliding[(size_t) slot] = true;
+    }
+    else if (target == MixLearn::scene)
+    {
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) juce::jlimit (1, MixScenes::kNumScenes, value + 1)));
+    }
+    else if (target == MixLearn::tap)
+    {
+        if (pressEdge && ! followClock.load())
+            if (const auto bpm = tapper.tap (time))
+            {
+                tempo = *bpm;
+                standalonePlayHead.bpm = *bpm;
+            }
+    }
+    else if (target == MixLearn::talk)
+    {
+        // Momentary: on while held; toggle: each press.
+        const auto on = momentary ? pressed : (pressEdge ? valueOf (talkParam) < 0.5f : valueOf (talkParam) >= 0.5f);
+        if (on != (valueOf (talkParam) >= 0.5f))
+            talkParam->setValueNotifyingHost (on ? 1.0f : 0.0f);
+    }
+}
+
+void RKMixProcessor::glideControllers (int numSamples)
+{
+    const auto rate = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    const auto amount = juce::jmin (1.0f, (float) numSamples / (float) (0.03 * rate));   // ~30 ms
+    for (int slot = 0; slot < MixAssigns::kNumAssigns; ++slot)
+    {
+        if (! ccGliding[(size_t) slot])
+            continue;
+        auto& param = *findParam (mix::assignId (slot));
+        const auto target = ccTargets[(size_t) slot].load();
+        const auto now = param.getValue();
+        const auto next = std::abs (target - now) < 1.0e-4f ? target : now + amount * (target - now);
+        param.setValueNotifyingHost (next);
+        if (juce::exactlyEqual (next, target))
+            ccGliding[(size_t) slot] = false;
     }
 }
 
@@ -367,6 +570,7 @@ juce::var RKMixProcessor::getExtraState() const
             busColourList.add (busColours[(size_t) bus].load());
         }
     }
+    root->setProperty ("tempo", tempo.load());
     root->setProperty ("inserts", rack.toVar());
     root->setProperty ("scenes", scenes->toVar());
     root->setProperty ("assigns", assigns->toVar());
@@ -381,6 +585,9 @@ juce::var RKMixProcessor::getExtraState() const
 void RKMixProcessor::setExtraState (const juce::var& extra)
 {
     // A missing state (Reset, an empty preset) is the default console.
+    tempo = juce::jlimit (20.0, 300.0, (double) extra.getProperty ("tempo", 120.0));
+    standalonePlayHead.bpm = tempo.load();
+
     // Solo is never saved; talkback and the oscillator are never on when a mix loads.
     clearSolo();
     talkParam->setValueNotifyingHost (0.0f);
@@ -727,11 +934,19 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         reportLatency (latency);
     }
 
+    // The standalone app: MIDI learn, program changes, tempo; its own play head for the inserts.
+    if (standalone)
+    {
+        handleStandaloneMidi (buffer.getNumSamples());
+        glideControllers (buffer.getNumSamples());
+        standalonePlayHead.advance (buffer.getNumSamples(), getSampleRate());
+    }
+
     const auto measure = windowsOpen.load() > 0;
     {
         // The inserts stay put while they run (a removed one is deleted after this).
         const juce::SpinLock::ScopedLockType sl (rack.getLock());
-        rack.setBlockContext (getPlayHead(), getMidi(), getChunkStart());
+        rack.setBlockContext (standalone ? &standalonePlayHead : getPlayHead(), getMidi(), getChunkStart());
         engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
         insertMidi.clear();
         rack.takeMidi (insertMidi);

@@ -6,11 +6,27 @@
 #include "MixAssigns.h"
 #include "MixInserts.h"
 #include "MixScenes.h"
+#include "host/MidiMap.h"
+#include "host/Tempo.h"
 #include "MixParams.h"
 #include "MixSettings.h"
 
 #include <array>
 #include <atomic>
+
+/** What a MIDI controller can be learned to in the standalone app. */
+namespace MixLearn
+{
+    constexpr int firstAssign = 0;       // + slot (0..31): continuous
+    constexpr int scene = 200;           // the CC value picks the scene (0..15)
+    constexpr int tap = 201;             // switch: tap tempo
+    constexpr int talk = 202;            // switch: talkback
+
+    juce::String key (int target);       // "assign3", "scene", "tap", "talk"
+    int fromKey (const juce::String&);   // -1 when unknown
+    juce::String describe (int target);  // "Assign 3", "Scene", ...
+    bool isSwitch (int target);
+}
 
 /** RKMix: a mixing console. 32 inputs (linkable in pairs) into channel
     strips, a stereo main and a mono sum, on any of the 32 outputs.
@@ -121,6 +137,29 @@ public:
 
     float takeCuePeak (int side) noexcept { return cuePeaks[(size_t) side].exchange (0.0f); }
 
+    //==============================================================================
+    // Standalone only (in a host, Gig Performer does these): MIDI learn,
+    // program changes for scenes, tempo with tap and MIDI clock.
+
+    bool isStandalone() const noexcept { return standalone; }
+    /** Tests: behave as the standalone app, with the rig's files in @p rigFolder. */
+    void setStandaloneForTesting (const juce::File& rigFolder);
+
+    rkfx::MidiMap* getMidiMap() noexcept { return midiMap.get(); }
+    /** The next MIDI controller moved is learned for @p target (a MixLearn target). */
+    void startLearning (int target) { learning = target; }
+    void cancelLearning() { learning = -1; }
+    int getLearningTarget() const noexcept { return learning.load(); }
+    /** Bumped when a controller was learned (the editor polls it). */
+    int getLearnVersion() const noexcept { return learnVersion.load(); }
+
+    /** The mix's tempo (saved with it; the inserts' tempo in the standalone app). */
+    double getTempo() const noexcept { return tempo.load(); }
+    void setTempo (double bpm);
+    void tapTempo();
+    bool isFollowingClock() const noexcept { return followClock.load(); }
+    void setFollowClock (bool);
+
     /** Set while a window shows the meters (no measuring otherwise). */
     std::atomic<int> windowsOpen { 0 };
 
@@ -191,6 +230,35 @@ private:
         RKMixProcessor& owner;
     };
     LayoutSync layoutSync { *this };
+
+    // Standalone
+    bool standalone = false;
+    std::unique_ptr<rkfx::MidiMap> midiMap;
+    juce::File rigFolder;
+    rkfx::StandalonePlayHead standalonePlayHead;
+    rkfx::TapTempo tapper;
+    rkfx::MidiClockFollower clock;
+    std::atomic<double> tempo { 120.0 };
+    std::atomic<bool> followClock { false };
+    double sampleTime = 0.0;
+    std::atomic<int> learning { -1 }, learnVersion { 0 };
+    int learnedTarget = -1, learnedChannel = 0, learnedCC = 0;    // audio thread -> message thread
+    std::array<std::atomic<float>, MixAssigns::kNumAssigns> ccTargets {};
+    std::array<std::atomic<bool>, MixAssigns::kNumAssigns> ccGliding {};
+    std::array<bool, 256> switchHeld {};
+    void handleStandaloneMidi (int numSamples);
+    void applyController (int target, bool momentary, int value, double time);
+    void glideControllers (int numSamples);
+    void loadRig();
+    void saveRig() const;
+
+    struct LearnNotifier : public juce::AsyncUpdater
+    {
+        explicit LearnNotifier (RKMixProcessor& p) : owner (p) {}
+        void handleAsyncUpdate() override;
+        RKMixProcessor& owner;
+    };
+    LearnNotifier learnNotifier { *this };
 
     std::unique_ptr<MixScenes> scenes;
     std::unique_ptr<MixAssigns> assigns;

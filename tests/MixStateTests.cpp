@@ -528,6 +528,53 @@ public:
             expect (assigns.get (3).kind == Kind::none, "gone with its insert");
         }
 
+        beginTest ("Standalone: program changes recall scenes; learned controllers drive Assigns and Talk; the tempo is kept");
+        {
+            const auto rig = juce::File::createTempFile ("rkmix-rig");
+            rig.createDirectory();
+            RKMixProcessor p;
+            p.setStandaloneForTesting (rig);
+            p.prepareToPlay (48000.0, 128);
+            juce::AudioBuffer<float> b (32, 128);
+
+            const auto send = [&] (const juce::MidiMessage& m, int blocks = 1)
+            {
+                for (int n = 0; n < blocks; ++n)
+                {
+                    juce::MidiBuffer midi;
+                    if (n == 0)
+                        midi.addEvent (m, 0);
+                    b.clear();
+                    p.processBlock (b, midi);
+                }
+            };
+
+            send (juce::MidiMessage::programChange (1, 2));
+            expectEquals (p.getScenes().getCurrent(), 2, "program change 2: scene 3");
+
+            p.getMidiMap()->set ({ MixLearn::firstAssign + 4, 1, 11, false });
+            send (juce::MidiMessage::controllerEvent (1, 11, 127), 80);
+            expectWithinAbsoluteError (p.findParam (mix::assignId (4))->getValue(), 1.0f, 1.0e-3f, "CC 11 drives Assign 5 (glided)");
+
+            p.getMidiMap()->set ({ MixLearn::talk, 1, 64, true });
+            send (juce::MidiMessage::controllerEvent (1, 64, 127));
+            expect (rkfx::ProcessorBase::valueOf (p.findParam ("talk")) >= 0.5f, "Talk while held");
+            send (juce::MidiMessage::controllerEvent (1, 64, 0));
+            expect (rkfx::ProcessorBase::valueOf (p.findParam ("talk")) < 0.5f, "...and off when let go");
+
+            // The mappings are the rig's: another instance reads them.
+            RKMixProcessor q;
+            q.setStandaloneForTesting (rig);
+            expect (q.getMidiMap()->find (MixLearn::firstAssign + 4).has_value());
+
+            p.setTempo (97.0);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectWithinAbsoluteError (q.getTempo(), 97.0, 1.0e-6, "the tempo is kept with the mix");
+            rig.deleteRecursively();
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

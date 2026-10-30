@@ -8,7 +8,9 @@ juce_add_plugin(RKMix
     PLUGIN_CODE              Mix1
     BUNDLE_ID                com.rkmusic.rkmix
     PRODUCT_NAME             "RKMix"
-    FORMATS                  AU VST3
+    ICON_BIG                 "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_big.png"    # RKMusic icon: RK over the name strip
+    ICON_SMALL               "${CMAKE_CURRENT_SOURCE_DIR}/resources/icon_small.png"
+    FORMATS                  AU VST3 Standalone
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         TRUE      # inserts with MIDI input; scenes by program change
     NEEDS_MIDI_OUTPUT        TRUE      # what RKTrigger and RKFollow inserts send; MIDI thru
@@ -78,6 +80,7 @@ target_link_libraries(RKMix
         rkmix_factory_presets
         rkfx_core
         juce::juce_audio_processors
+        juce::juce_audio_utils          # Standalone wrapper (device settings)
         juce::juce_gui_basics
     PUBLIC
         juce::juce_recommended_config_flags

@@ -358,6 +358,7 @@ private:
             juce::Slider min, max;
             juce::ToggleButton invert { "Inv" };
             juce::TextButton clear { juce::String::fromUTF8 ("\xc3\x97") };
+            juce::TextButton learn { "MIDI" };          // standalone: the controller learned to it
             juce::Rectangle<int> area;
         };
         std::array<std::unique_ptr<Row>, 32> rows;
@@ -397,6 +398,11 @@ private:
     AssignPanel assignPanel;
     std::array<juce::TextButton, 16> sceneButtons;
     int lastSceneVersion = -1, lastAssignVersion = -1;
+
+    // Standalone: tempo, tap, MIDI clock; MIDI learn
+    juce::Label tempoField;
+    juce::TextButton tapButton { "Tap" }, clockButton { "Clock" };
+    int lastLearnVersion = -1, lastLearning = -1;
 
     // The Master section's solo, cue, talk and oscillator controls
     std::unique_ptr<rkfx::SegmentedSwitch> soloMode, soloTap;
@@ -461,6 +467,11 @@ private:
     void mouseDown (const juce::MouseEvent&) override;
     void showControlMenu (const juce::String& paramId, int insertSlot, juce::Component& target);
     void showSceneMenu (int scene);
+    /** Standalone: learn or forget a controller for @p target (a MixLearn target). */
+    void addLearnItems (juce::PopupMenu&, int target, int firstId);
+    bool handleLearnResult (int result, int target, int firstId);
+    void showLearnMenu (int target, juce::Component& component);
+    void refreshStandalone();
     void refreshScenes();
 
     void layoutContent() override;

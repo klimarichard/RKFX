@@ -243,6 +243,15 @@ RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked 
 - **The scene bar** is the bottom row (click: recall, right-click: copy); **right-click any control** (the console's or an insert's) for Assign to / Remove / Scene controlled; the **Assign page** lists the 32 with min, max (percent of the control's travel), Inv and remove. Removing an insert removes its assignments and scene knobs.
 - **Tests:** a scene's fader, pan, insert on/off and a scene-controlled insert knob recall; a link (structure) stays; a recall-safe channel keeps its fader; edits stay in their scene; the session keeps scenes and the current one; the Scene parameter recalls. An Assign moves a fader (range, invert), a pan, a mute (on at 50%), an insert knob; the fader moves its Assign; kept in the session; gone with its insert.
 
+### As built: the standalone app (feat/rkmix-standalone, 2026-10-30)
+
+- **RKMix.app** (Standalone format; the RKMusic icon "MIX" in the steel accent, from tools/icons). The MIDI output device is the standalone wrapper's (MIDI out from RKTrigger and RKFollow inserts, and MIDI thru).
+- **Shared with RKBoard** through the pedal host: `rkfx::MidiMap` (the map; each app names its targets) and `host/Tempo.h` (tap tempo, MIDI clock follower, the standalone play head).
+- **MIDI learn** targets: Assign 1-32 (an expression pedal, glided over about 30 ms), Scene (the controller's value picks it), Tap, Talk (momentary or toggle). Learn from the Assign page's MIDI button per row, the scene bar's, TALK's and Tap's right-click menus; the mappings are the rig's (Application Support/RKFX/RKMix/midi-map.json), the same for every mix.
+- **Program changes 0-15** recall scenes 1-16 (standalone only; in a host, Gig Performer routes program changes).
+- **Tempo** (saved with the mix): the field, Tap and Clock (follow MIDI clock, kept in the rig's settings.json) in the Master section; the inserts' play head in the standalone app.
+- **Tests:** program change to scene, a learned CC gliding an Assign, a momentary Talk switch, the rig's mappings shared between instances, the tempo kept with the mix.
+
 ## Parameters
 
 Fixed host parameters, in this order (IDs permanent, append only):

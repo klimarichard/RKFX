@@ -1108,8 +1108,11 @@ RKMixEditor::AssignPanel::AssignPanel (RKMixEditor& o) : Panel (o)
         row->invert.onClick = [this, a] { applyRange (a); };
         row->clear.setTooltip ("Remove this assignment");
         row->clear.onClick = [this, a] { owner.mixer.getAssigns().clear (a); refresh(); };
+        row->learn.setTooltip ("MIDI learn: a controller (an expression pedal) for this Assign");
+        row->learn.onClick = [this, a] { owner.showLearnMenu (MixLearn::firstAssign + a, rows[(size_t) a]->learn); };
         addAndMakeVisible (row->invert);
         addAndMakeVisible (row->clear);
+        addChildComponent (row->learn);
         rows[(size_t) a] = std::move (row);
     }
 }
@@ -1134,6 +1137,15 @@ void RKMixEditor::AssignPanel::refresh()
         row.invert.setToggleState (t.invert, juce::dontSendNotification);
         for (juce::Component* c : std::initializer_list<juce::Component*> { &row.min, &row.max, &row.invert, &row.clear })
             c->setVisible (used);
+
+        // Standalone: the controller learned to this Assign.
+        if (auto* map = owner.mixer.getMidiMap())
+        {
+            const auto mapping = map->find (MixLearn::firstAssign + a);
+            row.learn.setButtonText (owner.mixer.getLearningTarget() == MixLearn::firstAssign + a ? juce::String ("...")
+                                     : mapping.has_value() ? "CC " + juce::String (mapping->cc) : juce::String ("MIDI"));
+            row.learn.setVisible (true);
+        }
     }
     repaint();
 }
@@ -1148,6 +1160,11 @@ void RKMixEditor::AssignPanel::resized()
         auto& row = *rows[(size_t) a];
         row.area = juce::Rectangle<int> (r.getX() + (a / 16) * (columnWidth + kGap), r.getY() + (a % 16) * rowHeight, columnWidth, rowHeight);
         auto line = row.area.reduced (4, 1);
+        if (owner.mixer.isStandalone())
+        {
+            row.learn.setBounds (line.removeFromRight (48));
+            line.removeFromRight (4);
+        }
         row.clear.setBounds (line.removeFromRight (22));
         line.removeFromRight (4);
         row.invert.setBounds (line.removeFromRight (50));

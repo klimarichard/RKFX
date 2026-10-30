@@ -307,6 +307,22 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
         addToCanvas (b);
     }
     addMouseListener (this, true);   // right-clicks anywhere inside: control menus
+
+    // The standalone app: its tempo (tap, MIDI clock).
+    if (mixer.isStandalone())
+    {
+        tempoField.setEditable (false, true, false);
+        tempoField.setJustificationType (juce::Justification::centred);
+        tempoField.setTooltip ("Tempo (double-click to type); the inserts follow it");
+        tempoField.onTextChange = [this] { mixer.setTempo (tempoField.getText().getDoubleValue()); refreshStandalone(); };
+        tapButton.onClick = [this] { mixer.tapTempo(); refreshStandalone(); };
+        tapButton.setTooltip ("Tap tempo; right-click: MIDI learn");
+        clockButton.setClickingTogglesState (false);
+        clockButton.onClick = [this] { mixer.setFollowClock (! mixer.isFollowingClock()); refreshStandalone(); };
+        clockButton.setTooltip ("Follow incoming MIDI clock");
+        for (juce::Component* c : std::initializer_list<juce::Component*> { &tempoField, &tapButton, &clockButton })
+            addToCanvas (*c);
+    }
     stripPage.onClick = [this] { setPage (Page::strip); };
     sendsPage.onClick = [this] { setPage (Page::sends); };
     routingPage.onClick = [this] { setPage (Page::routing); };
@@ -350,6 +366,7 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     select (0);
     setPage (Page::strip);
     refreshAll();
+    refreshStandalone();
     meterTimer.startTimerHz (15);
 }
 
@@ -429,6 +446,13 @@ void RKMixEditor::layoutContent()
     talkButton->setBounds (m.removeFromTop (44));
     m.removeFromTop (8);
     oscButton->setBounds (m.removeFromTop (26));
+    m.removeFromTop (10);
+    auto tempoRow = m.removeFromTop (24);
+    tempoField.setBounds (tempoRow.removeFromLeft (70));
+    tempoRow.removeFromLeft (4);
+    tapButton.setBounds (tempoRow.removeFromLeft (50));
+    tempoRow.removeFromLeft (4);
+    clockButton.setBounds (tempoRow);
     for (auto* panel : { stripPanel.get(), sendsPanel.get() })
         if (panel != nullptr)
             panel->setBounds (panelArea());
@@ -488,6 +512,15 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     // The panel behind the top area's page.
     g.setColour (panelColour().darker (0.15f));
     g.fillRoundedRectangle (panelArea().toFloat().expanded (2.0f), rkfx::Style::kPanelRadius);
+
+    // MIDI learn under way (standalone).
+    if (const auto learning = mixer.getLearningTarget(); learning >= 0)
+    {
+        g.setColour (rkfx::Palette::warning);
+        g.setFont (rkfx::Fonts::bold (12.0f));
+        g.drawFittedText ("MIDI learn: move a controller for " + MixLearn::describe (learning),
+                          masterArea().removeFromTop (kTopHeight).reduced (10).removeFromBottom (36), juce::Justification::centred, 2);
+    }
 
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::bold (12.0f));
@@ -686,6 +719,20 @@ void RKMixEditor::updateMeters()
 {
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
+
+    // Standalone: a controller learned (or learning ended), the tempo moving with the clock.
+    if (mixer.isStandalone())
+    {
+        if (mixer.getLearnVersion() != lastLearnVersion || mixer.getLearningTarget() != lastLearning)
+        {
+            lastLearnVersion = mixer.getLearnVersion();
+            lastLearning = mixer.getLearningTarget();
+            assignPanel.refresh();
+            repaint();
+        }
+        if (mixer.isFollowingClock() && ! tempoField.isBeingEdited())
+            tempoField.setText (juce::String (mixer.getTempo(), 1) + " bpm", juce::dontSendNotification);
+    }
 
     // Scenes and assignments changed elsewhere (the host, a load).
     if (mixer.getScenes().getVersion() != lastSceneVersion)
@@ -1116,6 +1163,11 @@ void RKMixEditor::showSceneMenu (int scene)
     menu.addSectionHeader ("Scene " + juce::String (scene + 1));
     menu.addItem (1, "Recall");
     menu.addSubMenu ("Copy to", copyTo);
+    if (mixer.isStandalone())
+    {
+        menu.addSeparator();
+        addLearnItems (menu, MixLearn::scene, 50);
+    }
 
     juce::Component::SafePointer<RKMixEditor> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sceneButtons[(size_t) scene]), [safe, scene] (int result)
@@ -1124,6 +1176,8 @@ void RKMixEditor::showSceneMenu (int scene)
             return;
         if (result == 1)
             safe->mixer.recallScene (scene);
+        else if (safe->handleLearnResult (result, MixLearn::scene, 50))
+            return;
         else if (result >= 100)
             safe->mixer.getScenes().copy (scene, result - 100);
         safe->refreshScenes();
@@ -1141,6 +1195,11 @@ void RKMixEditor::mouseDown (const juce::MouseEvent& e)
             showSceneMenu (i);
             return;
         }
+    if (mixer.isStandalone() && (e.originalComponent == talkButton.get() || e.originalComponent == &tapButton))
+    {
+        showLearnMenu (e.originalComponent == &tapButton ? MixLearn::tap : MixLearn::talk, *e.originalComponent);
+        return;
+    }
 
     // A control of an insert's editor, or of the console.
     int slot = -1;
@@ -1200,5 +1259,67 @@ void RKMixEditor::showControlMenu (const juce::String& paramId, int insertSlot, 
         }
         else if (result >= firstAssign)
             m.getAssigns().assign (result - firstAssign, kind, paramId, insertSlot);
+    });
+}
+
+//==============================================================================
+// Standalone: tempo and MIDI learn
+
+void RKMixEditor::refreshStandalone()
+{
+    if (! mixer.isStandalone())
+        return;
+    if (! tempoField.isBeingEdited())
+        tempoField.setText (juce::String (mixer.getTempo(), 1) + " bpm", juce::dontSendNotification);
+    clockButton.setToggleState (mixer.isFollowingClock(), juce::dontSendNotification);
+    tapButton.setEnabled (! mixer.isFollowingClock());
+}
+
+void RKMixEditor::addLearnItems (juce::PopupMenu& menu, int target, int firstId)
+{
+    auto* map = mixer.getMidiMap();
+    if (map == nullptr)
+        return;
+    const auto mapping = map->find (target);
+    menu.addItem (firstId, mapping.has_value() ? "MIDI: Ch " + juce::String (mapping->channel) + ", CC " + juce::String (mapping->cc)
+                                                       + " (learn again)"
+                                               : juce::String ("MIDI learn"));
+    if (mapping.has_value())
+    {
+        if (MixLearn::isSwitch (target))
+            menu.addItem (firstId + 2, "Momentary (held)", true, mapping->momentary);
+        menu.addItem (firstId + 1, "Forget the controller");
+    }
+}
+
+bool RKMixEditor::handleLearnResult (int result, int target, int firstId)
+{
+    auto* map = mixer.getMidiMap();
+    if (map == nullptr || result < firstId || result > firstId + 2)
+        return false;
+    if (result == firstId)
+        mixer.startLearning (target);
+    else if (result == firstId + 1)
+        map->clear (target);
+    else if (auto mapping = map->find (target))
+    {
+        mapping->momentary = ! mapping->momentary;
+        map->set (*mapping);
+    }
+    assignPanel.refresh();
+    repaint();
+    return true;
+}
+
+void RKMixEditor::showLearnMenu (int target, juce::Component& component)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader (MixLearn::describe (target));
+    addLearnItems (menu, target, 1);
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (component), [safe, target] (int result)
+    {
+        if (safe != nullptr)
+            safe->handleLearnResult (result, target, 1);
     });
 }

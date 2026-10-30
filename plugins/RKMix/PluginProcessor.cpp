@@ -655,7 +655,7 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
 
 bool RKMixProcessor::isStripField (int field)
 {
-    return field != pan && field != toMain && field != gateKey && field != compKey;
+    return field != pan && field != toMain && field != gateKey && field != compKey && field != directOut && field != directTap;
 }
 
 std::vector<rkfx::ParamInfo> RKMixProcessor::stripInfos() const

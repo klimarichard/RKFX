@@ -19,6 +19,17 @@ namespace
         return c;
     }
 
+    /** The settings' ID suffixes, in RKMixProcessor::ChannelField order. */
+    const char* const kChannelFields[] = {
+        "trim", "pol", "polr", "delay_on", "delay", "pan", "main",
+        "hpf_on", "hpf", "hpf_slope",
+        "gate_on", "gate_thr", "gate_range", "gate_att", "gate_hold", "gate_rel", "gate_key",
+        "eq_on", "eq_low_type", "eq_high_type",
+        "eq_low_freq", "eq_low_gain", "eq_low_q", "eq_lmid_freq", "eq_lmid_gain", "eq_lmid_q",
+        "eq_hmid_freq", "eq_hmid_gain", "eq_hmid_q", "eq_high_freq", "eq_high_gain", "eq_high_q",
+        "comp_on", "comp_thr", "comp_ratio", "comp_knee", "comp_att", "comp_rel", "comp_makeup", "comp_key",
+    };
+
     void raise (std::atomic<float>& peak, float value) noexcept
     {
         auto current = peak.load();
@@ -32,11 +43,9 @@ RKMixProcessor::RKMixProcessor()
     using namespace mix;
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        auto* p = &settings;
-        channelParams[(size_t) ch] = { &p->param (channelId (ch, "trim")), &p->param (channelId (ch, "pol")),
-                                       &p->param (channelId (ch, "polr")), &p->param (channelId (ch, "delay_on")),
-                                       &p->param (channelId (ch, "delay")), &p->param (channelId (ch, "pan")),
-                                       &p->param (channelId (ch, "main")) };
+        static_assert (std::size (kChannelFields) == numChannelFields);
+        for (int f = 0; f < numChannelFields; ++f)
+            channelParams[(size_t) ch][(size_t) f] = &settings.param (channelId (ch, kChannelFields[f]));
         channelFaders[(size_t) ch] = findParam (channelFaderId (ch));
         channelMutes[(size_t) ch] = findParam (channelMuteId (ch));
     }
@@ -135,13 +144,35 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
             continue;
 
         const auto& p = channelParams[(size_t) ch];
+        const auto get = [&p] (int field) { return valueOf (p[(size_t) field]); };
+        const auto on = [&p] (int field) { return valueOf (p[(size_t) field]) >= 0.5f; };
+        const auto index = [&p] (int field) { return juce::roundToInt (valueOf (p[(size_t) field])); };
+
         auto& c = engineSettings.channels[(size_t) ch];
-        c.trimDb = valueOf (p.trim);
-        c.polarity = { valueOf (p.pol) >= 0.5f, valueOf (p.polr) >= 0.5f };
-        c.delayOn = valueOf (p.delayOn) >= 0.5f;
-        c.delayMs = valueOf (p.delay);
-        c.pan = valueOf (p.pan) * 0.01f;
-        c.toMain = valueOf (p.main) >= 0.5f;
+        auto& strip = c.strip;
+        strip.trimDb = get (trim);
+        strip.polarity = { on (pol), on (polr) };
+        strip.delayOn = on (delayOn);
+        strip.delayMs = get (delay);
+
+        strip.hpf = { on (hpfOn), get (hpf), index (hpfSlope) == 1 };
+        strip.gate = { on (gateOn), get (gateThr), get (gateRange), get (gateAtt), get (gateHold), get (gateRel), index (gateKey) };
+
+        strip.eq.on = on (eqOn);
+        for (int b = 0; b < StripDsp::kEqBands; ++b)
+        {
+            auto& band = strip.eq.bands[(size_t) b];
+            band.bell = b == 0 ? index (eqLowType) == 1 : b == StripDsp::kEqBands - 1 ? index (eqHighType) == 1 : true;
+            band.hz = get (eqBands + 3 * b);
+            band.gainDb = get (eqBands + 3 * b + 1);
+            band.q = get (eqBands + 3 * b + 2);
+        }
+
+        strip.comp = { on (compOn), get (compThr), get (compRatio), get (compKnee), get (compAtt), get (compRel),
+                       get (compMakeup), index (compKey) };
+
+        c.pan = get (pan) * 0.01f;
+        c.toMain = on (toMain);
     }
 
     if ((parts & MixSettings::kMainBit) != 0)
@@ -208,8 +239,17 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     if (! measure)
         return;
 
+    const auto lower = [] (std::atomic<float>& reduction, float value)
+    {
+        auto current = reduction.load();
+        while (value < current && ! reduction.compare_exchange_weak (current, value)) {}
+    };
     for (int ch = 0; ch < kChannels; ++ch)
+    {
         raise (channelPeaks[(size_t) ch], engine.takeChannelPeak (ch));
+        lower (gateReduction[(size_t) ch], engine.takeGateReductionDb (ch));
+        lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
+    }
     raise (mainPeaks[0], engine.takeMainPeak (0));
     raise (mainPeaks[1], engine.takeMainPeak (1));
     raise (monoPeak, engine.takeMonoPeak());

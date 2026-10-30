@@ -3,7 +3,7 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "MixLayout.h"
-#include "dsp/DelayLine.h"
+#include "MixStrip.h"
 #include "safety/Smoothing.h"
 
 #include <array>
@@ -13,14 +13,14 @@
 /** The RKMix DSP: 32 input channels (linkable in pairs) into a stereo main
     and its mono sum, each sent to any of the 32 outputs.
 
-        input -> trim, polarity -> delay -> mute, fader, pan -> main L/R
+        input -> fixed strip (StripDsp) -> mute, fader, pan -> main L/R
         main -> fader, mute, balance -> main output; (L + R) / 2 -> mono fader, mute -> mono output
 
     A linked pair is one stereo channel with its left channel's settings.
-    Every gain glides (faders and pans 20 ms, mutes 10 ms), polarity flips
-    fade through silence, and switching a section on or off crossfades over
-    20 ms; an off section is skipped. A stereo pair at its defaults is a
-    bit-exact copy to the main. Several sources on one output add up.
+    Every gain glides (faders and pans 20 ms, mutes and switches 10 ms), and
+    the strip's sections crossfade on and off. A stereo pair at its
+    defaults is a bit-exact copy to the main. Several sources on one output
+    add up. A gate or compressor key is another input after its trim.
 
     GUI-free and allocation-free after prepare(). */
 class MixEngine
@@ -28,17 +28,11 @@ class MixEngine
 public:
     static constexpr int kChannels = mix::kChannels;
     static constexpr int kPairs = mix::kPairs;
-    static constexpr float kMaxDelayMs = 20.0f;
-    static constexpr double kSectionFadeSeconds = 0.02;
     static constexpr double kMuteFadeSeconds = 0.01;
-    static constexpr double kDelayGlideSeconds = 0.05;
 
     struct Channel
     {
-        float trimDb = 0.0f;
-        std::array<bool, 2> polarity {};     // left, right (a linked pair)
-        bool delayOn = false;
-        float delayMs = 0.0f;
+        StripDsp::Settings strip;
         float pan = 0.0f;                     // -1 .. +1 (pan of a mono channel, balance of a pair)
         bool toMain = true;
     };
@@ -91,28 +85,14 @@ public:
     float takeMainPeak (int side) noexcept         { return std::exchange (mainPeaks[(size_t) side], 0.0f); }
     float takeMonoPeak() noexcept                  { return std::exchange (monoPeak, 0.0f); }
 
-private:
-    /** A section switched on and off with a crossfade. */
-    struct SectionFade
-    {
-        rkfx::Smoothed amount;
-        bool isOff() const noexcept  { return ! amount.isSmoothing() && amount.getTargetValue() <= 0.0f; }
-        bool isFull() const noexcept { return ! amount.isSmoothing() && amount.getTargetValue() >= 1.0f; }
-        /** Returns true when the section wakes up from fully off (its state needs a reset). */
-        bool set (bool on) noexcept
-        {
-            const auto wakes = on && isOff();
-            amount.setTargetValue (on ? 1.0f : 0.0f);
-            return wakes;
-        }
-    };
+    /** A channel's gate and compressor gain reduction since the last call (dB, <= 0). */
+    float takeGateReductionDb (int channel) noexcept { return states[(size_t) channel].strip.takeGateReductionDb(); }
+    float takeCompReductionDb (int channel) noexcept { return states[(size_t) channel].strip.takeCompReductionDb(); }
 
+private:
     struct ChannelState
     {
-        std::array<rkfx::Smoothed, 2> input;          // trim x polarity, per side
-        SectionFade delayFade;
-        rkfx::Smoothed delaySamples;
-        std::array<rkfx::DelayLine, 2> delay;
+        StripDsp strip;
         rkfx::Smoothed fader, mute, pan;
         rkfx::Smoothed toMain;                        // the Main switch, faded
     };
@@ -125,7 +105,7 @@ private:
     std::array<ChannelState, kChannels> states;
     rkfx::Smoothed mainFader, mainMute, mainBalance, monoFader, monoMute;
 
-    juce::AudioBuffer<float> channelBuffer, dryBuffer, postBuffer, gainBuffer, mainBuffer, monoBuffer;
+    juce::AudioBuffer<float> channelBuffer, scratchBuffer, postBuffer, mainBuffer, monoBuffer, keyBuffer;
 
     std::array<float, kChannels> channelPeaks {};
     std::array<float, 2> mainPeaks {};
@@ -139,15 +119,13 @@ private:
     void resetChannel (int ch);
 
     void processChannel (int ch, const float* const* in, int numSamples, bool measure) noexcept;
-    void processDelay (ChannelState&, float* const* io, int numSides, int numSamples) noexcept;
     void processMain (float* const* out, int numSamples, bool measure) noexcept;
+
+    /** A key's signal (input @p key after its trim) in keyBuffer channel @p slot, or nullptr for none. */
+    const float* keySignal (int key, int slot, const float* const* in, int numSamples) noexcept;
 
     /** Adds a stereo @p source to @p bus through a faded on/off switch. */
     static void addSwitched (rkfx::Smoothed& gate, juce::AudioBuffer<float>& bus, const float* const* source, int numSamples) noexcept;
-
-    /** Crossfades a section in and out: @p process works in place on @p io. */
-    template <typename Process>
-    void runSection (SectionFade&, float* const* io, int numSides, int numSamples, Process&& process) noexcept;
 
     /** Adds a mono (@p right == nullptr) or stereo signal to an output target. */
     static void addToTarget (float* const* out, int target, const float* left, const float* right, int numSamples) noexcept;

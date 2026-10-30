@@ -511,10 +511,42 @@ int main (int argc, char** argv)
               for (int ch = 0; ch < MixEngine::kChannels; ++ch)
               {
                   s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
-                  s.channels[(size_t) ch].delayOn = true;
-                  s.channels[(size_t) ch].delayMs = 1.5f;
+                  s.channels[(size_t) ch].strip.delayOn = true;
+                  s.channels[(size_t) ch].strip.delayMs = 1.5f;
               }
               s.main.monoOutput = 3;
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
+        { "RKMix", "32 mono channels, every strip section on", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+              {
+                  auto& strip = s.channels[(size_t) ch].strip;
+                  strip.delayOn = true;
+                  strip.delayMs = 1.5f;
+                  strip.hpf.on = true;
+                  strip.gate.on = true;
+                  strip.gate.thresholdDb = -60.0f;
+                  strip.eq.on = true;
+                  for (auto& band : strip.eq.bands)
+                      band.gainDb = 3.0f;
+                  strip.comp.on = true;
+                  s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
+              }
               engine->prepare (kRate, kBlock);
               engine->setSettings (s);
               engine->reset();

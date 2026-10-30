@@ -45,6 +45,9 @@ public:
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }
     float takeMainPeak (int side) noexcept       { return mainPeaks[(size_t) side].exchange (0.0f); }
     float takeMonoPeak() noexcept                { return monoPeak.exchange (0.0f); }
+    /** A channel's most gate or compressor gain reduction since the last call (dB, <= 0). */
+    float takeGateReduction (int channel) noexcept { return gateReduction[(size_t) channel].exchange (0.0f); }
+    float takeCompReduction (int channel) noexcept { return compReduction[(size_t) channel].exchange (0.0f); }
 
     /** Set while a window shows the meters (no measuring otherwise). */
     std::atomic<int> windowsOpen { 0 };
@@ -60,7 +63,17 @@ protected:
 private:
     MixSettings settings;
 
-    struct ChannelParams { juce::RangedAudioParameter *trim, *pol, *polr, *delayOn, *delay, *pan, *main; };
+    /** A channel's settings, by field (see kChannelFields in the .cpp). */
+    enum ChannelField
+    {
+        trim, pol, polr, delayOn, delay, pan, toMain,
+        hpfOn, hpf, hpfSlope,
+        gateOn, gateThr, gateRange, gateAtt, gateHold, gateRel, gateKey,
+        eqOn, eqLowType, eqHighType, eqBands,                       // eqBands + 3 * band + (0 freq, 1 gain, 2 q)
+        compOn = eqBands + 12, compThr, compRatio, compKnee, compAtt, compRel, compMakeup, compKey,
+        numChannelFields
+    };
+    using ChannelParams = std::array<juce::RangedAudioParameter*, numChannelFields>;
     std::array<ChannelParams, kChannels> channelParams {};
     std::array<juce::RangedAudioParameter*, mix::kPairs> linkParams {};
     juce::RangedAudioParameter *mainBalance = nullptr, *mainOutput = nullptr, *monoOutput = nullptr;
@@ -84,6 +97,7 @@ private:
     std::array<std::atomic<float>, kChannels> channelPeaks {};
     std::array<std::atomic<float>, 2> mainPeaks {};
     std::atomic<float> monoPeak { 0.0f };
+    std::array<std::atomic<float>, kChannels> gateReduction {}, compReduction {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKMixProcessor)
 };

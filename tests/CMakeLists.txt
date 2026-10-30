@@ -40,6 +40,7 @@ set(RKFX_ENGINE_PLUGINS
     RKPolyPitch/PolyPitchEngine
     RKRemap/RemapEngine
     RKMix/MixEngine
+    RKMix/MixStrip
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -194,7 +195,7 @@ endforeach()
 target_compile_definitions(RKBoardTests PRIVATE
     RKFX_BOARD=1 RKMIX_NO_ENTRY_POINT=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
     RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKMix)
+target_include_directories(RKBoardTests PRIVATE ${RKMIX_INCLUDE_DIRS})
 target_link_libraries(RKBoardTests
     PRIVATE
         rkboard_factory_presets

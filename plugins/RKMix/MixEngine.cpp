@@ -4,15 +4,6 @@ namespace
 {
     using FVO = juce::FloatVectorOperations;
 
-    /** A delay of @p d samples (0 = the sample just written), linear between whole samples. */
-    inline float readLinear (const rkfx::DelayLine& line, float d) noexcept
-    {
-        const auto whole = (int) d;
-        const auto t = d - (float) whole;
-        const auto a = line.readWhole (whole);
-        return t <= 0.0f ? a : a + t * (line.readWhole (whole + 1) - a);
-    }
-
     inline void raisePeak (float& peak, const float* data, int numSamples) noexcept
     {
         const auto range = FVO::findMinAndMax (data, numSamples);
@@ -25,15 +16,9 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     sampleRate = newSampleRate;
     maxBlock = juce::jmax (1, maxBlockSize);
 
-    const auto maxDelay = (int) std::ceil (kMaxDelayMs * 0.001 * sampleRate) + 2;
     for (auto& s : states)
     {
-        for (auto& smoothed : s.input)
-            smoothed.reset (sampleRate, rkfx::kParamSmoothingSeconds);
-        s.delayFade.amount.reset (sampleRate, kSectionFadeSeconds);
-        s.delaySamples.reset (sampleRate, kDelayGlideSeconds);
-        for (auto& line : s.delay)
-            line.prepare (maxDelay);
+        s.strip.prepare (sampleRate, maxBlock);
         s.fader.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         s.mute.reset (sampleRate, kMuteFadeSeconds);
         s.pan.reset (sampleRate, rkfx::kParamSmoothingSeconds);
@@ -46,11 +31,11 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     monoMute.reset (sampleRate, kMuteFadeSeconds);
 
     channelBuffer.setSize (2, maxBlock);
-    dryBuffer.setSize (2, maxBlock);
+    scratchBuffer.setSize (2, maxBlock);
     postBuffer.setSize (2, maxBlock);
-    gainBuffer.setSize (2, maxBlock);
     mainBuffer.setSize (2, maxBlock);
     monoBuffer.setSize (1, maxBlock);
+    keyBuffer.setSize (2, maxBlock);
 
     reset();
 }
@@ -67,9 +52,8 @@ void MixEngine::reset()
 
 void MixEngine::resetChannel (int ch)
 {
-    auto& s = states[(size_t) ch];
-    for (auto& line : s.delay)
-        line.reset();
+    states[(size_t) ch].strip.setSettings (settings.channels[(size_t) ch].strip, true);
+    states[(size_t) ch].strip.reset();
     applyChannel (ch, true);
 }
 
@@ -123,17 +107,7 @@ void MixEngine::applyChannel (int ch, bool snap)
             v.setTargetValue (target);
     };
 
-    const auto trim = mix::trimGain (c.trimDb);
-    for (int side = 0; side < 2; ++side)
-        set (s.input[(size_t) side], c.polarity[(size_t) side] ? -trim : trim);
-
-    if (s.delayFade.set (c.delayOn))
-        for (auto& line : s.delay)
-            line.reset();
-    if (snap)
-        s.delayFade.amount.setCurrentAndTargetValue (c.delayOn ? 1.0f : 0.0f);
-    set (s.delaySamples, (float) (juce::jlimit (0.0f, kMaxDelayMs, c.delayMs) * 0.001 * sampleRate));
-
+    s.strip.setSettings (c.strip, snap);
     set (s.pan, c.pan);
     set (s.toMain, c.toMain ? 1.0f : 0.0f);
     if (snap)
@@ -160,76 +134,31 @@ void MixEngine::applyMain (bool snap)
 }
 
 //==============================================================================
-template <typename Process>
-void MixEngine::runSection (SectionFade& fade, float* const* io, int numSides, int numSamples, Process&& process) noexcept
+const float* MixEngine::keySignal (int key, int slot, const float* const* in, int numSamples) noexcept
 {
-    if (fade.isOff())
-        return;
+    if (key <= 0 || key > kChannels)
+        return nullptr;
 
-    if (fade.isFull())
-    {
-        process (io);
-        return;
-    }
-
-    for (int side = 0; side < numSides; ++side)
-        FVO::copy (dryBuffer.getWritePointer (side), io[side], numSamples);
-
-    process (io);
-
-    for (int i = 0; i < numSamples; ++i)
-    {
-        const auto amount = fade.amount.getNextValue();
-        for (int side = 0; side < numSides; ++side)
-        {
-            const auto dry = dryBuffer.getSample (side, i);
-            io[side][i] = dry + amount * (io[side][i] - dry);
-        }
-    }
-}
-
-void MixEngine::processDelay (ChannelState& s, float* const* io, int numSides, int numSamples) noexcept
-{
-    for (int i = 0; i < numSamples; ++i)
-    {
-        const auto d = s.delaySamples.getNextValue();
-        for (int side = 0; side < numSides; ++side)
-        {
-            auto& line = s.delay[(size_t) side];
-            line.write (io[side][i]);
-            io[side][i] = readLinear (line, d);
-        }
-    }
+    // The key input after its own trim (not its processing: no order to respect).
+    const auto source = key - 1;
+    const auto leader = mix::leaderOf (settings.links, source);
+    const auto gain = mix::trimGain (settings.channels[(size_t) leader].strip.trimDb);
+    auto* dest = keyBuffer.getWritePointer (slot);
+    FVO::copyWithMultiply (dest, in[source], gain, numSamples);
+    return dest;
 }
 
 void MixEngine::processChannel (int ch, const float* const* in, int numSamples, bool measure) noexcept
 {
     auto& s = states[(size_t) ch];
+    const auto& strip = settings.channels[(size_t) ch].strip;
     const auto numSides = isStereo (ch) ? 2 : 1;
     float* io[2] = { channelBuffer.getWritePointer (0), channelBuffer.getWritePointer (1) };
 
-    // Trim and polarity
-    for (int side = 0; side < numSides; ++side)
-    {
-        auto& gain = s.input[(size_t) side];
-        const auto* source = in[ch + side];
-        if (gain.isSmoothing())
-        {
-            for (int i = 0; i < numSamples; ++i)
-                io[side][i] = source[i] * gain.getNextValue();
-        }
-        else if (const auto g = gain.getTargetValue(); juce::exactlyEqual (g, 1.0f))
-        {
-            FVO::copy (io[side], source, numSamples);
-        }
-        else
-        {
-            FVO::copyWithMultiply (io[side], source, g, numSamples);
-        }
-    }
+    const auto* gateKey = strip.gate.on ? keySignal (strip.gate.key, 0, in, numSamples) : nullptr;
+    const auto* compKey = strip.comp.on ? keySignal (strip.comp.key, 1, in, numSamples) : nullptr;
 
-    // Delay
-    runSection (s.delayFade, io, numSides, numSamples, [&] (float* const* buffer) { processDelay (s, buffer, numSides, numSamples); });
+    s.strip.process (in + ch, io, numSides, numSamples, scratchBuffer, gateKey, compKey, [] (StripDsp::Tap, float* const*) {});
 
     if (measure)
         for (int side = 0; side < numSides; ++side)

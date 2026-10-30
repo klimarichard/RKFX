@@ -102,6 +102,58 @@ namespace MixParams
             p.addBool     (channelId (ch, "main"), name + "Main", true);
         }
 
+        // Phase 2: the fixed strip's HPF, gate, EQ and compressor (appended).
+        juce::StringArray keyNames { "Self" }, keyKeys { "self" };
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            keyNames.add ("In " + num (ch));
+            keyKeys.add (num (ch));
+        }
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            const auto name = channelName (ch);
+            p.addBool      (channelId (ch, "hpf_on"), name + "HPF", false);
+            p.addFrequency (channelId (ch, "hpf"), name + "HPF Frequency", 20.0f, 400.0f, 80.0f);
+            p.addChoice    (channelId (ch, "hpf_slope"), name + "HPF Slope", { "12 dB", "24 dB" }, { "12", "24" }, 0);
+
+            p.addBool     (channelId (ch, "gate_on"), name + "Gate", false);
+            p.addDecibels (channelId (ch, "gate_thr"), name + "Gate Threshold", -80.0f, 0.0f, -50.0f);
+            p.addFloat    (channelId (ch, "gate_range"), name + "Gate Range", { -80.0f, 0.0f }, -80.0f,
+                           [] (float db) { return db <= -79.95f ? juce::String ("Closed") : rkfx::Units::decibels (db); },
+                           [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("closed") ? -80.0f : rkfx::Units::parseNumber (t); });
+            p.addTime     (channelId (ch, "gate_att"), name + "Gate Attack", 0.1f, 50.0f, 1.0f);
+            p.addTime     (channelId (ch, "gate_hold"), name + "Gate Hold", 0.0f, 500.0f, 50.0f);
+            p.addTime     (channelId (ch, "gate_rel"), name + "Gate Release", 5.0f, 2000.0f, 150.0f);
+            p.addChoice   (channelId (ch, "gate_key"), name + "Gate Key", keyNames, keyKeys, 0);
+
+            p.addBool (channelId (ch, "eq_on"), name + "EQ", false);
+            p.addChoice (channelId (ch, "eq_low_type"), name + "EQ Low Type", { "Shelf", "Bell" }, { "shelf", "bell" }, 0);
+            p.addChoice (channelId (ch, "eq_high_type"), name + "EQ High Type", { "Shelf", "Bell" }, { "shelf", "bell" }, 0);
+            const char* bands[] = { "low", "lmid", "hmid", "high" };
+            const char* bandNames[] = { "Low", "Low Mid", "High Mid", "High" };
+            const float freqs[] = { 100.0f, 250.0f, 2500.0f, 8000.0f };
+            const float qs[] = { 0.7f, 1.0f, 1.0f, 0.7f };
+            for (int b = 0; b < 4; ++b)
+            {
+                const auto prefix = juce::String ("eq_") + bands[b];
+                const auto label = name + "EQ " + bandNames[b] + " ";
+                p.addFrequency (channelId (ch, (prefix + "_freq").toRawUTF8()), label + "Frequency", 20.0f, 20000.0f, freqs[b]);
+                p.addDecibels  (channelId (ch, (prefix + "_gain").toRawUTF8()), label + "Gain", -15.0f, 15.0f, 0.0f);
+                p.addFloat     (channelId (ch, (prefix + "_q").toRawUTF8()), label + "Q", rkfx::Units::logRange (0.3f, 10.0f), qs[b],
+                                [] (float q) { return juce::String (q, 2); }, rkfx::Units::parseNumber);
+            }
+
+            p.addBool     (channelId (ch, "comp_on"), name + "Comp", false);
+            p.addDecibels (channelId (ch, "comp_thr"), name + "Comp Threshold", -60.0f, 0.0f, -20.0f);
+            p.addFloat    (channelId (ch, "comp_ratio"), name + "Comp Ratio", rkfx::Units::logRange (1.0f, 20.0f), 3.0f,
+                           [] (float r) { return juce::String (r, r < 10.0f ? 1 : 0) + ":1"; }, rkfx::Units::parseNumber);
+            p.addDecibels (channelId (ch, "comp_knee"), name + "Comp Knee", 0.0f, 12.0f, 6.0f);
+            p.addTime     (channelId (ch, "comp_att"), name + "Comp Attack", 0.1f, 100.0f, 10.0f);
+            p.addTime     (channelId (ch, "comp_rel"), name + "Comp Release", 10.0f, 2000.0f, 150.0f);
+            p.addDecibels (channelId (ch, "comp_makeup"), name + "Comp Makeup", 0.0f, 24.0f, 0.0f);
+            p.addChoice   (channelId (ch, "comp_key"), name + "Comp Key", keyNames, keyKeys, 0);
+        }
+
         for (int pair = 0; pair < kPairs; ++pair)
             p.addBool (linkId (pair), "Ch " + num (pair * 2) + "/" + num (pair * 2 + 1) + " Link", false);
 

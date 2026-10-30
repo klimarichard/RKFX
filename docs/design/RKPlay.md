@@ -11,7 +11,8 @@ RKPlay plays music from audio files for long stretches with nobody watching it: 
 - **Playlists** of files or whole folders, several per show (Intermission, Dinner, First dance, Party), switched with a crossfade.
 - **Hands-off playback:** auto-advance, shuffle without repeats, repeat, stop at the end, or play until a set time and fade out.
 - **Smooth transitions:** silence at the start and end of each file is found and skipped, and songs **crossfade** with an equal-power curve.
-- **Even loudness:** every file is measured once (EBU R128) and played at the same loudness, with a safety limiter on the output.
+- **Even loudness:** every file is measured once (EBU R128) and played at the same loudness, by gain alone (the user's archive standard: −18 LUFS, true peak under −0.5 dBTP, no limiting).
+- **Playlists from `.m3u8` files** (relative paths), the user's archive format, and shows that survive moving to another Mac.
 - **Ducking:** the music dips under an announcement mic (automatic, from an input) or at the press of a button.
 - **Fade to stop / fade and pause** with one button; **Play now** and **Play next** for requests and special moments.
 - **Live safety:** every file checked when a show loads, the next song always ready in memory, never a click, never waiting for the disk.
@@ -80,9 +81,12 @@ Choosing another playlist while music plays offers **Crossfade now** (default) o
 
 - **Analysis:** each song's integrated loudness (EBU R128 / ITU-R BS.1770: K-weighting, gating), its peak (sample peak, 4x oversampled for true peak), music start and end, fade-out point, and a waveform overview (1,000 points), measured once on a background thread when the song is added.
 - **Cache:** results are kept in `Application Support/RKFX/RKPlay/analysis.json`, keyed by file path, size and modification date, so a show with 500 songs opens instantly and a changed file is measured again.
-- **Level match** (on by default): each song plays at the **Target** loudness (-23 to -10 LUFS, default -16 LUFS). Its gain is limited so its true peak stays under -1 dBTP; a song too quiet to reach the target is played as loud as that allows. **Per-song gain** (±12 dB) adjusts on top.
-- **Until analysed** (a song added a moment before it plays), it plays at 0 dB gain under the limiter, and the window marks it.
-- **Safety limiter** on the output (on by default, ceiling -1 dBFS): the zero-latency limiter RKMix's buses use (instant attack, release 100 ms, then a clip at the ceiling). With level matching it rarely acts.
+- **Level match** (on by default): each song plays at the **Target** loudness (-23 to -14 LUFS, default **-18 LUFS**, the user's archive standard in `~/Music/OFFLINE MUSIC ARCHIVE/LOUDNESS-TARGET.txt`). **Pure gain:** a song's gain never lifts its true peak above the **Peak ceiling** (default **-0.5 dBTP**, as the archive); a song too dynamic to reach the target plays as loud as that allows, never limited. Files already normalised to the archive standard play at 0 dB gain (within ±0.05 dB they are treated as exactly 0 dB, bit-exact).
+- **Make up the level at the desk or the amp, never by boosting songs** (as the archive notes say): RKPlay's output sits about 4 dB below commercial masters on purpose. The master **Level** (up to +6 dB) is a plain gain after everything.
+- **Per-playlist gain** (±12 dB, default 0): a quieter Dinner list is the same target played 4 dB down, not a different target (a different target would make the dynamic songs uneven again).
+- **Per-song gain** (±12 dB) adjusts on top: a karaoke or instrumental backing track a singer performs over is often best 2-3 dB lower.
+- **Until analysed** (a song added a moment before it plays), it plays at 0 dB gain, and the window marks it.
+- **Safety limiter** on the output (on by default, ceiling -0.3 dBFS): the zero-latency limiter RKMix's buses use (instant attack, release 100 ms, then a clip at the ceiling). A level-matched song alone never reaches it (its peaks stay under -0.5 dBTP); it is only for sums the analysis can't foresee: the middle of a crossfade between two loud songs, a pad over the music, the master Level pushed up. It can be switched off.
 
 ## Ducking
 
@@ -132,7 +136,16 @@ The music dips while someone speaks.
 - **WAV, AIFF, FLAC, Ogg Vorbis** (JUCE's readers), **MP3, M4A/AAC, ALAC** (macOS Core Audio). Mono files play on both sides; multichannel files play their first two channels. DRM-protected files (old iTunes purchases) are refused with a clear message.
 - **Adding songs:** drag files or folders from the Finder onto a playlist, or **Add files** / **Add folder**. Order by drag.
 - **Linked folders:** a playlist can be a **folder** (with or without subfolders): it lists the folder's audio files and rescans when the show loads or on **Rescan**, so preparing for a gig is just copying files into a folder.
-- **Song names:** the file's title and artist tags when it has them (Core Audio and JUCE metadata), otherwise the file name. A song can be renamed in the show.
+- **Linked `.m3u8` playlists:** a playlist can be an `.m3u` / `.m3u8` file (UTF-8, relative paths resolved from the file's own folder, `#EXTINF` titles read), the format of the user's archive (`~/Music/OFFLINE MUSIC ARCHIVE/Playlists/`). It is read again when the show loads or on **Rescan**, so set lists are edited in one place. Any playlist can also be **exported** as an `.m3u8` with paths relative to where it is saved.
+- **Song names and tags:** the file's TITLE and ARTIST tags (FLAC Vorbis comments, ID3, MP4 atoms, read by RKPlay itself where JUCE doesn't expose them), otherwise the file name (`Artist - Title`, the archive's convention, is split at " - "). **BPM** and **KEY** tags, when present, are optional columns (handy for building a dance set). A song can be renamed in the show.
+
+### Paths that survive a move
+
+Gig Performer's file player keeps absolute paths and its markers inside opaque plugin state, with no relink: a restored backup on another Mac (or another user name) loses everything. RKPlay avoids that:
+
+- **Music folder** (a show setting, e.g. `~/Music/OFFLINE MUSIC ARCHIVE/Library`): songs inside it are stored **relative** to it, so the show works wherever the folder is, on any Mac, under any user name, from an external drive. Songs outside it are stored absolute, and also by name.
+- **Per-song data lives in the show, not in the file and not hidden:** trims, gain, cue points, name. The show is readable JSON, so it can be fixed by hand if ever needed.
+- **Relink** matches missing songs by file name, then checks size and length, and never forgets a song's data when it moves.
 
 ## The window
 
@@ -168,6 +181,14 @@ Fixed, in this order (IDs permanent, append only):
 - **Keyboard:** Space = Play/Pause, → = Next, F = Fade out, D = Duck (held), 1-8 = pads. Shown in tooltips.
 - **History:** each night's log is also written to `Application Support/RKFX/RKPlay/History/<date>.csv` (time, playlist, title, artist, file, how long it played), for the client or rights reporting.
 
+## Decisions (2026-10-30)
+
+- **Loudness:** -18 LUFS target, -0.5 dBTP peak ceiling, pure gain, as the user's offline music archive (`~/Music/OFFLINE MUSIC ARCHIVE`); every factory show uses it, quieter lists use playlist gain.
+- **Accent:** sage `#6FA58A`.
+- **Zones** (two rooms, two playlists) are not in v1; two RKPlay instances do it.
+- **The input is only the duck key**, never passed to the output.
+- **Mainly a standalone app**, also AU and VST3.
+
 ## Identity
 
 - **AU code** `Ply1`, bundle ID `com.rkmusic.rkplay`, a music effect (`aumf`) with MIDI in: a stereo input (the duck key, never passed through) and two stereo outputs (main, cue). AU, VST3, Standalone.
@@ -202,8 +223,8 @@ A factory show can't hold music files, so the factory presets are **empty shows 
 | Factory show | Set up |
 | --- | --- |
 | **Intermission** | One playlist "Intermission", in order, repeat, 6 s crossfade, End at off; Fade out 8 s |
-| **Wedding Reception** | Playlists "Arrival", "Dinner" (shuffle, 8 s crossfade, -20 LUFS), "First Dance" (stop after each song), "Party" (shuffle, 3 s crossfade, -14 LUFS); Duck Auto; pads "Entrance", "Fanfare" with Duck the music |
-| **Background** | One linked-folder playlist, shuffle, repeat, 10 s crossfade, -20 LUFS |
+| **Wedding Reception** | Playlists "Arrival", "Dinner" (shuffle, 8 s crossfade, playlist gain -4 dB), "First Dance" (stop after each song), "Party" (shuffle, 3 s crossfade); Duck Auto; pads "Entrance", "Fanfare" with Duck the music |
+| **Background** | One linked-folder playlist, shuffle, repeat, 10 s crossfade, playlist gain -4 dB |
 | **Ceremony** | One playlist, in order, stop after each song, no crossfade, 3 s fade-out |
 
 ## Tests
@@ -218,7 +239,6 @@ A factory show can't hold music files, so the factory presets are **empty shows 
 
 ## Open questions
 
-- **Target loudness default** (-16 LUFS proposed, typical for background music; the Party preset uses -14).
-- **Accent colour** (sage `#6FA58A` proposed) and window size once phase 1 is on screen.
+- **Window size** once phase 1 is on screen.
 - **Several outputs for zones** (dinner room and terrace with different playlists) are left out of v1: one RKPlay per zone works meanwhile.
 - **Streaming services** (Spotify, Apple Music) can't be played by any plugin (DRM); only files.

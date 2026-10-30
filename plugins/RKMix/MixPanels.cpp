@@ -316,7 +316,7 @@ void RKMixEditor::ChannelPanel::resized()
                 sections[comp].knobs[(size_t) (3 * row + k)]->setBounds (line.removeFromLeft (kKnobW).withHeight (kKnobH));
         }
         a.removeFromLeft (4);
-        compMeter->setBounds (a.removeFromLeft (26).withTrimmedBottom (14));
+        compMeter->setBounds (a.removeFromLeft (40).withTrimmedBottom (4));
         a.removeFromLeft (6);
         const auto side = juce::jmin (a.getWidth(), a.getHeight());
         compCurve->setBounds (a.withSizeKeepingCentre (side, side));
@@ -591,9 +591,9 @@ void RKMixEditor::ProcessingPanel::updateMeters (float compDb, float limitDb, fl
 void RKMixEditor::ProcessingPanel::resized()
 {
     auto r = getLocalBounds();
-    limitArea = r.removeFromRight (128);
+    limitArea = r.removeFromRight (122);
     r.removeFromRight (kGap);
-    compArea = r.removeFromRight (214);
+    compArea = r.removeFromRight (246);
     r.removeFromRight (kGap);
     eqArea = r;
 
@@ -636,7 +636,7 @@ void RKMixEditor::ProcessingPanel::resized()
         for (int k = 0; k < 3; ++k)
             comp[(size_t) (3 * c + k)]->setBounds (knobs.removeFromTop (kProcKnobH));
     }
-    compMeter->setBounds (a.withWidth (24).withTrimmedBottom (10));
+    compMeter->setBounds (a.withWidth (40).withTrimmedBottom (4));
 
     // Limiter: On, Ceiling, Release, gain reduction
     a = inner (limitArea);
@@ -645,7 +645,7 @@ void RKMixEditor::ProcessingPanel::resized()
     limitKnobs.removeFromTop (4);
     limit[0]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
     limit[1]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
-    limitMeter->setBounds (a.withWidth (24).withTrimmedBottom (10));
+    limitMeter->setBounds (a.withWidth (40).withTrimmedBottom (4));
 }
 
 void RKMixEditor::ProcessingPanel::paint (juce::Graphics& g)
@@ -723,7 +723,7 @@ void RKMixEditor::BusPanel::resized()
     sendsOnFader.setBounds (header.removeFromRight (130));
     header.removeFromRight (12);
     soloSafe->setBounds (header.removeFromRight (140));
-    header.removeFromRight (16);
+    header.removeFromRight (70);   // the "Solo safe" label
     placeSwatches (header, swatches);
     header.removeFromRight (12);
     name.setBounds (header.withWidth (juce::jmin (header.getWidth(), 260)));

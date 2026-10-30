@@ -1,7 +1,8 @@
 # The RKFX pedal host: every RKFX audio plugin built in as a pedal (their own
 # entry points left out with RKFX_BOARD), the pedals that are no plugins of
 # their own (Volume, Wah), and the registry RKBoard and RKMix create them
-# from, with every pedal's factory presets.
+# from, with every pedal's factory presets; and what their standalone apps
+# share (MIDI learn, tempo).
 #
 # An INTERFACE library like the core: each consumer (RKBoard, RKMix, their
 # tests and snapshot tools) compiles the sources itself.
@@ -10,6 +11,7 @@ add_library(rkfx_pedal_host INTERFACE)
 
 set(hostSources
     ${CMAKE_CURRENT_SOURCE_DIR}/PedalRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MidiMap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/VolumePedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahPedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahEngine.cpp

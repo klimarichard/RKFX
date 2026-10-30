@@ -2,6 +2,8 @@
 
 #include <juce_core/juce_core.h>
 
+#include "host/MidiMap.h"
+
 #include <array>
 #include <atomic>
 #include <optional>
@@ -26,50 +28,15 @@ namespace LearnTarget
     bool isSwitch (int target);
 }
 
-struct MidiMapping
-{
-    int target = -1;
-    int channel = 1;          // 1..16
-    int cc = 0;               // 0..127
-    bool momentary = false;   // switches: on while held (else each press toggles)
-};
+using rkfx::MidiMapping;
 
-/** The rig's MIDI mappings, kept in midi-map.json (they belong to the rig,
-    not to a sound, so they stay the same across board presets).
-
-    Edited on the message thread; the audio thread looks controllers up in a
-    lock-free table. A controller drives one target, and a target has one
-    controller. */
-class MidiMap
+/** The rig's MIDI mappings, kept in midi-map.json: the pedal host's MidiMap
+    with the board's targets. */
+class MidiMap : public rkfx::MidiMap
 {
 public:
     explicit MidiMap (juce::File file = defaultFile());
-
     static juce::File defaultFile();     // ~/Library/Application Support/RKFX/RKBoard/midi-map.json
-
-    const std::vector<MidiMapping>& getMappings() const noexcept { return mappings; }
-    std::optional<MidiMapping> find (int target) const;
-
-    /** Adds or replaces (and saves). */
-    void set (const MidiMapping&);
-    void clear (int target);
-
-    /** Audio thread: the mapping for a controller, encoded as target + 1000 *
-        momentary, or -1. */
-    int lookup (int channel, int cc) const noexcept
-    {
-        return channel >= 1 && channel <= 16 && cc >= 0 && cc < 128 ? table[(size_t) ((channel - 1) * 128 + cc)].load() : -1;
-    }
-
-    void load();
-    bool save() const;
-
-private:
-    juce::File file;
-    std::vector<MidiMapping> mappings;
-    std::array<std::atomic<int>, 16 * 128> table;
-
-    void rebuildTable();
 };
 
 /** Standalone options of the rig (settings.json next to midi-map.json). */

@@ -9,7 +9,7 @@
 // still reads at 32 px). The tile follows Apple's grid (824 px on 1024).
 // Copy each pair into the plugin's resources folder (ICON_BIG / ICON_SMALL
 // in its juce_add_plugin): RKModular/resources, RKSampler/resources,
-// RKTracks/resources, RKFX/plugins/RKBoard/resources.
+// RKTracks/resources, RKFX/plugins/RKBoard/resources, RKFX/plugins/RKMix/resources.
 #include <juce_graphics/juce_graphics.h>
 #include <juce_events/juce_events.h>
 
@@ -21,6 +21,7 @@ namespace
         { "RKSampler", "SAMPLER", 0xff4fa3e0 },
         { "RKTracks",  "TRACKS",  0xff8a8a8a },
         { "RKBoard",   "BOARD",   0xffe6e2d8 },
+        { "RKMix",     "MIX",     0xff6b8ca6 },
     };
 
     // Text whose ink is centred on (cx, cy). `size` = CSS font-size (em),

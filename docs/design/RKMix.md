@@ -198,7 +198,7 @@ Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is
 - **Message thread owns the mix;** the audio thread reads an immutable **render plan** (per channel: active sections and coefficients; per summing point: the list of sources with gains and alignment delays), rebuilt only when something changes and swapped atomically. Steady state reads no parameters and allocates nothing.
 - **Inserts** are owned and swapped as on RKBoard. Lesson from RKBoard: the chain lock is a non-reentrant `SpinLock`, so never set an Assign parameter (its listener takes the lock) while holding it.
 - **Gliding values** (fader, pan, send, trim, EQ during a scene glide) are smoothed per sample. A summing point whose sources are all steady is a plain multiply-add per source.
-- **Code shared with RKBoard** (pedal hosting, assignables, scenes, MIDI learn, play head) moves to a shared library (e.g. `core/host/`) rather than being copied. This refactor is the first commit of the build and must leave RKBoard's tests passing.
+- **Code shared with RKBoard** (pedal hosting, assignables, scenes, MIDI learn, play head) moves to a shared library (e.g. `core/host/`) rather than being copied. This refactor is the first commit of phase 4 (inserts), phases 6 and 7 build on it, and it must leave RKBoard's tests passing.
 
 ## Build phases
 

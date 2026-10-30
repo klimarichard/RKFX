@@ -22,6 +22,7 @@ namespace MixGui::Layout
     constexpr int kButtonHeight = 22;
     constexpr int kStripHeadHeight = kColourBar + 2 + kStripNameHeight + kStripNumberHeight + kSectionRowHeight + 4 + kPanHeight + 4;
     constexpr int kMeterWidth = 9;
+    constexpr int kInsertRow = 15;
 
     // Panels
     constexpr int kKnobW = 58, kKnobH = 80;

@@ -205,6 +205,82 @@ public:
             expect (c.getSettings().flag (mix::channelAssignId (0, 2)));
         }
 
+        beginTest ("Inserts: mono or stereo as their channel; kept in the session with their settings and on/off");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor a;
+            a.prepareToPlay (48000.0, 128);
+            auto& rack = a.getRack();
+            auto* chorus = rack.insert ({ Strip::channel, 0, 0 }, "RKChorus", a.channelsOf (Strip::channel, 0));
+            expect (chorus != nullptr);
+            expectEquals (chorus->getTotalNumOutputChannels(), 1, "a mono channel's insert runs mono");
+
+            setParam (a.getSettings().param (mix::linkId (0)), 1.0f);    // channels 1/2 linked
+            expectEquals (chorus->getTotalNumOutputChannels(), 2, "linked: stereo");
+
+            setParam (*chorus->findParam ("depth"), 77.0f);
+            rack.insert ({ Strip::bus, 3, 2 }, "RKVerb", a.channelsOf (Strip::bus, 3));
+            rack.setOn ({ Strip::bus, 3, 2 }, false);
+            rack.insert ({ Strip::main, 0, 0 }, "RKLimit", 2);
+            const auto b = run (a, 4);
+            expect (std::isfinite (b.getSample (0, 64)));
+
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor c;
+            c.setStateInformation (state.getData(), (int) state.getSize());
+            auto& r = c.getRack();
+            expect (r.get ({ Strip::channel, 0, 0 }) != nullptr && r.get ({ Strip::channel, 0, 0 })->getConfig().name == "RKChorus");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (r.get ({ Strip::channel, 0, 0 })->findParam ("depth")), 77.0f, 0.01f);
+            expectEquals (r.get ({ Strip::channel, 0, 0 })->getTotalNumOutputChannels(), 2);
+            expect (r.get ({ Strip::bus, 3, 2 }) != nullptr && ! r.isOn ({ Strip::bus, 3, 2 }), "off stays off");
+            expect (r.get ({ Strip::main, 0, 0 }) != nullptr);
+            expect (r.get ({ Strip::channel, 0, 1 }) == nullptr);
+        }
+
+        beginTest ("Inserts: in channel presets; Reset strip removes them");
+        {
+            using Strip = InsertRack::Strip;
+            const auto file = juce::File::createTempFile (".json");
+            RKMixProcessor a;
+            a.getRack().insert ({ Strip::channel, 4, 1 }, "RKDeEss", 1);
+            expect (a.saveChannelPreset (4, file).ok);
+
+            RKMixProcessor b;
+            expect (b.loadChannelPreset (7, file).ok);
+            expect (b.getRack().get ({ Strip::channel, 7, 1 }) != nullptr && b.getRack().get ({ Strip::channel, 7, 1 })->getConfig().name == "RKDeEss");
+            b.resetChannelStrip (7);
+            expect (b.getRack().get ({ Strip::channel, 7, 1 }) == nullptr);
+            file.deleteFile();
+        }
+
+        beginTest ("Inserts: a latent insert's latency is reported, and the other channels wait for it");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            p.prepareToPlay (48000.0, 128);
+            auto* distort = p.getRack().insert ({ Strip::channel, 0, 0 }, "RKDistort", 1);
+            const auto latency = distort->getLatencySamples();
+            expectGreaterThan (latency, 0, "RKDistort oversamples");
+
+            setParam (p.getSettings().param (mix::channelId (0, "main")), 0.0f);   // only channel 3 on the main
+            juce::AudioBuffer<float> b (32, 128);
+            juce::MidiBuffer midi;
+            int at = -1;
+            for (int n = 0; n < 4 && at < 0; ++n)
+            {
+                b.clear();
+                if (n == 1)
+                    b.setSample (2, 10, 1.0f);
+                p.processBlock (b, midi);
+                for (int i = 0; i < 128 && at < 0; ++i)
+                    if (std::abs (b.getSample (0, i)) > 0.1f)
+                        at = n * 128 + i;
+            }
+            expectEquals (p.getLatencySamples(), latency, "reported to the host");
+            expectEquals (at, 128 + 10 + latency, "channel 3 lined up with channel 1's insert");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

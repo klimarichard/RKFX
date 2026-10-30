@@ -96,12 +96,59 @@ RKMixProcessor::RKMixProcessor()
         changed.fetch_or (parts);
         if (! loadingMix.load())
             markPresetModified();
+
+        // A pair linked or unlinked, a bus mono or stereo: its inserts follow.
+        if ((parts & (MixSettings::kMainBit | (std::uint64_t (0xffff) << 32))) != 0)
+        {
+            if (juce::MessageManager::existsAndIsCurrentThread())
+                syncInsertLayouts();
+            else
+                layoutSync.triggerAsyncUpdate();
+        }
     };
+
+    engine.setInserts (&rack);
+    rack.onChange = [this] { if (! loadingMix.load()) markPresetModified(); };
+    rack.onLatencyChange = [this] { updateLatencies(); };
 }
 
 RKMixProcessor::~RKMixProcessor()
 {
     settings.onChange = nullptr;
+    rack.onChange = nullptr;
+    rack.onLatencyChange = nullptr;
+    rack.clear();
+}
+
+int RKMixProcessor::channelsOf (InsertRack::Strip strip, int index) const
+{
+    switch (strip)
+    {
+        case InsertRack::Strip::channel: return index % 2 == 0 && isLinked (index / 2) ? 2 : 1;
+        case InsertRack::Strip::bus:     return isBusStereo (index) ? 2 : 1;
+        case InsertRack::Strip::main:    return 2;
+        case InsertRack::Strip::mono:    return 1;
+    }
+    return 2;
+}
+
+void RKMixProcessor::syncInsertLayouts()
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        rack.setChannels (InsertRack::Strip::channel, ch, channelsOf (InsertRack::Strip::channel, ch));
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        rack.setChannels (InsertRack::Strip::bus, bus, channelsOf (InsertRack::Strip::bus, bus));
+    updateLatencies();
+}
+
+void RKMixProcessor::updateLatencies()
+{
+    const auto l = rack.latencies();
+    {
+        const juce::SpinLock::ScopedLockType sl (latencyLock);
+        pendingLatencies = l;
+    }
+    latenciesChanged = true;
 }
 
 //==============================================================================
@@ -187,6 +234,7 @@ juce::var RKMixProcessor::getExtraState() const
             busColourList.add (busColours[(size_t) bus].load());
         }
     }
+    root->setProperty ("inserts", rack.toVar());
     root->setProperty ("names", names);
     root->setProperty ("colours", colours);
     root->setProperty ("busNames", buses);
@@ -200,6 +248,7 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     // A missing state (Reset, an empty preset) is the default console.
     loadingMix = true;
     settings.fromVar (extra["settings"]);
+    rack.fromVar (extra["inserts"], [this] (InsertRack::Strip strip, int index) { return channelsOf (strip, index); });
     loadingMix = false;
 
     const auto text = [] (const juce::var& list, int index)
@@ -264,6 +313,7 @@ RKMixProcessor::PresetResult RKMixProcessor::saveChannelPreset (int ch, const ju
             values[kChannelFields[f]] = valueOf (channelParams[(size_t) ch][(size_t) f]);
 
     auto preset = rkfx::PresetFormat::toVar ("RKMix Channel", 1, file.getFileNameWithoutExtension(), stripInfos(), values, true);
+    preset.getDynamicObject()->setProperty ("inserts", rack.stripToVar (InsertRack::Strip::channel, ch));
     preset.getDynamicObject()->setProperty ("channelName", getChannelName (ch));
     preset.getDynamicObject()->setProperty ("colour", getChannelColour (ch));
 
@@ -289,6 +339,7 @@ RKMixProcessor::PresetResult RKMixProcessor::loadChannelPreset (int ch, const ju
             }
 
     const auto root = juce::JSON::parse (json);
+    rack.stripFromVar (InsertRack::Strip::channel, ch, root["inserts"], channelsOf (InsertRack::Strip::channel, ch));
     if (root.hasProperty ("channelName"))
         setChannelName (ch, root["channelName"].toString());
     if (root.hasProperty ("colour"))
@@ -298,6 +349,7 @@ RKMixProcessor::PresetResult RKMixProcessor::loadChannelPreset (int ch, const ju
 
 void RKMixProcessor::resetChannelStrip (int ch)
 {
+    rack.stripFromVar (InsertRack::Strip::channel, ch, {}, channelsOf (InsertRack::Strip::channel, ch));
     for (int f = 0; f < numChannelFields; ++f)
         if (isStripField (f))
         {
@@ -413,6 +465,8 @@ MixEngine::Levels RKMixProcessor::readLevels() const
 
 void RKMixProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
+    rack.prepare (sampleRate, maxBlockSize);
+    updateLatencies();
     changed = 0;
     readSettings (MixEngine::kEverything);
     engine.prepare (sampleRate, maxBlockSize);
@@ -445,8 +499,27 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     }
     engine.setLevels (readLevels());
 
+    if (latenciesChanged.exchange (false))
+    {
+        const juce::SpinLock::ScopedTryLockType sl (latencyLock);
+        if (sl.isLocked())
+            engine.setLatencies (pendingLatencies);
+        else
+            latenciesChanged = true;   // next block
+    }
+    if (const auto latency = engine.getLatency(); latency != reportedLatency)
+    {
+        reportedLatency = latency;
+        reportLatency (latency);
+    }
+
     const auto measure = windowsOpen.load() > 0;
-    engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
+    {
+        // The inserts stay put while they run (a removed one is deleted after this).
+        const juce::SpinLock::ScopedLockType sl (rack.getLock());
+        rack.setBlockContext (getPlayHead(), getMidi(), getChunkStart());
+        engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
+    }
     if (! measure)
         return;
 

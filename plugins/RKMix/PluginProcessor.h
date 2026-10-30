@@ -3,6 +3,7 @@
 #include "plugin/ProcessorBase.h"
 
 #include "MixEngine.h"
+#include "MixInserts.h"
 #include "MixParams.h"
 #include "MixSettings.h"
 
@@ -68,7 +69,13 @@ public:
     /** Channel @p ch's settings as the engine sees them (any thread; for the displays). */
     MixEngine::Channel channelSettings (int ch) const;
 
-    /** Channel presets: the fixed strip with the name and colour (message thread). */
+    /** The inserts (message thread, except what InsertRack says). */
+    InsertRack& getRack() noexcept { return rack; }
+
+    /** How many channels strip @p index of @p strip has (1 or 2): its inserts run so. */
+    int channelsOf (InsertRack::Strip, int index) const;
+
+    /** Channel presets: the fixed strip, its inserts, name and colour (message thread). */
     juce::File getChannelPresetFolder();
     PresetResult saveChannelPreset (int channel, const juce::File&);
     PresetResult loadChannelPreset (int channel, const juce::File&);
@@ -130,8 +137,25 @@ private:
     std::array<BusParams, mix::kBuses> busParams {};
     juce::RangedAudioParameter *mainFader = nullptr, *mainMute = nullptr, *monoFader = nullptr, *monoMute = nullptr;
 
+    InsertRack rack;
     MixEngine engine;
     MixEngine::Settings engineSettings;                 // audio thread
+
+    // The inserts' latencies, handed to the audio thread.
+    juce::SpinLock latencyLock;
+    MixEngine::Latencies pendingLatencies;
+    std::atomic<bool> latenciesChanged { true };
+    int reportedLatency = -1;                           // audio thread
+    void updateLatencies();                             // message thread
+    void syncInsertLayouts();                           // strips that changed between mono and stereo
+
+    struct LayoutSync : public juce::AsyncUpdater
+    {
+        explicit LayoutSync (RKMixProcessor& p) : owner (p) {}
+        void handleAsyncUpdate() override { owner.syncInsertLayouts(); }
+        RKMixProcessor& owner;
+    };
+    LayoutSync layoutSync { *this };
     std::atomic<std::uint64_t> changed { MixEngine::kEverything };
     std::atomic<bool> loadingMix { false };
 

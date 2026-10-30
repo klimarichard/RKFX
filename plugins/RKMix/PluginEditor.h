@@ -5,6 +5,7 @@
 #include "gui/ResponseCurve.h"
 
 #include "MixComponents.h"
+#include "MixInserts.h"
 #include "MixLayout.h"
 #include "TransferCurve.h"
 
@@ -40,6 +41,36 @@ private:
     enum class Page { strip, sends, routing };
     static constexpr int kBusLayer = 2;
 
+    /** One insert slot on a strip: the plugin's short name (dimmed while
+        off), or "+" when empty. Click: open it (or pick a plugin); right-click:
+        on/off, replace, remove. */
+    struct InsertButton : public juce::Component
+    {
+        InsertButton (RKMixEditor& o, InsertRack::Slot s) : owner (o), slot (s) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+        RKMixEditor& owner;
+        const InsertRack::Slot slot;
+    };
+
+    /** An insert's own editor over the console, with its header. */
+    struct InsertView : public juce::Component
+    {
+        InsertView (RKMixEditor&, InsertRack::Slot, rkfx::ProcessorBase&);
+        ~InsertView() override;
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh();
+
+        RKMixEditor& owner;
+        const InsertRack::Slot slot;
+        rkfx::ProcessorBase& plugin;
+        std::unique_ptr<juce::AudioProcessorEditor> editor;
+        juce::Rectangle<int> editorBase;
+        juce::TextButton onButton { "On" }, removeButton { "Remove" }, closeButton { "Close" };
+    };
+
     /** A combo box on a choice parameter (item IDs are the values + 1). */
     struct ChoiceBox : public juce::ComboBox
     {
@@ -68,6 +99,7 @@ private:
         std::unique_ptr<MixGui::Fader> fader;
         MixGui::Meter meter;
         juce::TextButton sendsButton { "Sends" };   // Aux and FX buses
+        std::vector<std::unique_ptr<InsertButton>> insertButtons;
         bool stereo = false;
         int sendBus = -1;
         std::array<bool, 4> sectionsOn {};     // HPF, gate, EQ, comp
@@ -81,7 +113,8 @@ private:
     /** The main or the mono sum: name, fader, meter, mute. */
     struct MasterStrip : public juce::Component
     {
-        MasterStrip (RKMixEditor&, const juce::String& title, const juce::String& faderId, const juce::String& muteId, int bars);
+        MasterStrip (RKMixEditor&, const juce::String& title, const juce::String& faderId, const juce::String& muteId, int bars,
+                     InsertRack::Strip);
         void resized() override;
         void paint (juce::Graphics&) override;
 
@@ -90,6 +123,7 @@ private:
         std::unique_ptr<rkfx::ToggleSwitch> mute;
         MixGui::Fader fader;
         MixGui::Meter meter;
+        std::vector<std::unique_ptr<InsertButton>> insertButtons;
     };
 
     /** A page of the top panel, holding its controls. */
@@ -219,6 +253,8 @@ private:
     juce::TextButton layerButtons[3] { juce::TextButton ("Inputs 1-16"), juce::TextButton ("Inputs 17-32"), juce::TextButton ("Buses") };
     juce::TextButton sendsBack { "Back to faders" };
     std::unique_ptr<juce::FileChooser> chooser;
+    std::unique_ptr<InsertView> insertView;
+    int lastRackVersion = -1;
 
     Page page = Page::strip;
     int layer = 0;
@@ -254,6 +290,14 @@ private:
     void onSettingsChange();
     void updateMeters();
     void showColourMenu (int channel, int bus, juce::Component& target);
+
+    // Inserts
+    juce::String slotName (InsertRack::Slot) const;          // "Vocal, insert 1"
+    void openInsert (InsertRack::Slot);
+    void closeInsert();
+    void showInsertMenu (InsertRack::Slot, juce::Component& target, bool full);
+    void addInsertTypes (juce::PopupMenu&, int firstId) const;
+    juce::Rectangle<int> insertArea() const;
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

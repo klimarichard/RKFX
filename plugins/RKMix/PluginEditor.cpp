@@ -37,6 +37,13 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
                                                  rkfx::Palette::warning, "Mute");
     addAndMakeVisible (*mute);
 
+    const auto strip = isBus() ? InsertRack::Strip::bus : InsertRack::Strip::channel;
+    for (int slot = 0; slot < InsertRack::numSlots (strip); ++slot)
+    {
+        insertButtons.push_back (std::make_unique<InsertButton> (o, InsertRack::Slot { strip, isBus() ? bus : channel, slot }));
+        addAndMakeVisible (*insertButtons.back());
+    }
+
     if (isBus())
     {
         sendsButton.setTooltip ("Sends on fader: the channel faders set the sends to this bus");
@@ -117,6 +124,12 @@ void RKMixEditor::Strip::resized()
     sectionRow = r.removeFromTop (kSectionRowHeight);
     sendsButton.setBounds (sectionRow.expanded (0, 2));
     r.removeFromTop (4);
+    for (auto& b : insertButtons)
+    {
+        b->setBounds (r.removeFromTop (kInsertRow));
+        r.removeFromTop (2);
+    }
+    r.removeFromTop (2);
     pan.setBounds (r.removeFromTop (kPanHeight).reduced (2, 0));
     r.removeFromTop (4);
     mute->setBounds (r.removeFromTop (kButtonHeight).reduced (2, 0));
@@ -186,9 +199,15 @@ void RKMixEditor::Strip::mouseDown (const juce::MouseEvent& e)
 
 //==============================================================================
 RKMixEditor::MasterStrip::MasterStrip (RKMixEditor& o, const juce::String& t, const juce::String& faderId,
-                                       const juce::String& muteId, int bars)
+                                       const juce::String& muteId, int bars, InsertRack::Strip strip)
     : title (t), fader (*o.mixer.findParam (faderId)), meter (o.accent())
 {
+    for (int slot = 0; slot < InsertRack::numSlots (strip); ++slot)
+    {
+        insertButtons.push_back (std::make_unique<InsertButton> (o, InsertRack::Slot { strip, 0, slot }));
+        addAndMakeVisible (*insertButtons.back());
+    }
+
     mute = std::make_unique<rkfx::ToggleSwitch> (*o.mixer.findParam (muteId), rkfx::Palette::warning, "Mute");
     addAndMakeVisible (*mute);
     addAndMakeVisible (fader);
@@ -199,7 +218,14 @@ RKMixEditor::MasterStrip::MasterStrip (RKMixEditor& o, const juce::String& t, co
 void RKMixEditor::MasterStrip::resized()
 {
     auto r = getLocalBounds().reduced (6, 0);
-    r.removeFromTop (kStripHeadHeight);
+    r.removeFromTop (kColourBar + 2 + kStripNameHeight + kStripNumberHeight + 4);
+    auto rows = r.removeFromTop (InsertRack::kMainSlots * (kInsertRow + 2));   // the main's and mono's faders line up
+    for (auto& b : insertButtons)
+    {
+        b->setBounds (rows.removeFromTop (kInsertRow));
+        rows.removeFromTop (2);
+    }
+    r.removeFromTop (4);
     mute->setBounds (r.removeFromTop (kButtonHeight).reduced (4, 0));
     r.removeFromTop (6);
     const auto meterWidth = 2 * kMeterWidth + 1;
@@ -226,8 +252,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     : rkfx::EditorBase (p, kWidth, kHeight),
       mixer (p),
       watcher (p.getSettings(), [this] { onSettingsChange(); }),
-      mainStrip (*this, "Main", "main_fader", "main_mute", 2),
-      monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1),
+      mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main),
+      monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono),
       routingPanel (*this)
 {
     for (int ch = 0; ch < kChannels; ++ch)
@@ -260,6 +286,13 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (sendsBack);
     sendsBack.setVisible (false);
 
+    // A plugin about to be deleted: its editor goes first.
+    mixer.getRack().aboutToRemove = [this] (rkfx::ProcessorBase* plugin)
+    {
+        if (insertView != nullptr && &insertView->plugin == plugin)
+            closeInsert();
+    };
+
     mixer.windowsOpen.fetch_add (1);
     finishSetup();
     select (0);
@@ -271,6 +304,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
 RKMixEditor::~RKMixEditor()
 {
     meterTimer.stopTimer();
+    closeInsert();
+    mixer.getRack().aboutToRemove = nullptr;
     mixer.windowsOpen.fetch_sub (1);
 }
 
@@ -525,6 +560,20 @@ void RKMixEditor::updateMeters()
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
 
+    if (const auto v = mixer.getRack().getVersion(); v != lastRackVersion)
+    {
+        lastRackVersion = v;
+        for (auto* list : { &strips, &busStrips })
+            for (auto& strip : *list)
+                for (auto& b : strip->insertButtons)
+                    b->repaint();
+        for (auto* master : { &mainStrip, &monoStrip })
+            for (auto& b : master->insertButtons)
+                b->repaint();
+        if (insertView != nullptr)
+            insertView->refresh();
+    }
+
     const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
     const auto elapsed = (float) juce::jlimit (0.0, 0.5, now - lastMeterTime);
     lastMeterTime = now;
@@ -580,5 +629,200 @@ void RKMixEditor::showColourMenu (int channel, int bus, juce::Component& target)
             safe->mixer.setBusColour (bus, result - 1);
         else
             safe->mixer.setChannelColour (channel, result - 1);
+    });
+}
+
+//==============================================================================
+// Inserts
+
+void RKMixEditor::InsertButton::paint (juce::Graphics& g)
+{
+    auto& rack = owner.mixer.getRack();
+    const auto* type = rack.typeOf (slot);
+    const auto r = getLocalBounds().toFloat();
+
+    g.setColour (rkfx::Palette::knobBody.withAlpha (type != nullptr ? 1.0f : 0.5f));
+    g.fillRoundedRectangle (r, 3.0f);
+
+    if (type == nullptr)
+    {
+        g.setColour (rkfx::Palette::knobTrack);
+        g.setFont (rkfx::Fonts::regular (11.0f));
+        g.drawText ("+", getLocalBounds(), juce::Justification::centred);
+        return;
+    }
+
+    const auto on = rack.isOn (slot);
+    g.setColour (rkfx::Palette::familyColour (type->family).withAlpha (on ? 1.0f : 0.35f));
+    g.fillRoundedRectangle (r.withWidth (4.0f), 2.0f);
+    g.setColour (on ? rkfx::Palette::text : rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (10.5f));
+    g.drawFittedText (type->shortName, getLocalBounds().withTrimmedLeft (6).withTrimmedRight (2), juce::Justification::centredLeft, 1);
+}
+
+void RKMixEditor::InsertButton::mouseDown (const juce::MouseEvent& e)
+{
+    auto& rack = owner.mixer.getRack();
+    if (e.mods.isPopupMenu() || rack.get (slot) == nullptr)
+        owner.showInsertMenu (slot, *this, rack.get (slot) != nullptr);
+    else
+        owner.openInsert (slot);
+}
+
+RKMixEditor::InsertView::InsertView (RKMixEditor& o, InsertRack::Slot s, rkfx::ProcessorBase& p)
+    : owner (o), slot (s), plugin (p)
+{
+    editor.reset (plugin.createEditorAndMakeActive());
+    if (editor != nullptr)
+    {
+        editorBase = editor->getLocalBounds();
+        editor->setResizable (false, false);   // the console sizes it
+        addAndMakeVisible (*editor);
+    }
+
+    onButton.setClickingTogglesState (false);
+    onButton.onClick = [this] { owner.mixer.getRack().setOn (slot, ! owner.mixer.getRack().isOn (slot)); };
+    removeButton.onClick = [this]
+    {
+        const auto where = slot;
+        owner.mixer.getRack().remove (where);   // closes (deletes) this view first
+    };
+    closeButton.onClick = [this] { owner.closeInsert(); };
+    for (auto* b : { &onButton, &removeButton, &closeButton })
+        addAndMakeVisible (*b);
+    refresh();
+}
+
+RKMixEditor::InsertView::~InsertView()
+{
+    // As a host does: the plugin forgets its editor before it is deleted.
+    if (editor != nullptr)
+        plugin.editorBeingDeleted (editor.get());
+    editor.reset();
+}
+
+void RKMixEditor::InsertView::refresh()
+{
+    onButton.setToggleState (owner.mixer.getRack().isOn (slot), juce::dontSendNotification);
+    repaint();
+}
+
+void RKMixEditor::InsertView::resized()
+{
+    auto header = getLocalBounds().removeFromTop (34).reduced (6, 4);
+    closeButton.setBounds (header.removeFromRight (80));
+    header.removeFromRight (6);
+    removeButton.setBounds (header.removeFromRight (80));
+    header.removeFromRight (6);
+    onButton.setBounds (header.removeFromRight (60));
+
+    if (editor == nullptr)
+        return;
+
+    // The plugin's editor at its own size, scaled down only when it doesn't fit.
+    const auto area = getLocalBounds().withTrimmedTop (38).reduced (4);
+    const auto scale = juce::jmin (1.0, area.getWidth() / (double) editorBase.getWidth(), area.getHeight() / (double) editorBase.getHeight());
+    const auto size = juce::Rectangle<int> (juce::roundToInt (editorBase.getWidth() * scale), juce::roundToInt (editorBase.getHeight() * scale));
+    editor->setBounds (size.withCentre (area.getCentre()).withY (area.getY()));
+}
+
+void RKMixEditor::InsertView::paint (juce::Graphics& g)
+{
+    g.fillAll (owner.backgroundColour());
+    g.setColour (owner.panelColour());
+    g.fillRect (getLocalBounds().removeFromTop (34));
+    g.setColour (rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (15.0f));
+    g.drawText (owner.slotName (slot) + ": " + plugin.getConfig().name, 12, 0, getWidth() - 280, 34, juce::Justification::centredLeft);
+}
+
+juce::String RKMixEditor::slotName (InsertRack::Slot slot) const
+{
+    juce::String strip;
+    switch (slot.strip)
+    {
+        case InsertRack::Strip::channel: strip = displayName (slot.index); break;
+        case InsertRack::Strip::bus:     strip = busDisplayName (slot.index); break;
+        case InsertRack::Strip::main:    strip = "Main"; break;
+        case InsertRack::Strip::mono:    strip = "Mono"; break;
+    }
+    return strip + ", insert " + juce::String (slot.slot + 1);
+}
+
+juce::Rectangle<int> RKMixEditor::insertArea() const
+{
+    return contentArea().withTrimmedRight (kMasterWidth + kGap);
+}
+
+void RKMixEditor::openInsert (InsertRack::Slot slot)
+{
+    closeInsert();
+    if (auto* plugin = mixer.getRack().get (slot))
+    {
+        insertView = std::make_unique<InsertView> (*this, slot, *plugin);
+        addToCanvas (*insertView);
+        insertView->setBounds (insertArea());
+    }
+}
+
+void RKMixEditor::closeInsert()
+{
+    insertView.reset();
+}
+
+void RKMixEditor::addInsertTypes (juce::PopupMenu& menu, int firstId) const
+{
+    const auto& types = rkfx::pedals::pedalTypes();
+    std::optional<rkfx::Palette::Family> family;
+    for (int i = 0; i < (int) types.size(); ++i)
+    {
+        if (family != types[(size_t) i].family)
+        {
+            family = types[(size_t) i].family;
+            menu.addSectionHeader (rkfx::pedals::familyName (*family));
+        }
+        menu.addItem (firstId + i, types[(size_t) i].name);
+    }
+}
+
+void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target, bool full)
+{
+    enum { openItem = 1, toggleItem, removeItem, firstType = 100 };
+
+    juce::PopupMenu menu;
+    if (full)
+    {
+        menu.addItem (openItem, "Open");
+        menu.addItem (toggleItem, "On", true, mixer.getRack().isOn (slot));
+        juce::PopupMenu replace;
+        addInsertTypes (replace, firstType);
+        menu.addSubMenu ("Replace with", replace);
+        menu.addSeparator();
+        menu.addItem (removeItem, "Remove");
+    }
+    else
+    {
+        addInsertTypes (menu, firstType);
+    }
+
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, slot] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+
+        auto& rack = safe->mixer.getRack();
+        if (result == openItem)
+            safe->openInsert (slot);
+        else if (result == toggleItem)
+            rack.setOn (slot, ! rack.isOn (slot));
+        else if (result == removeItem)
+            rack.remove (slot);
+        else if (result >= firstType && result - firstType < (int) rkfx::pedals::pedalTypes().size())
+        {
+            rack.insert (slot, rkfx::pedals::pedalTypes()[(size_t) (result - firstType)].name,
+                         safe->mixer.channelsOf (slot.strip, slot.index));
+            safe->openInsert (slot);
+        }
     });
 }

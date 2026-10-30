@@ -26,6 +26,7 @@ set(RKPLAY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayStream.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayShow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlayAnalysis.cpp
 )
 
 # Factory presets (presets/*.json, empty shows set up for an occasion).

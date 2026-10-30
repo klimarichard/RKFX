@@ -16,6 +16,8 @@ void PlayEngine::prepare (double rate, int maxBlock)
     sampleRate = rate;
     scratch.setSize (2, maxBlock);
     level.reset (sampleRate, 0.05);
+    limiter.prepare (sampleRate);
+    limiter.setSettings ({ kSafetyCeilingDb, 100.0f });
     level.setCurrentAndTargetValue (level.getTargetValue());
     for (auto& v : voices)
         v = {};
@@ -47,7 +49,7 @@ void PlayEngine::push (const Command& c)
 
 void PlayEngine::start (int slot, double seconds, float gain)       { push ({ Command::Type::start, slot, seconds, gain }); }
 void PlayEngine::crossfadeTo (int slot, double seconds, float gain) { push ({ Command::Type::crossfade, slot, seconds, gain }); }
-void PlayEngine::arm (int slot, double seconds, float gain)         { push ({ Command::Type::arm, slot, seconds, gain }); }
+void PlayEngine::arm (int slot, double seconds, float gain, double lead) { push ({ Command::Type::arm, slot, seconds, gain, lead }); }
 void PlayEngine::disarm()                                           { push ({ Command::Type::disarm, -1, 0.0, 1.0f }); }
 void PlayEngine::fadeOutAll (double seconds)                        { push ({ Command::Type::fadeOutAll, -1, seconds, 1.0f }); }
 void PlayEngine::pause (double seconds)                             { push ({ Command::Type::pause, -1, seconds, 1.0f }); }
@@ -171,6 +173,7 @@ void PlayEngine::handle (const Command& c) noexcept
         case Command::Type::arm:
             armedSlot = c.slot;
             armedSeconds = c.seconds;
+            armedLead = juce::jmax (0.0, c.lead);
             armedGain = c.gain;
             break;
         case Command::Type::disarm:
@@ -221,7 +224,8 @@ void PlayEngine::advance() noexcept
     const auto slot = armedSlot;
     armedSlot = -1;
     const auto old = current;
-    const auto left = old >= 0 ? (double) framesLeft (voices[(size_t) old]) / sampleRate : 0.0;
+    // What's left of the old song before its end point (its fade-out point, with a lead).
+    const auto left = old >= 0 ? (double) framesLeft (voices[(size_t) old]) / sampleRate - armedLead : 0.0;
 
     const auto v = startVoice (slot, armedSeconds, armedGain);
     if (v < 0)
@@ -337,7 +341,7 @@ void PlayEngine::process (float* const* out, int numSamples) noexcept
         auto chunk = numSamples - pos;
         if (armedSlot >= 0 && current >= 0 && ! paused && ! voices[(size_t) current].releasing)
         {
-            const auto until = framesLeft (voices[(size_t) current]) - (juce::int64) std::llround (armedSeconds * sampleRate);
+            const auto until = framesLeft (voices[(size_t) current]) - (juce::int64) std::llround ((armedSeconds + armedLead) * sampleRate);
             if (until <= 0)
             {
                 advance();
@@ -365,4 +369,12 @@ void PlayEngine::process (float* const* out, int numSamples) noexcept
             out[0][i] *= g;
             out[1][i] *= g;
         }
+
+    if (limiterOn.load())
+    {
+        limiter.process (out, 2, numSamples);
+        const auto db = limiter.takeGainReductionDb();
+        if (db < reduction.load())
+            reduction = db;
+    }
 }

@@ -2,6 +2,7 @@
 
 #include "plugin/ProcessorBase.h"
 
+#include "PlayAnalysis.h"
 #include "PlayEngine.h"
 #include "PlayShow.h"
 #include "PlayStream.h"
@@ -41,6 +42,25 @@ public:
     void clearSongs();
     void setCrossfade (double seconds);
     void setFadeOut (double seconds);
+    void setSmartCrossfade (bool);
+    void setSongGain (int index, double db);
+
+    // Loudness
+    void setLevelMatch (bool);
+    void setTarget (double lufs);
+    void setLift (double db);              // 0 (off), 3 or 6
+    void setSafetyLimiter (bool);
+    PlayLevel levelOf (const PlaySong&) const;
+    int analysisPending() const { return analyser != nullptr ? analyser->pending() : 0; }
+    float takeLimiterReductionDb() { return engine.takeLimiterReductionDb(); }
+
+    /** Tests: measure every song now (on this thread), and keep the cache in @p file. */
+    void analyseNow();
+    void useAnalysisCache (const juce::File& file) { cache = std::make_unique<PlayAnalysisCache> (file); }
+
+    /** Tests: streams are filled by update() on the calling thread instead of
+        the disk thread, so audio can run faster than real time. */
+    void setSynchronousDiskForTesting (bool on) { synchronousDisk = on; }
 
     /** Bumped when the show changes (the editor polls it). */
     int getShowVersion() const noexcept { return showVersion; }
@@ -96,16 +116,20 @@ private:
         bool loaded = false;         // holds a song the processor still means to use
         int song = -1;
         juce::uint32 lastCommand = 0;
+        PlayStream::Options options; // how it was opened (re-opened when the analysis or settings change it)
     };
     std::array<Slot, PlayEngine::kSlots> slots;
 
     PlayShow show;
+    std::unique_ptr<PlayAnalysisCache> cache;
+    std::unique_ptr<PlayAnalyser> analyser;
     int showVersion = 0;
     State state = State::stopped;
     int currentIndex = 0, currentSlot = -1;
     int armedIndex = -1, armedSlot = -1;
-    double armedCrossfade = -1.0;
+    double armedCrossfade = -1.0, armedLead = 0.0;
     bool underran = false;
+    bool synchronousDisk = false;
 
     juce::String note;
     int noteVersion = 0;
@@ -115,7 +139,12 @@ private:
 
     void timerCallback() override { update(); }
 
+    /** Opens @p song into a free stream, from @p startSeconds (< 0: where its music starts). */
     int load (int song, double startSeconds);
+    PlayStream::Options optionsFor (int song, double startSeconds) const;
+    double leadOf (int slot) const;
+    void attachAnalyses();
+    void takeAnalyses();
     void drop (int& slot);
     void markSent (int slot) { if (slot >= 0) slots[(size_t) slot].lastCommand = engine.commandsSent(); }
     void disarm();

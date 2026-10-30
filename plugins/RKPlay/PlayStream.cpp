@@ -23,19 +23,22 @@ void PlayStream::prepare (double newDeviceRate)
     fifo = std::make_unique<juce::AbstractFifo> (capacity);
 }
 
-void PlayStream::open (std::unique_ptr<juce::AudioFormatReader> newReader, double start)
+void PlayStream::open (std::unique_ptr<juce::AudioFormatReader> newReader, const Options& o)
 {
     close();
     if (newReader == nullptr || fifo == nullptr || newReader->sampleRate <= 0.0)
         return;
 
     reader = std::move (newReader);
+    options = o;
     ratio = reader->sampleRate / deviceRate;
     const auto length = reader->lengthInSamples;
     lengthSeconds = (double) length / reader->sampleRate;
-    startSeconds = juce::jlimit (0.0, lengthSeconds, start);
-    sourcePos = juce::jlimit<juce::int64> (0, length, (juce::int64) std::llround (startSeconds * reader->sampleRate));
-    totalFrames = (juce::int64) ((double) (length - sourcePos) / ratio);
+    options.startSeconds = juce::jlimit (0.0, lengthSeconds, o.startSeconds);
+    sourcePos = juce::jlimit<juce::int64> (0, length, (juce::int64) std::llround (options.startSeconds * reader->sampleRate));
+    sourceEnd = o.endSeconds < 0.0 ? length
+                                   : juce::jlimit<juce::int64> (sourcePos, length, (juce::int64) std::llround (o.endSeconds * reader->sampleRate));
+    totalFrames = (juce::int64) ((double) (sourceEnd - sourcePos) / ratio);
 
     const auto resampling = ! juce::exactlyEqual (ratio, 1.0);
     source.setSize (2, kChunk + 2 * kSincLatency + 16, false, false, true);
@@ -46,6 +49,15 @@ void PlayStream::open (std::unique_ptr<juce::AudioFormatReader> newReader, doubl
         i.reset();
     // Drop the interpolator's delay at the start: its first frames are its own lead-in.
     dropFrames = resampling ? (int) std::lround (kSincLatency / ratio) : 0;
+
+    gain = std::abs (o.gainDb) < 1.0e-6 ? 1.0f : (float) juce::Decibels::decibelsToGain (o.gainDb);
+    limiting = o.limitCeilingDb <= 0.0;
+    limiterFlushed = false;
+    if (limiting)
+    {
+        limiter.prepare (deviceRate, o.limitCeilingDb);
+        dropFrames += limiter.getLatency();
+    }
 
     fifo->reset();
     framesPlayed = 0;
@@ -98,6 +110,25 @@ void PlayStream::writeRing (const float* const* data, int numFrames)
     fifo->finishedWrite (size1 + size2);
 }
 
+void PlayStream::deliver (float* l, float* r, int numFrames)
+{
+    if (! juce::exactlyEqual (gain, 1.0f))
+    {
+        juce::FloatVectorOperations::multiply (l, gain, numFrames);
+        juce::FloatVectorOperations::multiply (r, gain, numFrames);
+    }
+    if (limiting)
+        limiter.process (l, r, numFrames);
+
+    const auto drop = juce::jmin (dropFrames, numFrames);
+    dropFrames -= drop;
+    if (numFrames > drop)
+    {
+        const float* data[2] = { l + drop, r + drop };
+        writeRing (data, juce::jmin (numFrames - drop, fifo->getFreeSpace()));
+    }
+}
+
 bool PlayStream::readSomething()
 {
     if (reader == nullptr || sourceDone.load())
@@ -106,29 +137,40 @@ bool PlayStream::readSomething()
     const auto free = fifo->getFreeSpace();
     const auto resampling = ! juce::exactlyEqual (ratio, 1.0);
 
+    // The end: push the limiter's last samples out, then done.
+    const auto finish = [this]
+    {
+        if (limiting && ! limiterFlushed)
+        {
+            const auto n = limiter.getLatency();
+            if (fifo->getFreeSpace() + dropFrames < n)
+                return false;   // no room yet: next time
+            source.clear (0, n);
+            deliver (source.getWritePointer (0), source.getWritePointer (1), n);
+            limiterFlushed = true;
+        }
+        sourceDone = true;
+        return true;
+    };
+
     if (! resampling)
     {
         // Straight copy: read as much as fits, up to a chunk.
-        const auto want = (int) juce::jmin<juce::int64> (juce::jmin (free, kChunk), reader->lengthInSamples - sourcePos);
+        const auto want = (int) juce::jmin<juce::int64> (juce::jmin (free + dropFrames, kChunk), sourceEnd - sourcePos);
         if (want <= 0)
-        {
-            if (sourcePos >= reader->lengthInSamples)
-                sourceDone = true;
-            return false;
-        }
+            return sourcePos >= sourceEnd ? finish() : false;
         reader->read (&source, 0, want, sourcePos, true, true);   // a mono file on both sides
         sourcePos += want;
-        const float* data[2] = { source.getReadPointer (0), source.getReadPointer (1) };
-        writeRing (data, want);
-        if (sourcePos >= reader->lengthInSamples)
-            sourceDone = true;
+        deliver (source.getWritePointer (0), source.getWritePointer (1), want);
+        if (sourcePos >= sourceEnd)
+            finish();
         return true;
     }
 
     // Resampling: top up the source buffer, then make as many frames as it allows.
     if (! sourceEnded && sourceCount < kChunk)
     {
-        const auto want = (int) juce::jmin<juce::int64> (kChunk - sourceCount, reader->lengthInSamples - sourcePos);
+        const auto want = (int) juce::jmin<juce::int64> (kChunk - sourceCount, sourceEnd - sourcePos);
         if (want > 0)
         {
             juce::AudioBuffer<float> view (source.getArrayOfWritePointers(), 2, sourceCount, want);
@@ -136,9 +178,9 @@ bool PlayStream::readSomething()
             sourcePos += want;
             sourceCount += want;
         }
-        if (sourcePos >= reader->lengthInSamples)
+        if (sourcePos >= sourceEnd)
         {
-            // The file's end: zeros push the interpolator's last samples out.
+            // The song's end: zeros push the interpolator's last samples out.
             for (int ch = 0; ch < 2; ++ch)
                 juce::FloatVectorOperations::clear (source.getWritePointer (ch, sourceCount), 2 * kSincLatency);
             sourceCount += 2 * kSincLatency;
@@ -149,11 +191,7 @@ bool PlayStream::readSomething()
     auto frames = (int) std::floor ((sourceCount - 4) / ratio);
     frames = juce::jmin (frames, free + dropFrames, resampled.getNumSamples());
     if (frames <= 0)
-    {
-        if (sourceEnded)
-            sourceDone = true;
-        return false;
-    }
+        return sourceEnded && sourceCount <= 4 ? finish() : false;
 
     int used = 0;
     for (int ch = 0; ch < 2; ++ch)
@@ -162,15 +200,9 @@ bool PlayStream::readSomething()
         std::memmove (source.getWritePointer (ch), source.getReadPointer (ch, used), sizeof (float) * (size_t) (sourceCount - used));
     sourceCount -= used;
 
-    const auto drop = juce::jmin (dropFrames, frames);
-    dropFrames -= drop;
-    if (frames > drop)
-    {
-        const float* data[2] = { resampled.getReadPointer (0, drop), resampled.getReadPointer (1, drop) };
-        writeRing (data, juce::jmin (frames - drop, fifo->getFreeSpace()));
-    }
+    deliver (resampled.getWritePointer (0), resampled.getWritePointer (1), frames);
     if (sourceEnded && sourceCount <= 4)
-        sourceDone = true;
+        finish();
     return true;
 }
 

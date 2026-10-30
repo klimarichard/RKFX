@@ -1,7 +1,9 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "PlayAnalysis.h"
 #include "PlayEngine.h"
+#include "dsp/Loudness.h"
 #include "PlayStream.h"
 #include "PluginProcessor.h"
 
@@ -66,6 +68,11 @@ namespace
             for (int ch = 0; ch < 2; ++ch)
                 out.copyFrom (ch, start + done, block, ch, 0, n);
         }
+    }
+
+    juce::File tempCache()
+    {
+        return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("RKPlayTests").getChildFile ("analysis.json");
     }
 
     double rms (const juce::AudioBuffer<float>& b, int ch, int start, int length)
@@ -283,6 +290,8 @@ public:
                 files.add (writeWav ("Artist - Song " + juce::String (s + 1), kRate, 48000, [s] (int, int) { return 0.1f * (float) (s + 1); }));
 
             RKPlayProcessor p;
+            p.useAnalysisCache (tempCache());
+            p.setSynchronousDiskForTesting (true);
             p.setPlayConfigDetails (2, 2, kRate, kBlock);
             p.prepareToPlay (kRate, kBlock);
             p.addFiles (files);
@@ -310,6 +319,7 @@ public:
             juce::MemoryBlock state;
             p.getStateInformation (state);
             RKPlayProcessor q;
+            q.useAnalysisCache (tempCache());
             q.setStateInformation (state.getData(), (int) state.getSize());
             expectEquals ((int) q.getShow().songs.size(), 3);
             expectEquals (q.getShow().crossfadeSeconds, 0.0);
@@ -324,6 +334,8 @@ public:
             files.add (writeWav ("Gone", kRate, 48000, [] (int, int) { return 0.3f; }));
             files.add (writeWav ("Three", kRate, 48000, [] (int, int) { return 0.4f; }));
             RKPlayProcessor p;
+            p.useAnalysisCache (tempCache());
+            p.setSynchronousDiskForTesting (true);
             p.setPlayConfigDetails (2, 2, kRate, kBlock);
             p.prepareToPlay (kRate, kBlock);
             p.addFiles (files);
@@ -332,6 +344,7 @@ public:
             juce::MemoryBlock state;
             p.getStateInformation (state);
             RKPlayProcessor q;
+            q.useAnalysisCache (tempCache());
             q.setPlayConfigDetails (2, 2, kRate, kBlock);
             q.prepareToPlay (kRate, kBlock);
             q.setStateInformation (state.getData(), (int) state.getSize());
@@ -340,14 +353,219 @@ public:
             q.play();
             expectEquals (q.getNextIndex(), 2, "the next playable song");
         }
+
+        //==============================================================================
+        // Phase 2: analysis and loudness
+
+        beginTest ("Loudness: the EBU reference, a 1 kHz sine at -23 dBFS reads -23.0 LUFS");
+        {
+            for (const auto rate : { 48000.0, 44100.0 })
+            {
+                rkfx::LoudnessMeter meter;
+                meter.prepare (rate, 2);
+                const auto amplitude = juce::Decibels::decibelsToGain (-23.0);
+                juce::AudioBuffer<float> b (2, (int) rate * 20);
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    for (int ch = 0; ch < 2; ++ch)
+                        b.setSample (ch, i, (float) (amplitude * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / rate)));
+                meter.process (b.getArrayOfReadPointers(), b.getNumSamples());
+                expectWithinAbsoluteError (meter.getIntegrated(), -23.0, 0.1, juce::String (rate));
+            }
+        }
+
+        beginTest ("Loudness: gating ignores silence; true peak finds the peak between samples");
+        {
+            rkfx::LoudnessMeter meter;
+            meter.prepare (kRate, 2);
+            const auto amplitude = juce::Decibels::decibelsToGain (-23.0);
+            juce::AudioBuffer<float> b (2, (int) kRate * 20);
+            b.clear();
+            for (int i = 0; i < (int) kRate * 10; ++i)   // 10 s of tone, then 10 s of silence
+                for (int ch = 0; ch < 2; ++ch)
+                    b.setSample (ch, i, (float) (amplitude * std::sin (juce::MathConstants<double>::twoPi * 1000.0 * i / kRate)));
+            meter.process (b.getArrayOfReadPointers(), b.getNumSamples());
+            expectWithinAbsoluteError (meter.getIntegrated(), -23.0, 0.1, "the silence is gated out");
+
+            // A sine at a quarter of the rate, sampled 45 degrees off its peaks: samples at 0.707.
+            rkfx::LoudnessMeter peaks;
+            peaks.prepare (kRate, 2);
+            for (int i = 0; i < 48000; ++i)
+                for (int ch = 0; ch < 2; ++ch)
+                    b.setSample (ch, i, (float) std::sin (juce::MathConstants<double>::halfPi * i + juce::MathConstants<double>::pi / 4.0));
+            peaks.process (b.getArrayOfReadPointers(), 48000);
+            expectWithinAbsoluteError (peaks.getSamplePeak(), 0.7071f, 0.001f);
+            expectWithinAbsoluteError (juce::Decibels::gainToDecibels (peaks.getTruePeak()), 0.0f, 0.3f, "true peak at 0 dBTP");
+        }
+
+        beginTest ("Analysis: music start and end skip silence; the fade-out point is where a fade has gone quiet");
+        {
+            // 1 s silence, 6 s noise, a 4 s fade, 2 s silence
+            const auto file = writeWav ("shape", kRate, 13 * 48000, [] (int i, int ch)
+            {
+                const auto t = i / kRate;
+                if (t < 1.0 || t >= 11.0)
+                    return 0.0f;
+                const auto fade = t < 7.0 ? 1.0 : 1.0 - (t - 7.0) / 4.0;
+                return (float) (noise (i, ch, 5) * fade * fade * fade);
+            });
+            const auto a = PlayAnalysis::analyse (*readerFor (file));
+            expect (a.valid);
+            expectWithinAbsoluteError (a.musicStart, 0.99, 0.02);
+            expectGreaterThan (a.musicEnd, 9.0);
+            expectLessThan (a.musicEnd, 11.1);
+            expectGreaterThan (a.fadeOutPoint, 7.5, "after the fade begins");
+            expectLessThan (a.fadeOutPoint, a.musicEnd - 0.5, "well before the music's end");
+            expectEquals ((int) a.overview.size(), PlayAnalysis::kOverviewPoints);
+            expectEquals ((int) a.overview[10], 0, "silence at the start");
+            expectEquals ((int) a.overview[300], 64, "the noise's peak, 0.25");
+
+            const auto back = PlayAnalysis::fromVar (a.toVar());
+            expectWithinAbsoluteError (back.loudness, a.loudness, 1.0e-9);
+            expect (back.overview == a.overview);
+        }
+
+        beginTest ("Level: pure gain to the target; past the peak ceiling only by the lift, limited");
+        {
+            PlayAnalysis a;
+            a.valid = true;
+            PlayLevel::Settings s;   // -18 LUFS, -0.5 dBTP, lift up to 3 dB
+
+            a.loudness = -22.0; a.truePeakDb = -6.0;
+            auto l = PlayLevel::plan (a, s, 0.0);
+            expectWithinAbsoluteError (l.gainDb, 4.0, 1.0e-9);
+            expectEquals (l.limitDb, 0.0);
+
+            a.loudness = -24.0; a.truePeakDb = -1.0;            // needs +6, room for +0.5
+            l = PlayLevel::plan (a, s, 0.0);
+            expectWithinAbsoluteError (l.gainDb, 3.5, 1.0e-9, "0.5 of room + 3 of lift");
+            expectWithinAbsoluteError (l.limitDb, 3.0, 1.0e-9);
+
+            s.liftDb = 0.0;
+            l = PlayLevel::plan (a, s, 0.0);
+            expectWithinAbsoluteError (l.gainDb, 0.5, 1.0e-9, "lift off: gain only");
+            expectEquals (l.limitDb, 0.0);
+
+            a.loudness = -18.02; a.truePeakDb = -3.0;           // the archive: already there
+            l = PlayLevel::plan (a, s, 0.0);
+            expectEquals (l.gainDb, 0.0, "bit-exact");
+
+            s.match = false;
+            l = PlayLevel::plan (a, s, -2.0);
+            expectEquals (l.gainDb, -2.0, "match off: the song's own gain only");
+        }
+
+        beginTest ("The lift limiter holds the true peak at the ceiling, smoothly, and lines up");
+        {
+            PlayLimiter limiter;
+            limiter.prepare (kRate, -0.5);
+            juce::AudioBuffer<float> b (2, 96000);
+            for (int i = 0; i < 96000; ++i)
+                for (int ch = 0; ch < 2; ++ch)
+                    b.setSample (ch, i, noise (i, ch, 6) * 5.0f * (i % 48000 < 1200 ? 1.0f : 0.2f));   // a loud burst a second
+            juce::AudioBuffer<float> in (b);
+            limiter.process (b.getWritePointer (0), b.getWritePointer (1), 96000);
+
+            rkfx::LoudnessMeter meter;
+            meter.prepare (kRate, 2);
+            meter.process (b.getArrayOfReadPointers(), 96000);
+            expectLessThan (juce::Decibels::gainToDecibels (meter.getTruePeak()), -0.4f, "true peak at the ceiling");
+            expectLessThan (limiter.getMostReductionDb(), -3.0f, "it did limit");
+
+            // Long after a burst (6 release times): the input, delayed by the lookahead, untouched.
+            const auto delay = limiter.getLatency();
+            const auto i = 47000;
+            expectWithinAbsoluteError (b.getSample (0, i + delay), in.getSample (0, i), 1.0e-3f, "within 0.5% (the release's last bit)");
+        }
+
+        beginTest ("A song plays between its music start and end, at its level");
+        {
+            const auto file = writeWav ("span", kRate, 3 * 48000, [] (int i, int) { return (float) i / (3 * 48000.0f) * 0.5f; });
+            PlayStream stream;
+            stream.prepare (kRate);
+            PlayStream::Options o;
+            o.startSeconds = 1.0;
+            o.endSeconds = 2.0;
+            o.gainDb = 6.0206;
+            stream.open (readerFor (file), o);
+            stream.fillNow();
+            expectEquals (stream.available(), 48000, "one second");
+            juce::AudioBuffer<float> got (2, 48000);
+            stream.read (got.getArrayOfWritePointers(), 0, 48000);
+            expectWithinAbsoluteError (got.getSample (0, 0), 2.0f * (48000.0f / (3 * 48000.0f) * 0.5f), 1.0e-5f, "doubled");
+        }
+
+        beginTest ("Smart crossfade: the next song is in by the fade-out point, not after a quiet tail");
+        {
+            // A: 4 s loud, then a 4 s tail 40 dB down; B: a steady tone.
+            juce::Array<juce::File> files;
+            files.add (writeWav ("A - Long Tail", kRate, 8 * 48000, [] (int i, int ch) { return noise (i, ch, 7) * (i < 4 * 48000 ? 1.0f : 0.01f); }));
+            files.add (writeWav ("B - Tone", kRate, 8 * 48000, [] (int i, int)
+                                 { return 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 100.0 * i / kRate); }));
+            for (const auto smart : { true, false })
+            {
+                RKPlayProcessor p;
+                p.useAnalysisCache (tempCache());
+                p.setSynchronousDiskForTesting (true);
+                p.setPlayConfigDetails (2, 2, kRate, kBlock);
+                p.prepareToPlay (kRate, kBlock);
+                p.addFiles (files);
+                p.setLevelMatch (false);
+                p.setCrossfade (1.0);
+                p.setSmartCrossfade (smart);
+                p.analyseNow();
+                p.play();
+
+                juce::AudioBuffer<float> buffer (2, kBlock);
+                juce::MidiBuffer midi;
+                for (int b = 0; b < (int) (5.5 * kRate) / kBlock; ++b)
+                {
+                    buffer.clear();
+                    p.processBlock (buffer, midi);
+                    p.update();
+                }
+                expectEquals (p.getCurrentIndex(), smart ? 1 : 0, smart ? "B by 5.5 s" : "still A's tail at 5.5 s");
+            }
+        }
+
+        beginTest ("The analysis cache: found again, and missed when the file changes");
+        {
+            const auto cacheFile = tempCache().getSiblingFile ("cache-test.json");
+            cacheFile.deleteFile();
+            const auto file = writeWav ("cached", kRate, 48000, [] (int i, int ch) { return noise (i, ch, 8); });
+            {
+                PlayAnalysisCache cache (cacheFile);
+                cache.store (file, PlayAnalysis::analyse (*readerFor (file)));
+                cache.save();
+            }
+            PlayAnalysisCache again (cacheFile);
+            PlayAnalysis found;
+            expect (again.find (file, found) && found.valid);
+
+            writeWav ("cached", kRate, 24000, [] (int i, int ch) { return noise (i, ch, 9); });
+            expect (! again.find (file, found), "a changed file is measured again");
+        }
     }
 };
 
 static PlayTests playTests;
 
-int main (int, char**)
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+
+    // RKPlayTests --analyse <files...>: what RKPlay measures (a check against other meters).
+    if (argc > 2 && juce::String (argv[1]) == "--analyse")
+    {
+        for (int i = 2; i < argc; ++i)
+            if (auto reader = readerFor (juce::File (juce::String::fromUTF8 (argv[i]))))
+            {
+                const auto a = PlayAnalysis::analyse (*reader);
+                std::printf ("%7.2f LUFS  TP %6.2f dBTP  start %5.2f  end %7.2f  fade-out %7.2f  of %7.2f  %s\n",
+                             a.loudness, a.truePeakDb, a.musicStart, a.musicEnd, a.fadeOutPoint, a.lengthSeconds,
+                             juce::File (juce::String::fromUTF8 (argv[i])).getFileName().toRawUTF8());
+            }
+        return 0;
+    }
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
     runner.runAllTests();

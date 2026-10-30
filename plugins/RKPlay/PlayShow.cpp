@@ -59,6 +59,18 @@ void PlayShow::checkAll (juce::AudioFormatManager& formats)
     }
 }
 
+PlayShow::Span PlayShow::spanOf (const PlaySong& song) const
+{
+    Span span { 0.0, song.lengthSeconds, song.lengthSeconds };
+    if (smartCrossfade && song.analysis.valid)
+    {
+        span.start = song.analysis.musicStart;
+        span.end = juce::jmax (span.start, song.analysis.musicEnd);
+        span.endPoint = juce::jlimit (span.start, span.end, song.analysis.fadeOutPoint);
+    }
+    return span;
+}
+
 int PlayShow::numProblems() const
 {
     int n = 0;
@@ -77,6 +89,8 @@ juce::var PlayShow::toVar() const
         item->setProperty ("title", song.title);
         if (song.artist.isNotEmpty())
             item->setProperty ("artist", song.artist);
+        if (std::abs (song.gainDb) > 0.001)
+            item->setProperty ("gain", song.gainDb);
         list.add (juce::var (item));
     }
 
@@ -85,6 +99,12 @@ juce::var PlayShow::toVar() const
     root->setProperty ("crossfade", crossfadeSeconds);
     root->setProperty ("fadeOut", fadeOutSeconds);
     root->setProperty ("pauseFade", pauseFadeSeconds);
+    root->setProperty ("smartCrossfade", smartCrossfade);
+    root->setProperty ("levelMatch", level.match);
+    root->setProperty ("target", level.targetLufs);
+    root->setProperty ("peakCeiling", level.peakCeilingDb);
+    root->setProperty ("lift", level.liftDb);
+    root->setProperty ("safetyLimiter", safetyLimiter);
     return juce::var (root);
 }
 
@@ -94,6 +114,12 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
     crossfadeSeconds = juce::jlimit (0.0, kMaxCrossfade, (double) v.getProperty ("crossfade", 6.0));
     fadeOutSeconds = juce::jlimit (0.5, 30.0, (double) v.getProperty ("fadeOut", 5.0));
     pauseFadeSeconds = juce::jlimit (0.05, 5.0, (double) v.getProperty ("pauseFade", 1.0));
+    smartCrossfade = v.getProperty ("smartCrossfade", true);
+    level.match = v.getProperty ("levelMatch", true);
+    level.targetLufs = juce::jlimit (-23.0, -14.0, (double) v.getProperty ("target", -18.0));
+    level.peakCeilingDb = juce::jlimit (-3.0, 0.0, (double) v.getProperty ("peakCeiling", -0.5));
+    level.liftDb = juce::jlimit (0.0, 6.0, (double) v.getProperty ("lift", 3.0));
+    safetyLimiter = v.getProperty ("safetyLimiter", true);
 
     if (const auto* list = v["songs"].getArray())
         for (const auto& item : *list)
@@ -107,6 +133,7 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
                 song.title = item["title"].toString();
             if (item.hasProperty ("artist"))
                 song.artist = item["artist"].toString();
+            song.gainDb = juce::jlimit (-12.0, 12.0, (double) item.getProperty ("gain", 0.0));
             songs.push_back (std::move (song));
         }
 }

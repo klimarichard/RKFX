@@ -2,6 +2,8 @@
 
 #include "PlayStream.h"
 
+#include "dsp/PeakLimiter.h"
+
 #include <array>
 #include <atomic>
 
@@ -41,8 +43,10 @@ public:
     /** Fades every voice out over @p seconds and @p slot in over the same time; @p slot becomes current. */
     void crossfadeTo (int slot, double seconds, float gain);
 
-    /** When the current song has @p seconds left, crossfade into @p slot over them (0: right after it, gapless). */
-    void arm (int slot, double seconds, float gain);
+    /** When the current song has @p seconds + @p leadSeconds left, crossfade
+        into @p slot over @p seconds (0: right after it, gapless). The lead
+        ends the current song early: at its fade-out point (smart crossfade). */
+    void arm (int slot, double seconds, float gain, double leadSeconds = 0.0);
     void disarm();
 
     /** Fades everything out over @p seconds; the voices then let their streams go. */
@@ -52,6 +56,14 @@ public:
     void resume (double seconds);
 
     void setLevel (float gain) noexcept { level.setTargetValue (gain); }
+
+    /** The safety limiter on the output (on by default, -0.3 dBFS): only for
+        sums the analysis can't foresee (two loud songs mid-crossfade, Level up). */
+    void setSafetyLimiter (bool on) noexcept { limiterOn = on; }
+    static constexpr float kSafetyCeilingDb = -0.3f;
+
+    /** Most gain reduction of the safety limiter since the last call (dB, <= 0). */
+    float takeLimiterReductionDb() noexcept { return reduction.exchange (0.0f); }
 
     //==============================================================================
     // Events (message thread)
@@ -89,6 +101,7 @@ private:
         int slot = -1;
         double seconds = 0.0;
         float gain = 1.0f;
+        double lead = 0.0;
     };
 
     struct Voice
@@ -107,12 +120,15 @@ private:
     int current = -1;               // the voice playing the current song
 
     int armedSlot = -1;
-    double armedSeconds = 0.0;
+    double armedSeconds = 0.0, armedLead = 0.0;
     float armedGain = 1.0f;
 
     double pauseFade = 1.0, pauseStep = 0.0;
     bool paused = false;
     juce::SmoothedValue<float> level { 1.0f };
+    rkfx::PeakLimiter limiter;
+    std::atomic<bool> limiterOn { true };
+    std::atomic<float> reduction { 0.0f };
 
     juce::AudioBuffer<float> scratch;
 

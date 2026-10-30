@@ -52,12 +52,17 @@ RKPlayProcessor::RKPlayProcessor()
     for (int slot = 0; slot < PlayEngine::kSlots; ++slot)
         engine.setStream (slot, &streams[(size_t) slot]);
     diskThread.startThread (juce::Thread::Priority::high);
+    cache = std::make_unique<PlayAnalysisCache> (PlayAnalysisCache::defaultFile());
+    analyser = std::make_unique<PlayAnalyser>();
     startTimerHz (30);
 }
 
 RKPlayProcessor::~RKPlayProcessor()
 {
     stopTimer();
+    analyser.reset();
+    if (cache != nullptr)
+        cache->save();
     for (auto& stream : streams)
         diskThread.removeTimeSliceClient (&stream);
     diskThread.stopThread (2000);
@@ -131,13 +136,51 @@ int RKPlayProcessor::load (int song, double startSeconds)
         return -1;
     }
 
+    const auto options = optionsFor (song, startSeconds);
     auto& stream = streams[(size_t) slot];
     diskThread.removeTimeSliceClient (&stream);
-    stream.open (std::move (reader), startSeconds);
-    stream.prefill (kPrefillSeconds);
-    diskThread.addTimeSliceClient (&stream);
-    slots[(size_t) slot] = { true, song, engine.commandsSent() };
+    stream.open (std::move (reader), options);
+    if (synchronousDisk)
+    {
+        stream.fillNow();
+    }
+    else
+    {
+        stream.prefill (kPrefillSeconds);
+        diskThread.addTimeSliceClient (&stream);
+    }
+    slots[(size_t) slot] = { true, song, engine.commandsSent(), options };
     return slot;
+}
+
+PlayLevel RKPlayProcessor::levelOf (const PlaySong& song) const
+{
+    return PlayLevel::plan (song.analysis, show.level, song.gainDb);
+}
+
+PlayStream::Options RKPlayProcessor::optionsFor (int song, double startSeconds) const
+{
+    const auto& entry = show.songs[(size_t) song];
+    const auto span = show.spanOf (entry);
+    const auto level = levelOf (entry);
+    PlayStream::Options o;
+    o.startSeconds = startSeconds < 0.0 ? span.start : startSeconds;
+    o.endSeconds = entry.analysis.valid && show.smartCrossfade ? span.end : -1.0;
+    o.gainDb = level.gainDb;
+    o.limitCeilingDb = level.limitDb > 0.0 ? show.level.peakCeilingDb : 1.0;
+    return o;
+}
+
+double RKPlayProcessor::leadOf (int slot) const
+{
+    // Smart crossfade: the song is over at its fade-out point, before the stream's end.
+    const auto song = slots[(size_t) slot].song;
+    if (! show.smartCrossfade || song < 0 || song >= (int) show.songs.size())
+        return 0.0;
+    const auto& entry = show.songs[(size_t) song];
+    const auto& o = slots[(size_t) slot].options;
+    const auto streamEnd = o.endSeconds < 0.0 ? entry.lengthSeconds : o.endSeconds;
+    return entry.analysis.valid ? juce::jmax (0.0, streamEnd - entry.analysis.fadeOutPoint) : 0.0;
 }
 
 void RKPlayProcessor::drop (int& slot)
@@ -157,6 +200,7 @@ void RKPlayProcessor::disarm()
     drop (armedSlot);
     armedIndex = -1;
     armedCrossfade = -1.0;
+    armedLead = 0.0;
 }
 
 //==============================================================================
@@ -192,7 +236,10 @@ double RKPlayProcessor::crossfadeBetween (int a, int b) const
     auto seconds = show.crossfadeSeconds;
     for (const auto i : { a, b })
         if (i >= 0 && i < (int) show.songs.size())
-            seconds = juce::jmin (seconds, show.songs[(size_t) i].lengthSeconds * 0.5);
+        {
+            const auto span = show.spanOf (show.songs[(size_t) i]);
+            seconds = juce::jmin (seconds, (span.endPoint - span.start) * 0.5);
+        }
     return juce::jmax (0.0, seconds);
 }
 
@@ -209,32 +256,46 @@ void RKPlayProcessor::keepArmed()
     }
     const auto seconds = crossfadeBetween (currentIndex, want);
 
-    // Already armed with that song (by file: indices shift when the list changes).
+    const auto lead = leadOf (currentSlot);
+
+    // Already armed with that song, opened as it should be now (the analysis
+    // or the loudness settings may have changed how).
     if (armedSlot >= 0 && armedIndex == want && slots[(size_t) armedSlot].song == want)
     {
-        if (! juce::exactlyEqual (seconds, armedCrossfade))
+        const auto& have = slots[(size_t) armedSlot].options;
+        const auto wantOptions = optionsFor (want, -1.0);
+        const auto same = juce::approximatelyEqual (have.startSeconds, wantOptions.startSeconds)
+                       && juce::approximatelyEqual (have.endSeconds, wantOptions.endSeconds)
+                       && juce::approximatelyEqual (have.gainDb, wantOptions.gainDb)
+                       && juce::approximatelyEqual (have.limitCeilingDb, wantOptions.limitCeilingDb);
+        if (same)
         {
-            engine.arm (armedSlot, seconds, 1.0f);
-            markSent (armedSlot);
-            armedCrossfade = seconds;
+            if (! juce::exactlyEqual (seconds, armedCrossfade) || ! juce::exactlyEqual (lead, armedLead))
+            {
+                engine.arm (armedSlot, seconds, 1.0f, lead);
+                markSent (armedSlot);
+                armedCrossfade = seconds;
+                armedLead = lead;
+            }
+            return;
         }
-        return;
     }
 
     disarm();
-    const auto slot = load (want, 0.0);
+    const auto slot = load (want, -1.0);
     if (slot < 0)
         return;
-    engine.arm (slot, seconds, 1.0f);
+    engine.arm (slot, seconds, 1.0f, lead);
     markSent (slot);
     armedSlot = slot;
     armedIndex = want;
     armedCrossfade = seconds;
+    armedLead = lead;
 }
 
 void RKPlayProcessor::startSong (int index, double crossfade)
 {
-    const auto slot = load (index, 0.0);
+    const auto slot = load (index, -1.0);
     if (slot < 0)
     {
         if (show.songs.empty() || index < 0)
@@ -406,9 +467,15 @@ double RKPlayProcessor::getLengthSeconds() const
 
 void RKPlayProcessor::update()
 {
+    if (synchronousDisk)
+        for (auto& stream : streams)
+            stream.fillNow();
+
     pollTriggers();
     handleEvents();
+    takeAnalyses();
     keepArmed();
+    engine.setSafetyLimiter (show.safetyLimiter);
 
     const auto db = valueOf (levelParam);
     engine.setLevel (db <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (db));
@@ -523,6 +590,7 @@ void RKPlayProcessor::addFiles (const juce::Array<juce::File>& files, int index)
     shift (armedIndex);
     for (auto& s : slots)
         shift (s.song);
+    attachAnalyses();
 
     if (const auto problems = (int) std::count_if (added.begin(), added.end(), [] (const PlaySong& s) { return ! s.isPlayable(); }))
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " can't be played (marked in red)");
@@ -599,6 +667,104 @@ void RKPlayProcessor::setFadeOut (double seconds)
     showChanged();
 }
 
+void RKPlayProcessor::setSmartCrossfade (bool on)
+{
+    show.smartCrossfade = on;
+    markPresetModified();
+    showChanged();
+}
+
+void RKPlayProcessor::setSongGain (int index, double db)
+{
+    if (index < 0 || index >= (int) show.songs.size())
+        return;
+    show.songs[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
+    markPresetModified();
+    showChanged();
+}
+
+void RKPlayProcessor::setLevelMatch (bool on)
+{
+    show.level.match = on;
+    markPresetModified();
+    showChanged();
+}
+
+void RKPlayProcessor::setTarget (double lufs)
+{
+    show.level.targetLufs = juce::jlimit (-23.0, -14.0, lufs);
+    markPresetModified();
+    showChanged();
+}
+
+void RKPlayProcessor::setLift (double db)
+{
+    show.level.liftDb = juce::jlimit (0.0, 6.0, db);
+    markPresetModified();
+    showChanged();
+}
+
+void RKPlayProcessor::setSafetyLimiter (bool on)
+{
+    show.safetyLimiter = on;
+    markPresetModified();
+    showChanged();
+}
+
+//==============================================================================
+// Analysis: from the cache at once, the rest measured in the background
+
+void RKPlayProcessor::attachAnalyses()
+{
+    for (auto& song : show.songs)
+    {
+        if (song.analysis.valid || ! song.isPlayable())
+            continue;
+        if (cache == nullptr || ! cache->find (song.file, song.analysis))
+            if (analyser != nullptr)
+                analyser->add (song.file);
+    }
+}
+
+void RKPlayProcessor::takeAnalyses()
+{
+    if (analyser == nullptr)
+        return;
+    auto results = analyser->takeResults();
+    if (results.empty())
+        return;
+    for (auto& r : results)
+    {
+        if (! r.analysis.valid)
+            continue;
+        if (cache != nullptr)
+            cache->store (r.file, r.analysis);
+        for (auto& song : show.songs)
+            if (song.file == r.file)
+                song.analysis = r.analysis;
+    }
+    // Saved once the queue is through (not after every song).
+    if (cache != nullptr && analyser->pending() == 0)
+        cache->save();
+    showChanged();
+}
+
+void RKPlayProcessor::analyseNow()
+{
+    for (auto& song : show.songs)
+    {
+        if (song.analysis.valid || ! song.isPlayable())
+            continue;
+        if (std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (song.file)); reader != nullptr)
+            song.analysis = PlayAnalysis::analyse (*reader);
+        if (cache != nullptr && song.analysis.valid)
+            cache->store (song.file, song.analysis);
+    }
+    if (cache != nullptr)
+        cache->save();
+    showChanged();
+}
+
 void RKPlayProcessor::setNote (const juce::String& text)
 {
     note = text;
@@ -631,6 +797,7 @@ void RKPlayProcessor::setExtraState (const juce::var& extra)
     currentIndex = juce::jlimit (0, juce::jmax (0, (int) show.songs.size() - 1), (int) extra.getProperty ("current", 0));
     if (const auto problems = show.numProblems())
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable (marked in red)");
+    attachAnalyses();
     showChanged();
 }
 

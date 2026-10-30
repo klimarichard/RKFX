@@ -334,6 +334,28 @@ Branches, stacked: `docs/rkmix-design` → `feat/rkmix` (console core) → `feat
 - **Validation:** RKFXTests, RKBoardTests (RKMix's state, inserts and RKBoard after the refactor), RKFXPresetTests pass; auval (`aumf Mix1 RKMu`, `aumf Brd1 RKMu`) and pluginval at strictness 10 pass for RKMix and RKBoard.
 - **To look at in Gig Performer:** the bus layer's faders are short (4 insert rows); the window's overall size at 1280 × 900.
 
+## Bus and main processing, mirrored pan (decided 2026-10-30, after phase 4)
+
+Every bus, the main and the mono sum get a fixed EQ, compressor and limiter, each with its own On switch, all **off by default** (a bus stays a bit-exact sum until one is switched on):
+
+    bus inputs -> EQ -> Comp -> inserts -> mute, fader -> Limit -> output (and the main, other buses)
+    main       -> EQ -> Comp -> inserts -> mute, fader, balance -> Limit -> main output
+    mono sum   -> EQ -> Comp -> inserts -> mute, fader -> Limit -> mono output
+
+The limiter sits **after the fader**, so on an in-ear mix it protects the ears even with the fader pushed up. On the mono sum, the EQ's low-pass makes a sub feed without an insert.
+
+| Section | Controls | Defaults |
+| --- | --- | --- |
+| EQ | HPF (20-400 Hz, 12/24 dB/oct, own On), 6 bands: Low (shelf or bell), 4 bells, High (shelf or bell), each Freq, Gain (±15 dB), Q; LPF (1-20 kHz, 12/24 dB/oct, own On) | 80 / 160 / 400 / 1k / 2.5k / 6k Hz bands, flat; HPF 40 Hz, LPF 16 kHz |
+| Comp ("glue") | Threshold, Ratio, Knee, Attack, Release (or Auto), Makeup; RMS detector, stereo linked | -20 dB, 2:1, 6 dB, 30 ms, Auto, 0 dB |
+| Limit | Ceiling (-20 to -0.1 dBFS), Release (10-1000 ms) | -1 dBFS, 100 ms |
+
+- **The EQ** uses the channel EQ's filters (matched bells and shelves, Butterworth cut filters); its curve is drawn like the channels'.
+- **The limiter** is zero-latency: a peak detector with an instant attack and the release set, then a clip at the ceiling, so the ceiling is never exceeded (it matters for ears). No lookahead: nothing is added to the latency.
+- **The window:** the bus page gets EQ, Comp and Limit rows; what a bus feeds (its own sends) moves to the Sends tab, which then shows "what this strip feeds" for channels and buses. Clicking the Main or Mono strip opens a **Main page** with both chains.
+- **Mirrored pan:** an Aux bus's "Pan follows" becomes **Pan: Centre / Follow / Mirror**. Mirror swaps left and right (the band's view of the stage, facing the audience; a stereo channel's balance too). FX buses always follow. (RKMix isn't released, so the on/off setting is replaced, no migration.)
+- **CPU:** about 0.2-0.3% of a core with every bus's and the main's sections on.
+
 ## Decisions (2026-10-30)
 
 - **Host:** both, plugin first; the standalone works on an audio interface as RKBoard's does.

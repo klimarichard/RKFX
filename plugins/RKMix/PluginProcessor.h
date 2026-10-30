@@ -3,7 +3,9 @@
 #include "plugin/ProcessorBase.h"
 
 #include "MixEngine.h"
+#include "MixAssigns.h"
 #include "MixInserts.h"
+#include "MixScenes.h"
 #include "MixParams.h"
 #include "MixSettings.h"
 
@@ -78,6 +80,16 @@ public:
 
     /** The inserts (message thread, except what InsertRack says). */
     InsertRack& getRack() noexcept { return rack; }
+
+    /** Called before an insert is deleted (the editor closes its editor). */
+    std::function<void (rkfx::ProcessorBase*)> insertAboutToRemove;
+
+    /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
+    MixScenes& getScenes() noexcept { return *scenes; }
+    MixAssigns& getAssigns() noexcept { return *assigns; }
+    void recallScene (int scene);
+    /** "Vocal: Fader", "Bus 2, insert 1: Time": an assignment's control. */
+    juce::String describeTarget (const MixAssigns::Target&) const;
 
     /** How many channels strip @p index of @p strip has (1 or 2): its inserts run so. */
     int channelsOf (InsertRack::Strip, int index) const;
@@ -179,6 +191,23 @@ private:
         RKMixProcessor& owner;
     };
     LayoutSync layoutSync { *this };
+
+    std::unique_ptr<MixScenes> scenes;
+    std::unique_ptr<MixAssigns> assigns;
+    juce::RangedAudioParameter* sceneParam = nullptr;
+    std::atomic<int> pendingScene { -1 };
+
+    /** The Scene host parameter moved (any thread): the recall happens on the message thread. */
+    struct SceneSync : public juce::AsyncUpdater,
+                       public juce::AudioProcessorParameter::Listener
+    {
+        explicit SceneSync (RKMixProcessor& p) : owner (p) {}
+        void handleAsyncUpdate() override;
+        void parameterValueChanged (int, float) override;
+        void parameterGestureChanged (int, bool) override {}
+        RKMixProcessor& owner;
+    };
+    SceneSync sceneSync { *this };
     std::atomic<std::uint64_t> changed { MixEngine::kEverything };
     std::atomic<bool> loadingMix { false };
 

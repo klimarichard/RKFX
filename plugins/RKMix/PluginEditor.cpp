@@ -272,7 +272,9 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
       mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main, kMainChain),
       monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono, kMonoChain),
       routingPanel (*this),
-      monitorPanel (*this)
+      monitorPanel (*this),
+      scenesPanel (*this),
+      assignPanel (*this)
 {
     for (int ch = 0; ch < kChannels; ++ch)
     {
@@ -289,8 +291,22 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (routingPanel);
 
     addToCanvas (monitorPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage })
+    addToCanvas (scenesPanel);
+    addToCanvas (assignPanel);
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
         addToCanvas (*tab);
+    scenesPage.onClick = [this] { setPage (Page::scenes); };
+    assignPage.onClick = [this] { setPage (Page::assign); };
+
+    for (int i = 0; i < (int) sceneButtons.size(); ++i)
+    {
+        auto& b = sceneButtons[(size_t) i];
+        b.setButtonText (juce::String (i + 1));
+        b.setTooltip ("Scene " + juce::String (i + 1) + ": click to recall, right-click to copy");
+        b.onClick = [this, i] { mixer.recallScene (i); };
+        addToCanvas (b);
+    }
+    addMouseListener (this, true);   // right-clicks anywhere inside: control menus
     stripPage.onClick = [this] { setPage (Page::strip); };
     sendsPage.onClick = [this] { setPage (Page::sends); };
     routingPage.onClick = [this] { setPage (Page::routing); };
@@ -323,7 +339,7 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     sendsBack.setVisible (false);
 
     // A plugin about to be deleted: its editor goes first.
-    mixer.getRack().aboutToRemove = [this] (rkfx::ProcessorBase* plugin)
+    mixer.insertAboutToRemove = [this] (rkfx::ProcessorBase* plugin)
     {
         if (insertView != nullptr && &insertView->plugin == plugin)
             closeInsert();
@@ -341,7 +357,7 @@ RKMixEditor::~RKMixEditor()
 {
     meterTimer.stopTimer();
     closeInsert();
-    mixer.getRack().aboutToRemove = nullptr;
+    mixer.insertAboutToRemove = nullptr;
     mixer.windowsOpen.fetch_sub (1);
 }
 
@@ -387,7 +403,7 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
     {
         tab->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
@@ -395,6 +411,8 @@ void RKMixEditor::layoutContent()
 
     routingPanel.setBounds (panelArea());
     monitorPanel.setBounds (panelArea());
+    scenesPanel.setBounds (panelArea());
+    assignPanel.setBounds (panelArea());
 
     // The Master section
     auto m = masterArea().removeFromTop (kTopHeight).reduced (10, 0).withTrimmedTop (28);
@@ -427,6 +445,14 @@ void RKMixEditor::layoutContent()
     {
         b.setBounds (layers.removeFromLeft (120));
         layers.removeFromLeft (6);
+    }
+
+    // The scene bar
+    layers.removeFromLeft (60);   // "Scene"
+    for (auto& b : sceneButtons)
+    {
+        b.setBounds (layers.removeFromLeft (36));
+        layers.removeFromLeft (3);
     }
 
     layoutStrips();
@@ -462,6 +488,10 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     // The panel behind the top area's page.
     g.setColour (panelColour().darker (0.15f));
     g.fillRoundedRectangle (panelArea().toFloat().expanded (2.0f), rkfx::Style::kPanelRadius);
+
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::bold (12.0f));
+    g.drawText ("SCENE", sceneButtons[0].getBounds().translated (-58, 0).withWidth (54), juce::Justification::centredRight);
 
     // Master section: solo and the cue output, talk, the oscillator (and sends on fader, when on).
     auto master = masterArea().removeFromTop (kTopHeight);
@@ -565,6 +595,12 @@ void RKMixEditor::setPage (Page p)
         sendsPanel->setVisible (page == Page::sends);
     routingPanel.setVisible (page == Page::routing);
     monitorPanel.setVisible (page == Page::monitor);
+    scenesPanel.setVisible (page == Page::scenes);
+    assignPanel.setVisible (page == Page::assign);
+    if (page == Page::scenes)
+        scenesPanel.refresh();
+    if (page == Page::assign)
+        assignPanel.refresh();
     if (page == Page::routing)
         routingPanel.refresh();
     if (page == Page::monitor)
@@ -573,6 +609,8 @@ void RKMixEditor::setPage (Page p)
     sendsPage.setToggleState (page == Page::sends, juce::dontSendNotification);
     routingPage.setToggleState (page == Page::routing, juce::dontSendNotification);
     monitorPage.setToggleState (page == Page::monitor, juce::dontSendNotification);
+    scenesPage.setToggleState (page == Page::scenes, juce::dontSendNotification);
+    assignPage.setToggleState (page == Page::assign, juce::dontSendNotification);
 }
 
 void RKMixEditor::setLayer (int l)
@@ -613,6 +651,9 @@ void RKMixEditor::refreshAll()
         routingPanel.refresh();
     if (monitorPanel.isVisible())
         monitorPanel.refresh();
+    if (scenesPanel.isVisible())
+        scenesPanel.refresh();
+    refreshScenes();
 
     const auto target = [this] (const char* id) { return targetName (mixer.getSettings().choice (id)); };
     mainStrip.targetText = target ("main_out");
@@ -645,6 +686,16 @@ void RKMixEditor::updateMeters()
 {
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
+
+    // Scenes and assignments changed elsewhere (the host, a load).
+    if (mixer.getScenes().getVersion() != lastSceneVersion)
+        refreshScenes();
+    if (const auto v = mixer.getAssigns().getVersion(); v != lastAssignVersion)
+    {
+        lastAssignVersion = v;
+        if (assignPanel.isVisible())
+            assignPanel.refresh();
+    }
 
     // Solo: the buttons, and Clear solo flashing while anything is soloed in place.
     if (const auto v = mixer.getSoloVersion(); v != lastSoloVersion)
@@ -1043,4 +1094,111 @@ void RKMixEditor::TalkButton::mouseUp (const juce::MouseEvent& e)
         return;
     if (! owner.mixer.getSettings().flag ("talk_latch"))
         attachment.setValueAsCompleteGesture (0.0f);
+}
+
+//==============================================================================
+// Scenes and assignables
+
+void RKMixEditor::refreshScenes()
+{
+    lastSceneVersion = mixer.getScenes().getVersion();
+    const auto current = mixer.getScenes().getCurrent();
+    for (int i = 0; i < (int) sceneButtons.size(); ++i)
+        sceneButtons[(size_t) i].setToggleState (i == current, juce::dontSendNotification);
+}
+
+void RKMixEditor::showSceneMenu (int scene)
+{
+    juce::PopupMenu copyTo;
+    for (int i = 0; i < (int) sceneButtons.size(); ++i)
+        copyTo.addItem (100 + i, "Scene " + juce::String (i + 1), i != scene);
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Scene " + juce::String (scene + 1));
+    menu.addItem (1, "Recall");
+    menu.addSubMenu ("Copy to", copyTo);
+
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sceneButtons[(size_t) scene]), [safe, scene] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        if (result == 1)
+            safe->mixer.recallScene (scene);
+        else if (result >= 100)
+            safe->mixer.getScenes().copy (scene, result - 100);
+        safe->refreshScenes();
+    });
+}
+
+void RKMixEditor::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu() || e.originalComponent == this)
+        return;
+
+    for (int i = 0; i < (int) sceneButtons.size(); ++i)
+        if (e.originalComponent == &sceneButtons[(size_t) i])
+        {
+            showSceneMenu (i);
+            return;
+        }
+
+    // A control of an insert's editor, or of the console.
+    int slot = -1;
+    if (insertView != nullptr && insertView->editor != nullptr && insertView->editor->isParentOf (e.originalComponent))
+        slot = InsertRack::flatIndex (insertView->slot);
+    const auto id = rkfx::findTaggedParameter (e.originalComponent, slot >= 0 ? (juce::Component*) insertView->editor.get() : (juce::Component*) this);
+    if (id.isEmpty() || id == "bypass" || id.startsWith ("assign") || id == "scene")
+        return;
+    if (slot < 0 && mixer.getSettings().findParam (id) == nullptr && mixer.findParam (id) == nullptr)
+        return;
+
+    showControlMenu (id, slot, *e.originalComponent);
+}
+
+void RKMixEditor::showControlMenu (const juce::String& paramId, int insertSlot, juce::Component& target)
+{
+    using Kind = MixAssigns::Target::Kind;
+    enum { removeItem = 1, sceneItem = 2, firstAssign = 100 };
+
+    auto& assigns = mixer.getAssigns();
+    const auto kind = insertSlot >= 0 ? Kind::insert : Kind::mix;
+    const auto assigned = assigns.find (kind, paramId, insertSlot);
+
+    juce::PopupMenu to;
+    for (int a = 0; a < MixAssigns::kNumAssigns; ++a)
+    {
+        const auto what = assigns.describe (a);
+        to.addItem (firstAssign + a, "Assign " + juce::String (a + 1) + (what.isNotEmpty() ? "  (" + what + ")" : juce::String()),
+                    true, a == assigned);
+    }
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader (mixer.describeTarget ({ kind, paramId, insertSlot }));
+    menu.addSubMenu ("Assign to", to);
+    if (assigned >= 0)
+        menu.addItem (removeItem, "Remove from Assign " + juce::String (assigned + 1));
+    if (insertSlot >= 0)
+        menu.addItem (sceneItem, "Scene controlled", true, mixer.getScenes().isSceneControlled (insertSlot, paramId));
+    else if (MixScenes::isSceneValue (paramId))
+        menu.addItem (-1, "In the scenes", false, true);
+
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, paramId, insertSlot, kind, assigned] (int result)
+    {
+        if (safe == nullptr || result <= 0)
+            return;
+        auto& m = safe->mixer;
+        if (result == removeItem)
+            m.getAssigns().clear (assigned);
+        else if (result == sceneItem)
+        {
+            const auto on = ! m.getScenes().isSceneControlled (insertSlot, paramId);
+            if (! m.getScenes().setSceneControlled (insertSlot, paramId, on))
+                juce::AlertWindow::showAsync (juce::MessageBoxOptions().withTitle ("Scene controlled")
+                                                  .withMessage ("All " + juce::String (MixScenes::kMaxKnobs) + " scene-controlled knobs are taken.")
+                                                  .withButton ("OK"), nullptr);
+        }
+        else if (result >= firstAssign)
+            m.getAssigns().assign (result - firstAssign, kind, paramId, insertSlot);
+    });
 }

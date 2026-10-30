@@ -429,6 +429,105 @@ public:
             expectWithinAbsoluteError (b.getSample (0, 64), 0.5f * std::sqrt (0.5f), 1.0e-4f, "the main as before");
         }
 
+        beginTest ("Scenes: values recall, structure stays, recall-safe strips keep theirs; edits go into the active scene");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param ("scene_glide"), 0.0f);
+            auto& fader1 = *p.findParam (mix::channelFaderId (0));
+            auto& fader2 = *p.findParam (mix::channelFaderId (1));
+            auto* chorus = p.getRack().insert ({ Strip::channel, 0, 0 }, "RKChorus", 1);
+
+            // Scene 1
+            setParam (fader1, -6.0f);
+            setParam (s.param (mix::channelId (0, "pan")), -40.0f);
+            p.getScenes().setSceneControlled (InsertRack::flatIndex ({ Strip::channel, 0, 0 }), "depth", true);
+            setParam (*chorus->findParam ("depth"), 20.0f);
+
+            // Scene 2: starts as scene 1; then changed
+            p.recallScene (1);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&fader1), -6.0f, 0.01f, "a new scene is the mix as it was");
+            setParam (fader1, -20.0f);
+            setParam (fader2, -10.0f);
+            setParam (s.param (mix::channelId (0, "pan")), 30.0f);
+            setParam (*chorus->findParam ("depth"), 80.0f);
+            p.getRack().setOn ({ Strip::channel, 0, 0 }, false);
+            setParam (s.param (mix::linkId (5)), 1.0f);                 // structure
+            setParam (s.param (mix::channelId (1, "recallsafe")), 1.0f);
+
+            p.recallScene (0);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&fader1), -6.0f, 0.01f, "scene 1's fader");
+            expectWithinAbsoluteError (s.value (mix::channelId (0, "pan")), -40.0f, 0.01f, "scene 1's pan");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (chorus->findParam ("depth")), 20.0f, 0.01f, "a scene-controlled insert knob");
+            expect (p.getRack().isOn ({ Strip::channel, 0, 0 }), "the insert on again");
+            expect (s.flag (mix::linkId (5)), "a link is structure: it stays");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&fader2), -10.0f, 0.01f, "a recall-safe channel keeps its fader");
+            expectEquals (juce::roundToInt (rkfx::ProcessorBase::valueOf (p.findParam ("scene"))), 1, "the Scene parameter follows");
+
+            p.recallScene (1);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&fader1), -20.0f, 0.01f, "scene 2 kept its edits");
+
+            // The session keeps the scenes and the current one.
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            setParam (q.getSettings().param ("scene_glide"), 0.0f);
+            expectEquals (q.getScenes().getCurrent(), 1);
+            q.recallScene (0);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (q.findParam (mix::channelFaderId (0))), -6.0f, 0.01f, "scene 1 after reload");
+
+            // The host's Scene parameter recalls.
+            setParam (*q.findParam ("scene"), 2.0f);
+            expectEquals (q.getScenes().getCurrent(), 1);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (q.findParam (mix::channelFaderId (0))), -20.0f, 0.01f, "via the Scene parameter");
+        }
+
+        beginTest ("Assignables: an Assign moves its control within its range, and the control moves the Assign");
+        {
+            using Kind = MixAssigns::Target::Kind;
+            RKMixProcessor p;
+            auto& assigns = p.getAssigns();
+            auto& fader = *p.findParam (mix::channelFaderId (2));
+            auto& assign1 = *p.findParam (mix::assignId (0));
+            assigns.assign (0, Kind::mix, mix::channelFaderId (2));
+            assign1.setValueNotifyingHost (0.0f);
+            expectEquals (rkfx::ProcessorBase::valueOf (&fader), mix::kFaderMinDb, "Assign at 0: the fader at the bottom");
+            fader.setValueNotifyingHost (fader.convertTo0to1 (0.0f));
+            expectWithinAbsoluteError (assign1.getValue(), fader.getValue(), 1.0e-6f, "the fader moves the Assign");
+
+            assigns.setRange (0, 0.5f, 0.75f, true);
+            assign1.setValueNotifyingHost (1.0f);
+            expectWithinAbsoluteError (fader.getValue(), 0.5f, 1.0e-6f, "inverted: the top of the Assign is the minimum");
+
+            // A mix setting, and a switch.
+            auto& pan = p.getSettings().param (mix::channelId (2, "pan"));
+            assigns.assign (1, Kind::mix, mix::channelId (2, "pan"));
+            p.findParam (mix::assignId (1))->setValueNotifyingHost (1.0f);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&pan), 100.0f, 0.01f);
+            assigns.assign (2, Kind::mix, mix::channelMuteId (2));
+            p.findParam (mix::assignId (2))->setValueNotifyingHost (0.7f);
+            expect (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelMuteId (2))) >= 0.5f, "a switch: on at 50% and above");
+
+            // An insert's knob; removing the insert ends the assignment.
+            auto* delay = p.getRack().insert ({ InsertRack::Strip::bus, 0, 0 }, "RKDelay", 2);
+            const auto slot = InsertRack::flatIndex ({ InsertRack::Strip::bus, 0, 0 });
+            assigns.assign (3, Kind::insert, "mix", slot);
+            p.findParam (mix::assignId (3))->setValueNotifyingHost (0.0f);
+            expectWithinAbsoluteError (delay->findParam ("mix")->getValue(), 0.0f, 1.0e-6f, "an insert's knob");
+            expect (assigns.describe (3).contains ("Bus 1, insert 1"), assigns.describe (3));
+
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getAssigns().get (3).kind == Kind::insert && q.getAssigns().get (0).invert, "kept in the session");
+
+            p.getRack().remove ({ InsertRack::Strip::bus, 0, 0 });
+            expect (assigns.get (3).kind == Kind::none, "gone with its insert");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

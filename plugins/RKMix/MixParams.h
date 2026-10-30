@@ -300,6 +300,13 @@ namespace MixParams
         p.addBool      ("osc_main", "Oscillator to Main", false);
         addTarget      (p, "osc_out", "Oscillator Output", kTargetOff);
 
+        // Scenes: the glide, and the strips a recall leaves alone (appended).
+        p.addTime ("scene_glide", "Scene Glide", 0.0f, 5000.0f, 100.0f);
+        for (int ch = 0; ch < kChannels; ++ch)
+            p.addBool (channelId (ch, "recallsafe"), channelName (ch) + "Recall Safe", false);
+        for (int bus = 0; bus < kBuses; ++bus)
+            p.addBool (busId (bus, "recallsafe"), busName (bus) + "Recall Safe", false);
+
         return p;
     }
 }

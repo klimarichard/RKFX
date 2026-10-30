@@ -1030,6 +1030,163 @@ void RKMixEditor::MonitorPanel::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+// Scenes page
+
+RKMixEditor::ScenesPanel::ScenesPanel (RKMixEditor& o) : Panel (o)
+{
+    auto& s = o.mixer.getSettings();
+    glide = make<rkfx::Knob> (s.param ("scene_glide"), "Glide");
+    for (int ch = 0; ch < kChannels; ++ch)
+        channelSafe[(size_t) ch] = make<rkfx::ToggleSwitch> (s.param (channelId (ch, "recallsafe")), rkfx::Palette::warning, num (ch));
+    for (int bus = 0; bus < kBuses; ++bus)
+        busSafe[(size_t) bus] = make<rkfx::ToggleSwitch> (s.param (busId (bus, "recallsafe")), rkfx::Palette::warning, "B" + num (bus));
+}
+
+void RKMixEditor::ScenesPanel::refresh()
+{
+    repaint();
+}
+
+void RKMixEditor::ScenesPanel::resized()
+{
+    auto r = getLocalBounds();
+    glideArea = r.removeFromLeft (220);
+    r.removeFromLeft (kGap);
+    safeArea = r;
+
+    glide->setBounds (inner (glideArea).removeFromTop (kKnobH).withWidth (kKnobW));
+
+    auto a = inner (safeArea).withTrimmedTop (20);
+    const auto w = (a.getWidth() - 15 * 4) / 16;
+    for (int ch = 0; ch < kChannels; ++ch)
+        channelSafe[(size_t) ch]->setBounds (a.getX() + (ch % 16) * (w + 4), a.getY() + (ch / 16) * (kSwitchH + 6), w, kSwitchH);
+    const auto busTop = a.getY() + 2 * (kSwitchH + 6) + 28;
+    for (int bus = 0; bus < kBuses; ++bus)
+        busSafe[(size_t) bus]->setBounds (a.getX() + bus * (w + 4), busTop, w, kSwitchH);
+}
+
+void RKMixEditor::ScenesPanel::paint (juce::Graphics& g)
+{
+    rkfx::drawPanel (g, glideArea, owner.panelColour(), "Scenes");
+    rkfx::drawPanel (g, safeArea, owner.panelColour(), "Recall safe: a scene leaves these channels and buses alone");
+
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    auto text = inner (glideArea).withTrimmedTop (kKnobH + 8);
+    g.drawFittedText ("16 scenes, in the bottom row: click to recall, right-click to copy. A scene holds the mix's values: "
+                      "faders, mutes, pans, sends, the strips' and buses' settings, inserts on or off, and the insert knobs "
+                      "made scene controlled (right-click one). Never the structure: links, bus types, outputs, tap points, "
+                      "which insert is where. Edits made while a scene is active go into it. Continuous values glide; "
+                      "switches change at once.",
+                      text, juce::Justification::topLeft, 12);
+
+    auto a = inner (safeArea);
+    g.drawText ("Channels", a.withHeight (18), juce::Justification::centredLeft);
+    g.drawText ("Buses", a.withY (busSafe[0]->getY() - 20).withHeight (18), juce::Justification::centredLeft);
+}
+
+//==============================================================================
+// Assign page
+
+RKMixEditor::AssignPanel::AssignPanel (RKMixEditor& o) : Panel (o)
+{
+    for (int a = 0; a < MixAssigns::kNumAssigns; ++a)
+    {
+        auto row = std::make_unique<Row>();
+        for (auto* slider : { &row->min, &row->max })
+        {
+            slider->setSliderStyle (juce::Slider::LinearHorizontal);
+            slider->setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+            slider->setRange (0.0, 100.0, 1.0);
+            slider->setPopupDisplayEnabled (true, true, nullptr);
+            slider->setTextValueSuffix (" %");
+            slider->onValueChange = [this, a] { applyRange (a); };
+            addAndMakeVisible (*slider);
+        }
+        row->min.setTooltip ("The control's value at the Assign's minimum");
+        row->max.setTooltip ("The control's value at the Assign's maximum");
+        row->invert.onClick = [this, a] { applyRange (a); };
+        row->clear.setTooltip ("Remove this assignment");
+        row->clear.onClick = [this, a] { owner.mixer.getAssigns().clear (a); refresh(); };
+        addAndMakeVisible (row->invert);
+        addAndMakeVisible (row->clear);
+        rows[(size_t) a] = std::move (row);
+    }
+}
+
+void RKMixEditor::AssignPanel::applyRange (int a)
+{
+    const auto& row = *rows[(size_t) a];
+    owner.mixer.getAssigns().setRange (a, (float) row.min.getValue() * 0.01f, (float) row.max.getValue() * 0.01f,
+                                      row.invert.getToggleState());
+}
+
+void RKMixEditor::AssignPanel::refresh()
+{
+    auto& assigns = owner.mixer.getAssigns();
+    for (int a = 0; a < MixAssigns::kNumAssigns; ++a)
+    {
+        auto& row = *rows[(size_t) a];
+        const auto t = assigns.get (a);
+        const auto used = t.kind != MixAssigns::Target::Kind::none;
+        row.min.setValue (t.min * 100.0, juce::dontSendNotification);
+        row.max.setValue (t.max * 100.0, juce::dontSendNotification);
+        row.invert.setToggleState (t.invert, juce::dontSendNotification);
+        for (juce::Component* c : std::initializer_list<juce::Component*> { &row.min, &row.max, &row.invert, &row.clear })
+            c->setVisible (used);
+    }
+    repaint();
+}
+
+void RKMixEditor::AssignPanel::resized()
+{
+    auto r = getLocalBounds().withTrimmedTop (22);
+    const auto columnWidth = (r.getWidth() - kGap) / 2;
+    const auto rowHeight = r.getHeight() / 16;
+    for (int a = 0; a < MixAssigns::kNumAssigns; ++a)
+    {
+        auto& row = *rows[(size_t) a];
+        row.area = juce::Rectangle<int> (r.getX() + (a / 16) * (columnWidth + kGap), r.getY() + (a % 16) * rowHeight, columnWidth, rowHeight);
+        auto line = row.area.reduced (4, 1);
+        row.clear.setBounds (line.removeFromRight (22));
+        line.removeFromRight (4);
+        row.invert.setBounds (line.removeFromRight (50));
+        line.removeFromRight (4);
+        row.max.setBounds (line.removeFromRight (70));
+        row.min.setBounds (line.removeFromRight (70));
+    }
+}
+
+void RKMixEditor::AssignPanel::paint (juce::Graphics& g)
+{
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    g.drawText ("Assign 1-32 are host parameters. Right-click any control (or an insert's) to assign it. "
+                "Min and max: the control's range; Inv: upside down (expression pedals).",
+                getLocalBounds().removeFromTop (20).reduced (6, 0), juce::Justification::centredLeft);
+
+    auto& assigns = owner.mixer.getAssigns();
+    for (int a = 0; a < MixAssigns::kNumAssigns; ++a)
+    {
+        const auto& row = *rows[(size_t) a];
+        if (a % 2 == 0)
+        {
+            g.setColour (owner.panelColour());
+            g.fillRect (row.area);
+        }
+        auto text = row.area.reduced (6, 0);
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::bold (11.5f));
+        g.drawText (juce::String (a + 1), text.removeFromLeft (24), juce::Justification::centredLeft);
+        const auto what = assigns.describe (a);
+        g.setColour (what.isNotEmpty() ? rkfx::Palette::text : rkfx::Palette::knobTrack);
+        g.setFont (rkfx::Fonts::regular (11.5f));
+        g.drawFittedText (what.isNotEmpty() ? what : juce::String ("-"), text.withRight (row.min.isVisible() ? row.min.getX() - 6 : text.getRight()),
+                          juce::Justification::centredLeft, 1);
+    }
+}
+
+//==============================================================================
 // Routing page: the main and mono outputs, and what every output carries
 
 RKMixEditor::RoutingPanel::RoutingPanel (RKMixEditor& o) : Panel (o)

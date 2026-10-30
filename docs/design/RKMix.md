@@ -234,6 +234,15 @@ RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked 
 - **32 assignables** as RKBoard's: any control in the mix or in an insert, with min/max and invert, set by right-clicking a control ("Assign to…"). Two-way: moving the control moves the host parameter.
 - **Standalone:** MIDI learn (RKBoard's `MidiMap`, its own file under Application Support/RKFX/RKMix/), program change 0–15 selects scenes, and tempo/tap/MIDI clock for tempo-synced inserts (RKBoard's `BoardPlayHead`).
 
+### As built (feat/rkmix-scenes, 2026-10-30)
+
+- **What a scene holds** is decided by parameter ID (`MixScenes::isSceneValue`): every fader and mute, and every mix setting except links, bus types and formats, outputs, tap points, keys, pan modes, solo and solo-safe settings, recall safe, talkback, oscillator and MIDI settings. Plus each insert's on/off and up to 64 scene-controlled insert knobs.
+- **Edits go into the active scene** because the current scene is stored as it is whenever another is recalled (and when the session is saved); a scene never recalled starts as the mix was when it was first left.
+- **Glide** runs on the message thread (60 steps a second, the engine's 20 ms smoothing in between); switches and choices change at once. The Scene host parameter recalls (from any thread, done on the message thread).
+- **Recall safe** per channel and bus is on the Scenes page; it covers the strip's own values, faders, sends and inserts.
+- **The scene bar** is the bottom row (click: recall, right-click: copy); **right-click any control** (the console's or an insert's) for Assign to / Remove / Scene controlled; the **Assign page** lists the 32 with min, max (percent of the control's travel), Inv and remove. Removing an insert removes its assignments and scene knobs.
+- **Tests:** a scene's fader, pan, insert on/off and a scene-controlled insert knob recall; a link (structure) stays; a recall-safe channel keeps its fader; edits stay in their scene; the session keeps scenes and the current one; the Scene parameter recalls. An Assign moves a fader (range, invert), a pan, a mute (on at 50%), an insert knob; the fader moves its Assign; kept in the session; gone with its insert.
+
 ## Parameters
 
 Fixed host parameters, in this order (IDs permanent, append only):

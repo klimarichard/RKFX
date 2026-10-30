@@ -41,6 +41,20 @@ int InsertRack::flatIndex (Slot s) noexcept
     return firstSlot (s.strip, s.index) + juce::jlimit (0, numSlots (s.strip) - 1, s.slot);
 }
 
+InsertRack::Slot InsertRack::slotAt (int flat) noexcept
+{
+    constexpr auto buses = mix::kChannels * kChannelSlots;
+    constexpr auto main = buses + mix::kBuses * kBusSlots;
+    flat = juce::jlimit (0, kTotalSlots - 1, flat);
+    if (flat < buses)
+        return { Strip::channel, flat / kChannelSlots, flat % kChannelSlots };
+    if (flat < main)
+        return { Strip::bus, (flat - buses) / kBusSlots, (flat - buses) % kBusSlots };
+    if (flat < main + kMainSlots)
+        return { Strip::main, 0, flat - main };
+    return { Strip::mono, 0, flat - main - kMainSlots };
+}
+
 juce::String InsertRack::stripKey (Strip strip)
 {
     switch (strip)
@@ -139,6 +153,14 @@ void InsertRack::releaseHeld (int flat, const rkfx::MidiFootprint* keep)
 rkfx::ProcessorBase* InsertRack::get (Slot s) const
 {
     return owned[(size_t) flatIndex (s)].get();
+}
+
+int InsertRack::slotOf (const rkfx::ProcessorBase* plugin) const
+{
+    for (int flat = 0; flat < kTotalSlots; ++flat)
+        if (plugin != nullptr && owned[(size_t) flat].get() == plugin)
+            return flat;
+    return -1;
 }
 
 const rkfx::pedals::PedalType* InsertRack::typeOf (Slot s) const

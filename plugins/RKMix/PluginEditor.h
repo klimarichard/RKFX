@@ -38,7 +38,7 @@ public:
     static constexpr int kHeight = 900;
 
 private:
-    enum class Page { strip, sends, routing, monitor };
+    enum class Page { strip, sends, routing, monitor, scenes, assign };
     static constexpr int kBusLayer = 2;
 
     /** A channel's or bus's Solo button (solo isn't a parameter: never saved). */
@@ -331,6 +331,39 @@ private:
         juce::Rectangle<int> talkArea, oscArea;
     };
 
+    /** Scenes: the glide, the recall-safe channels and buses, the scene-controlled insert knobs. */
+    struct ScenesPanel : public Panel
+    {
+        explicit ScenesPanel (RKMixEditor&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+
+        rkfx::Knob* glide = nullptr;
+        std::array<rkfx::ToggleSwitch*, mix::kChannels> channelSafe {};
+        std::array<rkfx::ToggleSwitch*, mix::kBuses> busSafe {};
+        juce::Rectangle<int> glideArea, safeArea;
+    };
+
+    /** The 32 assignables: what each drives, its range, invert. */
+    struct AssignPanel : public Panel
+    {
+        explicit AssignPanel (RKMixEditor&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+
+        struct Row
+        {
+            juce::Slider min, max;
+            juce::ToggleButton invert { "Inv" };
+            juce::TextButton clear { juce::String::fromUTF8 ("\xc3\x97") };
+            juce::Rectangle<int> area;
+        };
+        std::array<std::unique_ptr<Row>, 32> rows;
+        void applyRange (int assign);
+    };
+
     /** Where the main and mono go, and what each output carries. */
     struct RoutingPanel : public Panel
     {
@@ -357,8 +390,13 @@ private:
     std::unique_ptr<Panel> stripPanel, sendsPanel;
     RoutingPanel routingPanel;
 
-    juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" };
+    juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" },
+                     scenesPage { "Scenes" }, assignPage { "Assign" };
     MonitorPanel monitorPanel;
+    ScenesPanel scenesPanel;
+    AssignPanel assignPanel;
+    std::array<juce::TextButton, 16> sceneButtons;
+    int lastSceneVersion = -1, lastAssignVersion = -1;
 
     // The Master section's solo, cue, talk and oscillator controls
     std::unique_ptr<rkfx::SegmentedSwitch> soloMode, soloTap;
@@ -418,6 +456,12 @@ private:
     void showInsertMenu (InsertRack::Slot, juce::Component& target, bool full);
     void addInsertTypes (juce::PopupMenu&, int firstId) const;
     juce::Rectangle<int> insertArea() const;
+
+    // Right-click on any control: assign it, make an insert knob scene controlled.
+    void mouseDown (const juce::MouseEvent&) override;
+    void showControlMenu (const juce::String& paramId, int insertSlot, juce::Component& target);
+    void showSceneMenu (int scene);
+    void refreshScenes();
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

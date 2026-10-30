@@ -125,10 +125,31 @@ RKMixProcessor::RKMixProcessor()
     engine.setInserts (&rack);
     rack.onChange = [this] { if (! loadingMix.load()) markPresetModified(); };
     rack.onLatencyChange = [this] { updateLatencies(); };
+
+    scenes = std::make_unique<MixScenes> (settings, *this, rack);
+    assigns = std::make_unique<MixAssigns> (settings, *this, rack);
+    assigns->describeTarget = [this] (const MixAssigns::Target& t) { return describeTarget (t); };
+    sceneParam = findParam ("scene");
+    sceneParam->addListener (&sceneSync);
+
+    // An insert leaving: its assignments and scene knobs go, and the editor closes it first.
+    rack.aboutToRemove = [this] (rkfx::ProcessorBase* plugin)
+    {
+        if (insertAboutToRemove != nullptr)
+            insertAboutToRemove (plugin);
+        if (const auto slot = rack.slotOf (plugin); slot >= 0)
+        {
+            assigns->insertRemoved (slot);
+            scenes->insertRemoved (slot);
+        }
+    };
 }
 
 RKMixProcessor::~RKMixProcessor()
 {
+    sceneParam->removeListener (&sceneSync);
+    assigns.reset();
+    rack.aboutToRemove = nullptr;
     settings.onChange = nullptr;
     rack.onChange = nullptr;
     rack.onLatencyChange = nullptr;
@@ -147,6 +168,57 @@ void RKMixProcessor::matchBusOutputs()
         const auto matched = isBusStereo (bus) ? mix::pairTarget (first) : first + 1;
         out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
     }
+}
+
+void RKMixProcessor::recallScene (int scene)
+{
+    scenes->recall (scene);
+    const auto value = sceneParam->convertTo0to1 ((float) (scenes->getCurrent() + 1));
+    if (! juce::exactlyEqual (sceneParam->getValue(), value))
+        sceneParam->setValueNotifyingHost (value);
+}
+
+void RKMixProcessor::SceneSync::parameterValueChanged (int, float)
+{
+    owner.pendingScene = juce::roundToInt (valueOf (owner.sceneParam)) - 1;
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        handleAsyncUpdate();
+    else
+        triggerAsyncUpdate();
+}
+
+void RKMixProcessor::SceneSync::handleAsyncUpdate()
+{
+    if (const auto scene = owner.pendingScene.exchange (-1); scene >= 0 && scene != owner.scenes->getCurrent())
+        owner.scenes->recall (scene);
+}
+
+juce::String RKMixProcessor::describeTarget (const MixAssigns::Target& t) const
+{
+    if (t.kind == MixAssigns::Target::Kind::insert)
+    {
+        const auto slot = InsertRack::slotAt (t.slot);
+        auto* plugin = rack.get (slot);
+        const auto* param = plugin != nullptr ? plugin->findParam (t.paramId) : nullptr;
+        juce::String strip = slot.strip == InsertRack::Strip::channel ? "Ch " + mix::num (slot.index)
+                           : slot.strip == InsertRack::Strip::bus ? "Bus " + mix::num (slot.index)
+                           : slot.strip == InsertRack::Strip::main ? juce::String ("Main") : juce::String ("Mono");
+        return strip + ", insert " + juce::String (slot.slot + 1) + ": " + (param != nullptr ? param->getName (40) : t.paramId);
+    }
+
+    // A mix setting or host parameter: its own name ("Ch 3 Pan"), with the channel's name when it has one.
+    juce::RangedAudioParameter* param = settings.findParam (t.paramId);
+    if (param == nullptr)
+        param = findParam (t.paramId);
+    auto text = param != nullptr ? param->getName (60) : t.paramId;
+    if (t.paramId.startsWith ("ch"))
+    {
+        const auto ch = t.paramId.startsWith ("ch_") ? t.paramId.fromLastOccurrenceOf ("_", false, false).getIntValue() - 1
+                                                     : t.paramId.substring (2).getIntValue() - 1;
+        if (juce::isPositiveAndBelow (ch, kChannels) && getChannelName (ch).isNotEmpty())
+            text = getChannelName (ch) + ": " + text.fromFirstOccurrenceOf (" ", false, false).fromFirstOccurrenceOf (" ", false, false);
+    }
+    return text;
 }
 
 void RKMixProcessor::setChannelSolo (int ch, bool on)
@@ -296,6 +368,8 @@ juce::var RKMixProcessor::getExtraState() const
         }
     }
     root->setProperty ("inserts", rack.toVar());
+    root->setProperty ("scenes", scenes->toVar());
+    root->setProperty ("assigns", assigns->toVar());
     root->setProperty ("names", names);
     root->setProperty ("colours", colours);
     root->setProperty ("busNames", buses);
@@ -315,6 +389,9 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     settings.fromVar (extra["settings"]);
     oscOn->setValueNotifyingHost (0.0f);
     rack.fromVar (extra["inserts"], [this] (InsertRack::Strip strip, int index) { return channelsOf (strip, index); });
+    assigns->fromVar (extra["assigns"]);
+    scenes->fromVar (extra["scenes"]);
+    sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scenes->getCurrent() + 1)));
     loadingMix = false;
 
     const auto text = [] (const juce::var& list, int index)

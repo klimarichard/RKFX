@@ -46,6 +46,10 @@ public:
 
     static int numSlots (Strip) noexcept;
 
+    /** Every slot has a number, 0 .. kTotalSlots - 1 (channels, buses, main, mono). */
+    static int flatIndex (Slot) noexcept;
+    static Slot slotAt (int flat) noexcept;
+
     InsertRack();
     ~InsertRack() override;
 
@@ -56,6 +60,8 @@ public:
     void prepare (double sampleRate, int maxBlockSize);
 
     rkfx::ProcessorBase* get (Slot) const;
+    /** The slot number of @p plugin, or -1. */
+    int slotOf (const rkfx::ProcessorBase* plugin) const;
     const rkfx::pedals::PedalType* typeOf (Slot) const;
 
     /** Puts a plugin of @p typeName in @p slot (replacing what is there), with
@@ -135,7 +141,6 @@ public:
     void releaseAllMidi (juce::MidiBuffer& dest) noexcept;
 
 private:
-    static int flatIndex (Slot) noexcept;
     static int firstSlot (Strip, int index) noexcept;
 
     std::array<std::unique_ptr<rkfx::ProcessorBase>, kTotalSlots> owned;     // message thread

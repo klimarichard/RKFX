@@ -144,7 +144,7 @@ The music dips while someone speaks.
 Gig Performer's file player keeps absolute paths and its markers inside opaque plugin state, with no relink: a restored backup on another Mac (or another user name) loses everything. RKPlay avoids that:
 
 - **Music folder** (a show setting, e.g. `~/Music/OFFLINE MUSIC ARCHIVE/Library`): songs inside it are stored **relative** to it, so the show works wherever the folder is, on any Mac, under any user name, from an external drive. Songs outside it are stored absolute, and also by name.
-- **Per-song data lives in the show, not in the file and not hidden:** trims, gain, cue points, name. The show is readable JSON, so it can be fixed by hand if ever needed.
+- **Per-song data lives in the show, not in the file and not hidden:** start and end trims, gain, name. The show is readable JSON, so it can be fixed by hand if ever needed.
 - **Relink** matches missing songs by file name, then checks size and length, and never forgets a song's data when it moves.
 
 ## The window

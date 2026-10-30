@@ -120,6 +120,59 @@ public:
             file.deleteFile();
         }
 
+        beginTest ("A channel preset holds the strip, name and colour, not the routing");
+        {
+            const auto file = juce::File::createTempFile (".json");
+            RKMixProcessor a;
+            auto& s = a.getSettings();
+            setParam (s.param (mix::channelId (2, "hpf_on")), 1.0f);
+            setParam (s.param (mix::channelId (2, "hpf")), 150.0f);
+            setParam (s.param (mix::channelId (2, "eq_hmid_gain")), 4.5f);
+            setParam (s.param (mix::channelId (2, "comp_on")), 1.0f);
+            setParam (s.param (mix::channelId (2, "gate_key")), 7.0f);   // routing: not in the preset
+            setParam (s.param (mix::channelId (2, "pan")), 50.0f);       // routing: not in the preset
+            a.setChannelName (2, "Lead Vocal");
+            a.setChannelColour (2, 3);
+            expect (a.saveChannelPreset (2, file).ok);
+
+            RKMixProcessor b;
+            expect (b.loadChannelPreset (9, file).ok);
+            const auto& t = b.getSettings();
+            expect (t.flag (mix::channelId (9, "hpf_on")) && t.flag (mix::channelId (9, "comp_on")));
+            expectWithinAbsoluteError (t.value (mix::channelId (9, "hpf")), 150.0f, 0.1f);
+            expectWithinAbsoluteError (t.value (mix::channelId (9, "eq_hmid_gain")), 4.5f, 0.01f);
+            expectEquals (t.choice (mix::channelId (9, "gate_key")), 0, "keys are routing");
+            expectWithinAbsoluteError (t.value (mix::channelId (9, "pan")), 0.0f, 0.01f, "pan is routing");
+            expectEquals (b.getChannelName (9), juce::String ("Lead Vocal"));
+            expectEquals (b.getChannelColour (9), 3);
+
+            b.resetChannelStrip (9);
+            expect (! t.flag (mix::channelId (9, "hpf_on")), "Reset strip");
+            file.deleteFile();
+        }
+
+        beginTest ("The strip's settings reach the audio (HPF on a low tone)");
+        {
+            RKMixProcessor p;
+            p.prepareToPlay (48000.0, 128);
+            setParam (p.getSettings().param (mix::channelId (0, "hpf_on")), 1.0f);
+            setParam (p.getSettings().param (mix::channelId (0, "hpf")), 400.0f);
+            setParam (p.getSettings().param (mix::channelId (0, "hpf_slope")), 1.0f);
+            juce::AudioBuffer<float> b (32, 128);
+            juce::MidiBuffer midi;
+            float loudest = 0.0f;
+            for (int n = 0; n < 100; ++n)
+            {
+                b.clear();
+                for (int i = 0; i < 128; ++i)
+                    b.setSample (0, i, 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 40.0 * (n * 128 + i) / 48000.0));
+                p.processBlock (b, midi);
+                if (n > 80)
+                    loudest = juce::jmax (loudest, b.getMagnitude (0, 0, 128));
+            }
+            expectLessThan (loudest, 0.01f, "40 Hz under a 400 Hz 24 dB/oct high-pass");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

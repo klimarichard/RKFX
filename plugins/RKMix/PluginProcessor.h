@@ -41,6 +41,15 @@ public:
 
     bool isLinked (int pair) const { return settings.flag (mix::linkId (pair)); }
 
+    /** Channel @p ch's settings as the engine sees them (any thread; for the displays). */
+    MixEngine::Channel channelSettings (int ch) const;
+
+    /** Channel presets: the fixed strip with the name and colour (message thread). */
+    juce::File getChannelPresetFolder();
+    PresetResult saveChannelPreset (int channel, const juce::File&);
+    PresetResult loadChannelPreset (int channel, const juce::File&);
+    void resetChannelStrip (int channel);
+
     /** The loudest sample since the last call (message thread, for the meters). */
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }
     float takeMainPeak (int side) noexcept       { return mainPeaks[(size_t) side].exchange (0.0f); }
@@ -87,6 +96,8 @@ private:
     std::atomic<bool> loadingMix { false };
 
     void readSettings (std::uint64_t parts);            // mix settings -> engineSettings
+    static bool isStripField (int field);               // in channel presets (not routing)
+    std::vector<rkfx::ParamInfo> stripInfos() const;
     MixEngine::Levels readLevels() const;
 
     mutable juce::CriticalSection namesLock;

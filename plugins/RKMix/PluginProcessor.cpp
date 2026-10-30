@@ -136,6 +136,83 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
 }
 
 //==============================================================================
+// Channel presets: a channel's fixed strip with its name and colour, not its
+// routing (pan, Main, keys, sends), in the "RKMix Channels" preset folder.
+
+bool RKMixProcessor::isStripField (int field)
+{
+    return field != pan && field != toMain && field != gateKey && field != compKey;
+}
+
+std::vector<rkfx::ParamInfo> RKMixProcessor::stripInfos() const
+{
+    std::vector<rkfx::ParamInfo> infos;
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f))
+        {
+            auto info = rkfx::describe (*channelParams[0][(size_t) f]);
+            info.id = kChannelFields[f];
+            infos.push_back (info);
+        }
+    return infos;
+}
+
+juce::File RKMixProcessor::getChannelPresetFolder()
+{
+    return getLibrary().getPresetFolder ("RKMix Channels");
+}
+
+RKMixProcessor::PresetResult RKMixProcessor::saveChannelPreset (int ch, const juce::File& file)
+{
+    rkfx::ParamValues values;
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f))
+            values[kChannelFields[f]] = valueOf (channelParams[(size_t) ch][(size_t) f]);
+
+    auto preset = rkfx::PresetFormat::toVar ("RKMix Channel", 1, file.getFileNameWithoutExtension(), stripInfos(), values, true);
+    preset.getDynamicObject()->setProperty ("channelName", getChannelName (ch));
+    preset.getDynamicObject()->setProperty ("colour", getChannelColour (ch));
+
+    if (! file.getParentDirectory().createDirectory()
+        || ! rkfx::PresetLibrary::writeAtomically (file, rkfx::PresetFormat::toJson (preset)))
+        return { false, "Could not save " + file.getFileName() };
+    return { true, {} };
+}
+
+RKMixProcessor::PresetResult RKMixProcessor::loadChannelPreset (int ch, const juce::File& file)
+{
+    const auto json = file.loadFileAsString();
+    const auto r = rkfx::PresetFormat::read (json, "RKMix Channel", 1, stripInfos());
+    if (! r.ok)
+        return { false, r.error };
+
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f))
+            if (const auto it = r.values.find (kChannelFields[f]); it != r.values.end())
+            {
+                auto* p = channelParams[(size_t) ch][(size_t) f];
+                p->setValueNotifyingHost (p->convertTo0to1 ((float) it->second));
+            }
+
+    const auto root = juce::JSON::parse (json);
+    if (root.hasProperty ("channelName"))
+        setChannelName (ch, root["channelName"].toString());
+    if (root.hasProperty ("colour"))
+        setChannelColour (ch, (int) root["colour"]);
+    return { true, r.notes.joinIntoString ("; ") };
+}
+
+void RKMixProcessor::resetChannelStrip (int ch)
+{
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f))
+        {
+            auto* p = channelParams[(size_t) ch][(size_t) f];
+            p->setValueNotifyingHost (p->getDefaultValue());
+        }
+}
+
+//==============================================================================
 void RKMixProcessor::readSettings (std::uint64_t parts)
 {
     for (int ch = 0; ch < kChannels; ++ch)
@@ -143,36 +220,7 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         if ((parts & (std::uint64_t (1) << ch)) == 0)
             continue;
 
-        const auto& p = channelParams[(size_t) ch];
-        const auto get = [&p] (int field) { return valueOf (p[(size_t) field]); };
-        const auto on = [&p] (int field) { return valueOf (p[(size_t) field]) >= 0.5f; };
-        const auto index = [&p] (int field) { return juce::roundToInt (valueOf (p[(size_t) field])); };
-
-        auto& c = engineSettings.channels[(size_t) ch];
-        auto& strip = c.strip;
-        strip.trimDb = get (trim);
-        strip.polarity = { on (pol), on (polr) };
-        strip.delayOn = on (delayOn);
-        strip.delayMs = get (delay);
-
-        strip.hpf = { on (hpfOn), get (hpf), index (hpfSlope) == 1 };
-        strip.gate = { on (gateOn), get (gateThr), get (gateRange), get (gateAtt), get (gateHold), get (gateRel), index (gateKey) };
-
-        strip.eq.on = on (eqOn);
-        for (int b = 0; b < StripDsp::kEqBands; ++b)
-        {
-            auto& band = strip.eq.bands[(size_t) b];
-            band.bell = b == 0 ? index (eqLowType) == 1 : b == StripDsp::kEqBands - 1 ? index (eqHighType) == 1 : true;
-            band.hz = get (eqBands + 3 * b);
-            band.gainDb = get (eqBands + 3 * b + 1);
-            band.q = get (eqBands + 3 * b + 2);
-        }
-
-        strip.comp = { on (compOn), get (compThr), get (compRatio), get (compKnee), get (compAtt), get (compRel),
-                       get (compMakeup), index (compKey) };
-
-        c.pan = get (pan) * 0.01f;
-        c.toMain = on (toMain);
+        engineSettings.channels[(size_t) ch] = channelSettings (ch);
     }
 
     if ((parts & MixSettings::kMainBit) != 0)
@@ -183,6 +231,41 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         engineSettings.main.output = juce::roundToInt (valueOf (mainOutput));
         engineSettings.main.monoOutput = juce::roundToInt (valueOf (monoOutput));
     }
+}
+
+MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
+{
+    const auto& p = channelParams[(size_t) ch];
+    const auto get = [&p] (int field) { return valueOf (p[(size_t) field]); };
+    const auto on = [&p] (int field) { return valueOf (p[(size_t) field]) >= 0.5f; };
+    const auto index = [&p] (int field) { return juce::roundToInt (valueOf (p[(size_t) field])); };
+
+    MixEngine::Channel c;
+    auto& strip = c.strip;
+    strip.trimDb = get (trim);
+    strip.polarity = { on (pol), on (polr) };
+    strip.delayOn = on (delayOn);
+    strip.delayMs = get (delay);
+
+    strip.hpf = { on (hpfOn), get (hpf), index (hpfSlope) == 1 };
+    strip.gate = { on (gateOn), get (gateThr), get (gateRange), get (gateAtt), get (gateHold), get (gateRel), index (gateKey) };
+
+    strip.eq.on = on (eqOn);
+    for (int b = 0; b < StripDsp::kEqBands; ++b)
+    {
+        auto& band = strip.eq.bands[(size_t) b];
+        band.bell = b == 0 ? index (eqLowType) == 1 : b == StripDsp::kEqBands - 1 ? index (eqHighType) == 1 : true;
+        band.hz = get (eqBands + 3 * b);
+        band.gainDb = get (eqBands + 3 * b + 1);
+        band.q = get (eqBands + 3 * b + 2);
+    }
+
+    strip.comp = { on (compOn), get (compThr), get (compRatio), get (compKnee), get (compAtt), get (compRel),
+                   get (compMakeup), index (compKey) };
+
+    c.pan = get (pan) * 0.01f;
+    c.toMain = on (toMain);
+    return c;
 }
 
 MixEngine::Levels RKMixProcessor::readLevels() const

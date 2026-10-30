@@ -395,6 +395,40 @@ public:
             expectEquals (midi.getNumEvents(), 1, "on: it passes");
         }
 
+        beginTest ("Solo is never saved; talkback and the oscillator are never on when a mix loads");
+        {
+            RKMixProcessor a;
+            a.setChannelSolo (3, true);
+            a.setBusSolo (2, true);
+            setParam (*a.findParam ("talk"), 1.0f);
+            setParam (a.getSettings().param ("osc_on"), 1.0f);
+            setParam (a.getSettings().param ("talk_src"), 4.0f);
+            expect (a.isAnythingSoloed());
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+
+            RKMixProcessor b;
+            b.setChannelSolo (0, true);
+            b.setStateInformation (state.getData(), (int) state.getSize());
+            expect (! b.isAnythingSoloed(), "solo cleared on load");
+            expect (rkfx::ProcessorBase::valueOf (b.findParam ("talk")) < 0.5f, "Talk off");
+            expect (! b.getSettings().flag ("osc_on"), "the oscillator off");
+            expectEquals (b.getSettings().choice ("talk_src"), 4, "its setup is kept");
+        }
+
+        beginTest ("Solo through the processor: a channel to the cue output (PFL), the main untouched");
+        {
+            RKMixProcessor p;
+            setParam (p.getSettings().param ("cue_out"), (float) mix::pairTarget (6));   // Out 7/8
+            setParam (p.getSettings().param ("cue_src"), 0.0f);                          // silence when nothing is soloed
+            p.prepareToPlay (48000.0, 128);
+            expectEquals (run (p, 4).getMagnitude (6, 0, 128), 0.0f, "nothing soloed: silence");
+            p.setChannelSolo (0, true);
+            const auto b = run (p, 8);   // past the 10 ms fade
+            expectWithinAbsoluteError (b.getSample (6, 64), 0.5f, 1.0e-4f, "PFL of channel 1");
+            expectWithinAbsoluteError (b.getSample (0, 64), 0.5f * std::sqrt (0.5f), 1.0e-4f, "the main as before");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

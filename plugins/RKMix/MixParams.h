@@ -262,6 +262,44 @@ namespace MixParams
         // MIDI in passed on to the MIDI output (appended).
         p.addBool ("midi_thru", "MIDI Thru", false);
 
+        // Solo, the cue output, talkback, the oscillator (appended).
+        for (int ch = 0; ch < kChannels; ++ch)
+            p.addBool (channelId (ch, "solosafe"), channelName (ch) + "Solo Safe", false);
+        for (int bus = 0; bus < kBuses; ++bus)
+            p.addChoice (busId (bus, "solosafe"), busName (bus) + "Solo Safe", { "Auto", "On", "Off" }, { "auto", "on", "off" }, 0);
+        p.addChoice ("solo_mode", "Solo Mode", { "Cue", "In place" }, { "cue", "in_place" }, 0);
+        p.addChoice ("solo_tap", "Solo Tap", { "PFL", "AFL" }, { "pfl", "afl" }, 0);
+        addTarget   (p, "cue_out", "Cue Output", kTargetOff);
+        juce::StringArray sourceNames { "Silence", "Main" }, sourceKeys { "silence", "main" };
+        for (int bus = 0; bus < kBuses; ++bus)
+        {
+            sourceNames.add ("Bus " + num (bus));
+            sourceKeys.add ("bus" + num (bus));
+        }
+        p.addChoice ("cue_src", "Cue Source", sourceNames, sourceKeys, 1);
+
+        juce::StringArray inputNames { "Off" }, inputKeys { "off" };
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            inputNames.add ("In " + num (ch));
+            inputKeys.add (num (ch));
+        }
+        p.addChoice ("talk_src", "Talk Source", inputNames, inputKeys, 0);
+        addFader    (p, "talk_level", "Talk Level");
+        p.addBool   ("talk_latch", "Talk Latch", false);
+        for (int bus = 0; bus < kBuses; ++bus)
+            p.addBool ("talk_to" + num (bus), "Talk to Bus " + num (bus), true);
+        p.addBool   ("talk_main", "Talk to Main", false);
+
+        p.addBool      ("osc_on", "Oscillator", false);
+        p.addChoice    ("osc_type", "Oscillator Signal", { "Sine", "Pink noise" }, { "sine", "pink" }, 0);
+        p.addFrequency ("osc_freq", "Oscillator Frequency", 20.0f, 20000.0f, 1000.0f);
+        p.addDecibels  ("osc_level", "Oscillator Level", -60.0f, 0.0f, -18.0f);
+        for (int bus = 0; bus < kBuses; ++bus)
+            p.addBool ("osc_to" + num (bus), "Oscillator to Bus " + num (bus), false);
+        p.addBool      ("osc_main", "Oscillator to Main", false);
+        addTarget      (p, "osc_out", "Oscillator Output", kTargetOff);
+
         return p;
     }
 }

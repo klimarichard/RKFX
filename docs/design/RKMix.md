@@ -153,6 +153,16 @@ A global **Solo mode**:
 
 Solo is never saved (in presets, scenes or the session) and clears when a mix is loaded. A solo change fades over 10 ms.
 
+### As built (feat/rkmix-solo, 2026-10-30)
+
+- **Solo buttons** (S) sit next to Mute on every channel and bus strip; the **Master section** (top right) holds Cue | In place, PFL | AFL, the cue output, the cue source with nothing soloed (Silence, Main, any bus), Clear solo (lit while anything is soloed, flashing while soloing in place), TALK and OSC.
+- **In place, soloing only buses:** the channels still feed buses (the soloed group hears its sources) but don't reach the main straight; soloing channels mutes the other channels everywhere. Solo safe: a channel's switch on the channel page (Output); a bus's Auto / On / Off in its page's header (Auto = on for FX buses).
+- **Cue alignment** with latent inserts: channel solos and bus AFL arrive with every other output; a bus's PFL comes at the bus's own latency (a few ms early at most).
+- **Talkback** goes only into **Aux** buses (switches per bus, all on by default; the others' switches are dimmed), and the main when switched; its Latch setting makes TALK a switch instead of held. **The oscillator's pink noise** is Paul Kellet's refined filter (not Voss-McCartney), at the same RMS as the sine; tested to have equal power in constant-Q bands from 100 Hz to 6.4 kHz (-3 dB/octave) within 1 dB.
+- **Talk / Osc page** (a fourth tab): talkback source, level, latch, destinations; oscillator on, sine or pink, frequency, level, destinations, straight-to output.
+- **Never saved:** solo (cleared on load); Talk (host parameter) and OSC are forced off when a mix loads (their setup is kept).
+- **Tests:** PFL past fader and mute with the main untouched, AFL, the cue source, in place with solo safe, soloing a group in place, talkback to Aux not main and high-passed, the sine's level, pink noise's slope, solo and talk/osc not saved, solo through the processor.
+
 ## Talkback
 
 - **Talk source:** any input (a dedicated talkback mic, usually not on a channel's fader), after its Trim, through a fixed 100 Hz high-pass. Default Off.

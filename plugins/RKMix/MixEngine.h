@@ -81,6 +81,7 @@ public:
         std::array<float, kBuses> sendDb;         // to Aux and FX buses (fader law)
         std::array<int, kBuses> tap;              // Aux sends: a Tap, or -1 = the bus's default
         std::array<bool, kBuses> assign;          // to Group buses
+        bool soloSafe = false;                    // in-place solo never mutes it
     };
 
     struct Bus
@@ -96,6 +97,28 @@ public:
         float pan = 0.0f;                         // into the main (and stereo buses it feeds)
         std::array<float, kBuses> sendDb;         // Group -> Aux/FX, FX -> Aux
         std::array<bool, kBuses> assign;          // Group -> later Groups
+        bool soloSafe = false;                    // in-place solo never mutes it (FX buses by default)
+    };
+
+    /** Solo, the cue output, talkback and the oscillator. */
+    struct Monitor
+    {
+        Monitor() { talkTo.fill (true); oscTo.fill (false); }
+        bool soloInPlace = false;                 // else Cue: solos go to the cue output, the main untouched
+        bool afl = false;                         // the cue's tap: PFL (after inserts) or AFL (after fader, pan)
+        int cueOutput = mix::kTargetOff;
+        int cueSource = 1;                        // with nothing soloed: 0 silence, 1 the main, 2 + n bus n
+
+        int talkSource = 0;                       // 0 none, n input n (after its trim)
+        float talkDb = 0.0f;
+        std::array<bool, kBuses> talkTo;          // Aux buses
+        bool talkMain = false;
+
+        bool oscPink = false;                     // else a sine
+        float oscHz = 1000.0f, oscDb = -18.0f;    // a sine's peak; pink noise has the same RMS
+        std::array<bool, kBuses> oscTo;
+        bool oscMain = false;
+        int oscOutput = mix::kTargetOff;          // straight to an output
     };
 
     struct Main
@@ -112,18 +135,24 @@ public:
         std::array<bool, kPairs> links {};
         std::array<Bus, kBuses> buses {};
         Main main;
+        Monitor monitor;
     };
 
     /** The host-parameter levels, set every block (cheap). */
     struct Levels
     {
-        Levels() { channelDb.fill (0.0f); channelMute.fill (false); busDb.fill (0.0f); busMute.fill (false); }
+        Levels()
+        {
+            channelDb.fill (0.0f); channelMute.fill (false); channelSolo.fill (false);
+            busDb.fill (0.0f); busMute.fill (false); busSolo.fill (false);
+        }
         std::array<float, kChannels> channelDb;
-        std::array<bool, kChannels> channelMute;
+        std::array<bool, kChannels> channelMute, channelSolo;   // a linked pair: its left channel's
         std::array<float, kBuses> busDb;
-        std::array<bool, kBuses> busMute;
+        std::array<bool, kBuses> busMute, busSolo;
         float mainDb = 0.0f, monoDb = 0.0f;
         bool mainMute = false, monoMute = false;
+        bool talk = false, osc = false;
     };
 
     /** Which parts of the settings changed (setSettings only looks at these):
@@ -160,6 +189,7 @@ public:
     float takeBusPeak (int bus, int side) noexcept { return std::exchange (busPeaks[(size_t) bus][(size_t) side], 0.0f); }
     float takeMainPeak (int side) noexcept         { return std::exchange (mainPeaks[(size_t) side], 0.0f); }
     float takeMonoPeak() noexcept                  { return std::exchange (monoPeak, 0.0f); }
+    float takeCuePeak (int side) noexcept          { return std::exchange (cuePeaks[(size_t) side], 0.0f); }
 
     /** A bus's (or the main's, the mono sum's) compressor and limiter gain reduction since the last call (dB, <= 0). */
     float takeBusCompReductionDb (int bus) noexcept  { return busStates[(size_t) bus].dsp.takeCompReductionDb(); }
@@ -192,6 +222,7 @@ private:
         rkfx::Smoothed toMain;                        // the Main switch, faded
         std::array<rkfx::Smoothed, kBuses> sends;     // linear send gains
         std::array<rkfx::Smoothed, kBuses> assigns;   // group assigns, faded
+        rkfx::Smoothed soloGate, soloMainGate, cue;   // in-place solo (all of it / its main path), to the cue
     };
 
     struct BusState
@@ -199,6 +230,7 @@ private:
         BusDsp dsp;
         rkfx::Smoothed fader, mute, pan, toMain;
         std::array<rkfx::Smoothed, kBuses> sends, assigns;
+        rkfx::Smoothed soloGate, cue;
     };
 
     /** Where each path is lined up (see computePlan). */
@@ -215,7 +247,7 @@ private:
     };
 
     // Rows of the per-block gain buffer
-    enum Row { muteRow, faderRow, panLeftRow, panRightRow, productRow, monoRow, numRows };
+    enum Row { muteRow, faderRow, panLeftRow, panRightRow, productRow, monoRow, soloRow, numRows };
 
     double sampleRate = 48000.0;
     int maxBlock = 0;
@@ -226,6 +258,18 @@ private:
     std::array<BusState, kBuses> busStates;
     rkfx::Smoothed mainFader, mainMute, mainBalance, monoFader, monoMute;
     BusDsp mainDsp, monoDsp;
+
+    // Solo's cue output, talkback, the oscillator
+    juce::AudioBuffer<float> cueBuffer, cueChannelBuffer, cueSourceBuffer, talkBuffer, oscBuffer;
+    std::array<BlockDelay, 2> cueChannelLines;
+    rkfx::Smoothed cueSourceGain, talkGain, oscGain;
+    MixFilters::Biquad talkHighPass;
+    bool talkActive = false, oscActive = false;
+    double oscPhase = 0.0;
+    std::array<float, 7> pink {};
+    float pinkScale = 1.0f;
+    juce::Random noise { 1234 };
+    std::array<float, 2> cuePeaks {};
 
     juce::AudioBuffer<float> channelBuffer, scratchBuffer, postBuffer, mainBuffer, monoBuffer, keyBuffer, curveBuffer;
     juce::AudioBuffer<float> busBuffers;              // 2 channels per bus
@@ -258,6 +302,12 @@ private:
     void applyChannel (int ch, bool snap);
     void applyBus (int bus, bool snap);
     void applyMain (bool snap);
+    void applySolo (bool snap);
+    void makeTalkAndOscillator (const float* const* in, int numSamples) noexcept;
+    float nextPink() noexcept;
+
+    /** The product of two smoothers over this block (each read once). */
+    Curve curveOf (rkfx::Smoothed&, rkfx::Smoothed&, Row, Row spare, int numSamples) noexcept;
     void resetChannel (int ch);
 
     void processChannel (int ch, const float* const* in, int numSamples, bool measure) noexcept;

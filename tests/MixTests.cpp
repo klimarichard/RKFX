@@ -746,6 +746,153 @@ public:
         }
 
         //==============================================================================
+        // Solo, the cue output, talkback, the oscillator
+
+        // The loudest of the last blocks on output @p out, with sines on the given inputs.
+        const auto levelOn = [] (MixEngine& e, int out, std::initializer_list<int> inputs, float hz = 220.0f)
+        {
+            juce::AudioBuffer<float> in (kChannels, kBlock), outBuffer (kChannels, kBlock);
+            float loudest = 0.0f;
+            for (int b = 0; b < 30; ++b)
+            {
+                in.clear();
+                for (auto ch : inputs)
+                    for (int i = 0; i < kBlock; ++i)
+                        in.setSample (ch, i, 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * hz * (b * kBlock + i) / kRate));
+                e.process (in.getArrayOfReadPointers(), outBuffer.getArrayOfWritePointers(), kBlock, false);
+                if (b >= 25)
+                    loudest = juce::jmax (loudest, outBuffer.getMagnitude (out, 0, kBlock));
+            }
+            return loudest;
+        };
+
+        beginTest ("Solo, Cue: PFL hears the channel past its fader and mute; the main is untouched; AFL follows the fader");
+        {
+            auto s = only ({ 0, 2 });
+            s.links[0] = true;
+            s.monitor.cueOutput = mix::pairTarget (6);            // Out 7/8
+            MixEngine::Levels levels;
+            levels.channelDb[0] = mix::kFaderMinDb;
+            levels.channelMute[0] = true;
+            levels.channelSolo[0] = true;
+            auto e = makeEngine (s, levels);
+            expectWithinAbsoluteError (levelOn (e, 6, { 0, 1 }), 0.5f, 1.0e-4f, "PFL: unity, past fader and mute");
+            e = makeEngine (s, levels);
+            expectWithinAbsoluteError (levelOn (e, 0, { 2 }), 0.5f * std::sqrt (0.5f), 1.0e-4f, "the main still has channel 3");
+
+            s.monitor.afl = true;
+            levels.channelMute[0] = false;
+            levels.channelDb[0] = -6.0f;
+            e = makeEngine (s, levels);
+            expectWithinAbsoluteError (levelOn (e, 6, { 0, 1 }), 0.5f * std::pow (10.0f, -0.3f), 1.0e-4f, "AFL: after the fader");
+        }
+
+        beginTest ("Solo, Cue: with nothing soloed the cue output carries its source (the main, a bus, or silence)");
+        {
+            auto s = only ({ 0 });
+            s.links[0] = true;
+            s.monitor.cueOutput = mix::pairTarget (6);
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (levelOn (e, 6, { 0, 1 }), 0.5f, 1.0e-4f, "the main");
+            s.monitor.cueSource = 0;
+            e = makeEngine (s);
+            expectEquals (levelOn (e, 6, { 0, 1 }), 0.0f, "silence");
+        }
+
+        beginTest ("Solo, In place: the others go quiet everywhere, except solo-safe ones");
+        {
+            auto s = only ({ 0, 2, 4 });
+            s.monitor.soloInPlace = true;
+            s.channels[4].soloSafe = true;
+            MixEngine::Levels levels;
+            levels.channelSolo[0] = true;
+            auto e = makeEngine (s, levels);
+            expectGreaterThan (levelOn (e, 0, { 0 }), 0.3f, "the soloed channel");
+            e = makeEngine (s, levels);
+            expectEquals (levelOn (e, 0, { 2 }), 0.0f, "another channel: muted");
+            e = makeEngine (s, levels);
+            expectGreaterThan (levelOn (e, 0, { 4 }), 0.3f, "a solo-safe channel stays");
+
+            // Soloing a bus: its channels feed it, but don't reach the main straight.
+            auto t = only ({ 0 });
+            t.monitor.soloInPlace = true;
+            t.buses[1] = {};
+            t.buses[1].type = mix::BusType::group;
+            t.channels[0].assign[1] = true;
+            MixEngine::Levels bus;
+            bus.busSolo[1] = true;
+            e = makeEngine (t, bus);
+            expectWithinAbsoluteError (levelOn (e, 0, { 0 }), 0.5f * std::sqrt (0.5f), 1.0e-4f, "only through the soloed group");
+        }
+
+        beginTest ("Talkback: its input, high-passed, into the Aux buses (not the main) while Talk is on");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].stereo = false;
+            s.buses[0].output = 3;
+            s.monitor.talkSource = 6;                            // input 6
+            MixEngine::Levels levels;
+            auto e = makeEngine (s, levels);
+            expectEquals (levelOn (e, 2, { 5 }), 0.0f, "Talk off");
+            levels.talk = true;
+            e = makeEngine (s, levels);
+            expectWithinAbsoluteError (levelOn (e, 2, { 5 }, 1000.0f), 0.5f, 0.01f, "Talk on: in the Aux");
+            e = makeEngine (s, levels);
+            expectEquals (levelOn (e, 0, { 5 }, 1000.0f), 0.0f, "not in the main");
+            e = makeEngine (s, levels);
+            expectLessThan (levelOn (e, 2, { 5 }, 25.0f), 0.05f, "25 Hz under the 100 Hz high-pass");
+        }
+
+        beginTest ("Oscillator: a sine at its level straight to an output; pink noise falls -3 dB/octave");
+        {
+            auto s = only ({});
+            s.monitor.oscOutput = 10;                            // Out 10
+            s.monitor.oscDb = -18.0f;
+            MixEngine::Levels levels;
+            levels.osc = true;
+            auto e = makeEngine (s, levels);
+            expectWithinAbsoluteError (levelOn (e, 9, {}), std::pow (10.0f, -0.9f), 1.0e-3f, "-18 dBFS peak");
+
+            // Pink noise has equal power in every constant-Q band (-3 dB/octave in a spectrum).
+            s.monitor.oscPink = true;
+            e = makeEngine (s, levels);
+            juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+            in.clear();
+            const double centres[] = { 100.0, 400.0, 1600.0, 6400.0 };
+            std::array<MixFilters::Biquad, 4> bands;
+            std::array<double, 4> power {};
+            for (int b = 0; b < 4; ++b)
+            {
+                // RBJ band-pass, constant 0 dB peak, Q 2.
+                const auto w0 = 2.0 * juce::MathConstants<double>::pi * centres[b] / kRate;
+                const auto alpha = std::sin (w0) / 4.0;
+                rkfx::BiquadCoefficients c;
+                c.b0 = alpha / (1.0 + alpha); c.b1 = 0.0; c.b2 = -alpha / (1.0 + alpha);
+                c.a1 = -2.0 * std::cos (w0) / (1.0 + alpha); c.a2 = (1.0 - alpha) / (1.0 + alpha);
+                bands[(size_t) b].set (c);
+            }
+            for (int block = 0; block < 2000; ++block)
+            {
+                e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                for (int b = 0; b < 4; ++b)
+                {
+                    juce::AudioBuffer<float> copy (1, kBlock);
+                    copy.copyFrom (0, 0, out, 9, 0, kBlock);
+                    float* io[1] = { copy.getWritePointer (0) };
+                    MixFilters::Biquad* f[1] = { &bands[(size_t) b] };
+                    MixFilters::runFilters (f, 1, io, 1, 0, kBlock);
+                    if (block > 50)
+                        for (int i = 0; i < kBlock; ++i)
+                            power[(size_t) b] += (double) io[0][i] * io[0][i];
+                }
+            }
+            for (int b = 1; b < 4; ++b)
+                expectWithinAbsoluteError (10.0 * std::log10 (power[(size_t) b] / power[0]), 0.0, 1.0,
+                                           "band " + juce::String (centres[b]) + " Hz");
+        }
+
+        //==============================================================================
         // Inserts and latency
 
         // An impulse at sample 10 on the given inputs; the first sample each output peaks.

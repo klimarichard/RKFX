@@ -90,6 +90,12 @@ RKMixProcessor::RKMixProcessor()
     mainOutput = &settings.param ("main_out");
     monoOutput = &settings.param ("mono_out");
     midiThru = &settings.param ("midi_thru");
+    talkParam = findParam ("talk");
+    oscOn = &settings.param ("osc_on");
+    for (int ch = 0; ch < kChannels; ++ch)
+        soloSafeParams[(size_t) ch] = &settings.param (channelId (ch, "solosafe"));
+    for (int bus = 0; bus < kBuses; ++bus)
+        busSoloSafeParams[(size_t) bus] = &settings.param (busId (bus, "solosafe"));
 
     mainFader = findParam ("main_fader");
     mainMute = findParam ("main_mute");
@@ -141,6 +147,38 @@ void RKMixProcessor::matchBusOutputs()
         const auto matched = isBusStereo (bus) ? mix::pairTarget (first) : first + 1;
         out.setValueNotifyingHost (out.convertTo0to1 ((float) matched));
     }
+}
+
+void RKMixProcessor::setChannelSolo (int ch, bool on)
+{
+    channelSolo[(size_t) (ch % 2 == 1 && isLinked (ch / 2) ? ch - 1 : ch)] = on;
+    ++soloVersion;
+}
+
+void RKMixProcessor::setBusSolo (int bus, bool on)
+{
+    busSolo[(size_t) bus] = on;
+    ++soloVersion;
+}
+
+void RKMixProcessor::clearSolo()
+{
+    for (auto& s : channelSolo)
+        s = false;
+    for (auto& s : busSolo)
+        s = false;
+    ++soloVersion;
+}
+
+bool RKMixProcessor::isAnythingSoloed() const noexcept
+{
+    for (const auto& s : channelSolo)
+        if (s.load())
+            return true;
+    for (const auto& s : busSolo)
+        if (s.load())
+            return true;
+    return false;
 }
 
 int RKMixProcessor::channelsOf (InsertRack::Strip strip, int index) const
@@ -269,8 +307,13 @@ juce::var RKMixProcessor::getExtraState() const
 void RKMixProcessor::setExtraState (const juce::var& extra)
 {
     // A missing state (Reset, an empty preset) is the default console.
+    // Solo is never saved; talkback and the oscillator are never on when a mix loads.
+    clearSolo();
+    talkParam->setValueNotifyingHost (0.0f);
+
     loadingMix = true;
     settings.fromVar (extra["settings"]);
+    oscOn->setValueNotifyingHost (0.0f);
     rack.fromVar (extra["inserts"], [this] (InsertRack::Strip strip, int index) { return channelsOf (strip, index); });
     loadingMix = false;
 
@@ -406,6 +449,8 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         b.defaultTap = (mix::Tap) juce::roundToInt (valueOf (p.tap));
         b.panMode = (mix::PanMode) juce::roundToInt (valueOf (p.panMode));
         b.dsp = chainSettings (bus);
+        const auto safe = juce::roundToInt (valueOf (busSoloSafeParams[(size_t) bus]));   // Auto: an FX bus
+        b.soloSafe = safe == 1 || (safe == 0 && b.type == mix::BusType::fx);
         b.pan = valueOf (p.pan) * 0.01f;
         for (int to = 0; to < mix::kBuses; ++to)
         {
@@ -423,6 +468,25 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         engineSettings.main.monoOutput = juce::roundToInt (valueOf (monoOutput));
         engineSettings.main.dsp = chainSettings (mix::kMainChain);
         engineSettings.main.monoDsp = chainSettings (mix::kMonoChain);
+
+        auto& m = engineSettings.monitor;
+        m.soloInPlace = settings.choice ("solo_mode") == 1;
+        m.afl = settings.choice ("solo_tap") == 1;
+        m.cueOutput = settings.choice ("cue_out");
+        m.cueSource = settings.choice ("cue_src");
+        m.talkSource = settings.choice ("talk_src");
+        m.talkDb = settings.value ("talk_level");
+        m.talkMain = settings.flag ("talk_main");
+        m.oscPink = settings.choice ("osc_type") == 1;
+        m.oscHz = settings.value ("osc_freq");
+        m.oscDb = settings.value ("osc_level");
+        m.oscMain = settings.flag ("osc_main");
+        m.oscOutput = settings.choice ("osc_out");
+        for (int bus = 0; bus < mix::kBuses; ++bus)
+        {
+            m.talkTo[(size_t) bus] = settings.flag ("talk_to" + mix::num (bus));
+            m.oscTo[(size_t) bus] = settings.flag ("osc_to" + mix::num (bus));
+        }
     }
 }
 
@@ -490,6 +554,7 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
 
     c.pan = get (pan) * 0.01f;
     c.toMain = on (toMain);
+    c.soloSafe = valueOf (soloSafeParams[(size_t) ch]) >= 0.5f;
 
     const auto& routing = channelRouting[(size_t) ch];
     for (int bus = 0; bus < mix::kBuses; ++bus)
@@ -514,6 +579,12 @@ MixEngine::Levels RKMixProcessor::readLevels() const
         levels.busDb[(size_t) bus] = valueOf (busFaders[(size_t) bus]);
         levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f;
     }
+    for (int ch = 0; ch < kChannels; ++ch)
+        levels.channelSolo[(size_t) ch] = channelSolo[(size_t) ch].load();
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        levels.busSolo[(size_t) bus] = busSolo[(size_t) bus].load();
+    levels.talk = valueOf (talkParam) >= 0.5f;
+    levels.osc = valueOf (oscOn) >= 0.5f;
     levels.mainDb = valueOf (mainFader);
     levels.mainMute = valueOf (mainMute) >= 0.5f;
     levels.monoDb = valueOf (monoFader);
@@ -622,6 +693,8 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     lower (chainLimitReduction[(size_t) mix::kMainChain], engine.getMainDsp().takeLimitReductionDb());
     lower (chainCompReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeCompReductionDb());
     lower (chainLimitReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeLimitReductionDb());
+    raise (cuePeaks[0], engine.takeCuePeak (0));
+    raise (cuePeaks[1], engine.takeCuePeak (1));
     raise (mainPeaks[0], engine.takeMainPeak (0));
     raise (mainPeaks[1], engine.takeMainPeak (1));
     raise (monoPeak, engine.takeMonoPeak());

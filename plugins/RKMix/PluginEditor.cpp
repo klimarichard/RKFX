@@ -36,6 +36,8 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     mute = std::make_unique<rkfx::ToggleSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
                                                  rkfx::Palette::warning, "Mute");
     addAndMakeVisible (*mute);
+    solo = std::make_unique<SoloButton> (o, ch, b);
+    addAndMakeVisible (*solo);
 
     const auto strip = isBus() ? InsertRack::Strip::bus : InsertRack::Strip::channel;
     for (int slot = 0; slot < InsertRack::numSlots (strip); ++slot)
@@ -132,7 +134,10 @@ void RKMixEditor::Strip::resized()
     r.removeFromTop (2);
     pan.setBounds (r.removeFromTop (kPanHeight).reduced (2, 0));
     r.removeFromTop (4);
-    mute->setBounds (r.removeFromTop (kButtonHeight).reduced (2, 0));
+    auto buttons = r.removeFromTop (kButtonHeight).reduced (2, 0);
+    solo->setBounds (buttons.removeFromRight (buttons.getWidth() * 2 / 5));
+    buttons.removeFromRight (2);
+    mute->setBounds (buttons);
     r.removeFromTop (6);
     auto faderArea = r.removeFromLeft (r.getWidth() - kMeterWidth - 2);
     if (fader != nullptr)
@@ -266,7 +271,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
       watcher (p.getSettings(), [this] { onSettingsChange(); }),
       mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main, kMainChain),
       monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono, kMonoChain),
-      routingPanel (*this)
+      routingPanel (*this),
+      monitorPanel (*this)
 {
     for (int ch = 0; ch < kChannels; ++ch)
     {
@@ -282,11 +288,29 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (monoStrip);
     addToCanvas (routingPanel);
 
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage })
+    addToCanvas (monitorPanel);
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage })
         addToCanvas (*tab);
     stripPage.onClick = [this] { setPage (Page::strip); };
     sendsPage.onClick = [this] { setPage (Page::sends); };
     routingPage.onClick = [this] { setPage (Page::routing); };
+    monitorPage.onClick = [this] { setPage (Page::monitor); };
+
+    // The Master section: solo, the cue output, talk, the oscillator.
+    auto& settings = mixer.getSettings();
+    soloMode = std::make_unique<rkfx::SegmentedSwitch> (settings.param ("solo_mode"), accent(), juce::StringArray { "Cue", "In place" });
+    soloTap = std::make_unique<rkfx::SegmentedSwitch> (settings.param ("solo_tap"), accent(), juce::StringArray { "PFL", "AFL" });
+    cueOutput = std::make_unique<ChoiceBox> (settings.param ("cue_out"), targetName, kFirstPairTarget);
+    cueSource = std::make_unique<ChoiceBox> (settings.param ("cue_src"), [this] (int v)
+    {
+        return v == 0 ? juce::String ("Silence") : v == 1 ? juce::String ("Main") : busDisplayName (v - 2);
+    });
+    clearSolo.onClick = [this] { mixer.clearSolo(); };
+    talkButton = std::make_unique<TalkButton> (*this, *mixer.findParam ("talk"));
+    oscButton = std::make_unique<rkfx::ToggleSwitch> (settings.param ("osc_on"), rkfx::Palette::warning, "OSC");
+    for (juce::Component* c : std::initializer_list<juce::Component*> { soloMode.get(), soloTap.get(), cueOutput.get(), cueSource.get(),
+                                                                          &clearSolo, talkButton.get(), oscButton.get() })
+        addToCanvas (*c);
 
     for (int l = 0; l < 3; ++l)
     {
@@ -363,13 +387,30 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage })
     {
         tab->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
     }
 
     routingPanel.setBounds (panelArea());
+    monitorPanel.setBounds (panelArea());
+
+    // The Master section
+    auto m = masterArea().removeFromTop (kTopHeight).reduced (10, 0).withTrimmedTop (28);
+    soloMode->setBounds (m.removeFromTop (26));
+    m.removeFromTop (4);
+    soloTap->setBounds (m.removeFromTop (26));
+    m.removeFromTop (18);
+    cueOutput->setBounds (m.removeFromTop (24));
+    m.removeFromTop (18);
+    cueSource->setBounds (m.removeFromTop (24));
+    m.removeFromTop (8);
+    clearSolo.setBounds (m.removeFromTop (26));
+    m.removeFromTop (14);
+    talkButton->setBounds (m.removeFromTop (44));
+    m.removeFromTop (8);
+    oscButton->setBounds (m.removeFromTop (26));
     for (auto* panel : { stripPanel.get(), sendsPanel.get() })
         if (panel != nullptr)
             panel->setBounds (panelArea());
@@ -379,6 +420,7 @@ void RKMixEditor::layoutContent()
     monoStrip.setBounds (master.withTrimmedLeft (4));
 
     sendsBack.setBounds (masterArea().removeFromTop (kTopHeight).reduced (12).removeFromBottom (30));
+    sendsBack.toFront (false);
 
     auto layers = globalArea().withSizeKeepingCentre (globalArea().getWidth(), 30);
     for (auto& b : layerButtons)
@@ -421,25 +463,23 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     g.setColour (panelColour().darker (0.15f));
     g.fillRoundedRectangle (panelArea().toFloat().expanded (2.0f), rkfx::Style::kPanelRadius);
 
-    // Master section: sends on fader, when on; later: solo, scenes, talkback.
+    // Master section: solo and the cue output, talk, the oscillator (and sends on fader, when on).
     auto master = masterArea().removeFromTop (kTopHeight);
-    rkfx::drawPanel (g, master, panelColour(), "Master");
-    auto text = master.reduced (12, 30);
+    rkfx::drawPanel (g, master, panelColour(), "Solo and talk");
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (11.5f));
+    const auto label = [&] (juce::Component& c, const juce::String& text)
+    {
+        g.drawText (text, c.getBounds().withY (c.getY() - 16).withHeight (15), juce::Justification::centredLeft);
+    };
+    label (*cueOutput, "Cue output");
+    label (*cueSource, "Cue with no solo");
     if (sendsOnFader >= 0)
     {
+        auto text = oscButton->getBounds().withY (oscButton->getBottom() + 8).withBottom (sendsBack.getY() - 4);
         g.setColour (MixGui::stripColour (mixer.getBusColour (sendsOnFader)).brighter (0.2f));
-        g.setFont (rkfx::Fonts::bold (14.0f));
-        g.drawFittedText ("Faders: sends to\n" + busDisplayName (sendsOnFader), text.removeFromTop (40), juce::Justification::topLeft, 2);
-        g.setColour (rkfx::Palette::textDim);
-        g.setFont (rkfx::Fonts::regular (12.0f));
-        g.drawFittedText ("Every channel's fader sets its send to this bus. Its cap takes the bus's colour.",
-                          text.removeFromTop (60), juce::Justification::topLeft, 4);
-    }
-    else
-    {
-        g.setColour (rkfx::Palette::textDim);
-        g.setFont (rkfx::Fonts::regular (12.0f));
-        g.drawFittedText ("Solo, scenes and talkback come here in later phases.", text, juce::Justification::topLeft, 3);
+        g.setFont (rkfx::Fonts::bold (13.0f));
+        g.drawFittedText ("Faders: sends to " + busDisplayName (sendsOnFader), text, juce::Justification::topLeft, 2);
     }
 }
 
@@ -524,11 +564,15 @@ void RKMixEditor::setPage (Page p)
     if (sendsPanel != nullptr)
         sendsPanel->setVisible (page == Page::sends);
     routingPanel.setVisible (page == Page::routing);
+    monitorPanel.setVisible (page == Page::monitor);
     if (page == Page::routing)
         routingPanel.refresh();
+    if (page == Page::monitor)
+        monitorPanel.refresh();
     stripPage.setToggleState (page == Page::strip, juce::dontSendNotification);
     sendsPage.setToggleState (page == Page::sends, juce::dontSendNotification);
     routingPage.setToggleState (page == Page::routing, juce::dontSendNotification);
+    monitorPage.setToggleState (page == Page::monitor, juce::dontSendNotification);
 }
 
 void RKMixEditor::setLayer (int l)
@@ -567,6 +611,8 @@ void RKMixEditor::refreshAll()
             panel->refresh();
     if (routingPanel.isVisible())
         routingPanel.refresh();
+    if (monitorPanel.isVisible())
+        monitorPanel.refresh();
 
     const auto target = [this] (const char* id) { return targetName (mixer.getSettings().choice (id)); };
     mainStrip.targetText = target ("main_out");
@@ -599,6 +645,20 @@ void RKMixEditor::updateMeters()
 {
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
+
+    // Solo: the buttons, and Clear solo flashing while anything is soloed in place.
+    if (const auto v = mixer.getSoloVersion(); v != lastSoloVersion)
+    {
+        lastSoloVersion = v;
+        for (auto* list : { &strips, &busStrips })
+            for (auto& strip : *list)
+                strip->solo->repaint();
+    }
+    const auto soloed = mixer.isAnythingSoloed();
+    const auto flash = soloed && (mixer.getSettings().choice ("solo_mode") == 0 || (juce::Time::getMillisecondCounter() / 400) % 2 == 0);
+    if (clearSolo.getToggleState() != flash)
+        clearSolo.setToggleState (flash, juce::dontSendNotification);
+    clearSolo.setEnabled (soloed);
 
     if (const auto v = mixer.getRack().getVersion(); v != lastRackVersion)
     {
@@ -908,4 +968,79 @@ void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target
             safe->openInsert (slot);
         }
     });
+}
+
+//==============================================================================
+// Solo and talk
+
+bool RKMixEditor::SoloButton::isOn() const
+{
+    return bus >= 0 ? owner.mixer.isBusSoloed (bus) : owner.mixer.isChannelSoloed (channel);
+}
+
+void RKMixEditor::SoloButton::paint (juce::Graphics& g)
+{
+    const auto on = isOn();
+    const auto r = getLocalBounds().toFloat();
+    g.setColour (on ? MixGui::stripColour (3) : rkfx::Palette::knobBody);
+    g.fillRoundedRectangle (r, rkfx::Style::kCornerRadius);
+    g.setColour (on ? rkfx::Palette::onAccent (MixGui::stripColour (3)) : rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (11.0f));
+    g.drawText ("S", getLocalBounds(), juce::Justification::centred);
+}
+
+void RKMixEditor::SoloButton::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+        return;
+    if (bus >= 0)
+        owner.mixer.setBusSolo (bus, ! isOn());
+    else
+        owner.mixer.setChannelSolo (channel, ! isOn());
+    repaint();
+}
+
+RKMixEditor::TalkButton::TalkButton (RKMixEditor& o, juce::RangedAudioParameter& talk)
+    : owner (o),
+      attachment (talk, [this] (float value)
+                  {
+                      on = value >= 0.5f;
+                      repaint();
+                  })
+{
+    rkfx::tagParameter (*this, talk.getParameterID());
+    attachment.sendInitialUpdate();
+}
+
+void RKMixEditor::TalkButton::paint (juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat();
+    g.setColour (on ? rkfx::Palette::warning : rkfx::Palette::knobBody);
+    g.fillRoundedRectangle (r, rkfx::Style::kCornerRadius);
+    g.setColour (on ? rkfx::Palette::onAccent (rkfx::Palette::warning) : rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (15.0f));
+    g.drawText ("TALK", getLocalBounds(), juce::Justification::centred);
+    if (owner.mixer.getSettings().choice ("talk_src") == 0)
+    {
+        g.setColour (on ? rkfx::Palette::onAccent (rkfx::Palette::warning) : rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (10.0f));
+        g.drawText ("no source set", getLocalBounds().removeFromBottom (14), juce::Justification::centred);
+    }
+}
+
+void RKMixEditor::TalkButton::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+        return;
+    // Latch: a click switches it; momentary: on while held.
+    const auto latch = owner.mixer.getSettings().flag ("talk_latch");
+    attachment.setValueAsCompleteGesture (latch ? (on ? 0.0f : 1.0f) : 1.0f);
+}
+
+void RKMixEditor::TalkButton::mouseUp (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+        return;
+    if (! owner.mixer.getSettings().flag ("talk_latch"))
+        attachment.setValueAsCompleteGesture (0.0f);
 }

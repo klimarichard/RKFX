@@ -38,8 +38,34 @@ public:
     static constexpr int kHeight = 900;
 
 private:
-    enum class Page { strip, sends, routing };
+    enum class Page { strip, sends, routing, monitor };
     static constexpr int kBusLayer = 2;
+
+    /** A channel's or bus's Solo button (solo isn't a parameter: never saved). */
+    struct SoloButton : public juce::Component,
+                        public juce::SettableTooltipClient
+    {
+        SoloButton (RKMixEditor& o, int ch, int b) : owner (o), channel (ch), bus (b) { setTooltip ("Solo"); }
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        bool isOn() const;
+
+        RKMixEditor& owner;
+        const int channel, bus;
+    };
+
+    /** Talk: held (momentary) or clicked on and off (latch), as set. */
+    struct TalkButton : public juce::Component
+    {
+        TalkButton (RKMixEditor&, juce::RangedAudioParameter& talk);
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+
+        RKMixEditor& owner;
+        juce::ParameterAttachment attachment;
+        bool on = false;
+    };
 
     /** One insert slot on a strip: the plugin's short name (dimmed while
         off), or "+" when empty. Click: open it (or pick a plugin); right-click:
@@ -102,6 +128,7 @@ private:
         juce::Slider pan;
         std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
         std::unique_ptr<rkfx::ToggleSwitch> mute;
+        std::unique_ptr<SoloButton> solo;
         std::unique_ptr<MixGui::Fader> fader;
         MixGui::Meter meter;
         juce::TextButton sendsButton { "Sends" };   // Aux and FX buses
@@ -180,7 +207,7 @@ private:
         enum SectionIndex { input, delay, hpf, gate, output, eq, comp, numSections };
         std::array<Section, numSections> sections;
 
-        rkfx::ToggleSwitch *link = nullptr, *polarity = nullptr, *polarityR = nullptr, *toMain = nullptr;
+        rkfx::ToggleSwitch *link = nullptr, *polarity = nullptr, *polarityR = nullptr, *toMain = nullptr, *soloSafe = nullptr;
         std::array<rkfx::ToggleSwitch*, numSections> onSwitches {};
         rkfx::SegmentedSwitch *hpfSlope = nullptr, *lowType = nullptr, *highType = nullptr;
         ChoiceBox *gateKey = nullptr, *compKey = nullptr;
@@ -248,7 +275,7 @@ private:
         const int bus;
         juce::Label name;
         std::array<juce::Rectangle<int>, 8> swatches;
-        rkfx::SegmentedSwitch *type = nullptr, *format = nullptr, *panMode = nullptr;
+        rkfx::SegmentedSwitch *type = nullptr, *format = nullptr, *panMode = nullptr, *soloSafe = nullptr;
         ChoiceBox *output = nullptr, *defaultTap = nullptr;
         rkfx::ToggleSwitch* toMain = nullptr;
         juce::Slider pan;
@@ -288,6 +315,22 @@ private:
         juce::Rectangle<int> setupArea;
     };
 
+    /** Talkback and the oscillator: sources, levels and where they go. */
+    struct MonitorPanel : public Panel
+    {
+        explicit MonitorPanel (RKMixEditor&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+
+        std::unique_ptr<ChoiceBox> talkSource, oscOutput;
+        rkfx::Knob *talkLevel = nullptr, *oscFreq = nullptr, *oscLevel = nullptr;
+        rkfx::ToggleSwitch *talkLatch = nullptr, *talkMain = nullptr, *oscOn = nullptr, *oscMain = nullptr;
+        rkfx::SegmentedSwitch* oscType = nullptr;
+        std::array<rkfx::ToggleSwitch*, mix::kBuses> talkTo {}, oscTo {};
+        juce::Rectangle<int> talkArea, oscArea;
+    };
+
     /** Where the main and mono go, and what each output carries. */
     struct RoutingPanel : public Panel
     {
@@ -314,7 +357,16 @@ private:
     std::unique_ptr<Panel> stripPanel, sendsPanel;
     RoutingPanel routingPanel;
 
-    juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" };
+    juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" };
+    MonitorPanel monitorPanel;
+
+    // The Master section's solo, cue, talk and oscillator controls
+    std::unique_ptr<rkfx::SegmentedSwitch> soloMode, soloTap;
+    std::unique_ptr<ChoiceBox> cueOutput, cueSource;
+    juce::TextButton clearSolo { "Clear solo" };
+    std::unique_ptr<TalkButton> talkButton;
+    std::unique_ptr<rkfx::ToggleSwitch> oscButton;
+    int lastSoloVersion = -1;
     juce::TextButton layerButtons[3] { juce::TextButton ("Inputs 1-16"), juce::TextButton ("Inputs 17-32"), juce::TextButton ("Buses") };
     juce::TextButton sendsBack { "Back to faders" };
     std::unique_ptr<juce::FileChooser> chooser;

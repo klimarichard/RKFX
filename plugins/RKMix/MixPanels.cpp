@@ -124,6 +124,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     // Output
     pan = knob (output, "pan", stereo ? "Balance" : "Pan");
     toMain = make<rkfx::ToggleSwitch> (param ("main"), accent, "Main");
+    soloSafe = make<rkfx::ToggleSwitch> (param ("solosafe"), accent, "Solo safe");
 
     // EQ
     onSwitches[eq] = make<rkfx::ToggleSwitch> (param ("eq_on"), accent, "On");
@@ -271,7 +272,9 @@ void RKMixEditor::ChannelPanel::resized()
         auto a = inner (sections[output].area);
         pan->setBounds (a.removeFromLeft (kKnobW).withHeight (kKnobH));
         a.removeFromLeft (6);
-        toMain->setBounds (switchIn (a, 56));
+        auto column = a.removeFromLeft (64).withHeight (kKnobH).withSizeKeepingCentre (64, 2 * kSwitchH + 8);
+        toMain->setBounds (column.removeFromTop (kSwitchH));
+        soloSafe->setBounds (column.removeFromBottom (kSwitchH));
     }
 
     // Row B: EQ, compressor
@@ -677,6 +680,7 @@ RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
     defaultTap = make<ChoiceBox> (param ("tap"), [] (int v) { return tapName ((Tap) v); });
     defaultTap->setTooltip ("Where this bus's sends take the channels, unless a send says otherwise");
     panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Centre", "Follow", "Mirror" }, "Pan");
+    soloSafe = make<rkfx::SegmentedSwitch> (param ("solosafe"), accent, juce::StringArray { "Auto", "On", "Off" });
 
     auto& panParam = param ("pan");
     pan.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -717,10 +721,12 @@ void RKMixEditor::BusPanel::resized()
     auto header = r.removeFromTop (kPanelHeader).reduced (4, 2);
     header.removeFromLeft (64);
     sendsOnFader.setBounds (header.removeFromRight (130));
+    header.removeFromRight (12);
+    soloSafe->setBounds (header.removeFromRight (140));
     header.removeFromRight (16);
     placeSwatches (header, swatches);
     header.removeFromRight (12);
-    name.setBounds (header.withWidth (juce::jmin (header.getWidth(), 300)));
+    name.setBounds (header.withWidth (juce::jmin (header.getWidth(), 260)));
     r.removeFromTop (4);
 
     setupArea = r.removeFromTop (70);
@@ -771,6 +777,7 @@ void RKMixEditor::BusPanel::paint (juce::Graphics& g)
     label (*output, "Output");
     label (*defaultTap, "Default tap");
     label (pan, "Pan into the main");
+    g.drawText ("Solo safe", soloSafe->getBounds().translated (-62, 0).withWidth (60), juce::Justification::centredRight);
 }
 
 void RKMixEditor::BusPanel::mouseDown (const juce::MouseEvent& e)
@@ -916,6 +923,110 @@ void RKMixEditor::MainPanel::paint (juce::Graphics& g)
                                           : "(L + R) / 2 of the main -> EQ -> Comp -> inserts -> fader -> Limit -> output. "
                                             "Its EQ's low-pass makes a sub feed.",
                       setupArea.reduced (12, 4).withTrimmedLeft (balance != nullptr ? 330 : 260), juce::Justification::centredLeft, 2);
+}
+
+//==============================================================================
+// Talk / Osc page
+
+RKMixEditor::MonitorPanel::MonitorPanel (RKMixEditor& o) : Panel (o)
+{
+    auto& s = o.mixer.getSettings();
+    const auto accent = o.accent();
+
+    talkSource = std::make_unique<ChoiceBox> (s.param ("talk_src"), [] (int v) { return v == 0 ? juce::String ("Off") : "In " + juce::String (v); }, 1);
+    addAndMakeVisible (*talkSource);
+    talkLevel = make<rkfx::Knob> (s.param ("talk_level"), "Level");
+    talkLatch = make<rkfx::ToggleSwitch> (s.param ("talk_latch"), accent, "Latch");
+    talkMain = make<rkfx::ToggleSwitch> (s.param ("talk_main"), accent, "Main");
+
+    oscOn = make<rkfx::ToggleSwitch> (s.param ("osc_on"), rkfx::Palette::warning, "On");
+    oscType = make<rkfx::SegmentedSwitch> (s.param ("osc_type"), accent, juce::StringArray { "Sine", "Pink" });
+    oscFreq = make<rkfx::Knob> (s.param ("osc_freq"), "Freq");
+    oscLevel = make<rkfx::Knob> (s.param ("osc_level"), "Level");
+    oscMain = make<rkfx::ToggleSwitch> (s.param ("osc_main"), accent, "Main");
+    oscOutput = std::make_unique<ChoiceBox> (s.param ("osc_out"), targetName, kFirstPairTarget);
+    addAndMakeVisible (*oscOutput);
+
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        talkTo[(size_t) bus] = make<rkfx::ToggleSwitch> (s.param ("talk_to" + num (bus)), accent, num (bus));
+        oscTo[(size_t) bus] = make<rkfx::ToggleSwitch> (s.param ("osc_to" + num (bus)), accent, num (bus));
+    }
+    refresh();
+}
+
+void RKMixEditor::MonitorPanel::refresh()
+{
+    // Talkback reaches Aux buses only (monitor mixes); the others' switches are dimmed out.
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        talkTo[(size_t) bus]->setAlpha (owner.mixer.getBusType (bus) == BusType::aux ? 1.0f : 0.35f);
+    }
+    oscFreq->setDimmed (owner.mixer.getSettings().choice ("osc_type") == 1);
+    repaint();
+}
+
+void RKMixEditor::MonitorPanel::resized()
+{
+    auto r = getLocalBounds();
+    talkArea = r.removeFromTop (r.getHeight() / 2 - 4);
+    r.removeFromTop (kGap);
+    oscArea = r;
+
+    const auto busGrid = [] (juce::Rectangle<int> area, std::array<rkfx::ToggleSwitch*, mix::kBuses>& switches)
+    {
+        const auto w = (area.getWidth() - 7 * 4) / 8;
+        for (int bus = 0; bus < kBuses; ++bus)
+            switches[(size_t) bus]->setBounds (area.getX() + (bus % 8) * (w + 4), area.getY() + (bus / 8) * (kSwitchH + 6), w, kSwitchH);
+    };
+
+    auto a = inner (talkArea);
+    auto controls = a.removeFromLeft (420);
+    talkSource->setBounds (controls.removeFromLeft (110).withSizeKeepingCentre (110, kSwitchH).translated (0, 8));
+    controls.removeFromLeft (12);
+    talkLevel->setBounds (controls.removeFromLeft (kKnobW).withHeight (kKnobH));
+    controls.removeFromLeft (12);
+    talkLatch->setBounds (controls.removeFromLeft (70).withSizeKeepingCentre (70, kSwitchH));
+    a.removeFromLeft (16);
+    auto dest = a.withTrimmedTop (18);
+    talkMain->setBounds (dest.removeFromRight (60).withHeight (kSwitchH));
+    dest.removeFromRight (12);
+    busGrid (dest, talkTo);
+
+    a = inner (oscArea);
+    controls = a.removeFromLeft (420);
+    oscOn->setBounds (controls.removeFromLeft (50).withSizeKeepingCentre (50, kSwitchH));
+    controls.removeFromLeft (8);
+    oscType->setBounds (controls.removeFromLeft (100).withSizeKeepingCentre (100, kSwitchH));
+    controls.removeFromLeft (8);
+    oscFreq->setBounds (controls.removeFromLeft (kKnobW).withHeight (kKnobH));
+    controls.removeFromLeft (4);
+    oscLevel->setBounds (controls.removeFromLeft (kKnobW).withHeight (kKnobH));
+    controls.removeFromLeft (8);
+    oscOutput->setBounds (controls.removeFromLeft (110).withSizeKeepingCentre (110, kSwitchH).translated (0, 8));
+    a.removeFromLeft (16);
+    dest = a.withTrimmedTop (18);
+    oscMain->setBounds (dest.removeFromRight (60).withHeight (kSwitchH));
+    dest.removeFromRight (12);
+    busGrid (dest, oscTo);
+}
+
+void RKMixEditor::MonitorPanel::paint (juce::Graphics& g)
+{
+    rkfx::drawPanel (g, talkArea, owner.panelColour(), "Talkback");
+    rkfx::drawPanel (g, oscArea, owner.panelColour(), "Oscillator");
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (11.5f));
+    g.drawText ("Source (input)", talkSource->getBounds().withY (talkSource->getY() - 18).withHeight (16), juce::Justification::centredLeft);
+    g.drawText ("Straight to", oscOutput->getBounds().withY (oscOutput->getY() - 18).withHeight (16), juce::Justification::centredLeft);
+    const auto destTitle = [&] (juce::Rectangle<int> area, const juce::String& text)
+    {
+        auto a = inner (area);
+        a.removeFromLeft (436);
+        g.drawText (text, a.withHeight (16), juce::Justification::centredLeft);
+    };
+    destTitle (talkArea, "Into the Aux buses (and the main): high-passed at 100 Hz; never on when a mix loads");
+    destTitle (oscArea, "Into buses, the main, or straight to an output; never on when a mix loads");
 }
 
 //==============================================================================

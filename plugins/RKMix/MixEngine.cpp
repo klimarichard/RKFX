@@ -71,6 +71,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
             v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         for (auto& v : s.assigns)
             v.reset (sampleRate, kMuteFadeSeconds);
+        for (auto* v : { &s.soloGate, &s.soloMainGate, &s.cue })
+            v->reset (sampleRate, kMuteFadeSeconds);
     }
     for (auto& b : busStates)
     {
@@ -83,7 +85,11 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
             v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         for (auto& v : b.assigns)
             v.reset (sampleRate, kMuteFadeSeconds);
+        for (auto* v : { &b.soloGate, &b.cue })
+            v->reset (sampleRate, kMuteFadeSeconds);
     }
+    for (auto* v : { &cueSourceGain, &talkGain, &oscGain })
+        v->reset (sampleRate, kMuteFadeSeconds);
     mainDsp.prepare (sampleRate, maxBlock);
     monoDsp.prepare (sampleRate, maxBlock);
     mainFader.reset (sampleRate, rkfx::kParamSmoothingSeconds);
@@ -103,6 +109,28 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     busChannelBuffers.setSize (2 * kBuses, maxBlock);
     mainChannelBuffer.setSize (2, maxBlock);
     delayScratch.setSize (2, maxBlock);
+    for (auto* b : { &cueBuffer, &cueChannelBuffer, &cueSourceBuffer })
+        b->setSize (2, maxBlock);
+    talkBuffer.setSize (1, maxBlock);
+    oscBuffer.setSize (1, maxBlock);
+    for (auto& line : cueChannelLines)
+        line.prepare (kMaxPathLatency, maxBlock);
+    talkHighPass.set (MixFilters::cutSection (true, 100.0, MixFilters::kButterworth12, sampleRate));
+
+    // Pink noise at the sine's RMS: measure this generator's level once.
+    {
+        pink = {};
+        noise.setSeed (1234);
+        double sum = 0.0;
+        constexpr int n = 1 << 16;
+        pinkScale = 1.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            const auto x = nextPink();
+            sum += (double) x * x;
+        }
+        pinkScale = (float) (std::sqrt (0.5) / std::sqrt (sum / n));
+    }
 
     // Latency alignment lines (used only while an insert reports latency).
     for (auto& ch : channelPadLines)
@@ -153,6 +181,12 @@ void MixEngine::reset()
     for (auto& line : mainPadLines)
         line.clear();
     monoPadLine.clear();
+    for (auto& line : cueChannelLines)
+        line.clear();
+    talkHighPass.clear();
+    pink = {};
+    oscPhase = 0.0;
+    applySolo (true);
     computePlan();
 
     channelPeaks.fill (0.0f);
@@ -289,6 +323,46 @@ void MixEngine::setLevels (const Levels& newLevels)
     mainMute.setTargetValue (levels.mainMute ? 0.0f : 1.0f);
     monoFader.setTargetValue (mix::faderGain (levels.monoDb));
     monoMute.setTargetValue (levels.monoMute ? 0.0f : 1.0f);
+    applySolo (false);
+}
+
+void MixEngine::applySolo (bool snap)
+{
+    const auto& m = settings.monitor;
+
+    // Solos: a pair's left channel stands for it.
+    bool anyChannel = false, anyBus = false;
+    for (int ch = 0; ch < kChannels; ++ch)
+        anyChannel = anyChannel || (! isFollower (ch) && levels.channelSolo[(size_t) ch]);
+    for (int bus = 0; bus < kBuses; ++bus)
+        anyBus = anyBus || levels.busSolo[(size_t) bus];
+
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        auto& st = states[(size_t) ch];
+        const auto soloed = levels.channelSolo[(size_t) ch];
+        const auto safe = settings.channels[(size_t) ch].soloSafe;
+        // In place: soloing channels mutes the other channels everywhere;
+        // soloing only buses keeps the channels going into buses, but not straight to the main.
+        const auto gate = ! m.soloInPlace || ! anyChannel || soloed || safe;
+        const auto mainGate = ! m.soloInPlace || anyChannel || ! anyBus || safe;
+        setValue (st.soloGate, gate ? 1.0f : 0.0f, snap);
+        setValue (st.soloMainGate, mainGate ? 1.0f : 0.0f, snap);
+        setValue (st.cue, ! m.soloInPlace && soloed ? 1.0f : 0.0f, snap);
+    }
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        auto& b = busStates[(size_t) bus];
+        const auto soloed = levels.busSolo[(size_t) bus];
+        const auto gate = ! m.soloInPlace || ! anyBus || soloed || settings.buses[(size_t) bus].soloSafe;
+        setValue (b.soloGate, gate ? 1.0f : 0.0f, snap);
+        setValue (b.cue, ! m.soloInPlace && soloed ? 1.0f : 0.0f, snap);
+    }
+
+    // The cue output: the solos, or with none (or soloing in place) its source.
+    setValue (cueSourceGain, m.soloInPlace || ! (anyChannel || anyBus) ? 1.0f : 0.0f, snap);
+    setValue (talkGain, levels.talk && m.talkSource > 0 ? mix::faderGain (m.talkDb) : 0.0f, snap);
+    setValue (oscGain, levels.osc ? std::pow (10.0f, juce::jmin (0.0f, m.oscDb) * 0.05f) : 0.0f, snap);
 }
 
 void MixEngine::applyChannel (int ch, bool snap)
@@ -356,6 +430,19 @@ void MixEngine::applyMain (bool snap)
 }
 
 //==============================================================================
+MixEngine::Curve MixEngine::curveOf (rkfx::Smoothed& a, rkfx::Smoothed& b, Row row, Row spare, int numSamples) noexcept
+{
+    const auto first = curveOf (a, row, numSamples);
+    const auto second = curveOf (b, spare, numSamples);
+    if (first.steady() && second.steady())
+        return constant (first.value * second.value);
+
+    auto* data = curveBuffer.getWritePointer (row);
+    for (int i = 0; i < numSamples; ++i)
+        data[i] = first.at (i) * second.at (i);
+    return { data, 0.0f };
+}
+
 MixEngine::Curve MixEngine::curveOf (rkfx::Smoothed& v, Row row, int numSamples) noexcept
 {
     if (! v.isSmoothing())
@@ -519,8 +606,8 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
         if (settings.buses[(size_t) bus].type != BusType::group && isActive (s.sends[(size_t) bus]))
             active.sends[(size_t) active.count++] = { bus, tapOf (ch, bus) };
 
-    // This block's gains (each smoother is read once).
-    const auto mute = curveOf (s.mute, muteRow, numSamples);
+    // This block's gains (each smoother is read once). In-place solo acts as a mute.
+    const auto mute = curveOf (s.mute, s.soloGate, muteRow, soloRow, numSamples);
     const auto fader = curveOf (s.fader, faderRow, numSamples);
     Curve panLeft, panRight;
     panCurves (s.pan, numSides == 2, panLeft, panRight, numSamples);
@@ -566,6 +653,15 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
         for (int side = 0; side < numSides; ++side)
             raisePeak (channelPeaks[(size_t) (ch + side)], io[side], numSamples);
 
+    // Solo to the cue, PFL: after the inserts, before mute and fader.
+    auto& cueDest = plan.active ? cueChannelBuffer : cueBuffer;
+    if (! settings.monitor.afl && isActive (s.cue))
+    {
+        const auto cue = curveOf (s.cue, productRow, numSamples);
+        for (int side = 0; side < 2; ++side)
+            accumulate (cueDest.getWritePointer (side), io[juce::jmin (side, numSides - 1)], { &cue }, numSamples);
+    }
+
     if (mute.steady() && fader.steady() && mute.value * fader.value <= 0.0f)
         return;   // silent after the fader: nothing more to add
 
@@ -577,9 +673,17 @@ void MixEngine::processChannel (int ch, const float* const* in, int numSamples, 
         accumulate (post[side], io[juce::jmin (side, numSides - 1)], { &mute, &fader, side == 0 ? &panLeft : &panRight }, numSamples);
     }
 
-    if (isActive (s.toMain))
+    // Solo to the cue, AFL: after the fader and pan.
+    if (settings.monitor.afl && isActive (s.cue))
     {
-        const auto toMain = curveOf (s.toMain, productRow, numSamples);
+        const auto cue = curveOf (s.cue, productRow, numSamples);
+        for (int side = 0; side < 2; ++side)
+            accumulate (cueDest.getWritePointer (side), post[side], { &cue }, numSamples);
+    }
+
+    if (isActive (s.toMain) && isActive (s.soloMainGate))
+    {
+        const auto toMain = curveOf (s.toMain, s.soloMainGate, productRow, soloRow, numSamples);
         auto& dest = plan.active ? mainChannelBuffer : mainBuffer;
         for (int side = 0; side < 2; ++side)
             accumulate (dest.getWritePointer (side), post[side], { &toMain }, numSamples);
@@ -629,18 +733,42 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
             FVO::add (io[side], delayScratch.getReadPointer (side), numSamples);
         }
 
+    // Talkback and the oscillator come in at the bus's input.
+    const auto& m = settings.monitor;
+    if (talkActive && s.type == BusType::aux && m.talkTo[(size_t) bus])
+    {
+        for (int side = 0; side < numSides; ++side)
+            FVO::add (io[side], talkBuffer.getReadPointer (0), numSamples);
+        busFed[(size_t) bus] = true;
+    }
+    if (oscActive && m.oscTo[(size_t) bus])
+    {
+        for (int side = 0; side < numSides; ++side)
+            FVO::add (io[side], oscBuffer.getReadPointer (0), numSamples);
+        busFed[(size_t) bus] = true;
+    }
+
     // Nothing fed it, nothing glides, no insert rings on: silent, nothing to do.
     // (While lining up, every bus runs: its history must stay continuous.)
     const auto insertsActive = inserts != nullptr && inserts->isActive (Inserts::Strip::bus, bus);
-    if (! plan.active && ! busFed[(size_t) bus] && ! insertsActive && ! b.fader.isSmoothing() && ! b.mute.isSmoothing())
+    if (! plan.active && ! busFed[(size_t) bus] && ! insertsActive && ! b.fader.isSmoothing() && ! b.mute.isSmoothing()
+        && ! b.soloGate.isSmoothing())
         return;
 
     b.dsp.processBeforeFader (io, numSides, numSamples);
     if (inserts != nullptr)
         inserts->process (Inserts::Strip::bus, bus, io, numSides, numSamples);
 
-    // Mute and fader in place, then the limiter: the bus's output signal.
-    const auto mute = curveOf (b.mute, muteRow, numSamples);
+    // Solo to the cue, PFL: after the inserts, before mute and fader.
+    if (! m.afl && isActive (b.cue))
+    {
+        const auto cue = curveOf (b.cue, productRow, numSamples);
+        for (int side = 0; side < 2; ++side)
+            accumulate (cueBuffer.getWritePointer (side), io[juce::jmin (side, numSides - 1)], { &cue }, numSamples);
+    }
+
+    // Mute (and in-place solo) and fader in place, then the limiter: the bus's output signal.
+    const auto mute = curveOf (b.mute, b.soloGate, muteRow, soloRow, numSamples);
     const auto fader = curveOf (b.fader, faderRow, numSamples);
     for (int side = 0; side < numSides; ++side)
     {
@@ -667,10 +795,19 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
         for (int side = 0; side < numSides; ++side)
             busHistory[(size_t) bus][(size_t) side].write (io[side], numSamples);
 
-    // Its own output, lined up with every other output.
+    // Its own output, lined up with every other output (and so its AFL and cue source).
     const float* source[2];
     delayedBusOutput (bus, io, numSides, plan.active ? plan.busOutputPad[(size_t) bus] : 0, source, numSamples);
     addToTarget (out, s.output, source[0], numSides == 2 ? source[1] : nullptr, numSamples);
+    if (m.afl && isActive (b.cue))
+    {
+        const auto cue = curveOf (b.cue, productRow, numSamples);
+        for (int side = 0; side < 2; ++side)
+            accumulate (cueBuffer.getWritePointer (side), source[side], { &cue }, numSamples);
+    }
+    if (m.cueSource == 2 + bus)
+        for (int side = 0; side < 2; ++side)
+            FVO::copy (cueSourceBuffer.getWritePointer (side), source[side], numSamples);
 
     if (s.type == BusType::aux)
         return;
@@ -712,6 +849,15 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
 {
     float* main[2] = { mainBuffer.getWritePointer (0), mainBuffer.getWritePointer (1) };
     auto* mono = monoBuffer.getWritePointer (0);
+
+    // Talkback and the oscillator into the main, when set.
+    for (int side = 0; side < 2; ++side)
+    {
+        if (talkActive && settings.monitor.talkMain)
+            FVO::add (main[side], talkBuffer.getReadPointer (0), numSamples);
+        if (oscActive && settings.monitor.oscMain)
+            FVO::add (main[side], oscBuffer.getReadPointer (0), numSamples);
+    }
 
     // The channels' part, lined up with the groups and FX buses arriving later.
     if (plan.active)
@@ -792,6 +938,79 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
 
     addToTarget (out, settings.main.output, main[0], main[1], numSamples);
     addToTarget (out, settings.main.monoOutput, mono, nullptr, numSamples);
+    if (settings.monitor.cueSource == 1)
+        for (int side = 0; side < 2; ++side)
+            FVO::copy (cueSourceBuffer.getWritePointer (side), main[side], numSamples);
+}
+
+//==============================================================================
+float MixEngine::nextPink() noexcept
+{
+    // Paul Kellet's refined pink filter on white noise: -3 dB/octave within
+    // 0.05 dB above 9 Hz.
+    const auto white = noise.nextFloat() * 2.0f - 1.0f;
+    auto& b = pink;
+    b[0] = 0.99886f * b[0] + white * 0.0555179f;
+    b[1] = 0.99332f * b[1] + white * 0.0750759f;
+    b[2] = 0.96900f * b[2] + white * 0.1538520f;
+    b[3] = 0.86650f * b[3] + white * 0.3104856f;
+    b[4] = 0.55000f * b[4] + white * 0.5329522f;
+    b[5] = -0.7616f * b[5] - white * 0.0168980f;
+    const auto out = b[0] + b[1] + b[2] + b[3] + b[4] + b[5] + b[6] + white * 0.5362f;
+    b[6] = white * 0.115926f;
+    return out * pinkScale;
+}
+
+void MixEngine::makeTalkAndOscillator (const float* const* in, int numSamples) noexcept
+{
+    const auto& m = settings.monitor;
+
+    // Talkback: its input after its trim, through a 100 Hz high-pass, faded in and out.
+    talkActive = m.talkSource > 0 && m.talkSource <= kChannels && isActive (talkGain);
+    if (talkActive)
+    {
+        auto* talk = talkBuffer.getWritePointer (0);
+        const auto source = m.talkSource - 1;
+        FVO::copyWithMultiply (talk, in[source], mix::trimGain (settings.channels[(size_t) mix::leaderOf (settings.links, source)].strip.trimDb),
+                               numSamples);
+        MixFilters::Biquad* filter[1] = { &talkHighPass };
+        float* io[1] = { talk };
+        MixFilters::runFilters (filter, 1, io, 1, 0, numSamples);
+        const auto gain = curveOf (talkGain, productRow, numSamples);
+        if (gain.steady())
+            FVO::multiply (talk, gain.value, numSamples);
+        else
+            for (int i = 0; i < numSamples; ++i)
+                talk[i] *= gain.at (i);
+    }
+    else if (! isActive (talkGain))
+    {
+        talkHighPass.clear();
+    }
+
+    // The oscillator: a sine at its level, or pink noise at the same RMS.
+    oscActive = isActive (oscGain);
+    if (oscActive)
+    {
+        auto* osc = oscBuffer.getWritePointer (0);
+        const auto step = juce::MathConstants<double>::twoPi * juce::jlimit (10.0, 0.45 * sampleRate, (double) m.oscHz) / sampleRate;
+        for (int i = 0; i < numSamples; ++i)
+        {
+            float x;
+            if (m.oscPink)
+            {
+                x = nextPink();
+            }
+            else
+            {
+                x = (float) std::sin (oscPhase);
+                oscPhase += step;
+                if (oscPhase > juce::MathConstants<double>::twoPi)
+                    oscPhase -= juce::MathConstants<double>::twoPi;
+            }
+            osc[i] = x * oscGain.getNextValue();
+        }
+    }
 }
 
 void MixEngine::addToTarget (float* const* out, int target, const float* left, const float* right, int numSamples) noexcept
@@ -834,6 +1053,12 @@ void MixEngine::process (const float* const* in, float* const* out, int numSampl
         mainChannelBuffer.clear (0, numSamples);
     }
 
+    cueBuffer.clear (0, numSamples);
+    cueSourceBuffer.clear (0, numSamples);
+    if (plan.active)
+        cueChannelBuffer.clear (0, numSamples);
+    makeTalkAndOscillator (in, numSamples);
+
     for (int ch = 0; ch < kChannels; ++ch)
         if (! isFollower (ch))
             processChannel (ch, in, numSamples, measure);
@@ -845,4 +1070,25 @@ void MixEngine::process (const float* const* in, float* const* out, int numSampl
                 processBus (bus, out, numSamples, measure);
 
     processMain (out, numSamples, measure);
+
+    // The cue output: the solos (the channels' lined up with every output), or its source.
+    float* cue[2] = { cueBuffer.getWritePointer (0), cueBuffer.getWritePointer (1) };
+    if (plan.active)
+        for (int side = 0; side < 2; ++side)
+        {
+            cueChannelLines[(size_t) side].write (cueChannelBuffer.getReadPointer (side), numSamples);
+            cueChannelLines[(size_t) side].read (delayScratch.getWritePointer (side), numSamples, plan.total - plan.channelLatency);
+            FVO::add (cue[side], delayScratch.getReadPointer (side), numSamples);
+        }
+    const auto sourceGain = curveOf (cueSourceGain, productRow, numSamples);
+    for (int side = 0; side < 2; ++side)
+        accumulate (cue[side], cueSourceBuffer.getReadPointer (side), { &sourceGain }, numSamples);
+    if (measure)
+        for (int side = 0; side < 2; ++side)
+            raisePeak (cuePeaks[(size_t) side], cue[side], numSamples);
+    addToTarget (out, settings.monitor.cueOutput, cue[0], cue[1], numSamples);
+
+    // The oscillator straight to an output.
+    if (oscActive)
+        addToTarget (out, settings.monitor.oscOutput, oscBuffer.getReadPointer (0), nullptr, numSamples);
 }

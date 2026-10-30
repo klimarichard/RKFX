@@ -97,6 +97,18 @@ public:
     float takeGateReduction (int channel) noexcept { return gateReduction[(size_t) channel].exchange (0.0f); }
     float takeCompReduction (int channel) noexcept { return compReduction[(size_t) channel].exchange (0.0f); }
 
+    /** Solo (message thread, read by the audio thread): never saved, cleared when a mix loads.
+        A linked pair solos as its left channel. */
+    bool isChannelSoloed (int ch) const noexcept { return channelSolo[(size_t) ch].load(); }
+    bool isBusSoloed (int bus) const noexcept    { return busSolo[(size_t) bus].load(); }
+    void setChannelSolo (int ch, bool);
+    void setBusSolo (int bus, bool);
+    void clearSolo();
+    bool isAnythingSoloed() const noexcept;
+    int getSoloVersion() const noexcept { return soloVersion.load(); }
+
+    float takeCuePeak (int side) noexcept { return cuePeaks[(size_t) side].exchange (0.0f); }
+
     /** Set while a window shows the meters (no measuring otherwise). */
     std::atomic<int> windowsOpen { 0 };
 
@@ -183,7 +195,13 @@ private:
     std::atomic<int> namesVersion { 0 };
 
     std::array<std::atomic<float>, kChannels> channelPeaks {};
-    std::array<std::atomic<float>, 2> mainPeaks {};
+    std::array<std::atomic<float>, 2> mainPeaks {}, cuePeaks {};
+    std::array<std::atomic<bool>, kChannels> channelSolo {};
+    std::array<std::atomic<bool>, mix::kBuses> busSolo {};
+    std::atomic<int> soloVersion { 0 };
+    juce::RangedAudioParameter *talkParam = nullptr, *oscOn = nullptr;
+    std::array<juce::RangedAudioParameter*, kChannels> soloSafeParams {};
+    std::array<juce::RangedAudioParameter*, mix::kBuses> busSoloSafeParams {};
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> busPeaks {};
     std::atomic<float> monoPeak { 0.0f };
     std::array<std::atomic<float>, kChannels> gateReduction {}, compReduction {};

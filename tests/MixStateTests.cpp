@@ -173,6 +173,38 @@ public:
             expectLessThan (loudest, 0.01f, "40 Hz under a 400 Hz 24 dB/oct high-pass");
         }
 
+        beginTest ("Buses through the processor: an Aux send to its output, bus faders, names in the session");
+        {
+            RKMixProcessor a;
+            auto& s = a.getSettings();
+            setParam (s.param (mix::busId (0, "format")), 0.0f);             // mono
+            setParam (s.param (mix::busId (0, "out")), 5.0f);                // Out 5
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);            // ch 1 -> bus 1 at 0 dB
+            setParam (s.param (mix::busId (2, "type")), 0.0f);               // bus 3: a group
+            setParam (s.param (mix::channelAssignId (0, 2)), 1.0f);
+            a.setBusName (0, "IEM Vocal");
+            a.setBusColour (0, 5);
+            a.setOutputName (4, "IEM");
+            a.prepareToPlay (48000.0, 128);
+            auto b = run (a, 8);
+            expectWithinAbsoluteError (b.getSample (4, 64), 0.5f, 1.0e-4f, "pre-fader send, mono bus, unity");
+
+            setParam (*a.findParam (mix::busFaderId (0)), -6.0f);
+            b = run (a, 8);
+            expectWithinAbsoluteError (b.getSample (4, 64), 0.5f * std::pow (10.0f, -0.3f), 1.0e-4f, "the bus fader");
+
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor c;
+            c.setStateInformation (state.getData(), (int) state.getSize());
+            expect (c.getBusType (2) == mix::BusType::group);
+            expect (! c.isBusStereo (0));
+            expectEquals (c.getBusName (0), juce::String ("IEM Vocal"));
+            expectEquals (c.getBusColour (0), 5);
+            expectEquals (c.getOutputName (4), juce::String ("IEM"));
+            expect (c.getSettings().flag (mix::channelAssignId (0, 2)));
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
         {
             RKMixProcessor p;

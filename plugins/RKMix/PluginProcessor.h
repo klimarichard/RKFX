@@ -47,6 +47,19 @@ public:
     mix::BusType getBusType (int bus) const { return (mix::BusType) settings.choice (mix::busId (bus, "type")); }
     bool isBusStereo (int bus) const { return settings.choice (mix::busId (bus, "format")) == 1; }
 
+    /** What may feed what (by the buses' current types): a group into a later
+        group, a group into Aux and FX buses, an FX bus into Aux buses. */
+    bool canAssign (int from, int to) const
+    {
+        return to > from && getBusType (from) == mix::BusType::group && getBusType (to) == mix::BusType::group;
+    }
+    bool canSend (int from, int to) const
+    {
+        const auto source = getBusType (from), dest = getBusType (to);
+        return from != to && ((source == mix::BusType::group && dest != mix::BusType::group)
+                              || (source == mix::BusType::fx && dest == mix::BusType::aux));
+    }
+
     /** Bumped when names or colours change (the editor polls it). */
     int getNamesVersion() const noexcept { return namesVersion.load(); }
 

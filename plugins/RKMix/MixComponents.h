@@ -54,6 +54,28 @@ namespace MixGui
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Fader)
     };
 
+    /** A choice parameter as a vertical list of short options (the selected
+        one filled with the accent); one option can carry a marker dot (the
+        Sends page marks the bus's default tap). */
+    class OptionList : public juce::Component,
+                       public juce::SettableTooltipClient
+    {
+    public:
+        OptionList (juce::RangedAudioParameter&, juce::StringArray labels, juce::Colour accent);
+
+        void setMarked (int option) { if (marked != option) { marked = option; repaint(); } }
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+
+    private:
+        juce::StringArray labels;
+        juce::Colour accent;
+        juce::ParameterAttachment attachment;
+        int selected = 0, marked = -1;
+
+        int rowHeight() const noexcept { return juce::jmax (1, getHeight() / juce::jmax (1, labels.size())); }
+    };
+
     /** A peak meter, one or two bars, -60 to +6 dBFS on the fader law's scale
         (so it lines up with a fader beside it), with a hold line. The editor
         feeds it peaks from a timer; it falls back at about 24 dB/s. */

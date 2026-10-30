@@ -187,6 +187,50 @@ void Fader::commitValueEditor()
 }
 
 //==============================================================================
+OptionList::OptionList (juce::RangedAudioParameter& p, juce::StringArray optionLabels, juce::Colour accentColour)
+    : labels (std::move (optionLabels)),
+      accent (accentColour),
+      attachment (p, [this] (float value)
+                  {
+                      selected = juce::roundToInt (value);
+                      repaint();
+                  })
+{
+    rkfx::tagParameter (*this, p.getParameterID());
+    attachment.sendInitialUpdate();
+}
+
+void OptionList::paint (juce::Graphics& g)
+{
+    const auto h = rowHeight();
+    g.setFont (rkfx::Fonts::regular (10.5f));
+    for (int i = 0; i < labels.size(); ++i)
+    {
+        const auto row = juce::Rectangle<int> (0, i * h, getWidth(), h).reduced (0, 1);
+        if (i == selected)
+        {
+            g.setColour (accent);
+            g.fillRoundedRectangle (row.toFloat(), rkfx::Style::kCornerRadius);
+        }
+        g.setColour (i == selected ? rkfx::Palette::onAccent (accent) : rkfx::Palette::textDim);
+        g.drawFittedText (labels[i], row.reduced (3, 0), juce::Justification::centred, 1);
+        if (i == marked)
+        {
+            g.setColour (i == selected ? rkfx::Palette::onAccent (accent) : accent);
+            g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ (float) row.getRight() - 4.0f, (float) row.getCentreY() }));
+        }
+    }
+}
+
+void OptionList::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu())
+        return;
+    const auto option = juce::jlimit (0, labels.size() - 1, e.y / rowHeight());
+    attachment.setValueAsCompleteGesture ((float) option);
+}
+
+//==============================================================================
 void Meter::setPeaks (float left, float right, float secondsSinceLast)
 {
     const float peaks[2] = { left, right };

@@ -1,49 +1,48 @@
 #include "PedalRegistry.h"
 
-// Every plugin's processor, compiled into the board (RKFX_BOARD leaves out
-// their own plugin entry points).
-#include "../RKAcoustic/PluginProcessor.h"
-#include "../RKChorus/PluginProcessor.h"
-#include "../RKCompress/PluginProcessor.h"
-#include "../RKDeEss/PluginProcessor.h"
-#include "../RKDelay/PluginProcessor.h"
-#include "../RKDistort/PluginProcessor.h"
-#include "../RKDouble/PluginProcessor.h"
-#include "../RKFilter/PluginProcessor.h"
-#include "../RKFlange/PluginProcessor.h"
-#include "../RKFreqShift/PluginProcessor.h"
-#include "../RKGate/PluginProcessor.h"
-#include "../RKGraphEQ/PluginProcessor.h"
-#include "../RKLimit/PluginProcessor.h"
-#include "../RKLoop/PluginProcessor.h"
-#include "../RKHold/PluginProcessor.h"
-#include "../RKMultiComp/PluginProcessor.h"
-#include "../RKRide/PluginProcessor.h"
-#include "../RKParaEQ/PluginProcessor.h"
-#include "../RKPhase/PluginProcessor.h"
-#include "../RKPreamp/PluginProcessor.h"
-#include "../RKRingMod/PluginProcessor.h"
-#include "../RKRotary/PluginProcessor.h"
-#include "../RKSaturate/PluginProcessor.h"
-#include "../RKSwell/PluginProcessor.h"
-#include "../RKSynth/PluginProcessor.h"
-#include "../RKTransient/PluginProcessor.h"
-#include "../RKTremolo/PluginProcessor.h"
-#include "../RKUtility/PluginProcessor.h"
-#include "../RKVerb/PluginProcessor.h"
-#include "../RKOctave/PluginProcessor.h"
-#include "../RKPolyPitch/PluginProcessor.h"
-#include "../RKVibrato/PluginProcessor.h"
-#include "../RKVocode/PluginProcessor.h"
-#include "../RKVoice/PluginProcessor.h"
+// Every plugin's processor, built in (RKFX_BOARD leaves out their own
+// plugin entry points).
+#include "../plugins/RKAcoustic/PluginProcessor.h"
+#include "../plugins/RKChorus/PluginProcessor.h"
+#include "../plugins/RKCompress/PluginProcessor.h"
+#include "../plugins/RKDeEss/PluginProcessor.h"
+#include "../plugins/RKDelay/PluginProcessor.h"
+#include "../plugins/RKDistort/PluginProcessor.h"
+#include "../plugins/RKDouble/PluginProcessor.h"
+#include "../plugins/RKFilter/PluginProcessor.h"
+#include "../plugins/RKFlange/PluginProcessor.h"
+#include "../plugins/RKFreqShift/PluginProcessor.h"
+#include "../plugins/RKGate/PluginProcessor.h"
+#include "../plugins/RKGraphEQ/PluginProcessor.h"
+#include "../plugins/RKLimit/PluginProcessor.h"
+#include "../plugins/RKLoop/PluginProcessor.h"
+#include "../plugins/RKHold/PluginProcessor.h"
+#include "../plugins/RKMultiComp/PluginProcessor.h"
+#include "../plugins/RKRide/PluginProcessor.h"
+#include "../plugins/RKParaEQ/PluginProcessor.h"
+#include "../plugins/RKPhase/PluginProcessor.h"
+#include "../plugins/RKPreamp/PluginProcessor.h"
+#include "../plugins/RKRingMod/PluginProcessor.h"
+#include "../plugins/RKRotary/PluginProcessor.h"
+#include "../plugins/RKSaturate/PluginProcessor.h"
+#include "../plugins/RKSwell/PluginProcessor.h"
+#include "../plugins/RKSynth/PluginProcessor.h"
+#include "../plugins/RKTransient/PluginProcessor.h"
+#include "../plugins/RKTremolo/PluginProcessor.h"
+#include "../plugins/RKUtility/PluginProcessor.h"
+#include "../plugins/RKVerb/PluginProcessor.h"
+#include "../plugins/RKOctave/PluginProcessor.h"
+#include "../plugins/RKPolyPitch/PluginProcessor.h"
+#include "../plugins/RKVibrato/PluginProcessor.h"
+#include "../plugins/RKVocode/PluginProcessor.h"
+#include "../plugins/RKVoice/PluginProcessor.h"
 
-// The board-only pedals.
+// The pedals that are no plugins of their own.
 #include "pedals/VolumePedal.h"
 #include "pedals/WahPedal.h"
 
-// Every factory preset list in the board (generated, one per plugin).
-#define RKBOARD_PRESET_LISTS(X) \
-    X (RKBoard) \
+// Every pedal's factory preset list (generated, one per plugin).
+#define RKPEDALS_PRESET_LISTS(X) \
     X (RKAcoustic) \
     X (RKChorus) \
     X (RKCompress) \
@@ -84,12 +83,12 @@
 
 namespace rkfx
 {
-   #define RKBOARD_DECLARE_LIST(name) std::vector<FactoryPreset> factoryPresetList_##name();
-    RKBOARD_PRESET_LISTS (RKBOARD_DECLARE_LIST)
-   #undef RKBOARD_DECLARE_LIST
+   #define RKPEDALS_DECLARE_LIST(name) std::vector<FactoryPreset> factoryPresetList_##name();
+    RKPEDALS_PRESET_LISTS (RKPEDALS_DECLARE_LIST)
+   #undef RKPEDALS_DECLARE_LIST
 }
 
-namespace rkboard
+namespace rkfx::pedals
 {
 
 namespace
@@ -182,9 +181,9 @@ void registerFactoryPresets()
 {
     static const bool registered = []
     {
-       #define RKBOARD_REGISTER_LIST(name) rkfx::registerFactoryPresets (#name, &rkfx::factoryPresetList_##name);
-        RKBOARD_PRESET_LISTS (RKBOARD_REGISTER_LIST)
-       #undef RKBOARD_REGISTER_LIST
+       #define RKPEDALS_REGISTER_LIST(name) rkfx::registerFactoryPresets (#name, &rkfx::factoryPresetList_##name);
+        RKPEDALS_PRESET_LISTS (RKPEDALS_REGISTER_LIST)
+       #undef RKPEDALS_REGISTER_LIST
         return true;
     }();
     juce::ignoreUnused (registered);
@@ -214,4 +213,4 @@ juce::String familyName (rkfx::Palette::Family family)
     return {};
 }
 
-} // namespace rkboard
+} // namespace rkfx::pedals

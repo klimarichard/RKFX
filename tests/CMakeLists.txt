@@ -175,8 +175,8 @@ target_link_libraries(RKFXPresetTests
 )
 add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)
 
-# RKBoard: the board processor with every plugin as a pedal. Compiles all
-# plugin sources (like the RKBoard target itself).
+# RKBoard and RKMix: the board and the console with every plugin as a pedal
+# (through the pedal host, like the RKBoard and RKMix targets themselves).
 juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
 target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
@@ -184,21 +184,15 @@ target_sources(RKBoardTests PRIVATE
     MixStateTests.cpp
     ${RKMIX_SOURCES}
     ${RKBOARD_SOURCES}
-    ${RKBOARD_PEDAL_SOURCES}
 )
-target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard)
-foreach(plugin IN LISTS RKFX_PLUGINS)
-    if(TARGET ${plugin}_FactoryPresets)
-        target_link_libraries(RKBoardTests PRIVATE ${plugin}_FactoryPresets)
-    endif()
-endforeach()
+target_include_directories(RKBoardTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard ${RKMIX_INCLUDE_DIRS})
 target_compile_definitions(RKBoardTests PRIVATE
-    RKFX_BOARD=1 RKMIX_NO_ENTRY_POINT=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKMIX_NO_ENTRY_POINT=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
     RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-target_include_directories(RKBoardTests PRIVATE ${RKMIX_INCLUDE_DIRS})
 target_link_libraries(RKBoardTests
     PRIVATE
         rkboard_factory_presets
+        rkmix_factory_presets
         rkfx_core
         juce::juce_audio_processors
         juce::juce_gui_basics

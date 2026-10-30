@@ -1,10 +1,17 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "host/PedalRegistry.h"
+
+namespace rkfx { std::vector<FactoryPreset> factoryPresetList_RKMix(); }
 
 namespace
 {
     rkfx::PluginConfig makeConfig()
     {
+        // Before the base reads them: every insert's factory presets, and the console's.
+        rkfx::pedals::registerFactoryPresets();
+        rkfx::registerFactoryPresets ("RKMix", &rkfx::factoryPresetList_RKMix);
+
         rkfx::PluginConfig c;
         c.name = "RKMix";
         c.stateVersion = 1;

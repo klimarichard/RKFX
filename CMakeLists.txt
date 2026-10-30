@@ -69,12 +69,14 @@ foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})
 endforeach()
 
-# The pedalboard, holding every plugin above (after them: it uses their
-# factory preset lists).
+# The pedal host: every plugin above built in, for RKBoard and RKMix (after
+# them: it uses their factory preset lists).
+add_subdirectory(host)
+
+# The pedalboard, holding every plugin above.
 add_subdirectory(plugins/RKBoard)
 
 # The mixing console (after RKBoard: not a pedal, its 32 channels don't fit a board).
-set(RKFX_OTHER_PLUGINS RKMix)
 add_subdirectory(plugins/RKMix)
 
 # The MIDI family: MIDI effects (MIDI in, MIDI out, no audio), and audio

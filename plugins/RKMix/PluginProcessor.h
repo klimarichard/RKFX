@@ -63,6 +63,13 @@ public:
     juce::String getOutputName (int output) const;
     void setOutputName (int output, const juce::String&);
 
+    /** User pages: the strips each one shows, in the order chosen; a channel
+        (a linked pair's left channel), or kUserPageBus + a bus. Up to 16 per
+        page (message thread). Saved with the mix; a scene leaves them alone. */
+    static constexpr int kUserPages = 2, kUserPageStrips = 16, kUserPageBus = 100;
+    juce::Array<int> getUserPage (int page) const;
+    void setUserPage (int page, const juce::Array<int>&);
+
     mix::BusType getBusType (int bus) const { return (mix::BusType) settings.choice (mix::busId (bus, "type")); }
     bool isBusStereo (int bus) const { return settings.choice (mix::busId (bus, "format")) == 1; }
 
@@ -289,6 +296,7 @@ private:
     mutable juce::CriticalSection namesLock;
     std::array<juce::String, kChannels> channelNames, outputNames;
     std::array<juce::String, mix::kBuses> busNames;
+    std::array<juce::Array<int>, kUserPages> userPages;
     std::array<std::atomic<int>, kChannels> channelColours {};
     std::array<std::atomic<int>, mix::kBuses> busColours {};
     std::atomic<int> namesVersion { 0 };

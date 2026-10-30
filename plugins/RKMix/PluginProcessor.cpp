@@ -564,6 +564,27 @@ void RKMixProcessor::setOutputName (int output, const juce::String& name)
     markPresetModified();
 }
 
+juce::Array<int> RKMixProcessor::getUserPage (int page) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return userPages[(size_t) page];
+}
+
+void RKMixProcessor::setUserPage (int page, const juce::Array<int>& strips)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        auto& p = userPages[(size_t) page];
+        p.clearQuick();
+        for (const auto s : strips)
+            if (((s >= 0 && s < kChannels) || (s >= kUserPageBus && s < kUserPageBus + mix::kBuses))
+                && ! p.contains (s) && p.size() < kUserPageStrips)
+                p.add (s);
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
 void RKMixProcessor::setChannelColour (int channel, int colour)
 {
     channelColours[(size_t) channel] = juce::jlimit (0, kNumColours - 1, colour);
@@ -600,6 +621,17 @@ juce::var RKMixProcessor::getExtraState() const
     root->setProperty ("busNames", buses);
     root->setProperty ("busColours", busColourList);
     root->setProperty ("outputNames", outputs);
+
+    // User pages as "ch3", "bus2" (1-based, readable)
+    juce::Array<juce::var> pages;
+    for (const auto& page : userPages)
+    {
+        juce::Array<juce::var> list;
+        for (const auto s : page)
+            list.add (s >= kUserPageBus ? "bus" + juce::String (s - kUserPageBus + 1) : "ch" + juce::String (s + 1));
+        pages.add (list);
+    }
+    root->setProperty ("userPages", pages);
     return juce::var (root);
 }
 
@@ -641,6 +673,25 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
         }
         for (int bus = 0; bus < mix::kBuses; ++bus)
             busNames[(size_t) bus] = text (extra["busNames"], bus);
+
+        const auto* pages = extra["userPages"].getArray();
+        for (int page = 0; page < kUserPages; ++page)
+        {
+            auto& p = userPages[(size_t) page];
+            p.clearQuick();
+            const auto* list = pages != nullptr && page < pages->size() ? pages->getReference (page).getArray() : nullptr;
+            if (list == nullptr)
+                continue;
+            for (const auto& item : *list)
+            {
+                const auto key = item.toString();
+                const auto n = key.trimCharactersAtStart ("chbus").getIntValue() - 1;
+                const auto s = key.startsWith ("bus") ? (n >= 0 && n < mix::kBuses ? kUserPageBus + n : -1)
+                                                      : (key.startsWith ("ch") && n >= 0 && n < kChannels ? n : -1);
+                if (s >= 0 && ! p.contains (s) && p.size() < kUserPageStrips)
+                    p.add (s);
+            }
+        }
     }
     for (int ch = 0; ch < kChannels; ++ch)
         channelColours[(size_t) ch] = colour (extra["colours"], ch);

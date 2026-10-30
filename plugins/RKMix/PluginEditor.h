@@ -40,6 +40,8 @@ public:
 private:
     enum class Page { strip, sends, routing, monitor, scenes, assign };
     static constexpr int kBusLayer = 2;
+    static constexpr int kUserLayer = 3;      // and 4: the user pages
+    static constexpr int kNumLayers = 5;
 
     /** A channel's or bus's Solo button (solo isn't a parameter: never saved). */
     struct SoloButton : public juce::Component,
@@ -413,7 +415,8 @@ private:
     std::unique_ptr<TalkButton> talkButton;
     std::unique_ptr<rkfx::ToggleSwitch> oscButton;
     int lastSoloVersion = -1;
-    juce::TextButton layerButtons[3] { juce::TextButton ("Inputs 1-16"), juce::TextButton ("Inputs 17-32"), juce::TextButton ("Buses") };
+    juce::TextButton layerButtons[kNumLayers] { juce::TextButton ("Inputs 1-16"), juce::TextButton ("Inputs 17-32"), juce::TextButton ("Buses"),
+                                                juce::TextButton ("User 1"), juce::TextButton ("User 2") };
     juce::TextButton sendsBack { "Back to faders" };
     std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<InsertView> insertView;
@@ -456,6 +459,11 @@ private:
     void onSettingsChange();
     void updateMeters();
     void showColourMenu (int channel, int bus, juce::Component& target);
+
+    // User pages
+    juce::Array<int> userPageStrips (int userPage) const;   // as shown: linked pairs once, by their left channel
+    void toggleOnUserPage (int userPage, int strip);
+    void showUserPageMenu (int userPage);
 
     // Inserts
     juce::String slotName (InsertRack::Slot) const;          // "Vocal, insert 1"

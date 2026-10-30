@@ -131,6 +131,7 @@ public:
             setParam (s.param (mix::channelId (2, "comp_on")), 1.0f);
             setParam (s.param (mix::channelId (2, "gate_key")), 7.0f);   // routing: not in the preset
             setParam (s.param (mix::channelId (2, "pan")), 50.0f);       // routing: not in the preset
+            setParam (s.param (mix::channelId (2, "direct_out")), 9.0f); // routing: not in the preset
             a.setChannelName (2, "Lead Vocal");
             a.setChannelColour (2, 3);
             expect (a.saveChannelPreset (2, file).ok);
@@ -143,6 +144,7 @@ public:
             expectWithinAbsoluteError (t.value (mix::channelId (9, "eq_hmid_gain")), 4.5f, 0.01f);
             expectEquals (t.choice (mix::channelId (9, "gate_key")), 0, "keys are routing");
             expectWithinAbsoluteError (t.value (mix::channelId (9, "pan")), 0.0f, 0.01f, "pan is routing");
+            expectEquals (t.choice (mix::channelId (9, "direct_out")), mix::kTargetOff, "the direct out is routing");
             expectEquals (b.getChannelName (9), juce::String ("Lead Vocal"));
             expectEquals (b.getChannelColour (9), 3);
 
@@ -291,6 +293,39 @@ public:
             setParam (s.param (mix::busId (2, "out")), 6.0f);                          // Out 6
             setParam (s.param (mix::busId (2, "format")), 1.0f);
             expectEquals (s.choice (mix::busId (2, "out")), mix::pairTarget (4), "stereo: Out 5/6");
+        }
+
+        beginTest ("A channel's direct out follows its pair: Out 9 <-> Out 9/10");
+        {
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelId (4, "direct_out")), 9.0f);
+            setParam (s.param (mix::linkId (2)), 1.0f);                                 // channels 5/6
+            expectEquals (s.choice (mix::channelId (4, "direct_out")), mix::pairTarget (8), "linked: Out 9/10");
+            setParam (s.param (mix::linkId (2)), 0.0f);
+            expectEquals (s.choice (mix::channelId (4, "direct_out")), 9, "unlinked: Out 9");
+        }
+
+        beginTest ("User pages: kept in the session in the order chosen; at most 16 strips, no repeats");
+        {
+            RKMixProcessor a;
+            a.setUserPage (0, { 6, RKMixProcessor::kUserPageBus + 2, 0, 6 });
+            juce::Array<int> many;
+            for (int ch = 0; ch < 20; ++ch)
+                many.add (ch);
+            a.setUserPage (1, many);
+            expectEquals (a.getUserPage (0).size(), 3, "no repeats");
+            expectEquals (a.getUserPage (1).size(), 16, "16 at most");
+
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor b;
+            b.setStateInformation (state.getData(), (int) state.getSize());
+            expect (b.getUserPage (0) == juce::Array<int> { 6, RKMixProcessor::kUserPageBus + 2, 0 });
+            expectEquals (b.getUserPage (1).size(), 16);
+
+            b.resetToDefaults();
+            expect (b.getUserPage (0).isEmpty(), "Reset clears them");
         }
 
         beginTest ("Bus and main processing reach the audio and are kept in the session; pan mode too");

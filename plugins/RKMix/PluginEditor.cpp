@@ -344,11 +344,20 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
                                                                           &clearSolo, talkButton.get(), oscButton.get() })
         addToCanvas (*c);
 
-    for (int l = 0; l < 3; ++l)
+    for (int l = 0; l < kNumLayers; ++l)
     {
-        layerButtons[l].onClick = [this, l] { setLayer (l); };
+        layerButtons[l].onClick = [this, l]
+        {
+            setLayer (l);
+            // An empty user page: choose its strips straight away.
+            if (l >= kUserLayer && userPageStrips (l - kUserLayer).isEmpty())
+                showUserPageMenu (l - kUserLayer);
+        };
         addToCanvas (layerButtons[l]);
     }
+    for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)
+        layerButtons[kUserLayer + userPage].setTooltip ("A page of the strips you choose: right-click to choose them "
+                                                   "(or right-click a strip)");
 
     sendsBack.onClick = [this] { setSendsOnFader (-1); };
     addToCanvas (sendsBack);
@@ -465,9 +474,10 @@ void RKMixEditor::layoutContent()
     sendsBack.toFront (false);
 
     auto layers = globalArea().withSizeKeepingCentre (globalArea().getWidth(), 30);
-    for (auto& b : layerButtons)
+    const int layerWidths[kNumLayers] { 104, 104, 76, 68, 68 };
+    for (int l = 0; l < kNumLayers; ++l)
     {
-        b.setBounds (layers.removeFromLeft (120));
+        layerButtons[l].setBounds (layers.removeFromLeft (layerWidths[l]));
         layers.removeFromLeft (6);
     }
 
@@ -487,6 +497,25 @@ void RKMixEditor::layoutStrips()
     const auto area = stripsArea();
     const auto width = (area.getWidth() - (kStripsPerLayer - 1) * 4) / kStripsPerLayer;
     int x = area.getX();
+
+    // A user page: its strips in the order chosen.
+    if (layer >= kUserLayer)
+    {
+        for (auto& s : strips)
+            s->setVisible (false);
+        for (auto& s : busStrips)
+            s->setVisible (false);
+        for (const auto s : userPageStrips (layer - kUserLayer))
+        {
+            auto& strip = s >= RKMixProcessor::kUserPageBus ? *busStrips[(size_t) (s - RKMixProcessor::kUserPageBus)]
+                                                            : *strips[(size_t) s];
+            strip.setVisible (true);
+            strip.setBounds (x, area.getY(), width, area.getHeight());
+            x += width + 4;
+        }
+        return;
+    }
+
     for (int ch = 0; ch < kChannels; ++ch)
     {
         auto& strip = *strips[(size_t) ch];
@@ -512,6 +541,16 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     // The panel behind the top area's page.
     g.setColour (panelColour().darker (0.15f));
     g.fillRoundedRectangle (panelArea().toFloat().expanded (2.0f), rkfx::Style::kPanelRadius);
+
+    // An empty user page
+    if (layer >= kUserLayer && userPageStrips (layer - kUserLayer).isEmpty())
+    {
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (14.0f));
+        g.drawText ("User " + juce::String (layer - kUserLayer + 1) + " is empty: right-click its button below "
+                    "(or any strip) to choose the channels and buses it shows.",
+                    stripsArea(), juce::Justification::centred);
+    }
 
     // MIDI learn under way (standalone).
     if (const auto learning = mixer.getLearningTarget(); learning >= 0)
@@ -651,10 +690,11 @@ void RKMixEditor::setPage (Page p)
 
 void RKMixEditor::setLayer (int l)
 {
-    layer = juce::jlimit (0, kBusLayer, l);
-    for (int i = 0; i < 3; ++i)
+    layer = juce::jlimit (0, kNumLayers - 1, l);
+    for (int i = 0; i < kNumLayers; ++i)
         layerButtons[i].setToggleState (i == layer, juce::dontSendNotification);
     layoutStrips();
+    repaint();   // an empty user page's hint
 }
 
 void RKMixEditor::setSendsOnFader (int bus)
@@ -833,15 +873,106 @@ void RKMixEditor::showColourMenu (int channel, int bus, juce::Component& target)
     for (int i = 0; i < MixGui::kNumStripColours; ++i)
         menu.addColouredItem (i + 1, MixGui::stripColourName (i), MixGui::stripColour (i), true, current == i);
 
+    // On the user pages
+    constexpr int kUserPageItem = 100;
+    const auto strip = bus >= 0 ? RKMixProcessor::kUserPageBus + bus : leaderOf (channel);
+    menu.addSeparator();
+    for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)
+    {
+        const auto shown = userPageStrips (userPage);
+        const auto on = shown.contains (strip);
+        menu.addItem (kUserPageItem + userPage, "On User " + juce::String (userPage + 1),
+                      on || shown.size() < RKMixProcessor::kUserPageStrips, on);
+    }
+
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus, strip] (int result)
     {
         if (safe == nullptr || result <= 0)
             return;
+        if (result >= kUserPageItem)
+        {
+            safe->toggleOnUserPage (result - kUserPageItem, strip);
+            return;
+        }
         if (bus >= 0)
             safe->mixer.setBusColour (bus, result - 1);
         else
             safe->mixer.setChannelColour (channel, result - 1);
+    });
+}
+
+//==============================================================================
+// User pages
+
+juce::Array<int> RKMixEditor::userPageStrips (int userPage) const
+{
+    juce::Array<int> shown;
+    for (const auto s : mixer.getUserPage (userPage))
+        shown.addIfNotAlreadyThere (s >= RKMixProcessor::kUserPageBus ? s : leaderOf (s));
+    return shown;
+}
+
+void RKMixEditor::toggleOnUserPage (int userPage, int strip)
+{
+    // A linked pair is on the userPage if either of its channels is.
+    const auto isStrip = [this, strip] (int s) { return s >= RKMixProcessor::kUserPageBus ? s == strip : leaderOf (s) == strip; };
+    auto list = mixer.getUserPage (userPage);
+    const auto before = list.size();
+    list.removeIf (isStrip);
+    if (list.size() == before)
+        list.add (strip);
+    mixer.setUserPage (userPage, list);
+}
+
+void RKMixEditor::showUserPageMenu (int userPage)
+{
+    // Inputs 1-16, inputs 17-32 and the buses in three columns; ticked = on the userPage.
+    const auto shown = userPageStrips (userPage);
+    const auto full = shown.size() >= RKMixProcessor::kUserPageStrips;
+    constexpr int kClear = 1000;
+    juce::PopupMenu menu;
+    const auto addStrip = [&] (int strip, const juce::String& text)
+    {
+        const auto on = shown.contains (strip);
+        menu.addItem (1 + strip, text, on || ! full, on);
+    };
+    for (int half = 0; half < 2; ++half)
+    {
+        if (half == 1)
+            menu.addColumnBreak();
+        menu.addSectionHeader (half == 0 ? "Inputs 1-16" : "Inputs 17-32");
+        for (int ch = half * kStripsPerLayer; ch < (half + 1) * kStripsPerLayer; ++ch)
+            if (leaderOf (ch) == ch)
+            {
+                const auto name = mixer.getChannelName (ch);
+                addStrip (ch, "Ch " + channelLabel (ch) + (name.isNotEmpty() ? "  " + name : juce::String()));
+            }
+    }
+    menu.addColumnBreak();
+    menu.addSectionHeader ("Buses");
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        const auto name = mixer.getBusName (bus);
+        addStrip (RKMixProcessor::kUserPageBus + bus, "Bus " + juce::String (bus + 1) + (name.isNotEmpty() ? "  " + name : juce::String()));
+    }
+    menu.addSeparator();
+    menu.addItem (kClear, "Clear User " + juce::String (userPage + 1), ! shown.isEmpty());
+
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (layerButtons[kUserLayer + userPage]),
+                        [safe, userPage] (int result)
+    {
+        if (safe == nullptr || result <= 0)
+            return;
+        if (result == kClear)
+        {
+            safe->mixer.setUserPage (userPage, {});
+            return;
+        }
+        safe->toggleOnUserPage (userPage, result - 1);
+        safe->setLayer (kUserLayer + userPage);
+        safe->showUserPageMenu (userPage);   // open again: tick several in a row
     });
 }
 
@@ -1196,6 +1327,12 @@ void RKMixEditor::mouseDown (const juce::MouseEvent& e)
         if (e.originalComponent == &sceneButtons[(size_t) i])
         {
             showSceneMenu (i);
+            return;
+        }
+    for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)
+        if (e.originalComponent == &layerButtons[kUserLayer + userPage])
+        {
+            showUserPageMenu (userPage);
             return;
         }
     if (mixer.isStandalone() && (e.originalComponent == talkButton.get() || e.originalComponent == &tapButton))

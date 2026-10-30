@@ -4,7 +4,7 @@
 
 #include "PluginProcessor.h"
 
-/** RKPlay's window (phase 1), readable from a few steps away:
+/** RKPlay's window, readable from a few steps away:
 
         +-------------------------------------------------------------+
         | RKPlay                                 [Show v] [Save] [As] |
@@ -28,7 +28,7 @@ public:
     ~RKPlayEditor() override;
 
     static constexpr int kWidth = 1100;
-    static constexpr int kHeight = 740;
+    static constexpr int kHeight = 860;
 
     // Files from the Finder
     bool isInterestedInFileDrag (const juce::StringArray&) override { return true; }
@@ -55,12 +55,16 @@ private:
                      fadeButton { "Fade out" }, stopButton { "Stop" };
     juce::ListBox list { "Playlist", this };
     juce::TextButton addFilesButton { "Add files..." }, addFolderButton { "Add folder..." }, clearButton { "Clear" };
-    juce::Slider crossfade, fadeOutTime;
+    juce::Slider crossfade, fadeOutTime, target;
+    juce::ToggleButton smart { "Smart crossfade" }, match { "Level match" }, safety { "Safety limiter" };
+    juce::ComboBox lift;
     std::unique_ptr<rkfx::Knob> level;
-    juce::Label note;
+    juce::Label note, status;
+    float limiterDb = 0.0f;
+    double limiterTime = 0.0;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    juce::Rectangle<int> listArea, settingsArea;
+    juce::Rectangle<int> listArea, playlistArea, loudnessArea;
     bool dropHighlight = false;
     int lastShowVersion = -1, lastNoteVersion = -1;
     double noteTime = 0.0;

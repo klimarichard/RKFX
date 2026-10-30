@@ -553,17 +553,22 @@ int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
 
-    // RKPlayTests --analyse <files...>: what RKPlay measures (a check against other meters).
-    if (argc > 2 && juce::String (argv[1]) == "--analyse")
+    // RKPlayTests --analyse <files...>: what RKPlay measures (a check against other meters);
+    // --cache <files...> also keeps it in RKPlay's analysis cache.
+    if (argc > 2 && (juce::String (argv[1]) == "--analyse" || juce::String (argv[1]) == "--cache"))
     {
+        PlayAnalysisCache cache (PlayAnalysisCache::defaultFile());
         for (int i = 2; i < argc; ++i)
             if (auto reader = readerFor (juce::File (juce::String::fromUTF8 (argv[i]))))
             {
                 const auto a = PlayAnalysis::analyse (*reader);
+                if (juce::String (argv[1]) == "--cache")
+                    cache.store (juce::File (juce::String::fromUTF8 (argv[i])), a);
                 std::printf ("%7.2f LUFS  TP %6.2f dBTP  start %5.2f  end %7.2f  fade-out %7.2f  of %7.2f  %s\n",
                              a.loudness, a.truePeakDb, a.musicStart, a.musicEnd, a.fadeOutPoint, a.lengthSeconds,
                              juce::File (juce::String::fromUTF8 (argv[i])).getFileName().toRawUTF8());
             }
+        cache.save();
         return 0;
     }
     juce::UnitTestRunner runner;

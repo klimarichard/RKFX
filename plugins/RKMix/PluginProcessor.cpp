@@ -48,6 +48,30 @@ RKMixProcessor::RKMixProcessor()
             channelParams[(size_t) ch][(size_t) f] = &settings.param (channelId (ch, kChannelFields[f]));
         channelFaders[(size_t) ch] = findParam (channelFaderId (ch));
         channelMutes[(size_t) ch] = findParam (channelMuteId (ch));
+        for (int bus = 0; bus < kBuses; ++bus)
+        {
+            channelRouting[(size_t) ch].sends[(size_t) bus] = &settings.param (channelSendId (ch, bus));
+            channelRouting[(size_t) ch].taps[(size_t) bus] = &settings.param (channelTapId (ch, bus));
+            channelRouting[(size_t) ch].assigns[(size_t) bus] = &settings.param (channelAssignId (ch, bus));
+        }
+    }
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        busFaders[(size_t) bus] = findParam (busFaderId (bus));
+        busMutes[(size_t) bus] = findParam (busMuteId (bus));
+        auto& b = busParams[(size_t) bus];
+        b.type = &settings.param (busId (bus, "type"));
+        b.format = &settings.param (busId (bus, "format"));
+        b.output = &settings.param (busId (bus, "out"));
+        b.toMain = &settings.param (busId (bus, "main"));
+        b.tap = &settings.param (busId (bus, "tap"));
+        b.panFollows = &settings.param (busId (bus, "panfollow"));
+        b.pan = &settings.param (busId (bus, "pan"));
+        for (int to = 0; to < kBuses; ++to)
+        {
+            b.routing.sends[(size_t) to] = &settings.param (busSendId (bus, to));
+            b.routing.assigns[(size_t) to] = &settings.param (busAssignId (bus, to));
+        }
     }
     for (int pair = 0; pair < kPairs; ++pair)
         linkParams[(size_t) pair] = &settings.param (linkId (pair));
@@ -90,6 +114,45 @@ void RKMixProcessor::setChannelName (int channel, const juce::String& name)
     markPresetModified();
 }
 
+juce::String RKMixProcessor::getBusName (int bus) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return busNames[(size_t) bus];
+}
+
+void RKMixProcessor::setBusName (int bus, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        busNames[(size_t) bus] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
+void RKMixProcessor::setBusColour (int bus, int colour)
+{
+    busColours[(size_t) bus] = juce::jlimit (0, kNumColours - 1, colour);
+    ++namesVersion;
+    markPresetModified();
+}
+
+juce::String RKMixProcessor::getOutputName (int output) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return outputNames[(size_t) output];
+}
+
+void RKMixProcessor::setOutputName (int output, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        outputNames[(size_t) output] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
 void RKMixProcessor::setChannelColour (int channel, int colour)
 {
     channelColours[(size_t) channel] = juce::jlimit (0, kNumColours - 1, colour);
@@ -102,17 +165,26 @@ juce::var RKMixProcessor::getExtraState() const
     auto* root = new juce::DynamicObject();
     root->setProperty ("settings", settings.toVar());
 
-    juce::Array<juce::var> names, colours;
+    juce::Array<juce::var> names, colours, buses, busColourList, outputs;
     {
         const juce::ScopedLock sl (namesLock);
         for (int ch = 0; ch < kChannels; ++ch)
         {
             names.add (channelNames[(size_t) ch]);
             colours.add (channelColours[(size_t) ch].load());
+            outputs.add (outputNames[(size_t) ch]);
+        }
+        for (int bus = 0; bus < mix::kBuses; ++bus)
+        {
+            buses.add (busNames[(size_t) bus]);
+            busColourList.add (busColours[(size_t) bus].load());
         }
     }
     root->setProperty ("names", names);
     root->setProperty ("colours", colours);
+    root->setProperty ("busNames", buses);
+    root->setProperty ("busColours", busColourList);
+    root->setProperty ("outputNames", outputs);
     return juce::var (root);
 }
 
@@ -123,15 +195,30 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     settings.fromVar (extra["settings"]);
     loadingMix = false;
 
+    const auto text = [] (const juce::var& list, int index)
+    {
+        const auto* a = list.getArray();
+        return a != nullptr && index < a->size() ? a->getReference (index).toString() : juce::String();
+    };
+    const auto colour = [] (const juce::var& list, int index)
+    {
+        const auto* a = list.getArray();
+        return juce::jlimit (0, kNumColours - 1, a != nullptr && index < a->size() ? (int) a->getReference (index) : 0);
+    };
     {
         const juce::ScopedLock sl (namesLock);
-        const auto* names = extra["names"].getArray();
         for (int ch = 0; ch < kChannels; ++ch)
-            channelNames[(size_t) ch] = names != nullptr && ch < names->size() ? names->getReference (ch).toString() : juce::String();
+        {
+            channelNames[(size_t) ch] = text (extra["names"], ch);
+            outputNames[(size_t) ch] = text (extra["outputNames"], ch);
+        }
+        for (int bus = 0; bus < mix::kBuses; ++bus)
+            busNames[(size_t) bus] = text (extra["busNames"], bus);
     }
-    const auto* colours = extra["colours"].getArray();
     for (int ch = 0; ch < kChannels; ++ch)
-        channelColours[(size_t) ch] = juce::jlimit (0, kNumColours - 1, colours != nullptr && ch < colours->size() ? (int) colours->getReference (ch) : 0);
+        channelColours[(size_t) ch] = colour (extra["colours"], ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        busColours[(size_t) bus] = colour (extra["busColours"], bus);
     ++namesVersion;
 }
 
@@ -223,6 +310,27 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
         engineSettings.channels[(size_t) ch] = channelSettings (ch);
     }
 
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+    {
+        if ((parts & MixSettings::busBit (bus)) == 0)
+            continue;
+
+        const auto& p = busParams[(size_t) bus];
+        auto& b = engineSettings.buses[(size_t) bus];
+        b.type = (mix::BusType) juce::roundToInt (valueOf (p.type));
+        b.stereo = juce::roundToInt (valueOf (p.format)) == 1;
+        b.output = juce::roundToInt (valueOf (p.output));
+        b.toMain = valueOf (p.toMain) >= 0.5f;
+        b.defaultTap = (mix::Tap) juce::roundToInt (valueOf (p.tap));
+        b.panFollows = valueOf (p.panFollows) >= 0.5f;
+        b.pan = valueOf (p.pan) * 0.01f;
+        for (int to = 0; to < mix::kBuses; ++to)
+        {
+            b.sendDb[(size_t) to] = valueOf (p.routing.sends[(size_t) to]);
+            b.assign[(size_t) to] = valueOf (p.routing.assigns[(size_t) to]) >= 0.5f;
+        }
+    }
+
     if ((parts & MixSettings::kMainBit) != 0)
     {
         for (int pair = 0; pair < mix::kPairs; ++pair)
@@ -265,6 +373,14 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
 
     c.pan = get (pan) * 0.01f;
     c.toMain = on (toMain);
+
+    const auto& routing = channelRouting[(size_t) ch];
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+    {
+        c.sendDb[(size_t) bus] = valueOf (routing.sends[(size_t) bus]);
+        c.tap[(size_t) bus] = juce::roundToInt (valueOf (routing.taps[(size_t) bus])) - 1;   // 0 = the bus's default
+        c.assign[(size_t) bus] = valueOf (routing.assigns[(size_t) bus]) >= 0.5f;
+    }
     return c;
 }
 
@@ -275,6 +391,11 @@ MixEngine::Levels RKMixProcessor::readLevels() const
     {
         levels.channelDb[(size_t) ch] = valueOf (channelFaders[(size_t) ch]);
         levels.channelMute[(size_t) ch] = valueOf (channelMutes[(size_t) ch]) >= 0.5f;
+    }
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+    {
+        levels.busDb[(size_t) bus] = valueOf (busFaders[(size_t) bus]);
+        levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f;
     }
     levels.mainDb = valueOf (mainFader);
     levels.mainMute = valueOf (mainMute) >= 0.5f;
@@ -333,6 +454,9 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         lower (gateReduction[(size_t) ch], engine.takeGateReductionDb (ch));
         lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
     }
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        for (int side = 0; side < 2; ++side)
+            raise (busPeaks[(size_t) bus][(size_t) side], engine.takeBusPeak (bus, side));
     raise (mainPeaks[0], engine.takeMainPeak (0));
     raise (mainPeaks[1], engine.takeMainPeak (1));
     raise (monoPeak, engine.takeMonoPeak());

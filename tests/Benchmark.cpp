@@ -527,7 +527,7 @@ int main (int argc, char** argv)
                   engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
               });
           } },
-        { "RKMix", "32 mono channels, every strip section on", []
+        { "RKMix", "32 channels, every strip section on, 16 stereo Aux buses, 32 sends", []
           {
               auto engine = std::make_shared<MixEngine>();
               auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
@@ -546,7 +546,10 @@ int main (int argc, char** argv)
                       band.gainDb = 3.0f;
                   strip.comp.on = true;
                   s.channels[(size_t) ch].pan = (float) (ch % 5) * 0.4f - 0.8f;
+                  s.channels[(size_t) ch].sendDb[(size_t) (ch % 16)] = -6.0f;     // 32 sends over 16 buses
               }
+              for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+                  s.buses[(size_t) bus].output = 1 + bus;
               engine->prepare (kRate, kBlock);
               engine->setSettings (s);
               engine->reset();

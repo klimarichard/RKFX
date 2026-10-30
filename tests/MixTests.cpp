@@ -451,6 +451,175 @@ public:
             expect (exact, "all off: bit-exact again");
         }
 
+        //==============================================================================
+        // Buses
+
+        const auto busLevel = [] (MixEngine& e, int output, int inputCh, float amplitude = 0.5f, int blocks = 30)
+        {
+            juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+            float loudest = 0.0f;
+            for (int b = 0; b < blocks; ++b)
+            {
+                in.clear();
+                for (int i = 0; i < kBlock; ++i)
+                    in.setSample (inputCh, i, amplitude * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * (b * kBlock + i) / kRate));
+                e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                if (b >= blocks - 5)
+                    loudest = juce::jmax (loudest, out.getMagnitude (output, 0, kBlock));
+            }
+            return loudest;
+        };
+
+        beginTest ("Aux: a pre-fader send ignores the fader, a post-fader one follows it; mute silences both");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].stereo = false;
+            s.buses[0].output = 3;                           // Out 3
+            s.buses[1] = {};
+            s.buses[1].stereo = false;
+            s.buses[1].output = 4;
+            s.buses[1].defaultTap = mix::Tap::postFader;
+            s.channels[0].sendDb[0] = 0.0f;
+            s.channels[0].sendDb[1] = 0.0f;
+            MixEngine::Levels levels;
+            levels.channelDb[0] = mix::kFaderMinDb;          // fader down
+            auto e = makeEngine (s, levels);
+            expectWithinAbsoluteError (busLevel (e, 2, 0), 0.5f, 1.0e-4f, "pre-fader: full level, unpanned into a mono bus");
+            expectEquals (busLevel (e, 3, 0), 0.0f, "post-fader: down with the fader");
+
+            levels.channelDb[0] = -6.0f;
+            e = makeEngine (s, levels);
+            expectWithinAbsoluteError (busLevel (e, 3, 0), 0.5f * std::pow (10.0f, -0.3f), 1.0e-4f);
+
+            levels.channelMute[0] = true;
+            e = makeEngine (s, levels);
+            expectEquals (busLevel (e, 2, 0) + busLevel (e, 3, 0), 0.0f, "mute applies at every tap");
+        }
+
+        beginTest ("Tap per send: the singer's in-ear before the compressor, another mix after it");
+        {
+            auto s = only ({});
+            auto& comp = s.channels[0].strip.comp;
+            comp = { true, -30.0f, 20.0f, 0.0f, 0.5f, 50.0f, 0.0f, 0 };
+            for (int bus = 0; bus < 2; ++bus)
+            {
+                s.buses[(size_t) bus] = {};
+                s.buses[(size_t) bus].stereo = false;
+                s.buses[(size_t) bus].output = bus + 1;
+                s.channels[0].sendDb[(size_t) bus] = 0.0f;
+            }
+            s.channels[0].tap[0] = (int) mix::Tap::preComp;  // bus 1 overrides; bus 2 at its default, Pre-Fader
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-3f, "Pre-Comp: uncompressed");
+            e = makeEngine (s);
+            expectLessThan (busLevel (e, 1, 0), 0.2f, "Pre-Fader: compressed");
+        }
+
+        beginTest ("Group: post-fader assigns, its fader and pan into the main; output adds to what's there");
+        {
+            auto s = only ({});
+            s.buses[3] = {};
+            s.buses[3].type = mix::BusType::group;
+            s.buses[3].output = mix::pairTarget (4);          // Out 5/6
+            s.channels[0].assign[3] = true;
+            s.links[0] = true;
+            MixEngine::Levels levels;
+            levels.channelDb[0] = -6.0f;
+            levels.busDb[3] = -6.0f;
+            auto e = makeEngine (s, levels);
+            const auto expected = 0.5f * std::pow (10.0f, -0.6f);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), expected, 1.0e-4f, "group -> main");
+            expectWithinAbsoluteError (busLevel (e, 4, 0), expected, 1.0e-4f, "group -> its own output");
+
+            s.buses[3].toMain = false;
+            e = makeEngine (s, levels);
+            expectEquals (busLevel (e, 0, 0), 0.0f, "group off the main");
+        }
+
+        beginTest ("Groups feed only later groups; FX returns to the main and feeds Aux buses");
+        {
+            MixEngine::Settings s;
+            s.buses[2].type = mix::BusType::group;
+            s.buses[5].type = mix::BusType::group;
+            expect (MixEngine::canAssign (s, 2, 5));
+            expect (! MixEngine::canAssign (s, 5, 2), "no loops: never to an earlier group");
+            s.buses[7].type = mix::BusType::fx;
+            s.buses[8].type = mix::BusType::aux;
+            expect (MixEngine::canSend (s, 7, 8), "FX -> Aux");
+            expect (! MixEngine::canSend (s, 8, 7), "Aux feeds nothing");
+            expect (! MixEngine::canSend (s, 7, 2), "FX never feeds a group");
+            expect (MixEngine::canSend (s, 2, 7) && MixEngine::canSend (s, 2, 8), "Group -> FX and Aux");
+
+            // Channel -> group 3 -> group 6 -> main; FX 8 fed post-fader, back into the main and on to Aux 9.
+            auto t = only ({});
+            t.buses[2] = {}; t.buses[2].type = mix::BusType::group; t.buses[2].toMain = false;
+            t.buses[2].assign[5] = true;
+            t.buses[5] = {}; t.buses[5].type = mix::BusType::group;
+            t.channels[0].assign[2] = true;
+            t.links[0] = true;
+            auto e = makeEngine (t);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f, "through two groups to the main");
+
+            auto f = only ({});
+            f.links[0] = true;
+            f.buses[7] = {}; f.buses[7].type = mix::BusType::fx;
+            f.buses[7].sendDb[8] = 0.0f;
+            f.buses[8] = {}; f.buses[8].output = mix::pairTarget (10);   // Out 11/12
+            f.channels[0].sendDb[7] = 0.0f;
+            e = makeEngine (f);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f, "FX return in the main");
+            e = makeEngine (f);
+            expectWithinAbsoluteError (busLevel (e, 10, 0), 0.5f, 1.0e-4f, "FX -> Aux (reverb in the in-ears)");
+        }
+
+        beginTest ("Pan law into buses: a mono channel into a stereo bus pans; pan follows can be off");
+        {
+            auto s = only ({});
+            s.buses[0] = {};
+            s.buses[0].output = mix::pairTarget (0);
+            s.channels[0].sendDb[0] = 0.0f;
+            s.channels[0].pan = -1.0f;
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f);
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 1, 0), 0.0f, "follows the channel's pan");
+
+            s.buses[0].panFollows = false;
+            e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f * std::sqrt (0.5f), 1.0e-4f, "centred, -3 dB");
+        }
+
+        beginTest ("No clicks: sends, assigns and bus faders glide");
+        {
+            auto s = only ({ 0 });
+            s.buses[0] = {}; s.buses[0].output = mix::pairTarget (0);
+            s.buses[1] = {}; s.buses[1].type = mix::BusType::group;
+            MixEngine::Levels levels;
+            auto e = makeEngine (s, levels);
+            float worstStep = 0.0f, last = 0.0f;
+            int start = 0;
+            const auto run = [&] (int blocks)
+            {
+                for (int b = 0; b < blocks; ++b, start += kBlock)
+                {
+                    const auto r = block (e, start, { 0 });
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        worstStep = juce::jmax (worstStep, std::abs (r.outSample (0, i) - last));
+                        last = r.outSample (0, i);
+                    }
+                }
+            };
+            run (2);
+            s.channels[0].sendDb[0] = 0.0f;   e.setSettings (s); run (3);
+            s.channels[0].assign[1] = true;   e.setSettings (s); run (3);
+            levels.busDb[0] = -30.0f;         e.setLevels (levels); run (3);
+            levels.busMute[1] = true;         e.setLevels (levels); run (3);
+            s.channels[0].sendDb[0] = mix::kFaderMinDb; e.setSettings (s); run (3);
+            expectLessThan (worstStep, 0.03f);
+        }
+
         beginTest ("The fader law: 0 dB at three quarters, the bottom is silence, positions invert");
         {
             expectWithinAbsoluteError (mix::faderDbAt (0.75f), 0.0f, 1.0e-6f);

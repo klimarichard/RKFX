@@ -36,6 +36,17 @@ public:
     int getChannelColour (int channel) const noexcept { return channelColours[(size_t) channel].load(); }
     void setChannelColour (int channel, int colour);
 
+    /** Bus and output names, bus colours (message thread). Saved with the mix. */
+    juce::String getBusName (int bus) const;
+    void setBusName (int bus, const juce::String&);
+    int getBusColour (int bus) const noexcept { return busColours[(size_t) bus].load(); }
+    void setBusColour (int bus, int colour);
+    juce::String getOutputName (int output) const;
+    void setOutputName (int output, const juce::String&);
+
+    mix::BusType getBusType (int bus) const { return (mix::BusType) settings.choice (mix::busId (bus, "type")); }
+    bool isBusStereo (int bus) const { return settings.choice (mix::busId (bus, "format")) == 1; }
+
     /** Bumped when names or colours change (the editor polls it). */
     int getNamesVersion() const noexcept { return namesVersion.load(); }
 
@@ -54,6 +65,7 @@ public:
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }
     float takeMainPeak (int side) noexcept       { return mainPeaks[(size_t) side].exchange (0.0f); }
     float takeMonoPeak() noexcept                { return monoPeak.exchange (0.0f); }
+    float takeBusPeak (int bus, int side) noexcept { return busPeaks[(size_t) bus][(size_t) side].exchange (0.0f); }
     /** A channel's most gate or compressor gain reduction since the last call (dB, <= 0). */
     float takeGateReduction (int channel) noexcept { return gateReduction[(size_t) channel].exchange (0.0f); }
     float takeCompReduction (int channel) noexcept { return compReduction[(size_t) channel].exchange (0.0f); }
@@ -88,6 +100,21 @@ private:
     juce::RangedAudioParameter *mainBalance = nullptr, *mainOutput = nullptr, *monoOutput = nullptr;
 
     std::array<juce::RangedAudioParameter*, kChannels> channelFaders {}, channelMutes {};
+    std::array<juce::RangedAudioParameter*, mix::kBuses> busFaders {}, busMutes {};
+
+    /** A channel's sends, taps and group assigns; a bus's settings, sends and assigns. */
+    struct RoutingParams
+    {
+        std::array<juce::RangedAudioParameter*, mix::kBuses> sends {}, taps {}, assigns {};
+    };
+    std::array<RoutingParams, kChannels> channelRouting {};
+    struct BusParams
+    {
+        juce::RangedAudioParameter *type = nullptr, *format = nullptr, *output = nullptr, *toMain = nullptr,
+                                   *tap = nullptr, *panFollows = nullptr, *pan = nullptr;
+        RoutingParams routing;
+    };
+    std::array<BusParams, mix::kBuses> busParams {};
     juce::RangedAudioParameter *mainFader = nullptr, *mainMute = nullptr, *monoFader = nullptr, *monoMute = nullptr;
 
     MixEngine engine;
@@ -101,12 +128,15 @@ private:
     MixEngine::Levels readLevels() const;
 
     mutable juce::CriticalSection namesLock;
-    std::array<juce::String, kChannels> channelNames;
+    std::array<juce::String, kChannels> channelNames, outputNames;
+    std::array<juce::String, mix::kBuses> busNames;
     std::array<std::atomic<int>, kChannels> channelColours {};
+    std::array<std::atomic<int>, mix::kBuses> busColours {};
     std::atomic<int> namesVersion { 0 };
 
     std::array<std::atomic<float>, kChannels> channelPeaks {};
     std::array<std::atomic<float>, 2> mainPeaks {};
+    std::array<std::array<std::atomic<float>, 2>, mix::kBuses> busPeaks {};
     std::atomic<float> monoPeak { 0.0f };
     std::array<std::atomic<float>, kChannels> gateReduction {}, compReduction {};
 

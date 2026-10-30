@@ -161,6 +161,43 @@ namespace MixParams
         addTarget (p, "main_out", "Main Output", pairTarget (0));
         addTarget (p, "mono_out", "Mono Output", kTargetOff);
 
+        // Phase 3: buses, and every channel's sends, taps and group assigns (appended).
+        juce::StringArray tapNames, tapKeys, sendTapNames { "Bus default" }, sendTapKeys { "default" };
+        for (int t = 0; t < kNumTaps; ++t)
+        {
+            tapNames.add (tapName ((Tap) t));
+            tapKeys.add (tapKey ((Tap) t));
+            sendTapNames.add (tapName ((Tap) t));
+            sendTapKeys.add (tapKey ((Tap) t));
+        }
+
+        for (int bus = 0; bus < kBuses; ++bus)
+        {
+            const auto name = busName (bus);
+            p.addChoice (busId (bus, "type"), name + "Type", { "Group", "Aux", "FX" }, { "group", "aux", "fx" }, (int) BusType::aux);
+            p.addChoice (busId (bus, "format"), name + "Format", { "Mono", "Stereo" }, { "mono", "stereo" }, 1);
+            addTarget   (p, busId (bus, "out"), name + "Output", kTargetOff);
+            p.addBool   (busId (bus, "main"), name + "Main", true);
+            p.addChoice (busId (bus, "tap"), name + "Default Tap", tapNames, tapKeys, (int) Tap::preFader);
+            p.addBool   (busId (bus, "panfollow"), name + "Pan Follows", true);
+            addPan      (p, busId (bus, "pan"), name + "Pan");
+            for (int to = 0; to < kBuses; ++to)
+                addFader (p, busSendId (bus, to), name + "Send " + num (to), kFaderMinDb);
+            for (int to = 0; to < kBuses; ++to)
+                p.addBool (busAssignId (bus, to), name + "To Group " + num (to), false);
+        }
+
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            const auto name = channelName (ch);
+            for (int bus = 0; bus < kBuses; ++bus)
+                addFader (p, channelSendId (ch, bus), name + "Send " + num (bus), kFaderMinDb);
+            for (int bus = 0; bus < kBuses; ++bus)
+                p.addChoice (channelTapId (ch, bus), name + "Tap " + num (bus), sendTapNames, sendTapKeys, 0);
+            for (int bus = 0; bus < kBuses; ++bus)
+                p.addBool (channelAssignId (ch, bus), name + "To Group " + num (bus), false);
+        }
+
         return p;
     }
 }

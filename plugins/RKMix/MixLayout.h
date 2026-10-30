@@ -147,6 +147,48 @@ namespace mix
     }
 
     //==============================================================================
+    // Buses and taps
+
+    enum class BusType { group = 0, aux = 1, fx = 2 };
+
+    inline juce::String busTypeName (BusType t)
+    {
+        return t == BusType::group ? "Group" : t == BusType::aux ? "Aux" : "FX";
+    }
+
+    /** Where a send takes a channel's signal, in strip order. */
+    enum class Tap { input = 0, preEq, preComp, preInserts, preFader, postFader };
+    constexpr int kNumTaps = 6;
+
+    inline juce::String tapName (Tap t)
+    {
+        switch (t)
+        {
+            case Tap::input:      return "Input";
+            case Tap::preEq:      return "Pre-EQ";
+            case Tap::preComp:    return "Pre-Comp";
+            case Tap::preInserts: return "Pre-Inserts";
+            case Tap::preFader:   return "Pre-Fader";
+            case Tap::postFader:  return "Post-Fader";
+        }
+        return {};
+    }
+
+    inline juce::String tapKey (Tap t)
+    {
+        switch (t)
+        {
+            case Tap::input:      return "input";
+            case Tap::preEq:      return "pre_eq";
+            case Tap::preComp:    return "pre_comp";
+            case Tap::preInserts: return "pre_inserts";
+            case Tap::preFader:   return "pre_fader";
+            case Tap::postFader:  return "post_fader";
+        }
+        return {};
+    }
+
+    //==============================================================================
     // Parameter IDs. Host parameters (in the processor) and mix settings (held
     // by MixSettings, saved in the mix state) never share an ID.
 
@@ -163,6 +205,14 @@ namespace mix
     inline juce::String channelId (int ch, const char* name) { return "ch" + num (ch) + "_" + name; }
     inline juce::String busId (int bus, const char* name)    { return "bus" + num (bus) + "_" + name; }
     inline juce::String linkId (int pair)                    { return "link" + num (pair); }
+
+    // A channel's send level, tap and group assign for bus b; a bus's send and
+    // group assign to bus c.
+    inline juce::String channelSendId (int ch, int bus)   { return channelId (ch, ("send" + num (bus)).toRawUTF8()); }
+    inline juce::String channelTapId (int ch, int bus)    { return channelId (ch, ("tap" + num (bus)).toRawUTF8()); }
+    inline juce::String channelAssignId (int ch, int bus) { return channelId (ch, ("grp" + num (bus)).toRawUTF8()); }
+    inline juce::String busSendId (int bus, int to)       { return busId (bus, ("send" + num (to)).toRawUTF8()); }
+    inline juce::String busAssignId (int bus, int to)     { return busId (bus, ("grp" + num (to)).toRawUTF8()); }
 
     /** The channel whose controls channel @p ch uses: the left of a linked pair. */
     template <typename Links>

@@ -67,7 +67,8 @@ struct PlayPad
     bool stopsMusic = false;         // the music fades out when it starts
     int colour = 0;
 
-    bool isEmpty() const noexcept { return file == juce::File(); }
+    bool isEmpty() const noexcept { return file == juce::File(); }   // no sound (a factory show's pads are named, with no sound)
+    bool isNamed() const noexcept { return ! isEmpty() || name.isNotEmpty(); }
 };
 
 /** What RKPlay holds: up to 8 playlists, the transport's times, the loudness

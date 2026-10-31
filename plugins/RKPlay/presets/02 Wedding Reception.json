@@ -1,0 +1,99 @@
+{
+  "plugin": "RKPlay",
+  "version": 1,
+  "name": "Wedding Reception",
+  "params": {},
+  "extra": {
+    "playlists": [
+      {
+        "name": "Arrival",
+        "order": "shuffle",
+        "atEnd": "repeat",
+        "goTo": 1,
+        "stopAfterEach": false,
+        "crossfade": 6.0,
+        "gain": 0.0,
+        "link": "none",
+        "songs": []
+      },
+      {
+        "name": "Dinner",
+        "order": "shuffle",
+        "atEnd": "repeat",
+        "goTo": 1,
+        "stopAfterEach": false,
+        "crossfade": 8.0,
+        "gain": -4.0,
+        "link": "none",
+        "songs": []
+      },
+      {
+        "name": "First Dance",
+        "order": "inOrder",
+        "atEnd": "stop",
+        "goTo": 1,
+        "stopAfterEach": true,
+        "crossfade": 0.0,
+        "gain": 0.0,
+        "link": "none",
+        "songs": []
+      },
+      {
+        "name": "Party",
+        "order": "shuffle",
+        "atEnd": "repeat",
+        "goTo": 1,
+        "stopAfterEach": false,
+        "crossfade": 3.0,
+        "gain": 0.0,
+        "link": "none",
+        "songs": []
+      }
+    ],
+    "active": 1,
+    "fadeOut": 5.0,
+    "pauseFade": 1.0,
+    "smartCrossfade": true,
+    "levelMatch": true,
+    "target": -18.0,
+    "peakCeiling": -0.5,
+    "lift": 3.0,
+    "safetyLimiter": true,
+    "endAtOn": false,
+    "endAt": "23:00",
+    "endAtSongEnd": false,
+    "duck": {
+      "auto": true,
+      "depth": -12.0,
+      "threshold": -35.0,
+      "attack": 0.2,
+      "hold": 1.0,
+      "release": 1.5
+    },
+    "cueLevel": 0.0,
+    "pads": [
+      {
+        "name": "Entrance",
+        "level": 0.0,
+        "loop": false,
+        "ducks": false,
+        "stops": true,
+        "colour": 3
+      },
+      {
+        "name": "Fanfare",
+        "level": 0.0,
+        "loop": false,
+        "ducks": true,
+        "stops": false,
+        "colour": 1
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}

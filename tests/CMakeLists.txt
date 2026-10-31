@@ -207,7 +207,8 @@ add_test(NAME RKBoardTests COMMAND RKBoardTests)
 juce_add_console_app(RKPlayTests PRODUCT_NAME "RKPlayTests")
 target_sources(RKPlayTests PRIVATE PlayTests.cpp ${RKPLAY_SOURCES})
 target_include_directories(RKPlayTests PRIVATE ${RKPLAY_INCLUDE_DIRS})
-target_compile_definitions(RKPlayTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+target_compile_definitions(RKPlayTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(RKPlayTests
     PRIVATE
         rkplay_factory_presets

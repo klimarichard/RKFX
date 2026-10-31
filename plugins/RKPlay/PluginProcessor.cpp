@@ -1431,8 +1431,9 @@ bool RKPlayProcessor::loadPad (int pad, const juce::File& file)
     if (pad < 0 || pad >= PlayEngine::kPads)
         return false;
     PlayPad options = show.pads[(size_t) pad];
+    if (options.name.isEmpty() || ! options.isEmpty())   // a named, empty pad keeps its name
+        options.name = file.getFileNameWithoutExtension();
     options.file = file;
-    options.name = file.getFileNameWithoutExtension();
     options.colour = options.colour == 0 ? (pad % 7) + 1 : options.colour;
     juce::String problem;
     auto sound = renderPad (options, problem);

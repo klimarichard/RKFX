@@ -1122,6 +1122,47 @@ public:
             r.setStandaloneForTesting (folder);
             expect (! r.getRig()->recover(), "nothing to recover after a normal quit");
         }
+
+        beginTest ("Factory shows all load cleanly, with what their manual promises");
+        {
+            TestPlayer p;
+            const auto dir = juce::File (RKFX_SOURCE_DIR).getChildFile ("plugins/RKPlay/presets");
+            expectEquals ((int) p.getFactoryPresets().size(), dir.findChildFiles (juce::File::findFiles, false, "*.json").size());
+            expectEquals ((int) p.getFactoryPresets().size(), 4);
+            for (int i = 0; i < (int) p.getFactoryPresets().size(); ++i)
+            {
+                const auto& preset = p.getFactoryPresets()[(size_t) i];
+                const auto r = p.loadFactoryPreset (i);
+                expect (r.ok && r.message.isEmpty(), preset.name + ": " + r.message);
+                expect (! p.isPresetModified(), preset.name + " unmodified");
+                const auto& show = p.getShow();
+                expectEquals (show.level.targetLufs, -18.0, preset.name);
+                expectEquals (show.level.peakCeilingDb, -0.5);
+                expect (show.numProblems() == 0 && p.getNote().isEmpty(), preset.name + ": " + p.getNote());
+                if (preset.name == "Wedding Reception")
+                {
+                    expectEquals ((int) show.playlists.size(), 4);
+                    expectEquals (show.playlists[1].name, juce::String ("Dinner"));
+                    expectEquals (show.playlists[1].gainDb, -4.0);
+                    expect (show.playlists[2].stopAfterEach && show.playlists[3].order == PlayPlaylist::Order::shuffle);
+                    expect (show.duck.automatic);
+                    expect (show.pads[0].isEmpty() && show.pads[0].name == "Entrance" && show.pads[0].stopsMusic);
+                    expect (show.pads[1].name == "Fanfare" && show.pads[1].ducksMusic);
+                }
+                if (preset.name == "Ceremony")
+                    expect (show.playlists[0].stopAfterEach && show.playlists[0].crossfadeSeconds == 0.0 && show.fadeOutSeconds == 3.0);
+            }
+
+            // A named, empty pad keeps its name when a sound is loaded; a sound replaced takes the new name.
+            for (int i = 0; i < (int) p.getFactoryPresets().size(); ++i)
+                if (p.getFactoryPresets()[(size_t) i].name == "Wedding Reception")
+                    p.loadFactoryPreset (i);
+            const auto padFile = songsIn ("factory-pad", 1, 2.0)[0];
+            expect (p.loadPad (1, padFile));
+            expectEquals (p.getShow().pads[1].name, juce::String ("Fanfare"));
+            expect (p.loadPad (1, padFile));
+            expectEquals (p.getShow().pads[1].name, padFile.getFileNameWithoutExtension());
+        }
     }
 };
 

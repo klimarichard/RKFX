@@ -298,10 +298,11 @@ juce::var PlayShow::toVar() const
     for (const auto& pad : pads)
     {
         auto* o = new juce::DynamicObject();
-        if (! pad.isEmpty())
+        if (pad.isNamed())
         {
-            o->setProperty ("file", pad.file.getFullPathName());
-            if (musicFolder.isDirectory() && pad.file.isAChildOf (musicFolder))
+            if (! pad.isEmpty())
+                o->setProperty ("file", pad.file.getFullPathName());
+            if (! pad.isEmpty() && musicFolder.isDirectory() && pad.file.isAChildOf (musicFolder))
                 o->setProperty ("rel", pad.file.getRelativePathFrom (musicFolder));
             o->setProperty ("name", pad.name);
             o->setProperty ("level", pad.levelDb);
@@ -352,10 +353,11 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
             if (const auto rel = item["rel"].toString(); rel.isNotEmpty() && musicFolder != juce::File())
                 if (const auto inFolder = musicFolder.getChildFile (rel); inFolder.existsAsFile() || ! file.existsAsFile())
                     file = inFolder;
-            if (! juce::File::isAbsolutePath (item["file"].toString()))
-                continue;
-            pad.file = file;
             pad.name = item["name"].toString();
+            if (juce::File::isAbsolutePath (item["file"].toString()))
+                pad.file = file;
+            else if (pad.name.isEmpty())
+                continue;
             pad.levelDb = juce::jlimit (-24.0, 12.0, (double) item.getProperty ("level", 0.0));
             pad.loop = item.getProperty ("loop", false);
             pad.ducksMusic = item.getProperty ("ducks", true);

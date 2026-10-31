@@ -840,7 +840,7 @@ void RKPlayEditor::PadButton::paint (juce::Graphics& g)
     g.setColour (pad.isEmpty() ? rkfx::Palette::textDim : rkfx::Palette::text);
     g.setFont (rkfx::Fonts::bold (13.0f));
     auto text = getLocalBounds().reduced (6, 4);
-    g.drawFittedText (pad.isEmpty() ? "Pad " + juce::String (index + 1) : pad.name, text.removeFromTop (34), juce::Justification::centred, 2, 0.8f);
+    g.drawFittedText (pad.name.isEmpty() ? "Pad " + juce::String (index + 1) : pad.name, text.removeFromTop (34), juce::Justification::centred, 2, 0.8f);
     g.setFont (rkfx::Fonts::regular (11.0f));
     g.setColour (rkfx::Palette::textDim.brighter (pad.isEmpty() ? 0.0f : 0.4f));
     juce::StringArray marks;
@@ -871,18 +871,18 @@ void RKPlayEditor::showPadMenu (int index)
     const auto& pad = player.getShow().pads[(size_t) index];
     juce::PopupMenu menu;
     menu.addItem (1, "Load a file...");
-    menu.addItem (2, "Rename...", ! pad.isEmpty());
+    menu.addItem (2, "Rename...");
     juce::PopupMenu levels;
     for (int db = 6; db >= -18; db -= 3)
         levels.addItem (100 + db + 18, (db > 0 ? "+" : "") + juce::String (db) + " dB", true, std::abs (pad.levelDb - db) < 0.01);
-    menu.addSubMenu ("Level", levels, ! pad.isEmpty());
-    menu.addItem (3, "Loop", ! pad.isEmpty(), pad.loop);
-    menu.addItem (4, "Duck the music while it plays", ! pad.isEmpty(), pad.ducksMusic);
-    menu.addItem (5, "Fade out the music when it starts", ! pad.isEmpty(), pad.stopsMusic);
+    menu.addSubMenu ("Level", levels);
+    menu.addItem (3, "Loop", true, pad.loop);
+    menu.addItem (4, "Duck the music while it plays", true, pad.ducksMusic);
+    menu.addItem (5, "Fade out the music when it starts", true, pad.stopsMusic);
     juce::PopupMenu colours;
     for (int c = 0; c < 8; ++c)
         colours.addColouredItem (200 + c, kPadColourNames[c], kPadColours[c], true, pad.colour == c);
-    menu.addSubMenu ("Colour", colours, ! pad.isEmpty());
+    menu.addSubMenu ("Colour", colours);
     menu.addSeparator();
     if (auto* rig = player.getRig())
     {
@@ -891,7 +891,7 @@ void RKPlayEditor::showPadMenu (int index)
         menu.addItem (8, "Forget its MIDI" + (mapped.isNotEmpty() ? " (" + mapped + ")" : juce::String()), mapped.isNotEmpty());
         menu.addSeparator();
     }
-    menu.addItem (6, "Clear", ! pad.isEmpty());
+    menu.addItem (6, "Clear", pad.isNamed());
 
     juce::Component::SafePointer<RKPlayEditor> safe (this);
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe, index] (int result)

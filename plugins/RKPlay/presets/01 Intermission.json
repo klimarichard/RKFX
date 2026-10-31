@@ -1,0 +1,52 @@
+{
+  "plugin": "RKPlay",
+  "version": 1,
+  "name": "Intermission",
+  "params": {},
+  "extra": {
+    "playlists": [
+      {
+        "name": "Intermission",
+        "order": "inOrder",
+        "atEnd": "repeat",
+        "goTo": 1,
+        "stopAfterEach": false,
+        "crossfade": 6.0,
+        "gain": 0.0,
+        "link": "none",
+        "songs": []
+      }
+    ],
+    "active": 1,
+    "fadeOut": 8.0,
+    "pauseFade": 1.0,
+    "smartCrossfade": true,
+    "levelMatch": true,
+    "target": -18.0,
+    "peakCeiling": -0.5,
+    "lift": 3.0,
+    "safetyLimiter": true,
+    "endAtOn": false,
+    "endAt": "23:00",
+    "endAtSongEnd": false,
+    "duck": {
+      "auto": false,
+      "depth": -12.0,
+      "threshold": -35.0,
+      "attack": 0.2,
+      "hold": 1.0,
+      "release": 1.5
+    },
+    "cueLevel": 0.0,
+    "pads": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}

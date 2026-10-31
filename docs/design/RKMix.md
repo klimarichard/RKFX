@@ -86,7 +86,7 @@ Every section has an **On** switch. An off section is skipped entirely (bit-exac
 
 - **Pan law:** a mono channel panned centre into a stereo bus is **−3 dB per side** (constant power). A stereo channel's Balance turns one side down and leaves the other at unity.
 - **Into a mono bus,** a mono channel goes as it is and a stereo channel as (L + R) / 2.
-- **Stereo sends** to a stereo Aux follow the channel's pan (**Pan follows**, a switch per Aux bus, default on, so an in-ear mix keeps the stage picture).
+- **Stereo sends** to a stereo Aux are placed by the bus's **Pan** mode: **Own** (each send's own pan, `chN_spanB`: every in-ear mix its own stage picture), **Follow** (the channel's pan, the default) or **Mirror** (the channel's pan, left and right swapped). See "As built: Own send pans".
 - **Sends at −∞ are skipped** (no multiply-add).
 
 ### Send tap points
@@ -103,7 +103,7 @@ Every send to an **Aux bus** taps the channel at its own point. The bus sets the
 | Post-Fader | Fader, Pan | — |
 
 - **Mute applies at every tap:** a muted channel is silent in every send, whatever its tap point.
-- **Pan follows** (stereo Aux) applies the channel's pan at every tap, not only post-fader.
+- **The pan mode** (stereo Aux) applies at every tap, not only post-fader.
 - **The bus's default** (Pre-Fader or Post-Fader in the bus settings, or any tap) is used by every send left at *Bus default*. A send with its own tap shows a small tap label next to its knob, so overrides are visible.
 - **FX sends** stay Post-Fader (no tap choice); Group assigns are always post-fader.
 - **Cost:** the strip keeps a copy of the signal only at the tap points some send actually uses (a copy per used tap per block). A strip whose sends all use one tap costs what it did before.
@@ -122,7 +122,7 @@ Each of the 16 buses has:
 | Output | Off, Out *n*, or Out *n*/*n+1* (stereo) | Off |
 | Main | off, on (Group and FX only) | Group off, FX on |
 | Default tap (Aux only) | any send tap point (see Send tap points) | Pre-Fader |
-| Pan follows (stereo Aux only) | off, on | on |
+| Pan (stereo Aux only) | Own, Follow, Mirror | Follow |
 
 and like a channel: **4 insert slots**, Mute, Fader, Pan/Balance (into the main), and sends to Aux and FX buses (Group and FX buses). A Group bus also has assign switches to **higher-numbered** Groups.
 
@@ -252,6 +252,13 @@ RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked 
 - **Recall safe** per channel and bus is on the Scenes page; it covers the strip's own values, faders, sends and inserts.
 - **The scene bar** is the bottom row (click: recall, right-click: copy); **right-click any control** (the console's or an insert's) for Assign to / Remove / Scene controlled; the **Assign page** lists the 32 with min, max (percent of the control's travel), Inv and remove. Removing an insert removes its assignments and scene knobs.
 - **Tests:** a scene's fader, pan, insert on/off and a scene-controlled insert knob recall; a link (structure) stays; a recall-safe channel keeps its fader; edits stay in their scene; the session keeps scenes and the current one; the Scene parameter recalls. An Assign moves a fader (range, invert), a pan, a mute (on at 50%), an insert knob; the fader moves its Assign; kept in the session; gone with its insert.
+
+### As built: Own send pans and recall scope (feat/rkmix-sendpan, 2026-10-31)
+
+- **Own send pans:** a pan setting per channel × bus (`chN_spanB`, appended, -100..100), smoothed per send in the engine and read only when the bus is a stereo Aux in Own mode (otherwise it snaps to its target, so a later switch to Own doesn't glide from a stale value). A mono channel pans with the constant-power law, a pair balances, exactly as the channel's own pan. **Own replaced Centre** (choice index 0, key `own`): Own with every send pan at centre is Centre, and `MixSettings::fromVar` reads a saved `"centre"` as `"own"`, so old mixes sound the same. Bus-to-Aux sends (Group and FX returns) still use the sending bus's pan.
+- **UI:** a pan slider under each send to an Own bus on the Sends page; with Sends on fader for an Own bus, the strips' pan sliders show the send pans (tinted the bus's colour).
+- **Recall scope, per scene** (`MixScenes::Scope`): category bits (faders & mutes, pans, channel processing, bus & main processing, inserts, group & main assigns) and a bit per bus for the sends to it (levels and send pans, from channels and buses). Every scene value is classified once by ID (`classify`, tested for every ID); a recall applies only what is in scope, and recall safe still wins. Scenes always **store** everything. Scopes live beside the scenes (storing a scene keeps its scope), are copied with a scene, saved per scene as a key list (`"scope": ["faders", "sends3"]`, absent = everything). The Scenes page edits the scope of any scene (following the active one); scene buttons with a partial scope get a dot and a tooltip.
+- **Tests:** Own at centre equals the old Centre; a send pan hard right; Follow ignores it; per bus; a pair's balance; no clicks; kept in the session; "centre" loads as Own. Every scene value is outside an empty scope and inside the full one; IDs land in their categories; a sends-to-bus-1 scene changes only those sends (and pans) while faders, other sends, pans and inserts stay; scope kept in the session, kept when a scene is first stored, copied with the scene.
 
 ### As built: the standalone app (feat/rkmix-standalone, 2026-10-30)
 

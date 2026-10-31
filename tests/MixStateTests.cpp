@@ -325,6 +325,8 @@ public:
                     expectEquals (p.getSettings().choice (mix::busId (2, "out")), mix::pairTarget (2), "IEM Vocals on Out 3/4");
                     expect (p.getRack().get ({ InsertRack::Strip::bus, 1, 0 }) != nullptr, "a reverb on the FX bus");
                     expectEquals (p.getUserPage (0).size(), 6);
+                    expectEquals (p.getSettings().choice (mix::busId (2, "panmode")), (int) mix::PanMode::own, "IEM Vocals: own pans");
+                    expectWithinAbsoluteError (p.getSettings().value (mix::channelSendPanId (2, 2)), -40.0f, 0.01f, "guitar left");
                 }
                 if (preset.name == "Recording Feed")
                     expectEquals (p.getSettings().choice (mix::channelId (15, "direct_out")), 32);

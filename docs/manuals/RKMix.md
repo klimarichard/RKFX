@@ -58,13 +58,13 @@ Each channel has **2 insert slots** (after the compressor), each bus and the mai
 
 The **Sends** page shows where the selected channel goes:
 
-- **Aux and FX buses:** a **Send** knob each. An Aux send also has a **tap**, the point where it takes the channel: **Default** (the bus's own setting, marked with a dot), **Input**, **Pre-EQ**, **Pre-Comp**, **Pre-Ins**, **Pre-Fader** or **Post-Fader**. For example, the singer's in-ear can take the vocal Pre-Comp while the other mixes take it after the compressor. FX sends are always after the fader.
+- **Aux and FX buses:** a **Send** knob each. Under the send to a stereo Aux bus whose **Pan** is **Own**, a **pan** slider places the channel in that mix (a balance for a stereo pair; double-click for centre). An Aux send also has a **tap**, the point where it takes the channel: **Default** (the bus's own setting, marked with a dot), **Input**, **Pre-EQ**, **Pre-Comp**, **Pre-Ins**, **Pre-Fader** or **Post-Fader**. For example, the singer's in-ear can take the vocal Pre-Comp while the other mixes take it after the compressor. FX sends are always after the fader.
 - **Group buses:** an **Assign** switch each (after the fader and pan).
 - **Direct out** (the page's header): the channel straight to an output as well, for a multitrack recorder or a broadcast feed, at a tap: **Input** (as it comes in, after the trim), **Pre-EQ** (after the gate), **Pre-Comp** (after the EQ), **Pre-Inserts** (after the compressor), **Pre-Fader** (after the inserts) or **Post-Fader**. A direct out is never panned. Before Post-Fader it ignores mute and solo, so a recording keeps going when you mute the channel in the room; Post-Fader follows the fader and mute.
 
 A muted channel is silent in every send.
 
-**Sends on fader:** on an Aux or FX bus's page, **Sends on fader** turns every channel fader into that channel's send to the bus, the way monitor mixes are set on a digital console. **Back to faders** (in the master section) returns.
+**Sends on fader:** on an Aux or FX bus's page, **Sends on fader** turns every channel fader into that channel's send to the bus, the way monitor mixes are set on a digital console. If the bus's **Pan** is **Own**, the strips' pans turn the bus's colour and set each channel's pan in that mix instead. **Back to faders** (in the master section) returns.
 
 ## Buses
 
@@ -78,7 +78,7 @@ Click the **Buses** page, then a bus strip's name, for the **Bus** page:
 | **Main** (Group and FX) | on, off | on |
 | **Pan into the main** (Group and FX) | L100 to R100 | centre |
 | **Default tap** (Aux) | Input to Post-Fader | Pre-Fader |
-| **Pan** (stereo Aux) | **Centre**, **Follow** (the channels' pans), **Mirror** (left and right swapped: the band's view of the stage) | Follow |
+| **Pan** (stereo Aux) | **Own** (each send's own pan: every in-ear mix gets its own stage picture), **Follow** (the channels' pans), **Mirror** (left and right swapped: the band's view of the stage) | Follow |
 | **Solo safe** | Auto (on for FX buses), On, Off | Auto |
 
 - **Group:** collects the channels assigned to it, after their faders, for one fader and shared processing ("Drums", "Backing vocals"). A group can feed later groups (by number) and send to Aux and FX buses.
@@ -141,6 +141,8 @@ The scene bar (bottom row) holds **16 scenes**. Click a number to recall it; rig
 - A scene never changes the **structure**: links, bus types and formats, outputs, taps, which effect sits in which slot, names, user pages, talkback and oscillator setup.
 - **Glide** (Scenes page, 0 to 5 s, default 100 ms): faders and knobs glide to the new scene; switches change at once.
 - **Recall safe** (Scenes page) per channel and bus: scenes leave it alone (a talkback mic, a channel you are sound-checking).
+- **Recall scope** (Scenes page, for each scene): what recalling that scene changes. Switch on any of **Faders & mutes**, **Pans**, **Channel processing** (trim, polarity, delay, high-pass, gate, EQ, compressor), **Bus & main processing** (their EQ, compressor, limiter), **Inserts** (on or off, and the scene-controlled knobs), **Group & main assigns**, and the **Sends to** each bus (**B1** to **B16**: the send levels to that bus, and their pans in an Own bus). **Everything** is the default. For example, scenes that only change the singer's in-ear between songs: switch everything off except **Sends to** the singer's bus. A scene still stores everything, so widening its scope later loses nothing. Pick the scene in the list (it follows the active scene), or right-click a scene button and choose **Recall scope...**. **Copy to all scenes** gives every scene the same scope; copying a scene copies its scope too. A scene that recalls only part of the mix has a dot under its button, and its tooltip says what it recalls.
+- Recall safe wins over the scope: a recall-safe channel or bus is never changed.
 
 ## Assignable controls
 
@@ -160,7 +162,7 @@ These mixes are built in as **factory presets**: open the preset menu and choose
 | Factory mix | What it sets up |
 | --- | --- |
 | **Duo** | Vocal 1 and 2 (high-pass 100 Hz, compressor -18 dB 3:1), Guitar (high-pass 80 Hz), Keys on 5/6 as a stereo pair; an FX bus "Reverb" (RKVerb at 100%) with sends from all four; the main limiter on |
-| **Band with In-Ears** | Lead and backing vocals, guitar, bass, keys (5/6), kick, snare, overheads (9/10); a "Drums" group, a "Reverb" FX bus, and four stereo in-ear mixes (IEM Vocals, Guitar, Bass, Keys) on Out 3/4 to 9/10, each with its player up front and a little reverb; User 1 holds the vocals and the in-ear buses |
+| **Band with In-Ears** | Lead and backing vocals, guitar, bass, keys (5/6), kick, snare, overheads (9/10); a "Drums" group, a "Reverb" FX bus, and four stereo in-ear mixes (IEM Vocals, Guitar, Bass, Keys) on Out 3/4 to 9/10, each with its player up front and a little reverb (IEM Vocals has its own pans: guitar left, keys and backing vocal right); User 1 holds the vocals and the in-ear buses |
 | **Recording Feed** | Inputs 1-16 straight to Out 17-32 (direct outs at Input) for a multitrack recorder, alongside the main on Out 1/2 |
 | **Mono Fill** | The mono sum on Out 3 for a front fill or a centre speaker (high-pass 80 Hz, limiter), the main with a 30 Hz high-pass and limiter |
 

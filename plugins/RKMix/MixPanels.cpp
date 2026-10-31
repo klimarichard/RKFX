@@ -428,6 +428,13 @@ RKMixEditor::SendsPanel::SendsPanel (RKMixEditor& o, int ch) : Panel (o), channe
         auto& c = columns[(size_t) bus];
         c.assign = make<rkfx::ToggleSwitch> (s.param (channelAssignId (ch, bus)), o.accent(), "Assign");
         c.send = make<rkfx::Knob> (s.param (channelSendId (ch, bus)), "Send");
+        c.pan = make<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+        auto& panParam = s.param (channelSendPanId (ch, bus));
+        c.panAttachment = std::make_unique<juce::SliderParameterAttachment> (panParam, *c.pan);
+        c.pan->setDoubleClickReturnValue (true, 0.0);
+        c.pan->setPopupDisplayEnabled (true, true, nullptr);
+        c.pan->setTooltip ("This send's pan in the bus (the bus's Pan is Own; double-click: centre)");
+        rkfx::tagParameter (*c.pan, panParam.getParameterID());
         c.tap = make<MixGui::OptionList> (s.param (channelTapId (ch, bus)),
                                           juce::StringArray { "Default", "Input", "Pre-EQ", "Pre-Comp", "Pre-Ins", "Pre-Fader", "Post-Fader" },
                                           o.accent());
@@ -450,6 +457,8 @@ void RKMixEditor::SendsPanel::refresh()
         auto& c = columns[(size_t) bus];
         c.assign->setVisible (type == BusType::group);
         c.send->setVisible (type != BusType::group);
+        c.pan->setVisible (owner.hasOwnPans (bus));
+        c.pan->setColour (juce::Slider::trackColourId, MixGui::stripColour (owner.mixer.getBusColour (bus)));
         c.tap->setVisible (type == BusType::aux);
         c.tap->setMarked (1 + owner.mixer.getSettings().choice (busId (bus, "tap")));
     }
@@ -478,7 +487,8 @@ void RKMixEditor::SendsPanel::resized()
         auto a = c.area.withTrimmedTop (48).reduced (2, 0);
         c.send->setBounds (a.removeFromTop (kKnobH));
         c.assign->setBounds (c.send->getBounds().withSizeKeepingCentre (a.getWidth(), kSwitchH));
-        a.removeFromTop (8);
+        c.pan->setBounds (a.removeFromTop (22));
+        a.removeFromTop (6);
         c.tap->setBounds (a.removeFromTop (7 * 22));
     }
 }
@@ -704,7 +714,7 @@ RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
     toMain = make<rkfx::ToggleSwitch> (param ("main"), accent, "Main");
     defaultTap = make<ChoiceBox> (param ("tap"), [] (int v) { return tapName ((Tap) v); });
     defaultTap->setTooltip ("Where this bus's sends take the channels, unless a send says otherwise");
-    panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Centre", "Follow", "Mirror" }, "Pan");
+    panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Own", "Follow", "Mirror" }, "Pan");
     soloSafe = make<rkfx::SegmentedSwitch> (param ("solosafe"), accent, juce::StringArray { "Auto", "On", "Off" });
 
     auto& panParam = param ("pan");

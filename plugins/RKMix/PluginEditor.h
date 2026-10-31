@@ -123,12 +123,15 @@ private:
         void setReduction (float gateDb, float compDb);
         /** Sends on fader: show the send to @p bus instead of the fader (-1: the fader). */
         void showSendTo (int bus);
+        /** The pan shows the send's own pan while the faders show sends to an Own-mode bus. */
+        void bindPan();
 
         RKMixEditor& owner;
         const int channel, bus;              // one of them is -1
         juce::Label name;
         juce::Slider pan;
         std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
+        juce::String panId;                  // the parameter the pan shows
         std::unique_ptr<rkfx::ToggleSwitch> mute;
         std::unique_ptr<SoloButton> solo;
         std::unique_ptr<MixGui::Fader> fader;
@@ -236,6 +239,8 @@ private:
         {
             rkfx::ToggleSwitch* assign = nullptr;
             rkfx::Knob* send = nullptr;
+            juce::Slider* pan = nullptr;     // the send's own pan (an Own-mode Aux)
+            std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
             MixGui::OptionList* tap = nullptr;
             juce::Rectangle<int> area;
         };
@@ -440,6 +445,8 @@ private:
 
     bool isLinked (int pair) const;
     bool isStereo (int channel) const { return channel % 2 == 0 && isLinked (channel / 2); }
+    /** A stereo Aux bus whose channels sit by their own send pans. */
+    bool hasOwnPans (int bus) const;
     int leaderOf (int channel) const { return channel % 2 == 1 && isLinked (channel / 2) ? channel - 1 : channel; }
     juce::String channelLabel (int channel) const;      // "1", or "1/2" for a linked pair
     juce::String displayName (int channel) const;       // the name, or "Ch 1"

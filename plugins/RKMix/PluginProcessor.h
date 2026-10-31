@@ -205,7 +205,7 @@ private:
     /** A channel's sends, taps and group assigns; a bus's settings, sends and assigns. */
     struct RoutingParams
     {
-        std::array<juce::RangedAudioParameter*, mix::kBuses> sends {}, taps {}, assigns {};
+        std::array<juce::RangedAudioParameter*, mix::kBuses> sends {}, taps {}, assigns {}, sendPans {};
     };
     std::array<RoutingParams, kChannels> channelRouting {};
     struct BusParams

@@ -9,8 +9,6 @@ using namespace mix;
 RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     : owner (o), channel (ch), bus (b), meter (o.accent())
 {
-    auto& s = o.mixer.getSettings();
-
     styleName (name);
     name.onTextChange = [this]
     {
@@ -22,15 +20,10 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     name.addMouseListener (this, false);
     addAndMakeVisible (name);
 
-    auto& panParam = isBus() ? s.param (busId (bus, "pan")) : s.param (channelId (ch, "pan"));
     pan.setSliderStyle (juce::Slider::LinearHorizontal);
     pan.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    pan.setColour (juce::Slider::trackColourId, o.accent().withAlpha (0.5f));
-    panAttachment = std::make_unique<juce::SliderParameterAttachment> (panParam, pan);
     pan.setDoubleClickReturnValue (true, 0.0);
     pan.setPopupDisplayEnabled (true, true, nullptr);
-    pan.setTooltip ("Pan (double-click: centre)");
-    rkfx::tagParameter (pan, panParam.getParameterID());
     addAndMakeVisible (pan);
 
     mute = std::make_unique<rkfx::ToggleSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
@@ -78,7 +71,28 @@ void RKMixEditor::Strip::showSendTo (int b)
     if (sendBus >= 0)
         fader->setCapColour (MixGui::stripColour (owner.mixer.getBusColour (sendBus)));
     addAndMakeVisible (*fader);
+    bindPan();
     resized();
+}
+
+void RKMixEditor::Strip::bindPan()
+{
+    const auto sendPan = ! isBus() && sendBus >= 0 && owner.hasOwnPans (sendBus);
+    const auto id = isBus() ? busId (bus, "pan") : sendPan ? channelSendPanId (channel, sendBus) : channelId (channel, "pan");
+    if (id != panId)
+    {
+        panId = id;
+        panAttachment.reset();
+        panAttachment = std::make_unique<juce::SliderParameterAttachment> (owner.mixer.getSettings().param (id), pan);
+        rkfx::tagParameter (pan, id);
+    }
+
+    // Tinted with the bus's colour while it shows a send's pan.
+    pan.setColour (juce::Slider::trackColourId, sendPan ? MixGui::stripColour (owner.mixer.getBusColour (sendBus))
+                                                        : owner.accent().withAlpha (0.5f));
+    pan.setTooltip (sendPan ? "Pan in " + owner.busDisplayName (sendBus) + " (double-click: centre)"
+                            : juce::String ("Pan (double-click: centre)"));
+    pan.repaint();
 }
 
 void RKMixEditor::Strip::refresh()
@@ -101,6 +115,7 @@ void RKMixEditor::Strip::refresh()
     }
     else
     {
+        bindPan();   // a bus's pan mode may have changed
         sectionsOn = { s.flag (channelId (channel, "hpf_on")), s.flag (channelId (channel, "gate_on")),
                        s.flag (channelId (channel, "eq_on")), s.flag (channelId (channel, "comp_on")) };
     }
@@ -389,6 +404,12 @@ RKMixEditor::~RKMixEditor()
 
 //==============================================================================
 bool RKMixEditor::isLinked (int pair) const { return mixer.isLinked (pair); }
+
+bool RKMixEditor::hasOwnPans (int bus) const
+{
+    return mixer.getBusType (bus) == BusType::aux && mixer.isBusStereo (bus)
+        && mixer.getSettings().choice (busId (bus, "panmode")) == (int) PanMode::own;
+}
 
 double RKMixEditor::sampleRateForDisplay() const
 {

@@ -381,6 +381,29 @@ public:
             expectEquals (c.getSettings().choice (mix::busId (0, "panmode")), (int) mix::PanMode::mirror);
         }
 
+        beginTest ("Own send pans: kept in the session; a mix saved with Centre opens as Own");
+        {
+            RKMixProcessor a;
+            auto& s = a.getSettings();
+            setParam (s.param (mix::busId (3, "panmode")), (float) mix::PanMode::own);
+            setParam (s.param (mix::channelSendPanId (5, 3)), -40.0f);
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor b;
+            b.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (b.getSettings().choice (mix::busId (3, "panmode")), (int) mix::PanMode::own);
+            expectWithinAbsoluteError (b.getSettings().value (mix::channelSendPanId (5, 3)), -40.0f, 0.01f);
+
+            auto* old = new juce::DynamicObject();
+            old->setProperty ("bus2_panmode", "centre");
+            old->setProperty ("bus3_panmode", "mirror");
+            RKMixProcessor c;
+            const auto notes = c.getSettings().fromVar (juce::var (old));
+            expect (notes.isEmpty(), notes.joinIntoString ("; "));
+            expectEquals (c.getSettings().choice (mix::busId (1, "panmode")), (int) mix::PanMode::own);
+            expectEquals (c.getSettings().choice (mix::busId (2, "panmode")), (int) mix::PanMode::mirror);
+        }
+
         beginTest ("MIDI out: an RKTrigger insert's notes leave RKMix; conflicts; note-offs when it leaves play");
         {
             using Strip = InsertRack::Strip;

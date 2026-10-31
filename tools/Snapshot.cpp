@@ -26,6 +26,9 @@ int main (int argc, char** argv)
 
     std::unique_ptr<juce::AudioProcessor> processor (createPluginFilter());
     processor->setPlayConfigDetails (2, 2, 48000.0, 512);
+    // RKFX_SNAPSHOT_ALL_BUSES=1: every bus on (RKPlay's Cue output, sidechains).
+    if (juce::SystemStats::getEnvironmentVariable ("RKFX_SNAPSHOT_ALL_BUSES", {}).isNotEmpty())
+        processor->enableAllBuses();
     processor->prepareToPlay (48000.0, 512);
 
     if (argc > 3)
@@ -56,6 +59,22 @@ int main (int argc, char** argv)
             target->mouseUp (e.withNewPosition (local));
         }
     }
+    // RKFX_SNAPSHOT_RUN=<seconds>: after the clicks, run audio (silent input) in real
+    // time, so a player (RKPlay) is caught playing.
+    if (const auto run = juce::SystemStats::getEnvironmentVariable ("RKFX_SNAPSHOT_RUN", {}).getDoubleValue(); run > 0.0)
+    {
+        juce::AudioBuffer<float> buffer (juce::jmax (processor->getTotalNumInputChannels(), processor->getTotalNumOutputChannels()), 512);
+        juce::MidiBuffer midi;
+        const auto end = juce::Time::getMillisecondCounterHiRes() + run * 1000.0;
+        while (juce::Time::getMillisecondCounterHiRes() < end)
+        {
+            buffer.clear();
+            processor->processBlock (buffer, midi);
+            midi.clear();
+            juce::Thread::sleep (10);
+        }
+    }
+
     const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, scale);
 
     out.deleteFile();

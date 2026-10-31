@@ -196,7 +196,8 @@ public:
 
     //==============================================================================
     // Standalone only (in a host, Gig Performer does these): tempo with tap
-    // and MIDI clock, MIDI learn, and the tuner.
+    // and MIDI clock, MIDI learn, and the tuner. Following MIDI clock works in
+    // a host too (e.g. RKTracks' clock on the board's MIDI input).
 
     bool isStandalone() const noexcept { return standalone; }
 
@@ -211,8 +212,16 @@ public:
     void setTempo (double bpm);
     void tapTempo();
 
-    bool isFollowingClock() const noexcept { return rig.followClock; }
+    /** Pedals take their tempo from incoming MIDI clock. The app keeps this in
+        its rig settings; the plugin in the host session. */
+    bool isFollowingClock() const noexcept { return standalone ? rig.followClock : pluginFollowClock.load(); }
     void setFollowClock (bool follow);
+
+    /** The tempo the pedals play at: the board's tempo (app), else the clock's
+        while it arrives (when following), else the host's (0 if unknown). */
+    double getPedalTempo() const noexcept;
+    /** Following MIDI clock and the clock is arriving. */
+    bool isClockSettingTempo() const noexcept { return clockLocked.load(); }
 
     MidiMap* getMidiMap() noexcept { return midiMap.get(); }
     /** The next MIDI controller moved is learned for @p target (a LearnTarget). */
@@ -399,6 +408,9 @@ private:
     TapTempo tapper;
     MidiClockFollower clock;
     double sampleTime = 0.0;                       // seconds of audio processed (MIDI timing)
+    std::atomic<bool> pluginFollowClock { false }; // plugin: follow MIDI clock (host session)
+    std::atomic<bool> clockLocked { false };       // following, and clock is arriving: the board play head
+    std::atomic<double> hostBpm { 0.0 };           // plugin: the host's tempo, for the display
     std::atomic<int> learning { -1 };
     std::atomic<int> learnedTarget { -1 }, learnedChannel { 0 }, learnedCC { 0 };
     std::array<std::atomic<float>, kNumAssigns> ccTargets {};
@@ -409,7 +421,10 @@ private:
     std::atomic<int> tunerWrite { 0 };
     juce::SmoothedValue<float> tunerMute { 1.0f };
 
-    void handleStandaloneMidi (const juce::MidiBuffer&, int numSamples);
+    void handleStandaloneMidi (const juce::MidiBuffer&);
+    /** Clock ticks and Start, then the tempo when following. Audio thread. */
+    void followMidiClock (const juce::MidiBuffer&, int numSamples);
+    bool usesBoardPlayHead() const noexcept { return standalone || clockLocked.load(); }
     void applyController (int target, bool momentary, int value, double time);
     void glideControllers (int numSamples);
     static inline thread_local bool applyingAssign = false;   // this thread is moving a knob for an Assign parameter

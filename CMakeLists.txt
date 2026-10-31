@@ -99,6 +99,9 @@ add_subdirectory(plugins/RKBoard)
 # The mixing console (after RKBoard: not a pedal, its 32 channels don't fit a board).
 add_subdirectory(plugins/RKMix)
 
+# The music player for intermissions and receptions (a source, not a pedal or an insert).
+add_subdirectory(plugins/RKPlay)
+
 # RKRemap step 0: two throwaway 64-channel test plugins (off by default).
 option(RKFX_BUILD_REMAP_TEST "Build the RKRemap 64-channel test plugins" OFF)
 if(RKFX_BUILD_REMAP_TEST)

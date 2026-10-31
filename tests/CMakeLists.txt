@@ -202,3 +202,23 @@ target_link_libraries(RKBoardTests
         juce::juce_recommended_warning_flags
 )
 add_test(NAME RKBoardTests COMMAND RKBoardTests)
+
+# RKPlay: its streaming, engine and the player, with real audio files (temp WAVs).
+juce_add_console_app(RKPlayTests PRODUCT_NAME "RKPlayTests")
+target_sources(RKPlayTests PRIVATE PlayTests.cpp ${RKPLAY_SOURCES})
+target_include_directories(RKPlayTests PRIVATE ${RKPLAY_INCLUDE_DIRS})
+target_compile_definitions(RKPlayTests PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0
+    RKFX_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(RKPlayTests
+    PRIVATE
+        rkplay_factory_presets
+        rkfx_core
+        juce::juce_audio_formats
+        juce::juce_osc
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKPlayTests COMMAND RKPlayTests)

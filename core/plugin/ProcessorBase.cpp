@@ -10,7 +10,8 @@ namespace rkfx { std::vector<FactoryPreset> RKFX_FACTORY_PRESET_LIST(); }
 namespace rkfx
 {
 
-juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain, bool midiEffect, int channels)
+juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidechain, bool midiEffect, int channels,
+                                                               const juce::String& auxOutput)
 {
     if (midiEffect)
         return BusesProperties();   // MIDI only
@@ -26,12 +27,14 @@ juce::AudioProcessor::BusesProperties ProcessorBase::makeBuses (bool withSidecha
 
     if (withSidechain)
         buses = buses.withInput ("Sidechain", juce::AudioChannelSet::stereo(), true);
+    if (auxOutput.isNotEmpty())
+        buses = buses.withOutput (auxOutput, juce::AudioChannelSet::stereo(), true);
 
     return buses;
 }
 
 ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
-    : juce::AudioProcessor (makeBuses (cfg.sidechain, cfg.midiEffect, cfg.channels)),
+    : juce::AudioProcessor (makeBuses (cfg.sidechain, cfg.midiEffect, cfg.channels, cfg.auxOutput)),
       config (std::move (cfg))
 {
     // A MIDI effect has no audio to mix or level.
@@ -115,6 +118,14 @@ bool ProcessorBase::isBusesLayoutSupported (const BusesLayout& layouts) const
             return false;
     }
 
+    // The second output: stereo, or off.
+    if (config.auxOutput.isNotEmpty() && layouts.outputBuses.size() > 1)
+    {
+        const auto aux = layouts.getChannelSet (false, 1);
+        if (! aux.isDisabled() && aux != juce::AudioChannelSet::stereo())
+            return false;
+    }
+
     if (in == out)
         return true;
 
@@ -180,6 +191,17 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
             sidechainOffset = getChannelIndexInProcessBlockBuffer (true, 1, 0);
         }
 
+    // The second output: its channels follow the main ones; it starts silent.
+    int auxChannels = 0, auxOffset = 0;
+    if (config.auxOutput.isNotEmpty())
+        if (auto* bus = getBus (false, 1); bus != nullptr && bus->isEnabled())
+        {
+            auxChannels = bus->getNumberOfChannels();
+            auxOffset = getChannelIndexInProcessBlockBuffer (false, 1, 0);
+            for (int ch = auxOffset; ch < juce::jmin (buffer.getNumChannels(), auxOffset + auxChannels); ++ch)
+                buffer.clear (ch, 0, numSamples);
+        }
+
     // Mono in -> stereo out: every output starts as the mono input.
     for (int ch = numIn; ch < numOut; ++ch)
     {
@@ -221,6 +243,9 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
         hasSidechain = sidechainChannels > 0 && sidechainOffset + sidechainChannels <= buffer.getNumChannels();
         if (hasSidechain)
             sidechain.setDataToReferTo (buffer.getArrayOfWritePointers() + sidechainOffset, sidechainChannels, start, length);
+        hasAuxOutput = auxChannels > 0 && auxOffset + auxChannels <= buffer.getNumChannels();
+        if (hasAuxOutput)
+            auxOutput.setDataToReferTo (buffer.getArrayOfWritePointers() + auxOffset, auxChannels, start, length);
 
         processChunk (chunk);
     }

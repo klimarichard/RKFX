@@ -27,6 +27,7 @@ struct PluginConfig
     bool mixInDsp = false;           // the plugin applies Dry/Wet itself (its dry signal needs processing too); the base mixes at 100%
     bool monoToStereo = false;       // also accept mono in -> stereo out (chorus, reverb...)
     bool sidechain = false;          // adds a stereo "Sidechain" input bus (compressor, gate)
+    juce::String auxOutput;          // not empty: a second stereo output bus of this name (RKPlay's "Cue")
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     bool midiEffect = false;         // MIDI in, MIDI out, no audio (no dry/wet, no output); also needs MIDI_EFFECT in CMake
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
@@ -172,6 +173,11 @@ protected:
         Unconnected inputs are silent. Valid inside processDsp only. */
     const juce::AudioBuffer<float>* getSidechain() const noexcept { return hasSidechain ? &sidechain : nullptr; }
 
+    /** The second output (config.auxOutput) for the buffer handed to
+        processDsp(), cleared, or nullptr when the host didn't enable it.
+        Silent while bypassed. Valid inside processDsp only. */
+    juce::AudioBuffer<float>* getAuxOutput() noexcept { return hasAuxOutput ? &auxOutput : nullptr; }
+
     /** The input of the buffer handed to processDsp(), untouched (what Bypass
         passes; delayed by the reported latency). Valid inside processDsp only:
         a plugin whose output overwrites inputs it still needs can read them
@@ -226,6 +232,8 @@ private:
     Transport transport;
     juce::AudioBuffer<float> sidechain;   // view into the host buffer, no allocation
     bool hasSidechain = false;
+    juce::AudioBuffer<float> auxOutput;   // view into the host buffer, no allocation
+    bool hasAuxOutput = false;
     const juce::MidiBuffer* midiIn = nullptr;
     int chunkStart = 0;
 
@@ -257,7 +265,7 @@ private:
     bool midiBypassed = false;
     juce::MidiBuffer midiOut;   // what plugins with MIDI output send this block
 
-    static BusesProperties makeBuses (bool withSidechain, bool midiEffect, int channels);
+    static BusesProperties makeBuses (bool withSidechain, bool midiEffect, int channels, const juce::String& auxOutput);
     void processChunk (juce::AudioBuffer<float>& chunk);
     void delayDry (int numChannels, int numSamples) noexcept;
     void updateTransport();

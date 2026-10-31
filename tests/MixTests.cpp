@@ -617,7 +617,7 @@ public:
             expectWithinAbsoluteError (busLevel (e, 10, 0), 0.5f, 1.0e-4f, "FX -> Aux (reverb in the in-ears)");
         }
 
-        beginTest ("Pan law into buses: a mono channel into a stereo bus pans; pan follows can be off");
+        beginTest ("Pan law into buses: a mono channel into a stereo bus pans; Own uses the send's pan");
         {
             auto s = only ({});
             s.buses[0] = {};
@@ -629,9 +629,84 @@ public:
             e = makeEngine (s);
             expectEquals (busLevel (e, 1, 0), 0.0f, "follows the channel's pan");
 
-            s.buses[0].panMode = mix::PanMode::centre;
+            s.buses[0].panMode = mix::PanMode::own;
             e = makeEngine (s);
-            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f * std::sqrt (0.5f), 1.0e-4f, "centred, -3 dB");
+            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f * std::sqrt (0.5f), 1.0e-4f, "Own, send pan centre: -3 dB (was Centre)");
+
+            s.channels[0].sendPan[0] = 1.0f;
+            e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 1, 0), 0.5f, 1.0e-4f, "Own: the send's pan, hard right");
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 0, 0), 0.0f, "nothing left, whatever the channel's pan");
+
+            s.buses[0].panMode = mix::PanMode::follow;
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 1, 0), 0.0f, "Follow ignores the send's pan");
+        }
+
+        beginTest ("Own pans: per bus, a pair's balance, at a pre-fader tap, gliding");
+        {
+            // Channel 1 into Aux 1 (Out 1/2) panned left and Aux 2 (Out 3/4) panned right.
+            auto s = only ({});
+            for (int bus : { 0, 1 })
+            {
+                s.buses[(size_t) bus] = {};
+                s.buses[(size_t) bus].output = mix::pairTarget (bus * 2);
+                s.buses[(size_t) bus].panMode = mix::PanMode::own;
+                s.channels[0].sendDb[(size_t) bus] = 0.0f;
+            }
+            s.channels[0].sendPan[0] = -1.0f;
+            s.channels[0].sendPan[1] = 1.0f;
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f, "Aux 1: left");
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 1, 0), 0.0f);
+            e = makeEngine (s);
+            expectEquals (busLevel (e, 2, 0), 0.0f, "Aux 2: right");
+            e = makeEngine (s);
+            expectWithinAbsoluteError (busLevel (e, 3, 0), 0.5f, 1.0e-4f);
+
+            // A linked pair: the send's pan is a balance (the near side stays at unity).
+            auto p = only ({});
+            p.links[0] = true;
+            p.buses[0] = {};
+            p.buses[0].output = mix::pairTarget (0);
+            p.buses[0].panMode = mix::PanMode::own;
+            p.channels[0].sendDb[0] = 0.0f;
+            p.channels[0].sendPan[0] = 0.5f;
+            e = makeEngine (p);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.25f, 1.0e-4f, "balance right: the left side at half");
+            e = makeEngine (p);
+            expectEquals (busLevel (e, 1, 0), 0.0f, "the left side stays on the left");
+            p.channels[0].sendPan[0] = -0.5f;
+            e = makeEngine (p);
+            expectWithinAbsoluteError (busLevel (e, 0, 0), 0.5f, 1.0e-4f, "balance left: the left side at unity");
+
+            // A send pan swept across: no clicks.
+            auto g = only ({ 0 });
+            g.buses[0] = {};
+            g.buses[0].output = mix::pairTarget (0);
+            g.buses[0].panMode = mix::PanMode::own;
+            g.channels[0].sendDb[0] = 0.0f;
+            auto ge = makeEngine (g);
+            float worstStep = 0.0f, last = 0.0f;
+            int start = 0;
+            const auto run = [&] (int blocks)
+            {
+                for (int b = 0; b < blocks; ++b, start += kBlock)
+                {
+                    const auto r = block (ge, start, { 0 });
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        worstStep = juce::jmax (worstStep, std::abs (r.outSample (0, i) - last));
+                        last = r.outSample (0, i);
+                    }
+                }
+            };
+            run (2);
+            g.channels[0].sendPan[0] = 1.0f;  ge.setSettings (g); run (3);
+            g.channels[0].sendPan[0] = -1.0f; ge.setSettings (g); run (3);
+            expectLessThan (worstStep, 0.03f);
         }
 
         beginTest ("No clicks: sends, assigns and bus faders glide");

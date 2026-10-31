@@ -25,7 +25,6 @@ namespace
         return v.isSmoothing() || v.getTargetValue() > 0.0f;
     }
 
-    constexpr float kCentre = 0.70710678f;   // a mono source at the centre of a stereo bus
 }
 
 //==============================================================================
@@ -68,6 +67,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
         s.pan.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         s.toMain.reset (sampleRate, kMuteFadeSeconds);
         for (auto& v : s.sends)
+            v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
+        for (auto& v : s.sendPans)
             v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         for (auto& v : s.assigns)
             v.reset (sampleRate, kMuteFadeSeconds);
@@ -396,6 +397,7 @@ void MixEngine::applyChannel (int ch, bool snap)
         const auto type = settings.buses[(size_t) bus].type;
         const auto sends = type == BusType::aux || type == BusType::fx;
         setValue (s.sends[(size_t) bus], sends ? mix::faderGain (c.sendDb[(size_t) bus]) : 0.0f, snap);
+        setValue (s.sendPans[(size_t) bus], c.sendPan[(size_t) bus], snap);
         setValue (s.assigns[(size_t) bus], type == BusType::group && c.assign[(size_t) bus] ? 1.0f : 0.0f, snap);
     }
 
@@ -471,7 +473,8 @@ MixEngine::Curve MixEngine::curveOf (rkfx::Smoothed& v, Row row, int numSamples)
     return { data, 0.0f };
 }
 
-void MixEngine::panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, Curve& right, int numSamples) noexcept
+void MixEngine::panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, Curve& right, int numSamples,
+                           Row leftRow, Row rightRow) noexcept
 {
     const auto gains = [stereoSource] (float p, float& l, float& r)
     {
@@ -488,8 +491,8 @@ void MixEngine::panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, 
         return;
     }
 
-    auto* l = curveBuffer.getWritePointer (panLeftRow);
-    auto* r = curveBuffer.getWritePointer (panRightRow);
+    auto* l = curveBuffer.getWritePointer (leftRow);
+    auto* r = curveBuffer.getWritePointer (rightRow);
     for (int i = 0; i < numSamples; ++i)
         gains (pan.getNextValue(), l[i], r[i]);
     left = { l, 0.0f };
@@ -565,7 +568,6 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
                            const Curve& mute, const Curve& fader, const Curve& panLeft, const Curve& panRight, int numSamples) noexcept
 {
     auto& s = states[(size_t) ch];
-    const auto centre = constant (numSides == 2 ? 1.0f : kCentre);
     const auto one = constant (1.0f);
 
     for (int n = 0; n < active.count; ++n)
@@ -578,6 +580,20 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
         const auto send = curveOf (s.sends[(size_t) bus], productRow, numSamples);
         const auto mode = b.type == BusType::fx ? mix::PanMode::follow : b.panMode;
         const auto* gain = tap == Tap::postFader ? &fader : &one;
+        auto& sendPan = s.sendPans[(size_t) bus];
+        if (mode == mix::PanMode::own && b.stereo)
+        {
+            // The bus's own stage picture: this send's pan (a pair's balance).
+            Curve ownLeft, ownRight;
+            panCurves (sendPan, numSides == 2, ownLeft, ownRight, numSamples, sendPanLeftRow, sendPanRightRow);
+            addToBus (bus, io, numSides, ownLeft, ownRight, { &send, &mute, gain }, numSamples);
+            continue;
+        }
+
+        // Not used here: a later switch to Own starts where the pan is set.
+        if (sendPan.isSmoothing())
+            sendPan.setCurrentAndTargetValue (sendPan.getTargetValue());
+
         if (mode == mix::PanMode::mirror)
         {
             // The band's view: left and right swapped (a pair's sides and its balance).
@@ -586,8 +602,7 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
         }
         else
         {
-            const auto follow = mode == mix::PanMode::follow;
-            addToBus (bus, io, numSides, follow ? panLeft : centre, follow ? panRight : centre, { &send, &mute, gain }, numSamples);
+            addToBus (bus, io, numSides, panLeft, panRight, { &send, &mute, gain }, numSamples);
         }
     }
 }

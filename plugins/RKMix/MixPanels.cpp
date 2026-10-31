@@ -428,6 +428,13 @@ RKMixEditor::SendsPanel::SendsPanel (RKMixEditor& o, int ch) : Panel (o), channe
         auto& c = columns[(size_t) bus];
         c.assign = make<rkfx::ToggleSwitch> (s.param (channelAssignId (ch, bus)), o.accent(), "Assign");
         c.send = make<rkfx::Knob> (s.param (channelSendId (ch, bus)), "Send");
+        c.pan = make<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+        auto& panParam = s.param (channelSendPanId (ch, bus));
+        c.panAttachment = std::make_unique<juce::SliderParameterAttachment> (panParam, *c.pan);
+        c.pan->setDoubleClickReturnValue (true, 0.0);
+        c.pan->setPopupDisplayEnabled (true, true, nullptr);
+        c.pan->setTooltip ("This send's pan in the bus (the bus's Pan is Own; double-click: centre)");
+        rkfx::tagParameter (*c.pan, panParam.getParameterID());
         c.tap = make<MixGui::OptionList> (s.param (channelTapId (ch, bus)),
                                           juce::StringArray { "Default", "Input", "Pre-EQ", "Pre-Comp", "Pre-Ins", "Pre-Fader", "Post-Fader" },
                                           o.accent());
@@ -450,6 +457,8 @@ void RKMixEditor::SendsPanel::refresh()
         auto& c = columns[(size_t) bus];
         c.assign->setVisible (type == BusType::group);
         c.send->setVisible (type != BusType::group);
+        c.pan->setVisible (owner.hasOwnPans (bus));
+        c.pan->setColour (juce::Slider::trackColourId, MixGui::stripColour (owner.mixer.getBusColour (bus)));
         c.tap->setVisible (type == BusType::aux);
         c.tap->setMarked (1 + owner.mixer.getSettings().choice (busId (bus, "tap")));
     }
@@ -478,7 +487,8 @@ void RKMixEditor::SendsPanel::resized()
         auto a = c.area.withTrimmedTop (48).reduced (2, 0);
         c.send->setBounds (a.removeFromTop (kKnobH));
         c.assign->setBounds (c.send->getBounds().withSizeKeepingCentre (a.getWidth(), kSwitchH));
-        a.removeFromTop (8);
+        c.pan->setBounds (a.removeFromTop (22));
+        a.removeFromTop (6);
         c.tap->setBounds (a.removeFromTop (7 * 22));
     }
 }
@@ -704,7 +714,7 @@ RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
     toMain = make<rkfx::ToggleSwitch> (param ("main"), accent, "Main");
     defaultTap = make<ChoiceBox> (param ("tap"), [] (int v) { return tapName ((Tap) v); });
     defaultTap->setTooltip ("Where this bus's sends take the channels, unless a send says otherwise");
-    panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Centre", "Follow", "Mirror" }, "Pan");
+    panMode = make<rkfx::SegmentedSwitch> (param ("panmode"), accent, juce::StringArray { "Own", "Follow", "Mirror" }, "Pan");
     soloSafe = make<rkfx::SegmentedSwitch> (param ("solosafe"), accent, juce::StringArray { "Auto", "On", "Off" });
 
     auto& panParam = param ("pan");
@@ -1065,10 +1075,99 @@ RKMixEditor::ScenesPanel::ScenesPanel (RKMixEditor& o) : Panel (o)
         channelSafe[(size_t) ch] = make<rkfx::ToggleSwitch> (s.param (channelId (ch, "recallsafe")), rkfx::Palette::warning, num (ch));
     for (int bus = 0; bus < kBuses; ++bus)
         busSafe[(size_t) bus] = make<rkfx::ToggleSwitch> (s.param (busId (bus, "recallsafe")), rkfx::Palette::warning, "B" + num (bus));
+
+    // The recall scope of one scene (the active one, unless another is picked).
+    for (int i = 0; i < MixScenes::kNumScenes; ++i)
+        scopeScene.addItem ("Scene " + juce::String (i + 1), i + 1);
+    scopeScene.onChange = [this] { editScope (scopeScene.getSelectedId() - 1); };
+    scopeScene.setTooltip ("The scene whose recall scope is shown");
+    addAndMakeVisible (scopeScene);
+
+    const auto toggle = [this] (juce::TextButton& b, const juce::String& tooltip)
+    {
+        b.setClickingTogglesState (true);
+        b.setColour (juce::TextButton::buttonOnColourId, owner.accent());
+        b.setTooltip (tooltip);
+        b.onClick = [this] { applyScope(); };
+        addAndMakeVisible (b);
+    };
+    using Scope = MixScenes::Scope;
+    const char* categoryTips[] = {
+        "Channel, bus, main and mono faders and mutes",
+        "Channel and bus pans, the main's balance",
+        "Trim, polarity, delay, high-pass, gate, EQ and compressor of every channel",
+        "The EQ, compressor and limiter of the buses, the main and the mono sum",
+        "Inserts on or off, and the scene-controlled insert knobs",
+        "Group assigns and Main switches",
+    };
+    for (int c = 0; c < Scope::numCategories; ++c)
+    {
+        categoryButtons[(size_t) c].setButtonText (Scope::name ((Scope::Category) c));
+        toggle (categoryButtons[(size_t) c], categoryTips[c]);
+    }
+    for (int bus = 0; bus < kBuses; ++bus)
+        toggle (sendButtons[(size_t) bus], {});
+
+    everything.setTooltip ("Recall everything (the default)");
+    everything.onClick = [this]
+    {
+        owner.mixer.getScenes().setScope (scopeFor, {});
+        owner.refreshScenes();
+    };
+    addAndMakeVisible (everything);
+    copyToAll.setTooltip ("Give every scene this recall scope");
+    copyToAll.onClick = [this]
+    {
+        auto& scenes = owner.mixer.getScenes();
+        const auto scope = scenes.getScope (scopeFor);
+        for (int i = 0; i < MixScenes::kNumScenes; ++i)
+            scenes.setScope (i, scope);
+        owner.refreshScenes();
+    };
+    addAndMakeVisible (copyToAll);
+    refresh();
+}
+
+void RKMixEditor::ScenesPanel::editScope (int scene)
+{
+    scopeFor = juce::jlimit (0, MixScenes::kNumScenes - 1, scene);
+    refresh();
+}
+
+void RKMixEditor::ScenesPanel::applyScope()
+{
+    MixScenes::Scope scope;
+    for (int c = 0; c < MixScenes::Scope::numCategories; ++c)
+        scope.set ((MixScenes::Scope::Category) c, categoryButtons[(size_t) c].getToggleState());
+    for (int bus = 0; bus < kBuses; ++bus)
+        scope.setSendsTo (bus, sendButtons[(size_t) bus].getToggleState());
+    owner.mixer.getScenes().setScope (scopeFor, scope);
+    owner.refreshScenes();
 }
 
 void RKMixEditor::ScenesPanel::refresh()
 {
+    // A recall shows the scope of the scene now active.
+    const auto current = owner.mixer.getScenes().getCurrent();
+    if (current != lastCurrent)
+    {
+        lastCurrent = current;
+        scopeFor = current;
+    }
+    scopeScene.setSelectedId (scopeFor + 1, juce::dontSendNotification);
+
+    const auto scope = owner.mixer.getScenes().getScope (scopeFor);
+    for (int c = 0; c < MixScenes::Scope::numCategories; ++c)
+        categoryButtons[(size_t) c].setToggleState (scope.has ((MixScenes::Scope::Category) c), juce::dontSendNotification);
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        auto& b = sendButtons[(size_t) bus];
+        b.setToggleState (scope.sendsTo (bus), juce::dontSendNotification);
+        b.setButtonText ("B" + num (bus));
+        b.setTooltip ("Send levels (and Own send pans) to " + owner.busDisplayName (bus) + ", from the channels and buses");
+        b.setEnabled (owner.mixer.getBusType (bus) != BusType::group);   // nothing sends to a group
+    }
+    everything.setEnabled (! scope.isEverything());
     repaint();
 }
 
@@ -1077,7 +1176,9 @@ void RKMixEditor::ScenesPanel::resized()
     auto r = getLocalBounds();
     glideArea = r.removeFromLeft (220);
     r.removeFromLeft (kGap);
-    safeArea = r;
+    safeArea = r.removeFromTop (3 * (kSwitchH + 6) + 28 + 44);
+    r.removeFromTop (kGap);
+    scopeArea = r;
 
     glide->setBounds (inner (glideArea).removeFromTop (kKnobH).withWidth (kKnobW));
 
@@ -1088,6 +1189,26 @@ void RKMixEditor::ScenesPanel::resized()
     const auto busTop = a.getY() + 2 * (kSwitchH + 6) + 28;
     for (int bus = 0; bus < kBuses; ++bus)
         busSafe[(size_t) bus]->setBounds (a.getX() + bus * (w + 4), busTop, w, kSwitchH);
+
+    // Recall scope: the scene, then the kinds of values, then the sends by bus.
+    auto s = inner (scopeArea);
+    auto top = s.removeFromTop (kSwitchH);
+    scopeScene.setBounds (top.removeFromLeft (110));
+    top.removeFromLeft (8);
+    everything.setBounds (top.removeFromLeft (100));
+    copyToAll.setBounds (top.removeFromRight (150));
+    s.removeFromTop (10);
+    auto row = s.removeFromTop (kSwitchH);
+    const auto cw = (row.getWidth() - (MixScenes::Scope::numCategories - 1) * 4) / MixScenes::Scope::numCategories;
+    for (auto& b : categoryButtons)
+    {
+        b.setBounds (row.removeFromLeft (cw));
+        row.removeFromLeft (4);
+    }
+    s.removeFromTop (24);
+    row = s.removeFromTop (kSwitchH);
+    for (int bus = 0; bus < kBuses; ++bus)
+        sendButtons[(size_t) bus].setBounds (row.getX() + bus * (w + 4), row.getY(), w, kSwitchH);
 }
 
 void RKMixEditor::ScenesPanel::paint (juce::Graphics& g)
@@ -1108,6 +1229,16 @@ void RKMixEditor::ScenesPanel::paint (juce::Graphics& g)
     auto a = inner (safeArea);
     g.drawText ("Channels", a.withHeight (18), juce::Justification::centredLeft);
     g.drawText ("Buses", a.withY (busSafe[0]->getY() - 20).withHeight (18), juce::Justification::centredLeft);
+
+    rkfx::drawPanel (g, scopeArea, owner.panelColour(), "Recall scope: what recalling the scene changes (it always stores everything)");
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    const auto scope = owner.mixer.getScenes().getScope (scopeFor);
+    g.drawFittedText (scope.describe ([this] (int bus) { return owner.busDisplayName (bus); }),
+                      everything.getBounds().withX (everything.getRight() + 12).withRight (copyToAll.getX() - 12),
+                      juce::Justification::centredLeft, 1);
+    g.drawText ("Sends to", sendButtons[0].getBounds().withY (sendButtons[0].getY() - 20).withHeight (18).withWidth (200),
+                juce::Justification::centredLeft);
 }
 
 //==============================================================================

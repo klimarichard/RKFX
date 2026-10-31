@@ -98,6 +98,7 @@ RKMixProcessor::RKMixProcessor()
             channelRouting[(size_t) ch].sends[(size_t) bus] = &settings.param (channelSendId (ch, bus));
             channelRouting[(size_t) ch].taps[(size_t) bus] = &settings.param (channelTapId (ch, bus));
             channelRouting[(size_t) ch].assigns[(size_t) bus] = &settings.param (channelAssignId (ch, bus));
+            channelRouting[(size_t) ch].sendPans[(size_t) bus] = &settings.param (channelSendPanId (ch, bus));
         }
     }
     for (int bus = 0; bus < kBuses; ++bus)
@@ -918,6 +919,7 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
         c.sendDb[(size_t) bus] = valueOf (routing.sends[(size_t) bus]);
+        c.sendPan[(size_t) bus] = valueOf (routing.sendPans[(size_t) bus]) * 0.01f;
         c.tap[(size_t) bus] = juce::roundToInt (valueOf (routing.taps[(size_t) bus])) - 1;   // 0 = the bus's default
         c.assign[(size_t) bus] = valueOf (routing.assigns[(size_t) bus]) >= 0.5f;
     }

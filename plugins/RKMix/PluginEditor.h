@@ -7,6 +7,7 @@
 #include "MixComponents.h"
 #include "MixInserts.h"
 #include "MixLayout.h"
+#include "MixScenes.h"
 #include "TransferCurve.h"
 
 #include <array>
@@ -123,12 +124,15 @@ private:
         void setReduction (float gateDb, float compDb);
         /** Sends on fader: show the send to @p bus instead of the fader (-1: the fader). */
         void showSendTo (int bus);
+        /** The pan shows the send's own pan while the faders show sends to an Own-mode bus. */
+        void bindPan();
 
         RKMixEditor& owner;
         const int channel, bus;              // one of them is -1
         juce::Label name;
         juce::Slider pan;
         std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
+        juce::String panId;                  // the parameter the pan shows
         std::unique_ptr<rkfx::ToggleSwitch> mute;
         std::unique_ptr<SoloButton> solo;
         std::unique_ptr<MixGui::Fader> fader;
@@ -236,6 +240,8 @@ private:
         {
             rkfx::ToggleSwitch* assign = nullptr;
             rkfx::Knob* send = nullptr;
+            juce::Slider* pan = nullptr;     // the send's own pan (an Own-mode Aux)
+            std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
             MixGui::OptionList* tap = nullptr;
             juce::Rectangle<int> area;
         };
@@ -335,18 +341,28 @@ private:
         juce::Rectangle<int> talkArea, oscArea;
     };
 
-    /** Scenes: the glide, the recall-safe channels and buses, the scene-controlled insert knobs. */
+    /** Scenes: the glide, the recall-safe channels and buses, each scene's recall scope. */
     struct ScenesPanel : public Panel
     {
         explicit ScenesPanel (RKMixEditor&);
         void resized() override;
         void paint (juce::Graphics&) override;
         void refresh() override;
+        /** Shows (and edits) the recall scope of @p scene. */
+        void editScope (int scene);
 
         rkfx::Knob* glide = nullptr;
         std::array<rkfx::ToggleSwitch*, mix::kChannels> channelSafe {};
         std::array<rkfx::ToggleSwitch*, mix::kBuses> busSafe {};
-        juce::Rectangle<int> glideArea, safeArea;
+        juce::Rectangle<int> glideArea, safeArea, scopeArea;
+
+        juce::ComboBox scopeScene;
+        int scopeFor = 0, lastCurrent = -1;
+        std::array<juce::TextButton, MixScenes::Scope::numCategories> categoryButtons;
+        std::array<juce::TextButton, mix::kBuses> sendButtons;
+        juce::TextButton everything { "Everything" }, copyToAll { "Copy to all scenes" };
+
+        void applyScope();
     };
 
     /** The 32 assignables: what each drives, its range, invert. */
@@ -440,6 +456,8 @@ private:
 
     bool isLinked (int pair) const;
     bool isStereo (int channel) const { return channel % 2 == 0 && isLinked (channel / 2); }
+    /** A stereo Aux bus whose channels sit by their own send pans. */
+    bool hasOwnPans (int bus) const;
     int leaderOf (int channel) const { return channel % 2 == 1 && isLinked (channel / 2) ? channel - 1 : channel; }
     juce::String channelLabel (int channel) const;      // "1", or "1/2" for a linked pair
     juce::String displayName (int channel) const;       // the name, or "Ch 1"
@@ -483,6 +501,7 @@ private:
     void showLearnMenu (int target, juce::Component& component);
     void refreshStandalone();
     void refreshScenes();
+    void editSceneScope (int scene);
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

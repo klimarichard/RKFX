@@ -90,6 +90,17 @@ juce::StringArray MixSettings::fromVar (const juce::var& paramsVar)
     wrapper->setProperty ("version", 1);
     wrapper->setProperty ("params", paramsVar.isObject() ? paramsVar : juce::var (new juce::DynamicObject()));
 
+    // An Aux pan mode saved as "centre" (before the send pans) is Own: every send pan starts at centre.
+    if (auto* object = paramsVar.getDynamicObject())
+    {
+        juce::Array<juce::Identifier> centred;
+        for (const auto& property : object->getProperties())
+            if (property.name.toString().endsWith ("_panmode") && property.value.toString() == "centre")
+                centred.add (property.name);
+        for (const auto& name : centred)
+            object->setProperty (name, "own");
+    }
+
     const auto r = rkfx::PresetFormat::read (rkfx::PresetFormat::toJson (juce::var (wrapper)), "RKMix", 1, infos);
 
     for (const auto& [id, v] : r.values)

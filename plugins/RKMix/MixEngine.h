@@ -24,6 +24,10 @@
         main -> fader, mute, balance -> main output; (L + R) / 2 -> mono sum
         a channel's direct output: the strip at its tap -> an output, as it is
 
+    A stereo Aux bus places the channels by its pan mode: Own (each send's
+    own pan or balance), Follow (the channels' pans) or Mirror (their pans
+    with left and right swapped), at every tap. FX buses always follow.
+
     A direct output takes the channel at one tap (Input to Post-Fader) with no
     pan; before the fader it ignores mute and solo (a feed for a recorder), at
     Post-Fader it follows the fader and mute.
@@ -79,11 +83,12 @@ public:
 
     struct Channel
     {
-        Channel() { sendDb.fill (mix::kFaderMinDb); tap.fill (-1); assign.fill (false); }
+        Channel() { sendDb.fill (mix::kFaderMinDb); sendPan.fill (0.0f); tap.fill (-1); assign.fill (false); }
         StripDsp::Settings strip;
         float pan = 0.0f;                         // -1 .. +1 (pan of a mono channel, balance of a pair)
         bool toMain = true;
         std::array<float, kBuses> sendDb;         // to Aux and FX buses (fader law)
+        std::array<float, kBuses> sendPan;        // -1 .. +1, into a stereo Aux bus in Own mode
         std::array<int, kBuses> tap;              // Aux sends: a Tap, or -1 = the bus's default
         std::array<bool, kBuses> assign;          // to Group buses
         bool soloSafe = false;                    // in-place solo never mutes it
@@ -228,6 +233,7 @@ private:
         rkfx::Smoothed fader, mute, pan;
         rkfx::Smoothed toMain;                        // the Main switch, faded
         std::array<rkfx::Smoothed, kBuses> sends;     // linear send gains
+        std::array<rkfx::Smoothed, kBuses> sendPans;  // Own-mode Aux buses
         std::array<rkfx::Smoothed, kBuses> assigns;   // group assigns, faded
         rkfx::Smoothed soloGate, soloMainGate, cue;   // in-place solo (all of it / its main path), to the cue
     };
@@ -254,7 +260,7 @@ private:
     };
 
     // Rows of the per-block gain buffer
-    enum Row { muteRow, faderRow, panLeftRow, panRightRow, productRow, monoRow, soloRow, numRows };
+    enum Row { muteRow, faderRow, panLeftRow, panRightRow, productRow, monoRow, soloRow, sendPanLeftRow, sendPanRightRow, numRows };
 
     double sampleRate = 48000.0;
     int maxBlock = 0;
@@ -355,7 +361,8 @@ private:
     void delayedBusOutput (int bus, float* const* io, int numSides, int delay, const float* (&result)[2], int numSamples) noexcept;
 
     Curve curveOf (rkfx::Smoothed&, Row, int numSamples) noexcept;
-    void panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, Curve& right, int numSamples) noexcept;
+    void panCurves (rkfx::Smoothed& pan, bool stereoSource, Curve& left, Curve& right, int numSamples,
+                    Row leftRow = panLeftRow, Row rightRow = panRightRow) noexcept;
     static Curve constant (float v) noexcept { return { nullptr, v }; }
 
     /** dest += source x the product of @p gains. */

@@ -156,9 +156,11 @@ namespace mix
         return t == BusType::group ? "Group" : t == BusType::aux ? "Aux" : "FX";
     }
 
-    /** How an Aux bus places the channels: centred, as their pans (the
-        audience's view), or mirrored (the band's view, facing the audience). */
-    enum class PanMode { centre = 0, follow, mirror };
+    /** How a stereo Aux bus places the channels: by each send's own pan
+        (the bus's own stage picture), as the channels' pans (the audience's
+        view), or mirrored (the band's view, facing the audience). Own was
+        Centre before the send pans: with every send pan at centre it is the same. */
+    enum class PanMode { own = 0, follow, mirror };
 
     /** Where a send takes a channel's signal, in strip order. */
     enum class Tap { input = 0, preEq, preComp, preInserts, preFader, postFader };
@@ -215,6 +217,7 @@ namespace mix
     inline juce::String channelSendId (int ch, int bus)   { return channelId (ch, ("send" + num (bus)).toRawUTF8()); }
     inline juce::String channelTapId (int ch, int bus)    { return channelId (ch, ("tap" + num (bus)).toRawUTF8()); }
     inline juce::String channelAssignId (int ch, int bus) { return channelId (ch, ("grp" + num (bus)).toRawUTF8()); }
+    inline juce::String channelSendPanId (int ch, int bus) { return channelId (ch, ("span" + num (bus)).toRawUTF8()); }   // an Own-mode Aux
     inline juce::String busSendId (int bus, int to)       { return busId (bus, ("send" + num (to)).toRawUTF8()); }
 
     // The EQ, compressor and limiter of a bus, the main or the mono sum: "bus3_eq_on", "main_eq_on", "mono_eq_on".

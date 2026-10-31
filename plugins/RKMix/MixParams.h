@@ -235,7 +235,7 @@ namespace MixParams
             addTarget   (p, busId (bus, "out"), name + "Output", kTargetOff);
             p.addBool   (busId (bus, "main"), name + "Main", true);
             p.addChoice (busId (bus, "tap"), name + "Default Tap", tapNames, tapKeys, (int) Tap::preFader);
-            p.addChoice (busId (bus, "panmode"), name + "Pan", { "Centre", "Follow", "Mirror" }, { "centre", "follow", "mirror" },
+            p.addChoice (busId (bus, "panmode"), name + "Pan", { "Own", "Follow", "Mirror" }, { "own", "follow", "mirror" },
                          (int) PanMode::follow);
             addPan      (p, busId (bus, "pan"), name + "Pan");
             for (int to = 0; to < kBuses; ++to)
@@ -313,6 +313,11 @@ namespace MixParams
             addTarget   (p, channelId (ch, "direct_out"), channelName (ch) + "Direct Output", kTargetOff);
             p.addChoice (channelId (ch, "direct_tap"), channelName (ch) + "Direct Tap", tapNames, tapKeys, (int) Tap::input);
         }
+
+        // Each send's own pan (balance for a pair), used by a stereo Aux bus in Own mode (appended).
+        for (int ch = 0; ch < kChannels; ++ch)
+            for (int bus = 0; bus < kBuses; ++bus)
+                addPan (p, channelSendPanId (ch, bus), channelName (ch) + "Send Pan " + num (bus));
 
         return p;
     }

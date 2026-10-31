@@ -873,9 +873,24 @@ void BoardProcessor::tapTempo()
 
 void BoardProcessor::setFollowClock (bool follow)
 {
-    rig.followClock = follow;
-    rig.save (rigSettingsFile);
+    if (standalone)
+    {
+        rig.followClock = follow;
+        rig.save (rigSettingsFile);
+    }
+    else
+    {
+        pluginFollowClock = follow;
+        updateHostDisplay (juce::AudioProcessorListener::ChangeDetails().withNonParameterStateChanged (true));
+    }
     ++boardCounter;
+}
+
+double BoardProcessor::getPedalTempo() const noexcept
+{
+    if (standalone)
+        return tempo.load();
+    return clockLocked.load() ? boardPlayHead.bpm.load() : hostBpm.load();
 }
 
 void BoardProcessor::setTunerOptions (float reference, bool mutes)
@@ -895,18 +910,14 @@ void BoardProcessor::copyTunerInput (float* dest, int numSamples) const
         dest[i] = ring[(end - numSamples + i + kTunerBufferSize) % kTunerBufferSize];
 }
 
-void BoardProcessor::handleStandaloneMidi (const juce::MidiBuffer& midi, int numSamples)
+void BoardProcessor::handleStandaloneMidi (const juce::MidiBuffer& midi)
 {
     for (const auto metadata : midi)
     {
         const auto message = metadata.getMessage();
         const auto time = sampleTime + metadata.samplePosition / currentSampleRate;
 
-        if (message.isMidiClock())
-        {
-            clock.tick (time);
-        }
-        else if (message.isProgramChange())
+        if (message.isProgramChange())
         {
             // Program changes 0-15 recall scenes 1-16.
             if (message.getProgramChangeNumber() < kNumScenes)
@@ -931,14 +942,40 @@ void BoardProcessor::handleStandaloneMidi (const juce::MidiBuffer& midi, int num
         }
     }
 
+}
+
+void BoardProcessor::followMidiClock (const juce::MidiBuffer& midi, int numSamples)
+{
+    const auto following = isFollowingClock();
+    const auto wasLocked = clockLocked.load();
+    auto started = false;
+
+    for (const auto metadata : midi)
+    {
+        const auto message = metadata.getMessage();
+        if (message.isMidiClock())
+            clock.tick (sampleTime + metadata.samplePosition / currentSampleRate);
+        else if (message.isMidiStart() && following)
+        {
+            boardPlayHead.startAt (metadata.samplePosition, currentSampleRate);
+            started = true;
+        }
+    }
+
     sampleTime += numSamples / currentSampleRate;
 
-    if (rig.followClock)
-        if (const auto bpm = clock.bpm (sampleTime))
-        {
-            tempo = *bpm;
-            boardPlayHead.bpm = *bpm;
-        }
+    const auto bpm = following ? clock.bpm (sampleTime) : std::nullopt;
+    if (bpm)
+    {
+        boardPlayHead.bpm = *bpm;
+        if (standalone)
+            tempo = *bpm; // the app shows (and saves) the clock's tempo
+    }
+    // In a host, the host's tempo whenever the clock isn't arriving. Taking
+    // over from it, the beat count starts at 0 (or at a Start in this block).
+    clockLocked = bpm.has_value();
+    if (! standalone && bpm && ! wasLocked && ! started)
+        boardPlayHead.startAt (0, currentSampleRate);
 }
 
 void BoardProcessor::applyController (int target, bool momentary, int value, double time)
@@ -1120,7 +1157,7 @@ void BoardProcessor::processSection (const SectionChain& section, juce::AudioBuf
     {
         auto* pedal = section.pedals[(size_t) i];
         const auto index = (size_t) section.ids[(size_t) i] - 1;
-        pedal->setPlayHead (standalone ? &boardPlayHead : getPlayHead());
+        pedal->setPlayHead (usesBoardPlayHead() ? &boardPlayHead : getPlayHead());
 
         // Each pedal gets the incoming MIDI (the vocoder plays its carrier from it).
         pedalMidi.clear();
@@ -1272,9 +1309,21 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
 
     // Standalone: MIDI learn mappings, program changes (scenes), MIDI clock,
     // and the tuner's copy of the input. In a host, Gig Performer does these.
+    if (! standalone)
+        if (auto* host = getPlayHead())
+            if (const auto position = host->getPosition())
+                hostBpm = position->getBpm().orFallback (0.0);
+
+    // MIDI clock: always counted in the app; in a host while following it.
+    if (standalone)
+        handleStandaloneMidi (midi);
+    if (standalone || isFollowingClock())
+        followMidiClock (midi, numSamples);
+    else
+        clockLocked = false;
+
     if (standalone)
     {
-        handleStandaloneMidi (midi, numSamples);
 
         // Before taking the chain lock: an Assign parameter takes it to move its knob.
         glideControllers (numSamples);
@@ -1312,9 +1361,11 @@ void BoardProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
     outputGain.applyGain (buffer, numSamples);
 
     // The tuner can mute the output while tuning (with a short fade).
+    if (usesBoardPlayHead())
+        boardPlayHead.advance (numSamples, currentSampleRate);
+
     if (standalone)
     {
-        boardPlayHead.advance (numSamples, currentSampleRate);
         tunerMute.setTargetValue (tunerActive && rig.tunerMutes ? 0.0f : 1.0f);
         tunerMute.applyGain (buffer, numSamples);
     }
@@ -1854,8 +1905,13 @@ void BoardProcessor::resetBoard()
 
 void BoardProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // Self-contained, like the plugins: every pedal with every value.
-    const auto json = juce::JSON::toString (toVar (true), true);
+    // Self-contained, like the plugins: every pedal with every value. In a
+    // host, also whether to follow MIDI clock (a rig setting, not the board's).
+    auto state = toVar (true);
+    if (! standalone)
+        if (auto* obj = state.getDynamicObject())
+            obj->setProperty ("followClock", pluginFollowClock.load());
+    const auto json = juce::JSON::toString (state, true);
     destData.replaceAll (json.toRawUTF8(), json.getNumBytesAsUTF8());
 }
 
@@ -1867,6 +1923,12 @@ void BoardProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (! fromVar (root, true).ok)
         return;
+
+    if (! standalone)
+    {
+        pluginFollowClock = (bool) root.getProperty ("followClock", false);
+        ++boardCounter;
+    }
 
     const auto path = root["file"].toString();
     setPresetState (root["name"].toString().isNotEmpty() ? root["name"].toString() : "Default",

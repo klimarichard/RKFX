@@ -47,9 +47,12 @@ class MidiClockFollower
 public:
     void reset() { count = 0; }
 
-    /** A clock tick at @p timeSeconds. */
+    /** A clock tick at @p timeSeconds. After a pause (clock stopped, then
+        resumed) it starts over, so old ticks don't skew the new tempo. */
     void tick (double timeSeconds)
     {
+        if (count > 0 && timeSeconds - times[(size_t) ((count - 1) % kTicks)] > 0.5)
+            count = 0;
         times[(size_t) (count % kTicks)] = timeSeconds;
         ++count;
     }
@@ -84,6 +87,13 @@ public:
     void advance (int numSamples, double sampleRate)
     {
         ppq = ppq.load() + numSamples * bpm.load() / (60.0 * sampleRate);
+    }
+
+    /** A MIDI Start @p sampleOffset samples into the coming block: beat 0
+        falls on that sample, so synced LFOs start with the song. */
+    void startAt (int sampleOffset, double sampleRate)
+    {
+        ppq = -sampleOffset * bpm.load() / (60.0 * sampleRate);
     }
 
     juce::Optional<PositionInfo> getPosition() const override

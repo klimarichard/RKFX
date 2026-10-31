@@ -973,6 +973,99 @@ public:
                 clock.tick (i * interval);
             expectWithinAbsoluteError (*clock.bpm (29 * interval), 140.0, 0.01);
             expect (! clock.bpm (29 * interval + 1.0).has_value(), "clock stopped");
+
+            // Resumed after a pause: the old ticks don't drag the new tempo down.
+            const auto resume = 29 * interval + 2.0;
+            for (int i = 0; i < 24; ++i)
+                clock.tick (resume + i * interval);
+            expect (! clock.bpm (resume + 23 * interval).has_value(), "starts over after a pause");
+            clock.tick (resume + 24 * interval);
+            expectWithinAbsoluteError (*clock.bpm (resume + 24 * interval), 140.0, 0.01);
+        }
+
+        beginTest ("Plugin: follows MIDI clock on its input, else the host's tempo");
+        {
+            struct HostPlayHead : juce::AudioPlayHead
+            {
+                juce::Optional<PositionInfo> getPosition() const override
+                {
+                    PositionInfo info;
+                    info.setBpm (90.0);
+                    info.setPpqPosition (1000.0);
+                    info.setIsPlaying (true);
+                    return info;
+                }
+            } host;
+
+            BoardProcessor board;   // not the app: a plugin in a host
+            expect (! board.isStandalone());
+            board.clearBoard();
+            const auto delay = board.addPedal ("RKDelay");
+            board.setPlayHead (&host);
+            prepare (board);
+
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            double next = 0.0;
+            const auto samplesPerTick = kRate * 60.0 / (100.0 * 24.0);
+            const auto block = [&] (bool ticks, int startAt = -1)
+            {
+                juce::MidiBuffer midi;
+                if (startAt >= 0)
+                {
+                    midi.addEvent (juce::MidiMessage::midiStart(), startAt);
+                    next = startAt; // the downbeat tick with the Start
+                }
+                while (ticks && next < kBlock)
+                {
+                    midi.addEvent (juce::MidiMessage::midiClock(), (int) next);
+                    next += samplesPerTick;
+                }
+                next = ticks ? next - kBlock : 0.0;
+                buffer.clear();
+                board.processBlock (buffer, midi);
+            };
+            const auto pedalPosition = [&] { return *board.getPedal (delay)->getPlayHead()->getPosition(); };
+
+            // Not following: clock is ignored, the pedals get the host's play head.
+            for (int b = 0; b < 50; ++b)
+                block (true);
+            expect (! board.isClockSettingTempo());
+            expectWithinAbsoluteError (board.getPedalTempo(), 90.0, 1.0e-9);
+            expectWithinAbsoluteError (*pedalPosition().getBpm(), 90.0, 1.0e-9);
+
+            // Following: the clock's tempo, once a beat of it has arrived.
+            board.setFollowClock (true);
+            for (int b = 0; b < 200; ++b)   // a beat of clock (24 ticks) is 113 blocks
+                block (true);
+            expect (board.isClockSettingTempo());
+            expectWithinAbsoluteError (board.getPedalTempo(), 100.0, 0.5);
+            expectWithinAbsoluteError (*pedalPosition().getBpm(), 100.0, 0.5);
+
+            // A Start puts beat 0 on its sample (the next block starts after it).
+            block (true, 100);
+            block (true);
+            expectWithinAbsoluteError (*pedalPosition().getPpqPosition(), (2 * kBlock - 100) * 100.0 / (60.0 * kRate), 0.01);
+
+            // The clock stops: back to the host's tempo.
+            for (int b = 0; b < 100; ++b)
+                block (false);
+            expect (! board.isClockSettingTempo());
+            expectWithinAbsoluteError (board.getPedalTempo(), 90.0, 1.0e-9);
+            expectWithinAbsoluteError (*pedalPosition().getBpm(), 90.0, 1.0e-9);
+
+            // Saved with the host session, not in board presets.
+            juce::MemoryBlock state;
+            board.getStateInformation (state);
+            BoardProcessor restored;
+            restored.setStateInformation (state.getData(), (int) state.getSize());
+            expect (restored.isFollowingClock(), "restored from the session");
+            expect (! board.toVar (false).hasProperty ("followClock"), "not in board presets");
+
+            board.setFollowClock (false);
+            board.getStateInformation (state);
+            restored.setStateInformation (state.getData(), (int) state.getSize());
+            expect (! restored.isFollowingClock());
+            board.setPlayHead (nullptr);
         }
 
         beginTest ("Tuner pitch detection and note names");

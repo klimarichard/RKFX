@@ -736,7 +736,9 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     refreshSceneButtons();
 
     // Standalone: tempo field, tap tempo, tuner (in a host, the host has these).
-    tempoField.setEditable (true);
+    // In a host the field shows the pedals' tempo (the host's or MIDI clock's),
+    // and its right-click menu switches following MIDI clock.
+    tempoField.setEditable (board.isStandalone());
     tempoField.setJustificationType (juce::Justification::centred);
     tempoField.setColour (juce::Label::backgroundColourId, Palette::background);
     tempoField.setColour (juce::Label::outlineColourId, Palette::outline);
@@ -749,11 +751,14 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     tapButton.onClick = [this] { board.tapTempo(); refreshTempo(); };
     tunerButton.setTooltip ("Tuner (right-click: MIDI learn).");
     tunerButton.onClick = [this] { board.setTunerActive (! board.isTunerActive()); syncTunerView(); };
+    if (! board.isStandalone())
+        tempoField.setTooltip ("The pedals' tempo: the host's, or incoming MIDI clock's while following it "
+                               "(right-click: follow MIDI clock, e.g. from RKTracks).");
     for (auto* c : std::initializer_list<juce::Component*> { &tempoField, &tempoUnit, &tapButton, &tunerButton })
     {
         c->addMouseListener (this, false);   // right-click menus
         addChildComponent (c);
-        c->setVisible (board.isStandalone());
+        c->setVisible (board.isStandalone() || c == &tempoField || c == &tempoUnit);
     }
     refreshTempo();
 
@@ -980,11 +985,14 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
     {
         juce::PopupMenu menu;
         menu.addItem (1, "Follow MIDI clock", true, board.isFollowingClock());
-        menu.addSeparator();
-        addLearnItems (menu, LearnTarget::tap, 10);
+        if (board.isStandalone())
+        {
+            menu.addSeparator();
+            addLearnItems (menu, LearnTarget::tap, 10);
+        }
 
         juce::Component::SafePointer<BoardEditor> safe (this);
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (tapButton), [safe] (int result)
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (e.originalComponent), [safe] (int result)
         {
             if (safe == nullptr || result == 0)
                 return;
@@ -1187,17 +1195,26 @@ void BoardEditor::syncTunerView()
 
 void BoardEditor::refreshTempo()
 {
-    if (! board.isStandalone() || tempoField.isBeingEdited())
+    if (tempoField.isBeingEdited())
         return;
 
-    const auto bpm = board.getTempo();
+    const auto bpm = board.getPedalTempo();
     if (! juce::approximatelyEqual (bpm, shownTempo))
     {
         shownTempo = bpm;
-        tempoField.setText (juce::String (bpm, 1), juce::dontSendNotification);
+        tempoField.setText (bpm > 0.0 ? juce::String (bpm, 1) : juce::String ("-"), juce::dontSendNotification);
     }
-    tempoField.setColour (juce::Label::textColourId, board.isFollowingClock() ? Palette::textDim : Palette::text);
-    tapButton.setEnabled (! board.isFollowingClock());
+
+    if (board.isStandalone())
+    {
+        tempoField.setColour (juce::Label::textColourId, board.isFollowingClock() ? Palette::textDim : Palette::text);
+        tapButton.setEnabled (! board.isFollowingClock());
+    }
+    else
+    {
+        // Read-only here: bright while MIDI clock sets it, dim for the host's tempo.
+        tempoField.setColour (juce::Label::textColourId, board.isClockSettingTempo() ? Palette::text : Palette::textDim);
+    }
 }
 
 void BoardEditor::refreshSceneButtons()
@@ -1266,8 +1283,8 @@ void BoardEditor::timerCallback()
         lastLearning = learning;
     }
 
-    if (board.isFollowingClock())
-        refreshTempo();
+    if (board.isFollowingClock() || ! board.isStandalone())
+        refreshTempo(); // the clock's or the host's tempo moves on its own
 
     if (board.getPresetStateCounter() != lastPresetCounter)
         refreshPresetButton();

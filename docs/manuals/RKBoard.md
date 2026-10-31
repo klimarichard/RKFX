@@ -96,6 +96,16 @@ Scenes can also be switched by the host parameter **Scene** (1 to 16, for a Gig 
 
 Delay and reverb pedals have a **Trails** option (right-click the tile). With trails on, bypassing the pedal stops it taking in new sound, but the echoes or reverb already playing ring out naturally, also when a scene switches the pedal off. With trails off, the sound stops as usual.
 
+## Tempo in a host
+
+In a host, tempo-synced delays and modulation follow the host's tempo. The **BPM** field at the left of the scene bar shows the tempo the pedals play at (dimmed: it can't be typed in the plugin).
+
+To follow MIDI clock instead, right-click the BPM field and tick **Follow MIDI clock**, then connect a clock source to RKBoard's MIDI input. For example, in Gig Performer, switch on **MIDI clock** in RKTracks and connect its MIDI output to RKBoard's MIDI input: the delays then follow the song's tempo, section tempos and tempo changes included.
+
+- While clock arrives, the pedals play at its tempo and the BPM field shows it brightly. When the clock stops (half a second without ticks) or before it starts, they follow the host's tempo again.
+- A MIDI **Start** puts beat 1 on its sample, so synced LFOs (tremolo, auto-wah, …) start with the song.
+- The setting is saved with the host session (the gig), not in board presets.
+
 ## Standalone app
 
 The standalone app has a few things a host would otherwise provide. In the plugin they are hidden: Gig Performer handles controllers and tempo there.
@@ -106,7 +116,7 @@ The standalone app has a few things a host would otherwise provide. In the plugi
 
 The **BPM** field (20 to 300) and **Tap** sit at the left of the scene bar. Tap at least twice; RKBoard averages your last few taps, and a pause of two seconds starts over. Tempo-synced delays and modulation follow this tempo. Board presets store their tempo and apply it when loaded.
 
-Right-click **Tap** and tick **Follow MIDI clock** to take the tempo from incoming MIDI clock instead (a drum machine or a sequencer); the BPM field then shows it, dimmed.
+Right-click **Tap** and tick **Follow MIDI clock** to take the tempo from incoming MIDI clock instead (a drum machine, a sequencer or RKTracks); the BPM field then shows it, dimmed. A MIDI **Start** puts beat 1 on its sample, so synced LFOs start with the song.
 
 ### MIDI learn
 

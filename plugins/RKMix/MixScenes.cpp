@@ -18,6 +18,41 @@ namespace
             bus = id.substring (3).getIntValue() - 1;
     }
 
+    /** A scene value's place in a recall scope: its category, or the bus its send goes to. */
+    void classify (const juce::String& id, MixScenes::Scope::Category& category, int& sendBus)
+    {
+        using Scope = MixScenes::Scope;
+        sendBus = -1;
+        if (id.startsWith ("ch_fader_") || id.startsWith ("ch_mute_") || id.startsWith ("bus_fader_") || id.startsWith ("bus_mute_")
+            || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute")
+        {
+            category = Scope::faders;
+            return;
+        }
+
+        // What follows the strip: "ch5_send3" -> "send3", "bus2_eq_on" -> "eq_on", "main_bal" -> "bal".
+        const auto field = id.fromFirstOccurrenceOf ("_", false, false);
+        const auto numbered = [&field] (const char* prefix)
+        {
+            const auto rest = field.fromFirstOccurrenceOf (prefix, false, false);
+            return field.startsWith (prefix) && rest.isNotEmpty() && rest.containsOnly ("0123456789");
+        };
+        if (numbered ("send") || numbered ("span"))
+        {
+            category = Scope::routing;
+            sendBus = field.substring (4).getIntValue() - 1;
+            return;
+        }
+        if (numbered ("grp") || field == "main")
+            category = Scope::routing;
+        else if (field == "pan" || id == "main_bal")
+            category = Scope::pans;
+        else if (id.startsWith ("bus") || id.startsWith ("main_") || id.startsWith ("mono_"))
+            category = Scope::busProcessing;
+        else
+            category = Scope::channelProcessing;
+    }
+
     void setNormalised (juce::RangedAudioParameter& p, float value)
     {
         if (! juce::exactlyEqual (p.getValue(), value))
@@ -46,6 +81,87 @@ bool MixScenes::isSceneValue (const juce::String& id)
     return true;
 }
 
+//==============================================================================
+juce::String MixScenes::Scope::name (Category c)
+{
+    switch (c)
+    {
+        case faders:            return "Faders & mutes";
+        case pans:              return "Pans";
+        case channelProcessing: return "Channel processing";
+        case busProcessing:     return "Bus & main processing";
+        case inserts:           return "Inserts";
+        case routing:           return "Group & main assigns";
+        case numCategories:     break;
+    }
+    return {};
+}
+
+juce::String MixScenes::Scope::key (Category c)
+{
+    switch (c)
+    {
+        case faders:            return "faders";
+        case pans:              return "pans";
+        case channelProcessing: return "channels";
+        case busProcessing:     return "buses";
+        case inserts:           return "inserts";
+        case routing:           return "assigns";
+        case numCategories:     break;
+    }
+    return {};
+}
+
+juce::String MixScenes::Scope::describe (const std::function<juce::String (int)>& busName) const
+{
+    if (isEverything())
+        return "Everything";
+    if (isNothing())
+        return "Nothing";
+
+    juce::StringArray parts;
+    if (sendBuses == kAllSends)
+        parts.add ("All sends");
+    else if (sendBuses != 0)
+    {
+        juce::StringArray buses;
+        for (int bus = 0; bus < mix::kBuses; ++bus)
+            if (sendsTo (bus))
+                buses.add (busName (bus));
+        parts.add ("Sends to " + buses.joinIntoString (", "));
+    }
+    for (int c = 0; c < numCategories; ++c)
+        if (has ((Category) c))
+            parts.add (name ((Category) c));
+    return parts.joinIntoString (", ");
+}
+
+bool MixScenes::isInScope (const Scope& scope, const juce::String& id)
+{
+    Scope::Category category;
+    int sendBus;
+    classify (id, category, sendBus);
+    return sendBus >= 0 ? juce::isPositiveAndBelow (sendBus, mix::kBuses) && scope.sendsTo (sendBus) : scope.has (category);
+}
+
+MixScenes::Scope MixScenes::getScope (int scene) const
+{
+    return scopes[(size_t) juce::jlimit (0, kNumScenes - 1, scene)];
+}
+
+void MixScenes::setScope (int scene, Scope scope)
+{
+    scope.categories &= Scope::kAllCategories;
+    scope.sendBuses &= Scope::kAllSends;
+    auto& s = scopes[(size_t) juce::jlimit (0, kNumScenes - 1, scene)];
+    if (s != scope)
+    {
+        s = scope;
+        ++version;
+    }
+}
+
+//==============================================================================
 MixScenes::MixScenes (MixSettings& s, juce::AudioProcessor& host, InsertRack& r) : settings (s), rack (r)
 {
     const auto add = [this] (juce::AudioProcessorParameter* p)
@@ -56,6 +172,7 @@ MixScenes::MixScenes (MixSettings& s, juce::AudioProcessor& host, InsertRack& r)
         Entry e;
         e.param = ranged;
         ownerOf (ranged->getParameterID(), e.channel, e.bus);
+        classify (ranged->getParameterID(), e.category, e.sendBus);
         e.glides = ! ranged->isDiscrete() && ! ranged->isBoolean();
         entries.push_back (e);
     };
@@ -114,7 +231,7 @@ MixScenes::Scene MixScenes::capture() const
     return s;
 }
 
-void MixScenes::apply (const Scene& s)
+void MixScenes::apply (const Scene& s, const Scope& scope)
 {
     finishGlides();
     glideMs = settings.value ("scene_glide");
@@ -140,18 +257,26 @@ void MixScenes::apply (const Scene& s)
             p.setValueNotifyingHost (to);
     };
 
+    // Only what the scene's recall scope covers.
+    const auto inScope = [&scope] (const Entry& e)
+    {
+        return e.sendBus >= 0 ? scope.sendsTo (e.sendBus) : scope.has (e.category);
+    };
     for (size_t i = 0; i < entries.size() && i < s.values.size(); ++i)
-        if (! isRecallSafe (entries[i]))
+        if (inScope (entries[i]) && ! isRecallSafe (entries[i]))
             set (*entries[i].param, s.values[i], entries[i].glides);
 
-    for (int slot = 0; slot < InsertRack::kTotalSlots; ++slot)
-        if (rack.get (InsertRack::slotAt (slot)) != nullptr && ! slotSafe (slot)
-            && rack.isOn (InsertRack::slotAt (slot)) != s.insertOn[(size_t) slot])
-            rack.setOn (InsertRack::slotAt (slot), s.insertOn[(size_t) slot]);
+    if (scope.has (Scope::inserts))
+    {
+        for (int slot = 0; slot < InsertRack::kTotalSlots; ++slot)
+            if (rack.get (InsertRack::slotAt (slot)) != nullptr && ! slotSafe (slot)
+                && rack.isOn (InsertRack::slotAt (slot)) != s.insertOn[(size_t) slot])
+                rack.setOn (InsertRack::slotAt (slot), s.insertOn[(size_t) slot]);
 
-    for (size_t i = 0; i < knobs.size() && i < s.knobs.size(); ++i)
-        if (auto* p = knobParam (knobs[i]); p != nullptr && ! slotSafe (knobs[i].slot))
-            set (*p, s.knobs[i], ! p->isDiscrete() && ! p->isBoolean());
+        for (size_t i = 0; i < knobs.size() && i < s.knobs.size(); ++i)
+            if (auto* p = knobParam (knobs[i]); p != nullptr && ! slotSafe (knobs[i].slot))
+                set (*p, s.knobs[i], ! p->isDiscrete() && ! p->isBoolean());
+    }
 
     if (! glides.empty())
     {
@@ -197,7 +322,7 @@ void MixScenes::recall (int scene)
         s = capture();
         return;
     }
-    apply (s);
+    apply (s, scopes[(size_t) scene]);
 }
 
 void MixScenes::copy (int from, int to)
@@ -206,8 +331,9 @@ void MixScenes::copy (int from, int to)
     to = juce::jlimit (0, kNumScenes - 1, to);
     const auto source = from == current ? capture() : scenes[(size_t) from];
     scenes[(size_t) to] = source.stored ? source : capture();
+    scopes[(size_t) to] = scopes[(size_t) from];
     if (to == current)
-        apply (scenes[(size_t) to]);
+        apply (scenes[(size_t) to], scopes[(size_t) to]);
     ++version;
 }
 
@@ -281,9 +407,24 @@ juce::var MixScenes::toVar() const
     root->setProperty ("knobs", knobList);
 
     juce::Array<juce::var> list;
-    for (const auto& s : all)
+    for (size_t index = 0; index < all.size(); ++index)
     {
+        const auto& s = all[index];
         auto* scene = new juce::DynamicObject();
+
+        // The recall scope, unless it is everything: what a recall changes.
+        if (const auto& scope = scopes[index]; ! scope.isEverything())
+        {
+            juce::Array<juce::var> keys;
+            for (int c = 0; c < Scope::numCategories; ++c)
+                if (scope.has ((Scope::Category) c))
+                    keys.add (Scope::key ((Scope::Category) c));
+            for (int bus = 0; bus < mix::kBuses; ++bus)
+                if (scope.sendsTo (bus))
+                    keys.add ("sends" + mix::num (bus));
+            scene->setProperty ("scope", keys);
+        }
+
         if (s.stored)
         {
             // Values that differ from the parameter's default (normalised).
@@ -316,6 +457,8 @@ void MixScenes::fromVar (const juce::var& v)
     knobs.clear();
     for (auto& s : scenes)
         s = {};
+    for (auto& s : scopes)
+        s = {};
 
     if (const auto* knobList = v["knobs"].getArray())
         for (const auto& k : *knobList)
@@ -326,6 +469,22 @@ void MixScenes::fromVar (const juce::var& v)
         for (int i = 0; i < juce::jmin (kNumScenes, list->size()); ++i)
         {
             const auto& item = list->getReference (i);
+            if (const auto* keys = item["scope"].getArray())
+            {
+                Scope scope;
+                scope.categories = scope.sendBuses = 0;
+                for (const auto& key : *keys)
+                {
+                    const auto k = key.toString();
+                    for (int c = 0; c < Scope::numCategories; ++c)
+                        if (k == Scope::key ((Scope::Category) c))
+                            scope.set ((Scope::Category) c, true);
+                    if (k.startsWith ("sends") && k.substring (5).containsOnly ("0123456789"))
+                        if (const auto bus = k.substring (5).getIntValue() - 1; juce::isPositiveAndBelow (bus, mix::kBuses))
+                            scope.setSendsTo (bus, true);
+                }
+                scopes[(size_t) i] = scope;
+            }
             if (! item.hasProperty ("values"))
                 continue;
             auto& s = scenes[(size_t) i];

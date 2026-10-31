@@ -7,6 +7,7 @@
 #include "MixComponents.h"
 #include "MixInserts.h"
 #include "MixLayout.h"
+#include "MixScenes.h"
 #include "TransferCurve.h"
 
 #include <array>
@@ -340,18 +341,28 @@ private:
         juce::Rectangle<int> talkArea, oscArea;
     };
 
-    /** Scenes: the glide, the recall-safe channels and buses, the scene-controlled insert knobs. */
+    /** Scenes: the glide, the recall-safe channels and buses, each scene's recall scope. */
     struct ScenesPanel : public Panel
     {
         explicit ScenesPanel (RKMixEditor&);
         void resized() override;
         void paint (juce::Graphics&) override;
         void refresh() override;
+        /** Shows (and edits) the recall scope of @p scene. */
+        void editScope (int scene);
 
         rkfx::Knob* glide = nullptr;
         std::array<rkfx::ToggleSwitch*, mix::kChannels> channelSafe {};
         std::array<rkfx::ToggleSwitch*, mix::kBuses> busSafe {};
-        juce::Rectangle<int> glideArea, safeArea;
+        juce::Rectangle<int> glideArea, safeArea, scopeArea;
+
+        juce::ComboBox scopeScene;
+        int scopeFor = 0, lastCurrent = -1;
+        std::array<juce::TextButton, MixScenes::Scope::numCategories> categoryButtons;
+        std::array<juce::TextButton, mix::kBuses> sendButtons;
+        juce::TextButton everything { "Everything" }, copyToAll { "Copy to all scenes" };
+
+        void applyScope();
     };
 
     /** The 32 assignables: what each drives, its range, invert. */
@@ -490,6 +501,7 @@ private:
     void showLearnMenu (int target, juce::Component& component);
     void refreshStandalone();
     void refreshScenes();
+    void editSceneScope (int scene);
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

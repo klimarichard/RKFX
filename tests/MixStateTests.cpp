@@ -567,6 +567,113 @@ public:
             expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (q.findParam (mix::channelFaderId (0))), -20.0f, 0.01f, "via the Scene parameter");
         }
 
+        beginTest ("Recall scope: every scene value has a place; ids land where they belong");
+        {
+            using Scope = MixScenes::Scope;
+            RKMixProcessor p;
+            juce::StringArray ids;
+            for (auto* param : p.getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (param))
+                    ids.add (r->getParameterID());
+            for (auto* param : p.getSettings().getParameters())
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (param))
+                    ids.add (r->getParameterID());
+
+            // With nothing in scope, no scene value is recalled; with everything, all are.
+            Scope none;
+            none.categories = none.sendBuses = 0;
+            for (const auto& id : ids)
+                if (MixScenes::isSceneValue (id))
+                {
+                    expect (! MixScenes::isInScope (none, id), id + " outside an empty scope");
+                    expect (MixScenes::isInScope (Scope(), id), id + " inside the full scope");
+                }
+
+            const auto only = [] (Scope::Category c) { Scope s; s.categories = 1u << c; s.sendBuses = 0; return s; };
+            Scope bus1;
+            bus1.categories = 0;
+            bus1.sendBuses = 1u;
+            expect (MixScenes::isInScope (bus1, mix::channelSendId (4, 0)), "a channel's send to bus 1");
+            expect (MixScenes::isInScope (bus1, mix::channelSendPanId (4, 0)), "its Own pan");
+            expect (MixScenes::isInScope (bus1, mix::busSendId (3, 0)), "a bus's send to bus 1");
+            expect (! MixScenes::isInScope (bus1, mix::channelSendId (4, 1)), "not the sends to bus 2");
+            expect (! MixScenes::isInScope (bus1, mix::busSendId (0, 1)), "nor bus 1's own sends");
+            expect (! MixScenes::isInScope (bus1, mix::channelFaderId (4)));
+            expect (MixScenes::isInScope (only (Scope::faders), mix::busMuteId (2)));
+            expect (MixScenes::isInScope (only (Scope::faders), "main_fader"));
+            expect (MixScenes::isInScope (only (Scope::pans), mix::channelId (3, "pan")));
+            expect (MixScenes::isInScope (only (Scope::pans), mix::busId (3, "pan")));
+            expect (MixScenes::isInScope (only (Scope::pans), "main_bal"));
+            expect (MixScenes::isInScope (only (Scope::channelProcessing), mix::channelId (3, "eq_on")));
+            expect (MixScenes::isInScope (only (Scope::channelProcessing), mix::channelId (3, "trim")));
+            expect (MixScenes::isInScope (only (Scope::busProcessing), mix::chainId (2, "lim_on")));
+            expect (MixScenes::isInScope (only (Scope::busProcessing), mix::chainId (mix::kMainChain, "comp_on")));
+            expect (MixScenes::isInScope (only (Scope::routing), mix::channelAssignId (3, 2)));
+            expect (MixScenes::isInScope (only (Scope::routing), mix::channelId (3, "main")));
+            expect (MixScenes::isInScope (only (Scope::routing), mix::busId (3, "main")));
+        }
+
+        beginTest ("Recall scope: a scene that recalls only the sends to bus 1 leaves the rest; kept in the session; copied");
+        {
+            using Strip = InsertRack::Strip;
+            using Scope = MixScenes::Scope;
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param ("scene_glide"), 0.0f);
+            auto& fader = *p.findParam (mix::channelFaderId (0));
+            p.getRack().insert ({ Strip::channel, 0, 0 }, "RKChorus", 1);
+
+            // Scene 1: everything. Scene 2: only the sends to bus 1.
+            setParam (fader, -6.0f);
+            setParam (s.param (mix::channelSendId (0, 0)), -20.0f);
+            setParam (s.param (mix::channelSendId (0, 1)), -20.0f);
+            Scope sends1;
+            sends1.categories = 0;
+            sends1.sendBuses = 1u;
+            p.getScenes().setScope (1, sends1);
+            p.recallScene (1);
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
+            setParam (s.param (mix::channelSendPanId (0, 0)), 50.0f);
+
+            // Back in scene 1 (everything): change what scene 2 must not touch.
+            p.recallScene (0);
+            expectWithinAbsoluteError (s.value (mix::channelSendId (0, 0)), -20.0f, 0.01f);
+            setParam (fader, -30.0f);
+            setParam (s.param (mix::channelSendId (0, 1)), -3.0f);
+            setParam (s.param (mix::channelId (0, "pan")), 25.0f);
+            p.getRack().setOn ({ Strip::channel, 0, 0 }, false);
+
+            p.recallScene (1);
+            expectWithinAbsoluteError (s.value (mix::channelSendId (0, 0)), 0.0f, 0.01f, "the send to bus 1 recalls");
+            expectWithinAbsoluteError (s.value (mix::channelSendPanId (0, 0)), 50.0f, 0.01f, "with its pan");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (&fader), -30.0f, 0.01f, "the fader stays");
+            expectWithinAbsoluteError (s.value (mix::channelSendId (0, 1)), -3.0f, 0.01f, "the send to bus 2 stays");
+            expectWithinAbsoluteError (s.value (mix::channelId (0, "pan")), 25.0f, 0.01f, "the pan stays");
+            expect (! p.getRack().isOn ({ Strip::channel, 0, 0 }), "inserts stay");
+
+            // Kept in the session (scene 2's scope, scene 1's everything).
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getScenes().getScope (1) == sends1);
+            expect (q.getScenes().getScope (0).isEverything());
+
+            // A scope set before the scene is first stored stays when it is.
+            Scope pans;
+            pans.categories = 1u << Scope::pans;
+            pans.sendBuses = 0;
+            q.getScenes().setScope (5, pans);
+            q.recallScene (5);
+            q.recallScene (0);
+            expect (q.getScenes().getScope (5) == pans);
+
+            // Copying a scene copies its scope.
+            q.getScenes().copy (1, 7);
+            expect (q.getScenes().getScope (7) == sends1);
+            expect (q.getScenes().getScope (1).describe ([] (int bus) { return "Bus " + mix::num (bus); }) == "Sends to Bus 1");
+        }
+
         beginTest ("Assignables: an Assign moves its control within its range, and the control moves the Assign");
         {
             using Kind = MixAssigns::Target::Kind;

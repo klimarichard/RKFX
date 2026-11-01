@@ -68,7 +68,7 @@ public:
             expectEquals (rkfx::factoryPresetName ("10cc Sound.json"), juce::String ("10cc Sound"));
         }
 
-        struct Plugin { const char* name; std::function<rkfx::ParamBuilder()> create; int minimum; };
+        struct Plugin { const char* name; std::function<rkfx::ParamBuilder()> create; int minimum; int stateVersion = 1; };
         const Plugin plugins[] = {
             { "RKFreqShift", FreqShiftParams::create, 5 }, { "RKFilter", FilterParams::create, 6 },
             { "RKParaEQ", ParaEQParams::create, 5 },       { "RKGraphEQ", GraphEQParams::create, 4 },
@@ -89,7 +89,7 @@ public:
             { "RKFollow", FollowParams::create, 6 },       { "RKTrigger", TriggerParams::create, 6 },
             { "RKHold", HoldParams::create, 6 },          { "RKEcho", EchoParams::create, 6 },
             { "RKPolyPitch", PolyPitchParams::create, 7 }, { "RKRemap", RemapParams::create, 4 },
-            { "RKHarmonize", HarmonizeParams::create, 6 },
+            { "RKHarmonize", HarmonizeParams::create, 7, 2 },
             { "RKArpeggiate", ArpParams::create, 6 },    { "RKStrum", StrumParams::create, 5 },
             { "RKSustain", SustainParams::create, 5 },   { "RKConduct", ConductParams::create, 7 },
         };
@@ -114,10 +114,10 @@ public:
             juce::StringArray names;
             for (const auto& f : files)
             {
-                const auto r = rkfx::PresetFormat::read (f.loadFileAsString(), plugin.name, 1, infos);
+                const auto r = rkfx::PresetFormat::read (f.loadFileAsString(), plugin.name, plugin.stateVersion, infos);
                 expect (r.ok, f.getFileName() + ": " + r.error);
                 expect (r.notes.isEmpty(), f.getFileName() + ": " + r.notes.joinIntoString ("; "));
-                expectEquals (r.version, 1);
+                expect (r.version >= 1 && r.version <= plugin.stateVersion, f.getFileName() + ": version " + juce::String (r.version));
                 expect (r.name == rkfx::factoryPresetName (f.getFileName()), f.getFileName() + ": name matches the file");
                 expect (! names.contains (r.name), "unique name");
                 names.add (r.name);

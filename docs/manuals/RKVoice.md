@@ -23,7 +23,7 @@ For the header, knobs, presets, Output and Bypass, see [Common Controls](Common%
 | **Chord Tones** | Any Octave, As Voiced | Any Octave | **Any Octave**: the notes of the held chord in every octave, so there is always a note above and below you. **As Voiced**: only the exact notes you hold; a voice with no held note in its direction stays silent, so the way you voice the chord on the keyboard sets the spacing. |
 | **No Chord** | Silent, Latch, Scale | Silent | What the voices do when no chord is held. **Silent**: they stop until you hold a chord again. **Latch**: they keep the last chord. **Scale**: they follow the key and scale until a chord comes back. |
 | **MIDI Ch** | Omni, 1 to 16 | Omni | Which MIDI channel the chord comes from. Omni takes every channel. |
-| **Key**, **Scale** | C to B; Major … Chromatic | C, Major | The key and scale for Scale mode (and for No Chord: Scale). The same as in RKHarmonize: in a seven-note scale a 3rd is major or minor as the key requires; in pentatonic and blues the harmony moves to the nearest scale note; Chromatic keeps every interval fixed. |
+| **Key**, **Scale** | C to B; Major … Chromatic | C, Major | The key and scale for Scale mode (and for No Chord: Scale). The same as in RKHarmonize: in a seven-note scale a 3rd is major or minor as the key requires; in pentatonic and blues the harmony moves to the nearest scale note; **Chromatic** ignores the key: each voice is a fixed number of semitones you set yourself (see In the Scale). |
 
 The sustain pedal works as on a piano: notes you release while it's down stay in the chord until you lift it.
 
@@ -43,6 +43,7 @@ Each of the four voices has:
 | --- | --- | --- | --- |
 | **In a Chord** | Off, 3rd below, 2nd below, 1st below, 1st above, 2nd above, 3rd above | Voice 1: 1st above · Voice 2: 1st below · Voices 3, 4: Off | Chord mode: which note of the held chord this voice sings, counted from the note you sing. *1st above* is the nearest chord note above you, *2nd above* the next one, and so on. |
 | **In the Scale** | Off, octave / 6th / 5th / 4th / 3rd below, 3rd / 4th / 5th / 6th / octave above | Voice 1: 3rd above · others Off | Scale mode: the voice's interval in the key. |
+| **In the Scale** (Chromatic) | -12 to +12 semitones, Off at 0 | Voice 1: +4 st · others Off | With the Chromatic scale, the knob turns into a semitone knob: the voice sings exactly that many semitones above (+) or below (-) you, whatever the note. +3 is a minor third, +4 a major third, +7 a fifth, +12 an octave; -5 is a fourth below. The interval settings are kept and come back with any other scale. |
 | **Level** | -60 dB (off) to +6 dB | -3 dB | The voice's level. |
 | **Pan** | 100% left to 100% right | -30%, +30%, -60%, +60% | Where the voice sits in the stereo picture (a mono input comes out in stereo). |
 
@@ -88,6 +89,7 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Triads in the Key** | Scale mode (C major), voice 1 *3rd above* (pan -30%), voice 2 *5th above* (pan +30%) |
 | **Octaves** | Scale mode, voice 1 *octave above* (-9 dB), voice 2 *octave below* (-6 dB), centred, Detune 3 cents |
 | **Harmony Only** | Close Harmony with Dry off: only the voices, for when your own sound reaches the PA another way |
+| **Parallel Minor Triads** | Scale mode, Chromatic, voice 1 *+3 st* (pan -30%), voice 2 *+7 st* (pan +30%): every note you sing becomes the root of a minor chord |
 
 Set the **Key** to your song's key in the Scale-mode presets.
 

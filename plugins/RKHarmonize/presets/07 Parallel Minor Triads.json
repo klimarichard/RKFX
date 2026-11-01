@@ -1,0 +1,10 @@
+{
+  "plugin": "RKHarmonize",
+  "version": 2,
+  "name": "Parallel Minor Triads",
+  "params": {
+    "scale": "chromatic",
+    "voice1_semis": 3,
+    "voice2_semis": 7
+  }
+}

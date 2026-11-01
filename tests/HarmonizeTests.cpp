@@ -65,6 +65,36 @@ public:
             expect (has (out, false, 64, -1) && has (out, false, 67, -1));
         }
 
+        beginTest ("Chromatic: free semitones per voice");
+        {
+            expectEquals (HarmonizeEngine::chromaticNote (60, 6), 66, "a tritone");
+            expectEquals (HarmonizeEngine::chromaticNote (60, -1), 59);
+            expectEquals (HarmonizeEngine::chromaticNote (60, 0), -1, "0 = off");
+            expectEquals (HarmonizeEngine::chromaticNote (120, 12), -1, "beyond 127");
+
+            HarmonizeEngine e;
+            e.prepare();
+            HarmonizeEngine::Settings s;
+            s.scale = Scale::chromatic;
+            s.voice1 = Interval::thirdAbove;   // ignored in chromatic
+            s.semitones1 = 2;
+            s.semitones2 = -5;
+            e.setSettings (s);
+
+            auto out = run (e, { on (60, 100) });
+            expect (has (out, true, 60, 100) && has (out, true, 62, 80) && has (out, true, 55, 80), "C, D and G below");
+            expect (! has (out, true, 64, -1), "the Voice interval isn't used");
+
+            out = run (e, { off (60) });
+            expect (has (out, false, 62, -1) && has (out, false, 55, -1));
+
+            s.semitones1 = 0;
+            s.semitones2 = 0;
+            e.setSettings (s);
+            out = run (e, { on (60, 100) });
+            expect (out.getNumEvents() == 1, "both voices off: only the original");
+        }
+
         beginTest ("Unknown note-offs and other events pass; release ends everything");
         {
             HarmonizeEngine e;

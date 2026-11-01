@@ -27,6 +27,19 @@ namespace HarmonizeParams
         p.addPercent ("velocity", "Harmony Velocity", 0.0f, 100.0f, 80.0f);
         p.addBool    ("original", "Original Note", true);
 
+        // Chromatic scale: each voice as a free number of semitones (0 = off).
+        const auto semitones = [] (float v)
+        {
+            const auto st = juce::roundToInt (v);
+            return st == 0 ? juce::String ("Off") : (st > 0 ? "+" : "") + juce::String (st) + " st";
+        };
+        const auto parseSemitones = [] (const juce::String& text)
+        {
+            return text.trim().equalsIgnoreCase ("off") ? 0.0f : (float) juce::roundToInt (rkfx::Units::parseNumber (text));
+        };
+        p.addFloat   ("voice1_semis", "Voice 1 Semitones", { -12.0f, 12.0f, 1.0f }, 4.0f, semitones, parseSemitones);
+        p.addFloat   ("voice2_semis", "Voice 2 Semitones", { -12.0f, 12.0f, 1.0f }, 0.0f, semitones, parseSemitones);
+
         return p;
     }
 }

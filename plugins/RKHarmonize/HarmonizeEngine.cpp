@@ -5,6 +5,20 @@ int HarmonizeEngine::harmonyNote (int note, int key, Scale scale, Interval inter
     return rkfx::scales::harmonyNote (note, key, scale, interval);
 }
 
+int HarmonizeEngine::chromaticNote (int note, int semitones) noexcept
+{
+    if (semitones == 0)
+        return -1;
+    const auto result = note + semitones;
+    return result >= 0 && result <= 127 ? result : -1;
+}
+
+int HarmonizeEngine::voiceNote (int note, Interval interval, int semitones) const noexcept
+{
+    return settings.scale == Scale::chromatic ? chromaticNote (note, semitones)
+                                              : harmonyNote (note, settings.key, settings.scale, interval);
+}
+
 void HarmonizeEngine::prepare()
 {
     out.ensureSize (4096);
@@ -28,8 +42,8 @@ void HarmonizeEngine::noteOn (int channel, int note, juce::uint8 velocity, int p
 
     int pitches[kVoices] = {
         settings.original ? note : -1,
-        harmonyNote (note, settings.key, settings.scale, settings.voice1),
-        harmonyNote (note, settings.key, settings.scale, settings.voice2)
+        voiceNote (note, settings.voice1, settings.semitones1),
+        voiceNote (note, settings.voice2, settings.semitones2)
     };
     if (pitches[2] == pitches[1])
         pitches[2] = -1;

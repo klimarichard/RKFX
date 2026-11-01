@@ -18,12 +18,26 @@ RKHarmonizeEditor::RKHarmonizeEditor (RKHarmonizeProcessor& p)
     scale    = std::make_unique<Knob> (param ("scale"), "Scale");
     voice1   = std::make_unique<Knob> (param ("voice1"), "Voice 1");
     voice2   = std::make_unique<Knob> (param ("voice2"), "Voice 2");
+    semitones1 = std::make_unique<Knob> (param ("voice1_semis"), "Voice 1");
+    semitones2 = std::make_unique<Knob> (param ("voice2_semis"), "Voice 2");
     velocity = std::make_unique<Knob> (param ("velocity"), "Velocity");
     original = std::make_unique<rkfx::ToggleSwitch> (param ("original"), accent(), "Original");
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
-             key.get(), scale.get(), voice1.get(), voice2.get(), velocity.get(), original.get() })
+             key.get(), scale.get(), voice1.get(), voice2.get(), semitones1.get(), semitones2.get(),
+             velocity.get(), original.get() })
         addToCanvas (*c);
+
+    // The chromatic scale takes each voice as a free number of semitones.
+    scaleWatcher = std::make_unique<juce::ParameterAttachment> (param ("scale"), [this] (float v)
+    {
+        const auto chromatic = juce::roundToInt (v) == (int) HarmonizeEngine::Scale::chromatic;
+        voice1->setVisible (! chromatic);
+        voice2->setVisible (! chromatic);
+        semitones1->setVisible (chromatic);
+        semitones2->setVisible (chromatic);
+    });
+    scaleWatcher->sendInitialUpdate();
 
     finishSetup();
 }
@@ -51,6 +65,8 @@ void RKHarmonizeEditor::layoutContent()
         const auto third = knobs.getWidth() / 3;
         voice1->setBounds (knobs.removeFromLeft (third));
         voice2->setBounds (knobs.removeFromLeft (third));
+        semitones1->setBounds (voice1->getBounds());
+        semitones2->setBounds (voice2->getBounds());
         velocity->setBounds (knobs);
     }
 }

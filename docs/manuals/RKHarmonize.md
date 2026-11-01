@@ -11,7 +11,7 @@ For the header, presets and Bypass, see [Common Controls](Common%20Controls.md).
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
 | **Key** | C to B | C | The key's root note. |
-| **Scale** | Major, Natural Minor, Harmonic Minor, Melodic Minor, Dorian, Phrygian, Lydian, Mixolydian, Major Pentatonic, Minor Pentatonic, Blues, Chromatic | Major | The scale the harmony stays in. In the seven-note scales the harmony moves by scale steps, so thirds are major or minor as the key requires. In pentatonic and blues it moves to the nearest note of the scale. **Chromatic** keeps every interval fixed (parallel harmony: a 3rd is always a major third). |
+| **Scale** | Major, Natural Minor, Harmonic Minor, Melodic Minor, Dorian, Phrygian, Lydian, Mixolydian, Major Pentatonic, Minor Pentatonic, Blues, Chromatic | Major | The scale the harmony stays in. In the seven-note scales the harmony moves by scale steps, so thirds are major or minor as the key requires. In pentatonic and blues it moves to the nearest note of the scale. **Chromatic** ignores the key: each voice is a fixed number of semitones that you set yourself (parallel harmony, see below). |
 
 A note you play outside the scale keeps its distance from the scale note below it, so chromatic passing notes get a parallel harmony.
 
@@ -21,6 +21,7 @@ A note you play outside the scale keeps its distance from the scale note below i
 | --- | --- | --- | --- |
 | **Voice 1** | Off, Octave below, 6th, 5th, 4th or 3rd below, 3rd, 4th, 5th or 6th above, Octave above | 3rd above | The first harmony note. |
 | **Voice 2** | (the same) | Off | The second. With Voice 1 a 3rd above and Voice 2 a 5th above, every note becomes a triad in the key. |
+| **Voice 1, Voice 2** (Chromatic) | −12 to +12 semitones, Off at 0 | +4 st, Off | With the Chromatic scale, the two Voice knobs turn into semitone knobs: each harmony note is exactly that many semitones above (+) or below (−) the note played, whatever the note. +3 is a minor third, +4 a major third, +7 a fifth, +12 an octave; −5 is a fourth below. The interval settings above are kept and come back when you choose another scale. |
 | **Velocity** | 0 to 100% | 80% | The harmony notes' velocity, as a share of the note played (so they sit a little behind the melody). |
 | **Original** | Off, on | On | Plays the note you play too. Off: only the harmony sounds (for example, for a line an octave below on another instrument). |
 
@@ -38,6 +39,7 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Minor Thirds Below** | A minor, a 3rd below |
 | **Octave Doubling** | An octave below, at 90% |
 | **Blues Fourths** | E blues, a 4th above |
+| **Parallel Minor Triads** | Chromatic, +3 and +7 semitones: every note becomes the root of a minor chord |
 
 ## Notes
 

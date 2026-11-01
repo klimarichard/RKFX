@@ -21,9 +21,10 @@ protected:
     void processDsp (juce::AudioBuffer<float>&) override {}
     void processMidi (juce::MidiBuffer&, int numSamples) override;
     void releaseMidi (juce::MidiBuffer& midi) override { engine.releaseAll (midi); }
+    void migrateParams (juce::DynamicObject& params, int fromVersion) override;
 
 private:
-    juce::RangedAudioParameter *key, *scale, *voice1, *voice2, *velocity, *original;
+    juce::RangedAudioParameter *key, *scale, *voice1, *voice2, *velocity, *original, *semitones1, *semitones2;
     HarmonizeEngine engine;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKHarmonizeProcessor)

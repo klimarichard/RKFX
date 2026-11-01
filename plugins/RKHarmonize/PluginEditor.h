@@ -10,8 +10,9 @@ public:
     explicit RKHarmonizeEditor (RKHarmonizeProcessor&);
 
 private:
-    std::unique_ptr<rkfx::Knob> key, scale, voice1, voice2, velocity;
+    std::unique_ptr<rkfx::Knob> key, scale, voice1, voice2, semitones1, semitones2, velocity;
     std::unique_ptr<rkfx::ToggleSwitch> original;
+    std::unique_ptr<juce::ParameterAttachment> scaleWatcher;
 
     juce::Rectangle<int> keyArea() const;
     juce::Rectangle<int> harmonyArea() const;

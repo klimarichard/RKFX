@@ -15,7 +15,8 @@
       from the scale note below it (chromatic passing notes stay parallel).
     - Pentatonic and blues scales: the interval is taken as in a major scale
       and the harmony moves to the nearest note of the scale.
-    - Chromatic: fixed intervals (a 3rd is always a major third).
+    - Chromatic: each voice is a free number of semitones (-12 .. +12),
+      kept parallel to the melody.
     - Octaves are always 12 semitones.
 
     The harmony notes are on the played note's channel, at a share of its
@@ -41,12 +42,17 @@ public:
         Scale scale = Scale::major;
         Interval voice1 = Interval::thirdAbove;
         Interval voice2 = Interval::off;
+        int semitones1 = 4;                 // chromatic scale: the voices in semitones (0 = off)
+        int semitones2 = 0;
         float velocity = 0.8f;              // the harmony's share of the played velocity
         bool original = true;               // the played note itself
     };
 
     /** The harmony for @p note, or -1 (off, or outside 0..127). */
     static int harmonyNote (int note, int key, Scale, Interval) noexcept;
+
+    /** A chromatic voice: @p note moved by @p semitones, or -1 (0 = off, or outside 0..127). */
+    static int chromaticNote (int note, int semitones) noexcept;
 
     void prepare();
     void reset();
@@ -69,4 +75,5 @@ private:
     void noteOn (int channel, int note, juce::uint8 velocity, int position) noexcept;
     void noteOff (int channel, int note, int position) noexcept;
     void clearChannel (int channel) noexcept;
+    int voiceNote (int note, Interval, int semitones) const noexcept;
 };

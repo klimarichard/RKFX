@@ -29,7 +29,8 @@
       don't make the voices jump); a bigger one, a new note, at once.
     - Harmony: in Chord mode each voice takes the Nth chord tone above or
       below the sung note (strictly above or below: a sung chord tone is
-      skipped). In Scale mode, the RKHarmonize interval (core/dsp/Scales.h).
+      skipped). In Scale mode, the RKHarmonize interval (core/dsp/Scales.h);
+      with the chromatic scale, a free number of semitones per voice.
       The voice keeps the singer's expression: it plays the sung pitch times
       the interval's ratio, so vibrato and slides carry over.
     - Shifting: PSOLA. Each grain is two input periods with a Hann window,
@@ -71,6 +72,7 @@ public:
         Interval interval = Interval::off;  // Scale mode
         float levelDb = -3.0f;
         float pan = 0.0f;                   // -1 (left) .. +1 (right)
+        int semitones = 0;                  // Scale mode, chromatic scale: -12 .. +12 (0 = off)
     };
 
     struct Settings
@@ -81,7 +83,7 @@ public:
         NoChord noChord = NoChord::silent;
         int key = 0;                        // 0 = C .. 11 = B
         Scale scale = Scale::major;
-        std::array<VoiceSettings, kNumVoices> voices { { { 1, Interval::thirdAbove, -3.0f, -0.3f },
+        std::array<VoiceSettings, kNumVoices> voices { { { 1, Interval::thirdAbove, -3.0f, -0.3f, 4 },
                                                          { -1, Interval::off, -3.0f, 0.3f },
                                                          { 0, Interval::off, -3.0f, -0.6f },
                                                          { 0, Interval::off, -3.0f, 0.6f } } };

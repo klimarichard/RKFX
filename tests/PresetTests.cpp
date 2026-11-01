@@ -84,7 +84,7 @@ public:
             { "RKUtility", UtilityParams::create, 7 },   { "RKOctave", OctaveParams::create, 6 },
             { "RKAcoustic", AcousticParams::create, 6 }, { "RKPreamp", PreampParams::create, 7 },
             { "RKSynth", SynthParams::create, 6 },       { "RKRingMod", RingModParams::create, 6 },
-            { "RKLoop", LoopParams::create, 8 },        { "RKVoice", VoiceParams::create, 7 },
+            { "RKLoop", LoopParams::create, 8 },        { "RKVoice", VoiceParams::create, 7, 2 },
             { "RKMultiComp", MultiCompParams::create, 6 }, { "RKRide", RideParams::create, 6 },
             { "RKFollow", FollowParams::create, 6 },       { "RKTrigger", TriggerParams::create, 6 },
             { "RKHold", HoldParams::create, 6 },          { "RKEcho", EchoParams::create, 6 },

@@ -57,9 +57,10 @@ RKVoiceEditor::RKVoiceEditor (RKVoiceProcessor& p)
         auto& k = voices[(size_t) v];
         k.position = std::make_unique<Knob> (param (VoiceParams::voiceId (v + 1, "position")), "In a Chord");
         k.interval = std::make_unique<Knob> (param (VoiceParams::voiceId (v + 1, "interval")), "In the Scale");
+        k.semitones = std::make_unique<Knob> (param (VoiceParams::voiceId (v + 1, "semis")), "In the Scale");
         k.level    = std::make_unique<Knob> (param (VoiceParams::voiceId (v + 1, "level")), "Level");
         k.pan      = std::make_unique<Knob> (param (VoiceParams::voiceId (v + 1, "pan")), "Pan");
-        for (auto* c : { k.position.get(), k.interval.get(), k.level.get(), k.pan.get() })
+        for (auto* c : { k.position.get(), k.interval.get(), k.semitones.get(), k.level.get(), k.pan.get() })
             addToCanvas (*c);
     }
 
@@ -75,6 +76,7 @@ void RKVoiceEditor::onParameterChange()
     const auto s = voice.currentSettings();
     const auto chord = s.mode == VoiceEngine::Mode::chord;
     const auto scaleUsed = ! chord || s.noChord == VoiceEngine::NoChord::scale;
+    const auto chromatic = s.scale == VoiceEngine::Scale::chromatic;
 
     chordTones->setDimmed (! chord);
     noChord->setDimmed (! chord);
@@ -85,6 +87,9 @@ void RKVoiceEditor::onParameterChange()
     {
         k.position->setDimmed (! chord);
         k.interval->setDimmed (! scaleUsed);
+        k.semitones->setDimmed (! scaleUsed);
+        k.interval->setVisible (! chromatic);    // the chromatic scale takes free semitones
+        k.semitones->setVisible (chromatic);
     }
 }
 
@@ -133,6 +138,7 @@ void RKVoiceEditor::layoutContent()
         auto top = column.removeFromTop (Knob::kDefaultHeight);
         k.position->setBounds (top.removeFromLeft (top.getWidth() / 2));
         k.interval->setBounds (top);
+        k.semitones->setBounds (top);
         auto bottom = column.removeFromTop (Knob::kDefaultHeight);
         k.level->setBounds (bottom.removeFromLeft (bottom.getWidth() / 2));
         k.pan->setBounds (bottom);

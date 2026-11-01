@@ -14,7 +14,9 @@ namespace rkfx
       from the scale note below it (chromatic passing notes stay parallel).
     - Pentatonic and blues scales: the interval is taken as in a major scale
       and the harmony moves to the nearest note of the scale.
-    - Chromatic: fixed intervals (a 3rd is always a major third).
+    - Chromatic: harmonyNote() keeps the intervals fixed (a 3rd is always a
+      major third); the plugins instead set each voice as a free number of
+      semitones (chromaticNote()).
     - Octaves are always 12 semitones. */
 namespace scales
 {
@@ -90,6 +92,15 @@ namespace scales
             case Interval::off:         break;
         }
         return 0;
+    }
+
+    /** A chromatic voice: @p note moved by @p semitones, or -1 (0 = off, or outside 0..127). */
+    inline int chromaticNote (int note, int semitones) noexcept
+    {
+        if (semitones == 0)
+            return -1;
+        const auto result = note + semitones;
+        return result >= 0 && result <= 127 ? result : -1;
     }
 
     inline int floorDiv (int a, int b) noexcept { return a >= 0 ? a / b : -((-a + b - 1) / b); }

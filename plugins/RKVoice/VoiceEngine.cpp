@@ -225,7 +225,8 @@ void VoiceEngine::updateTargets() noexcept
         const auto& vs = settings.voices[v];
         auto& voice = voices[v];
         voice.target = sungNote < 0 ? -1
-                     : useScale ? rkfx::scales::harmonyNote (sungNote, settings.key, settings.scale, vs.interval)
+                     : useScale ? (settings.scale == Scale::chromatic ? rkfx::scales::chromaticNote (sungNote, vs.semitones)
+                                                                       : rkfx::scales::harmonyNote (sungNote, settings.key, settings.scale, vs.interval))
                                 : chordNote (sungNote, vs.position, chord, settings.chordTones);
         if (voice.target >= 0 && std::abs (voice.target - sungNote) > kMaxShift)
             voice.target = -1;

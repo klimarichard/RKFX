@@ -67,6 +67,21 @@ namespace VoiceParams
         p.addDecibels ("dry", "Dry", -60.0f, 6.0f, 0.0f);
         p.addDecibels ("threshold", "Threshold", -70.0f, -20.0f, -50.0f);
 
+        // Scale mode, chromatic scale: each voice as a free number of semitones
+        // (0 = off). Voice 1 starts a major third up, like its interval.
+        const auto semitones = [] (float v)
+        {
+            const auto st = juce::roundToInt (v);
+            return st == 0 ? juce::String ("Off") : (st > 0 ? "+" : "") + juce::String (st) + " st";
+        };
+        const auto parseSemitones = [] (const juce::String& text)
+        {
+            return text.trim().equalsIgnoreCase ("off") ? 0.0f : (float) juce::roundToInt (rkfx::Units::parseNumber (text));
+        };
+        for (int v = 1; v <= kNumVoices; ++v)
+            p.addFloat (voiceId (v, "semis"), "Voice " + juce::String (v) + " Semitones", { -12.0f, 12.0f, 1.0f },
+                        v == 1 ? 4.0f : 0.0f, semitones, parseSemitones);
+
         return p;
     }
 }

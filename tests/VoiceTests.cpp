@@ -73,6 +73,23 @@ public:
             expectEquals (engine.getVoiceNote (0), 60, "a 3rd above A in C major is C");
         }
 
+        beginTest ("Chromatic scale: free semitones per voice");
+        {
+            auto s = quiet();
+            s.mode = E::Mode::scale;
+            s.scale = E::Scale::chromatic;
+            s.voices[0].interval = E::Interval::thirdAbove;   // ignored in chromatic
+            s.voices[0].semitones = 6;
+            s.voices[1].interval = E::Interval::fifthBelow;
+            s.voices[1].semitones = -1;
+            s.voices[2].semitones = 0;
+            E engine;
+            run (engine, s, sine (220.0, 0.5, 48000));   // A3 (57)
+            expectEquals (engine.getVoiceNote (0), 63, "a tritone above");
+            expectEquals (engine.getVoiceNote (1), 56, "a semitone below");
+            expectEquals (engine.getVoiceNote (2), -1, "0 = off");
+        }
+
         beginTest ("Shifted voices are on pitch (a voice-like tone, and a sine for shifts under an octave)");
         {
             // Singing A3; one voice, the first chord tone above or below a single held note.

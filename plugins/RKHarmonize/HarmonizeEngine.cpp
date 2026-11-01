@@ -7,10 +7,7 @@ int HarmonizeEngine::harmonyNote (int note, int key, Scale scale, Interval inter
 
 int HarmonizeEngine::chromaticNote (int note, int semitones) noexcept
 {
-    if (semitones == 0)
-        return -1;
-    const auto result = note + semitones;
-    return result >= 0 && result <= 127 ? result : -1;
+    return rkfx::scales::chromaticNote (note, semitones);
 }
 
 int HarmonizeEngine::voiceNote (int note, Interval interval, int semitones) const noexcept

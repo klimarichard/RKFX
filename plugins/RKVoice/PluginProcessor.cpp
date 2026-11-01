@@ -7,7 +7,7 @@ namespace
     {
         rkfx::PluginConfig c;
         c.name = "RKVoice";
-        c.stateVersion = 1;
+        c.stateVersion = 2;                   // 2: free chromatic semitones (vN_semis)
         c.hasMix = false;                     // Dry and the voice levels are the mix
         c.monoToStereo = true;                // a mono mic in, the voices spread in stereo
         c.midiInput = true;                   // the chord
@@ -29,7 +29,8 @@ RKVoiceProcessor::RKVoiceProcessor()
 {
     for (int v = 0; v < VoiceEngine::kNumVoices; ++v)
         voiceControls[(size_t) v] = { findParam (VoiceParams::voiceId (v + 1, "position")), findParam (VoiceParams::voiceId (v + 1, "interval")),
-                                    findParam (VoiceParams::voiceId (v + 1, "level")), findParam (VoiceParams::voiceId (v + 1, "pan")) };
+                                    findParam (VoiceParams::voiceId (v + 1, "level")), findParam (VoiceParams::voiceId (v + 1, "pan")),
+                                    findParam (VoiceParams::voiceId (v + 1, "semis")) };
 }
 
 VoiceEngine::Settings RKVoiceProcessor::currentSettings() const
@@ -50,6 +51,7 @@ VoiceEngine::Settings RKVoiceProcessor::currentSettings() const
         s.voices[v].interval = (VoiceEngine::Interval) choice (vp.interval, rkfx::scales::kNumIntervals);
         s.voices[v].levelDb  = valueOf (vp.level);
         s.voices[v].pan      = valueOf (vp.pan) / 100.0f;
+        s.voices[v].semitones = juce::jlimit (-12, 12, juce::roundToInt (valueOf (vp.semitones)));
     }
     s.detuneCents = valueOf (detune);
     s.humanizeMs  = valueOf (humanize);
@@ -117,6 +119,24 @@ void RKVoiceProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     }
 
     run (numSamples);
+}
+
+void RKVoiceProcessor::migrateParams (juce::DynamicObject& params, int fromVersion)
+{
+    // Before version 2 the chromatic scale used the voice intervals as fixed
+    // semitone steps (a 3rd = 4). Carry them over so old settings sound the same.
+    if (fromVersion < 2 && params.getProperty ("scale").toString() == "chromatic")
+    {
+        for (int v = 1; v <= VoiceEngine::kNumVoices; ++v)
+        {
+            const auto stored = params.getProperty (VoiceParams::voiceId (v, "interval")).toString();
+            const auto index = VoiceParams::intervalKeys.indexOf (stored.isNotEmpty() ? stored
+                                                                  : juce::String (v == 1 ? "3rd_above" : "off"));
+            if (index >= 0)
+                params.setProperty (VoiceParams::voiceId (v, "semis"),
+                                    rkfx::scales::semitonesOf ((VoiceEngine::Interval) index));
+        }
+    }
 }
 
 juce::AudioProcessorEditor* RKVoiceProcessor::createEditor()

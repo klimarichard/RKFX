@@ -1,0 +1,13 @@
+{
+  "plugin": "RKVoice",
+  "version": 2,
+  "name": "Parallel Minor Triads",
+  "params": {
+    "mode": "scale",
+    "scale": "chromatic",
+    "v1_semis": 3,
+    "v2_semis": 7,
+    "v1_pan": -30,
+    "v2_pan": 30
+  }
+}

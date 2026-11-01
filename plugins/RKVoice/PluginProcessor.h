@@ -21,11 +21,12 @@ protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;
     void resetDsp() override;
     void processDsp (juce::AudioBuffer<float>&) override;
+    void migrateParams (juce::DynamicObject& params, int fromVersion) override;
 
 private:
     juce::RangedAudioParameter *mode, *range, *chordTones, *noChord, *midiChannel, *key, *scale,
                                *detune, *humanize, *glide, *dry, *threshold;
-    struct VoiceControls { juce::RangedAudioParameter *position, *interval, *level, *pan; };
+    struct VoiceControls { juce::RangedAudioParameter *position, *interval, *level, *pan, *semitones; };
     std::array<VoiceControls, VoiceEngine::kNumVoices> voiceControls;
     VoiceEngine engine;
 

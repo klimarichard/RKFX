@@ -10,7 +10,8 @@ class RKVoiceProcessor;
 /** RKVoice's window: Harmony (mode, chord settings, key and scale), Input
     (range, threshold, dry), a line showing what's happening (the sung note,
     the chord in use, each voice's note), and the four voices: position in a
-    chord and interval in the scale side by side (the one not in use dimmed),
+    chord and interval in the scale side by side (the one not in use dimmed;
+    with the chromatic scale the interval is a semitone knob),
     level and pan. Detune, Humanize and Glide sit in the bottom row. */
 class RKVoiceEditor : public rkfx::EditorBase
 {
@@ -23,7 +24,7 @@ private:
 
     std::unique_ptr<rkfx::SegmentedSwitch> mode, range;
     std::unique_ptr<rkfx::Knob> chordTones, noChord, midiChannel, key, scale, threshold, dry, detune, humanize, glide;
-    struct VoiceKnobs { std::unique_ptr<rkfx::Knob> position, interval, level, pan; };
+    struct VoiceKnobs { std::unique_ptr<rkfx::Knob> position, interval, semitones, level, pan; };
     std::array<VoiceKnobs, VoiceEngine::kNumVoices> voices;
 
     juce::TimedCallback refresher { [this] { repaint(); } };

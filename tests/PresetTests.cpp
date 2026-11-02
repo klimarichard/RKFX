@@ -128,6 +128,46 @@ public:
 
 static FactoryPresetTests factoryPresetTests;
 
+/** The suite-wide Hz and ms/s readouts, at every rounding boundary. */
+class UnitsTests : public juce::UnitTest
+{
+public:
+    UnitsTests() : juce::UnitTest ("Units readouts", "RKFX") {}
+
+    void runTest() override
+    {
+        using namespace rkfx;
+
+        beginTest ("Frequency");
+        const std::pair<float, const char*> hz[] = {
+            { 0.0f, "0 Hz" },        { 0.02f, "0.02 Hz" },    { 0.994f, "0.99 Hz" },  { 0.996f, "1.0 Hz" },
+            { 6.5f, "6.5 Hz" },      { 9.94f, "9.9 Hz" },     { 9.96f, "10 Hz" },     { 10.4f, "10 Hz" },
+            { 133.4f, "133 Hz" },    { 950.0f, "950 Hz" },    { 999.4f, "999 Hz" },   { 999.6f, "1.00 kHz" },
+            { 1000.0f, "1.00 kHz" }, { 1620.0f, "1.62 kHz" }, { 9994.0f, "9.99 kHz" }, { 9996.0f, "10.0 kHz" },
+            { 11300.0f, "11.3 kHz" }, { 16840.0f, "16.8 kHz" }, { 20000.0f, "20.0 kHz" } };
+        for (const auto& [v, text] : hz)
+            expectEquals (Units::frequency (v), juce::String (text));
+
+        beginTest ("Time");
+        const std::pair<float, const char*> ms[] = {
+            { 0.0f, "0 ms" },          { 0.01f, "0.01 ms" },     { 0.994f, "0.99 ms" },  { 0.996f, "1.0 ms" },
+            { 1.44f, "1.4 ms" },       { 9.94f, "9.9 ms" },      { 9.96f, "10 ms" },     { 10.44f, "10 ms" },
+            { 375.0f, "375 ms" },      { 999.4f, "999 ms" },     { 999.6f, "1.00 s" },   { 1625.5f, "1.63 s" },
+            { 9994.0f, "9.99 s" },     { 9996.0f, "10.0 s" },    { 10040.0f, "10.0 s" }, { 99940.0f, "99.9 s" },
+            { 99960.0f, "100 s" },     { 123456.0f, "123 s" } };
+        for (const auto& [v, text] : ms)
+            expectEquals (Units::time (v), juce::String (text));
+
+        beginTest ("Readouts parse back");
+        for (const auto& [v, text] : hz)
+            expectWithinAbsoluteError (Units::parseFrequency (Units::frequency (v)), v, 0.006f + v * 0.05f);
+        for (const auto& [v, text] : ms)
+            expectWithinAbsoluteError (Units::parseTime (Units::time (v)), v, 0.006f + v * 0.05f);
+    }
+};
+
+static UnitsTests unitsTests;
+
 int main (int, char**)
 {
     juce::UnitTestRunner runner;

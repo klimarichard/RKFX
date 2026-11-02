@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "plugin/ParamBuilder.h"
 
 namespace
 {
@@ -22,8 +23,26 @@ namespace
     {
         s.setSliderStyle (juce::Slider::LinearHorizontal);
         s.setTextBoxStyle (juce::Slider::TextBoxRight, false, textWidth, 22);
+
+        if (suffix == " s")
+        {
+            // Seconds sliders read like the rest of the suite (50 ms, 1.50 s);
+            // a bare typed number still means seconds.
+            s.textFromValueFunction = [] (double v) { return rkfx::Units::time ((float) (v * 1000.0)); };
+            s.valueFromTextFunction = [] (const juce::String& text)
+            {
+                const auto t = text.trim().toLowerCase();
+                const auto number = t.initialSectionContainingOnly ("0123456789.-+");
+                const auto unit = t.substring (number.length()).trim();
+                return unit.startsWith ("ms") ? number.getDoubleValue() / 1000.0 : number.getDoubleValue();
+            };
+        }
+        else
+        {
+            s.setTextValueSuffix (suffix);
+        }
+
         s.setRange (min, max, step);
-        s.setTextValueSuffix (suffix);
     }
 
     juce::String dbText (double v)

@@ -61,9 +61,9 @@ namespace VoiceParams
         p.addFloat    ("detune", "Detune", { 0.0f, 20.0f }, 5.0f,
                        [] (float c) { return juce::String (c, 1) + " ct"; }, rkfx::Units::parseNumber);
         p.addFloat    ("humanize", "Humanize", { 0.0f, 10.0f }, 3.0f,
-                       [] (float ms) { return juce::String (ms, 1) + " ms"; }, rkfx::Units::parseNumber);
+                       rkfx::Units::time, rkfx::Units::parseTime);
         p.addFloat    ("glide", "Glide", { 0.0f, 200.0f }, 30.0f,
-                       [] (float ms) { return juce::String (ms, 0) + " ms"; }, rkfx::Units::parseNumber);
+                       rkfx::Units::time, rkfx::Units::parseTime);
         p.addDecibels ("dry", "Dry", -60.0f, 6.0f, 0.0f);
         p.addDecibels ("threshold", "Threshold", -70.0f, -20.0f, -50.0f);
 

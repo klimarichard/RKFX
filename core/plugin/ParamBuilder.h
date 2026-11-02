@@ -78,6 +78,10 @@ namespace Units
     juce::String percent (float pct);
     juce::String degrees (float deg);
 
+    /** "1,5" -> "1.5": typed values accept a decimal comma as well as a point.
+        Every parser below (and every ParamBuilder parameter) applies it. */
+    juce::String withDecimalPoint (const juce::String& text);
+
     /** Parses "1.2k", "1200 Hz", "1.2 kHz". */
     float parseFrequency (const juce::String& text);
     /** Parses "250", "250 ms", "1.5 s". */

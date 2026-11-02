@@ -70,8 +70,10 @@ private:
 /** Suite-wide value formatting and parsing (also used by the GUI). */
 namespace Units
 {
+    /** 0.05 Hz, 6.5 Hz, 133 Hz, 1.62 kHz, 16.8 kHz. */
     juce::String frequency (float hz);
     juce::String decibels (float db);
+    /** 0.25 ms, 2.5 ms, 375 ms, 1.50 s, 12.5 s, 120 s. */
     juce::String time (float ms);
     juce::String percent (float pct);
     juce::String degrees (float deg);

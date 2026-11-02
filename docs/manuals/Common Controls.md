@@ -36,6 +36,8 @@ Each plugin family has its own accent color, used for switches that are on and a
 
 When typing a value you can include units: `1.2k` or `1.2 kHz` for 1200 Hz, `1.5 s` for 1500 ms.
 
+Values are shown rounded to a useful precision: frequencies as 0.25 Hz, 6.5 Hz, 133 Hz, 1.62 kHz, 16.8 kHz; times as 0.25 ms, 2.5 ms, 375 ms, 1.50 s, 12.5 s. The knob itself moves smoothly; only the readout is rounded.
+
 A dimmed knob belongs to a section that is currently switched off or has no effect in the current mode. It still works, so you can prepare a setting before switching the section on.
 
 ## Switches

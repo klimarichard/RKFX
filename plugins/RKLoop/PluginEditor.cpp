@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "plugin/ParamBuilder.h"
 
 namespace
 {
@@ -96,7 +97,7 @@ void RKLoopEditor::Tile::paint (juce::Graphics& g)
     const auto length = engine.getRecordedLength (index);
     if (rate > 0.0 && length > 0)
     {
-        g.drawText (juce::String (length / rate, 1) + " s", area.removeFromTop (18), juce::Justification::centredLeft);
+        g.drawText (rkfx::Units::time ((float) (length / rate * 1000.0)), area.removeFromTop (18), juce::Justification::centredLeft);
         auto bar = area.removeFromBottom (6).toFloat();
         g.setColour (rkfx::Palette::knobTrack);
         g.fillRoundedRectangle (bar, 2.0f);
@@ -245,8 +246,9 @@ void RKLoopEditor::paintContent (juce::Graphics& g)
         g.setColour (rkfx::Palette::textDim);
         g.setFont (rkfx::Fonts::regular (14.0f));
         g.drawText (state == LoopEngine::State::recording
-                        ? juce::String (length / rate, 1) + " s"
-                        : juce::String (engine.getPosition (i) / rate, 1) + " / " + juce::String (length / rate, 1) + " s",
+                        ? rkfx::Units::time ((float) (length / rate * 1000.0))
+                        : rkfx::Units::time ((float) (engine.getPosition (i) / rate * 1000.0)) + " / "
+                              + rkfx::Units::time ((float) (length / rate * 1000.0)),
                     area, juce::Justification::centredRight);
     }
 }

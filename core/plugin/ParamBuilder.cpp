@@ -17,11 +17,42 @@ KeyedChoiceParameter::KeyedChoiceParameter (const juce::ParameterID& id, const j
 //==============================================================================
 namespace Units
 {
+    namespace
+    {
+        /** One step of a readout: shown below `below` (in display units,
+            after rounding) as value / divisor with `decimals` places. */
+        struct Tier { float below, divisor; int decimals; const char* unit; };
+
+        /** Picks the tier by the rounded value, so 999.6 reads "1.00 kHz"
+            rather than "1000 Hz" and 9996 reads "10.0 kHz", not "10.00". */
+        template <size_t N>
+        juce::String tiered (float value, const Tier (&tiers)[N])
+        {
+            for (size_t i = 0; i < N; ++i)
+            {
+                const auto& t = tiers[i];
+                const auto scaled = value / t.divisor;
+                const auto step = std::pow (10.0f, (float) t.decimals);
+                if (i == N - 1 || std::round (scaled * step) / step < t.below)
+                {
+                    // juce::String (x, 0) would mean full precision, not whole numbers
+                    const auto number = t.decimals == 0 ? juce::String (juce::roundToInt (scaled))
+                                                        : juce::String (scaled, t.decimals);
+                    return number + " " + t.unit;
+                }
+            }
+            return {};
+        }
+    }
+
     juce::String frequency (float hz)
     {
-        if (hz >= 1000.0f)
-            return juce::String (hz / 1000.0f, hz >= 10000.0f ? 1 : 2) + " kHz";
-        return juce::String (hz, hz >= 100.0f ? 0 : (hz >= 10.0f ? 1 : 2)) + " Hz";
+        // 0 Hz, 0.05 Hz, 6.5 Hz, 133 Hz, 1.62 kHz, 16.8 kHz
+        if (hz <= 0.0f)
+            return "0 Hz";
+        static constexpr Tier tiers[] = { { 1.0f, 1.0f, 2, "Hz" },  { 10.0f, 1.0f, 1, "Hz" }, { 1000.0f, 1.0f, 0, "Hz" },
+                                          { 10.0f, 1000.0f, 2, "kHz" }, { 0.0f, 1000.0f, 1, "kHz" } };
+        return tiered (hz, tiers);
     }
 
     juce::String decibels (float db)
@@ -34,9 +65,12 @@ namespace Units
 
     juce::String time (float ms)
     {
-        if (ms >= 1000.0f)
-            return juce::String (ms / 1000.0f, 2) + " s";
-        return juce::String (ms, ms >= 100.0f ? 0 : (ms >= 10.0f ? 1 : 2)) + " ms";
+        // 0 ms, 0.25 ms, 2.5 ms, 375 ms, 1.50 s, 12.5 s, 120 s
+        if (ms <= 0.0f)
+            return "0 ms";
+        static constexpr Tier tiers[] = { { 1.0f, 1.0f, 2, "ms" }, { 10.0f, 1.0f, 1, "ms" }, { 1000.0f, 1.0f, 0, "ms" },
+                                          { 10.0f, 1000.0f, 2, "s" }, { 100.0f, 1000.0f, 1, "s" }, { 0.0f, 1000.0f, 0, "s" } };
+        return tiered (ms, tiers);
     }
 
     juce::String degrees (float deg)

@@ -31,7 +31,7 @@ namespace
             s.textFromValueFunction = [] (double v) { return rkfx::Units::time ((float) (v * 1000.0)); };
             s.valueFromTextFunction = [] (const juce::String& text)
             {
-                const auto t = text.trim().toLowerCase();
+                const auto t = rkfx::Units::withDecimalPoint (text).trim().toLowerCase();
                 const auto number = t.initialSectionContainingOnly ("0123456789.-+");
                 const auto unit = t.substring (number.length()).trim();
                 return unit.startsWith ("ms") ? number.getDoubleValue() / 1000.0 : number.getDoubleValue();
@@ -40,6 +40,7 @@ namespace
         else
         {
             s.setTextValueSuffix (suffix);
+            s.valueFromTextFunction = [] (const juce::String& text) { return (double) rkfx::Units::parseNumber (text); };
         }
 
         s.setRange (min, max, step);

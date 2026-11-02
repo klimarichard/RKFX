@@ -743,7 +743,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     tempoField.setColour (juce::Label::backgroundColourId, Palette::background);
     tempoField.setColour (juce::Label::outlineColourId, Palette::outline);
     tempoField.setTooltip ("Tempo for the pedals (20 to 300 BPM). Right-click Tap to follow MIDI clock.");
-    tempoField.onTextChange = [this] { board.setTempo (tempoField.getText().getDoubleValue()); refreshTempo(); };
+    tempoField.onTextChange = [this] { board.setTempo (rkfx::Units::withDecimalPoint (tempoField.getText()).getDoubleValue()); refreshTempo(); };
     tempoUnit.setText ("BPM", juce::dontSendNotification);
     tempoUnit.setFont (Fonts::regular (12.0f));
     tempoUnit.setColour (juce::Label::textColourId, Palette::textDim);

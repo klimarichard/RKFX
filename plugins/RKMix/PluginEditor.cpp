@@ -329,7 +329,7 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
         tempoField.setEditable (false, true, false);
         tempoField.setJustificationType (juce::Justification::centred);
         tempoField.setTooltip ("Tempo (double-click to type); the inserts follow it");
-        tempoField.onTextChange = [this] { mixer.setTempo (tempoField.getText().getDoubleValue()); refreshStandalone(); };
+        tempoField.onTextChange = [this] { mixer.setTempo (rkfx::Units::withDecimalPoint (tempoField.getText()).getDoubleValue()); refreshStandalone(); };
         tapButton.onClick = [this] { mixer.tapTempo(); refreshStandalone(); };
         tapButton.setTooltip ("Tap tempo; right-click: MIDI learn");
         clockButton.setClickingTogglesState (false);

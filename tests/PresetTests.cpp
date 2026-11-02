@@ -163,6 +163,21 @@ public:
             expectWithinAbsoluteError (Units::parseFrequency (Units::frequency (v)), v, 0.006f + v * 0.05f);
         for (const auto& [v, text] : ms)
             expectWithinAbsoluteError (Units::parseTime (Units::time (v)), v, 0.006f + v * 0.05f);
+
+        beginTest ("A decimal comma works like a point");
+        expectWithinAbsoluteError (Units::parseFrequency ("1,62 kHz"), 1620.0f, 0.01f);
+        expectWithinAbsoluteError (Units::parseFrequency ("1,5k"), 1500.0f, 0.01f);
+        expectWithinAbsoluteError (Units::parseTime ("2,5 ms"), 2.5f, 0.001f);
+        expectWithinAbsoluteError (Units::parseTime ("1,50 s"), 1500.0f, 0.01f);
+        expectWithinAbsoluteError (Units::parseNumber ("-3,5 dB"), -3.5f, 0.001f);
+
+        // Through a parameter, including plugins' own parsers (RKPreamp's knobs use getFloatValue directly)
+        ParamBuilder p;
+        p.addDecibels ("db", "dB", -12.0f, 12.0f, 0.0f);
+        p.addFloat ("plain", "Plain", { 0.0f, 10.0f }, 5.0f, [] (float v) { return juce::String (v, 1); },
+                    [] (const juce::String& t) { return t.getFloatValue(); });
+        expectWithinAbsoluteError (p.params[0]->convertFrom0to1 (p.params[0]->getValueForText ("-3,5")), -3.5f, 0.001f);
+        expectWithinAbsoluteError (p.params[1]->convertFrom0to1 (p.params[1]->getValueForText ("7,5")), 7.5f, 0.001f);
     }
 };
 

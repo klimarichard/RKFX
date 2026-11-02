@@ -83,21 +83,26 @@ namespace Units
         return juce::String (juce::roundToInt (pct)) + " %";
     }
 
+    juce::String withDecimalPoint (const juce::String& text)
+    {
+        return text.replaceCharacter (',', '.');
+    }
+
     float parseNumber (const juce::String& text)
     {
-        return text.trim().retainCharacters ("0123456789.-+eE").getFloatValue();
+        return withDecimalPoint (text).trim().retainCharacters ("0123456789.-+eE").getFloatValue();
     }
 
     float parseFrequency (const juce::String& text)
     {
-        const auto t = text.trim().toLowerCase();
+        const auto t = withDecimalPoint (text).trim().toLowerCase();
         const auto value = t.initialSectionContainingOnly ("0123456789.-+").getFloatValue();
         return t.containsChar ('k') ? value * 1000.0f : value;
     }
 
     float parseTime (const juce::String& text)
     {
-        const auto t = text.trim().toLowerCase();
+        const auto t = withDecimalPoint (text).trim().toLowerCase();
         const auto value = t.initialSectionContainingOnly ("0123456789.-+").getFloatValue();
         const auto unit = t.substring (t.initialSectionContainingOnly ("0123456789.-+").length()).trim();
         return unit.startsWith ("s") ? value * 1000.0f : value;
@@ -152,7 +157,7 @@ void ParamBuilder::addFloat (const juce::String& id, const juce::String& name, j
 {
     auto attributes = juce::AudioParameterFloatAttributes()
                           .withStringFromValueFunction ([toText] (float v, int) { return toText (v); })
-                          .withValueFromStringFunction ([fromText] (const juce::String& s) { return fromText (s); });
+                          .withValueFromStringFunction ([fromText] (const juce::String& s) { return fromText (Units::withDecimalPoint (s)); });
 
     params.push_back (std::make_unique<juce::AudioParameterFloat> (nextId (id), name, range, defaultValue, attributes));
 }

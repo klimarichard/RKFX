@@ -23,6 +23,8 @@ There is no delay in RKConduct itself; the only thing that takes a tap to catch 
 
 Click **Load MIDI file** and choose a Standard MIDI file (.mid). The file is stored inside RKConduct's settings, so a saved Gig Performer gig always has it, wherever the file was.
 
+A preset you save keeps the song too. Each RKConduct preset is a **folder** holding the settings (`preset.json`) and a copy of the MIDI file, along with which tracks are on and their channels. Copy the folder to another computer and the preset still plays its song. A preset saved with no song loaded clears the song when you load it. If the MIDI file has been taken out of the folder, the preset loads without a song and the header names the missing file. Presets from older versions (a single `.json` file) still load: they change the settings and keep the song that is loaded.
+
 **Time** (next to the Load button) is the song's time signature, 4/4 unless you change it: beats per bar, and the beat's note value (3/4, 6/8, 7/8...). It sets how bars are counted in the display and how long a bar is for **Tap Every: Bar**. (RKConduct doesn't read it from the file.)
 
 Every track in the file is listed with its number of notes:
@@ -49,7 +51,7 @@ The window shows the bar and beat, the tempo you are tapping, and whether the fi
 
 ## Starting points
 
-These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. (Presets hold the settings, not the MIDI file.)
+These starting points are built into the plugin as **factory presets**: open the preset menu and choose **Factory**. (Factory presets hold only the settings: loading one keeps your song.)
 
 | Factory preset | Settings |
 | --- | --- |

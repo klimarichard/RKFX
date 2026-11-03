@@ -64,6 +64,7 @@ struct PlayPlaylist
     double crossfadeSeconds = 6.0;   // 0 = back to back, gapless
     double gainDb = 0.0;             // the whole list, on top of loudness matching (a quieter Dinner list)
     bool asMastered = false;         // not loudness matched: each song's peaks at the Peak ceiling (an artist's own masters)
+    double fadeInSeconds = 0.0;      // Play (from stopped) fades its first song in over this; 0: none
     Link link = Link::none;
     juce::File linkFile;             // the folder or the .m3u8
     bool linkSubfolders = true;
@@ -99,6 +100,7 @@ struct PlayShow
 {
     static constexpr int kMaxPlaylists = 8;
     static constexpr double kMaxCrossfade = 15.0;
+    static constexpr double kMaxFadeIn = 60.0;
 
     std::vector<PlayPlaylist> playlists;
     int active = 0;                  // the playlist Play and Next work on (the one playing)
@@ -129,6 +131,17 @@ struct PlayShow
         int minutes = 22 * 60;       // the clock time, minutes after midnight
         bool atSongEnd = false;      // else exactly at the time (a fade out)
     } endAt;
+
+    /** Switch at: at a time of day, the music goes on to another playlist (the
+        pre-show list fades out and the Intro starts at 19:10). */
+    struct SwitchAt
+    {
+        enum class How { fadeThenStart, crossfade, afterSong };
+        bool on = false;
+        int minutes = 19 * 60;       // the clock time, minutes after midnight
+        int to = 0;                  // the playlist
+        How how = How::fadeThenStart;
+    } switchAt;
 
     PlayShow();
 

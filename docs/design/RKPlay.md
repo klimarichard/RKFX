@@ -290,6 +290,12 @@ A factory show can't hold music files, so the factory presets are **empty shows 
 - **State:** a show round-trips (playlists, modes, pads, per-song gain and trims, queue not saved); the analysis cache is used when a file is unchanged and redone when it changed.
 - **Validation:** auval (`aumf Ply1 RKMu`), pluginval at strictness 10.
 
+### As built (feat/rkplay-remote-schedule, 2026-11-03)
+
+- **Fade in** (a playlist's `fadeIn`, seconds, 0 = none): `startItem` from stopped passes it to `engine.start` (the engine's quarter-sine fade; a request uses the active list's). Only from stopped: Next, crossfades and Resume don't.
+- **Switch at** (the show's `switchAt`: on, at "HH:MM", to (1-based), how `fadeThenStart` | `crossfade` | `afterSong`): checked with End at in `update()`, against the same injectable clock; once, then off. Playing: fade then start (`fadeOut()`, the target active, then `following(to)` started once the clock passes the Fade out time; `startItem`, Stop and Panic call it off), `switchPlaylist (to, true)`, or `switchPlaylist (to, false)`. Stopped: the target becomes active. Paused: after this song. Removing its playlist turns it off. Window: End at and Switch at share a **Times** panel; Clear queue moved into the Queue's title row to keep its rows.
+- **Remote**: `/remaining` and `/progress` count to a hand end; `/level/db` sent as text. The song list: a page (`/songs/rows`, 10 by default, at most 40) of the active playlist; the rig keeps the page top, the selection (index and file, dropped when they no longer match) and follows the playing song (or the cursor) unless scrolled by hand in the last 30 s. Select by `/song/n`, act by `/selected/next | now | jump`. `/queue/1..5` and `/queue/count`.
+
 ## Open questions
 
 - **Window size** once phase 1 is on screen.

@@ -166,18 +166,21 @@ private:
     juce::TextButton inOrderButton { "In order" }, shuffleButton { "Shuffle" };
     juce::ComboBox atEnd;
     juce::ToggleButton stopAfterEach { "Stop after each" };
-    juce::ComboBox loudnessMode;
+    juce::ComboBox loudnessMode, fadeIn;
     juce::Slider crossfade, listGain;
     juce::ListBox list { "Playlist", this };
     juce::TextButton addFilesButton { "Add files..." }, addFolderButton { "Add folder..." }, clearButton { "Clear" };
     QueueModel queueModel { *this };
     juce::ListBox queueList { "Queue", &queueModel };
-    juce::TextButton clearQueueButton { "Clear queue" };
+    juce::TextButton clearQueueButton { "Clear" };
     PreListen preListen { *this };
     std::vector<std::unique_ptr<PadButton>> padButtons;
     juce::ToggleButton endAtOn { "End at" };
     juce::TextEditor endAtTime;
     juce::ComboBox endAtMode;
+    juce::ToggleButton switchAtOn { "Switch at" };
+    juce::TextEditor switchAtTime;
+    juce::ComboBox switchAtTo, switchAtMode;
     std::unique_ptr<rkfx::Knob> level;
     juce::Label note, status;
     Settings settings { *this };
@@ -185,7 +188,7 @@ private:
     juce::TextButton problemsButton;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;
+    juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;   // endAtArea: Times (End at, Switch at)
     bool dropHighlight = false;
     int lastShowVersion = -1, lastNoteVersion = -1;
     double noteTime = 0.0;
@@ -230,6 +233,8 @@ private:
     void chooseLink (int playlist, bool folder);
     void exportPlaylist (int playlist);
     void applyEndAt();
+    void applySwitchAt();
+    static int clockMinutes (const juce::String&);   // "19:10" -> minutes after midnight
     void showPadMenu (int pad);
     void showLearnMenu (int target, bool withPanic = false);
     int lastRigVersion = -1;

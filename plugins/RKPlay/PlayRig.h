@@ -45,6 +45,12 @@ public:
     /** The feedback that changed since the last call (everything: all of it). */
     std::vector<juce::OSCMessage> takeFeedback (bool everything);
 
+    // The remote's song list: a page of the playing playlist's songs, one selected.
+    static constexpr int kDefaultRows = 10, kMaxRows = 40, kQueueRows = 5;
+    static constexpr double kFollowAfterSeconds = 30.0;   // a page scrolled by hand stays put this long
+    int getListTop() const noexcept { return listTop; }
+    int getSelected() const noexcept { return selected; }
+
     //==============================================================================
     // MIDI: learned controllers (the rig's midi-map.json) and program changes
     enum Target { play, pause, playPause, next, prev, fade, stop, duck, pad1, level = pad1 + 8, numTargets };
@@ -83,6 +89,13 @@ private:
     juce::OSCSender sender;
     bool listening = false, sending = false;
     std::map<juce::String, juce::var> sent;
+    int rows = kDefaultRows, listTop = 0, listPlaylist = -1;
+    int selected = -1;                   // in listPlaylist; -1: none
+    juce::File selectedFile;             // checked before playing it (the list may have changed)
+    int followedIndex = -1;              // the playing song the page last moved to
+    double scrolledAt = -1.0e9;          // when the page was scrolled by hand
+    void showPage (int top);
+    bool selectedIsValid() const;
     double lastFeedback = 0.0;
 
     std::unique_ptr<rkfx::MidiMap> midiMap;

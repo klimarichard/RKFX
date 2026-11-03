@@ -42,6 +42,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixQr.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixWebServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemote.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixRemotePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixComponents.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixEngine.cpp

@@ -39,7 +39,7 @@ public:
     static constexpr int kHeight = 900;
 
 private:
-    enum class Page { strip, sends, routing, monitor, scenes, assign };
+    enum class Page { strip, sends, routing, monitor, scenes, assign, remote };
     static constexpr int kBusLayer = 2;
     static constexpr int kDcaLayer = 3;       // the DCAs and mute groups (or a DCA's members, spilled)
     static constexpr int kUserLayer = 4;      // and 5: the user pages
@@ -467,6 +467,27 @@ private:
         juce::Rectangle<int> infoArea, membersArea;
     };
 
+    /** The monitor remote: on or off, its port, each Aux bus's link as a QR code. */
+    struct RemotePanel : public Panel
+    {
+        explicit RemotePanel (RKMixEditor&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void refresh() override;
+        /** The phones connected (polled while shown). */
+        void updateConnections();
+
+        juce::TextButton onButton { "Remote on" }, ipButton { "Links by IP address" }, newLinks { "New links" };
+        juce::Label port;
+        juce::Rectangle<int> setupArea, linksArea;
+        struct Link { int bus; juce::String url; juce::Rectangle<int> area; };
+        std::vector<Link> links;
+        std::array<int, mix::kBuses> connected {};
+        int lastVersion = -1;
+        juce::String copied;               // the link just copied (a note)
+    };
+
     /** Where the main and mono go, and what each output carries. */
     struct RoutingPanel : public Panel
     {
@@ -495,7 +516,8 @@ private:
     RoutingPanel routingPanel;
 
     juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" },
-                     scenesPage { "Scenes" }, assignPage { "Assign" };
+                     scenesPage { "Scenes" }, assignPage { "Assign" }, remotePage { "Remote" };
+    std::unique_ptr<RemotePanel> remotePanel;
     MonitorPanel monitorPanel;
     ScenesPanel scenesPanel;
     AssignPanel assignPanel;

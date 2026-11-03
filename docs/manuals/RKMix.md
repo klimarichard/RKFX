@@ -22,7 +22,7 @@ Every section has its own **On** switch. A section that is off is skipped comple
 
 ## The window
 
-- **Top panel:** the selected channel or bus in full, with page tabs: **Channel** (or **Bus**, or **Main**), **Sends**, **Routing**, **Talk / Osc**, **Scenes**, **Assign**.
+- **Top panel:** the selected channel or bus in full, with page tabs: **Channel** (or **Bus**, **Main**, **DCA**, **Mute group**), **Sends**, **Routing**, **Talk / Osc**, **Scenes**, **Assign**, **Remote**; then **Undo**, **Redo** and **Lock**.
 - **Master section (top right, always there):** solo settings, Clear solo, TALK, OSC, and in the standalone app the tempo.
 - **Fader area:** 16 strips at a time. Click a strip's name to show it in the top panel.
 - **Main and Mono strips** (right): click one to open the Main page.
@@ -122,6 +122,24 @@ RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic t
 - When two inserts could send the same note or controller on the same channel, their slots show **MIDI** in the warning colour and the Routing page lists the clash. It only warns: doubling a note can be intended.
 - Mute doesn't stop MIDI (a muted kick mic still triggers its sample). Switch the insert off to stop it.
 - **MIDI thru** (Routing page, default off) passes RKMix's MIDI input on to its output.
+
+## The monitor remote (phones and tablets)
+
+Each musician sets their own in-ear mix on their phone, with nothing to install: a web page that RKMix serves on your network.
+
+1. On the **Remote** page, click **Remote off** to switch it on. It shows the address it listens at (`http://<this computer's name>.local:8080`).
+2. Every Aux bus in use (with a name or an output) gets a **QR code**. The musician points the phone's camera at their code and opens the link.
+3. On the phone: **My mix** (the bus's level and Mute) and a row per channel. **Drag a row sideways** to set that channel's level in the mix (the list scrolls when you drag up and down). In an **Own** bus each row also has its pan (double-tap it for the centre). FX and Group buses that feed the mix (the reverb) are rows too, marked "return". The thin green bar is the channel's signal. **Lock** (top right) stops pocket touches. **Show all channels** also shows the unnamed channels that aren't in the mix yet.
+4. **iPhone and iPad:** Share → **Add to Home Screen**. The mix gets its own icon and opens full screen, like an app. Android: the browser's menu → Add to Home screen (or Install app).
+
+A phone can only change its own mix: its sends, its returns, its level and mute. Nothing else in the console, and no other musician's mix. Each mix's link has its own key. The links stay the same from mix to mix and gig to gig, so a home-screen icon keeps working. **New links** makes new ones (the old links stop working: everyone scans again).
+
+- The phones and the computer must be on the **same network** (Wi-Fi or the computer's hotspot). The first time, macOS asks whether Gig Performer (or RKMix) may accept incoming connections and find devices on the local network: allow it.
+- **Links by IP address:** if a phone can't open the `.local` name (some Android phones and some networks), the links use the computer's IP address instead. An IP address can change between gigs; the name doesn't.
+- **Port:** 8080 unless another app already uses it (double-click to change). In **Gig Performer**, put RKMix in the **global rackspace**: only one RKMix can serve, and if another RKMix already took the port, the Remote page says so.
+- The phone's screen still locks by itself: set Auto-Lock to Never (or longer) in the phone's settings for the show. The remote works while the window is locked. Its changes go into the undo history and the active scene, like any other change.
+
+The remote settings belong to the computer (`~/Library/Application Support/RKFX/RKMix/remote.json`), not to the mix.
 
 ## Ganging, copy and paste
 

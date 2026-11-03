@@ -342,8 +342,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (monitorPanel);
     addToCanvas (scenesPanel);
     addToCanvas (assignPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
         addToCanvas (*tab);
+    remotePanel = std::make_unique<RemotePanel> (*this);
+    addToCanvas (*remotePanel);
+    remotePage.onClick = [this] { setPage (Page::remote); };
+    remotePage.setTooltip ("The musicians' phones set their own in-ear mixes");
     scenesPage.onClick = [this] { setPage (Page::scenes); };
     assignPage.onClick = [this] { setPage (Page::assign); };
 
@@ -499,7 +503,7 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
     {
         tab->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
@@ -515,6 +519,7 @@ void RKMixEditor::layoutContent()
     monitorPanel.setBounds (panelArea());
     scenesPanel.setBounds (panelArea());
     assignPanel.setBounds (panelArea());
+    remotePanel->setBounds (panelArea());
 
     // The Master section
     auto m = masterArea().removeFromTop (kTopHeight).reduced (10, 0).withTrimmedTop (28);
@@ -800,6 +805,10 @@ void RKMixEditor::setPage (Page p)
     monitorPanel.setVisible (page == Page::monitor);
     scenesPanel.setVisible (page == Page::scenes);
     assignPanel.setVisible (page == Page::assign);
+    remotePanel->setVisible (page == Page::remote);
+    if (page == Page::remote)
+        remotePanel->refresh();
+    remotePage.setToggleState (page == Page::remote, juce::dontSendNotification);
     if (page == Page::scenes)
         scenesPanel.refresh();
     if (page == Page::assign)
@@ -861,6 +870,8 @@ void RKMixEditor::refreshAll()
         monitorPanel.refresh();
     if (scenesPanel.isVisible())
         scenesPanel.refresh();
+    if (remotePanel != nullptr && remotePanel->isVisible())
+        remotePanel->refresh();
     refreshScenes();
 
     const auto target = [this] (const char* id) { return targetName (mixer.getSettings().choice (id)); };
@@ -899,6 +910,8 @@ void RKMixEditor::updateMeters()
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
     refreshUndo();
+    if (remotePanel->isVisible())
+        remotePanel->updateConnections();
 
     // Standalone: a controller learned (or learning ended), the tempo moving with the clock.
     if (mixer.isStandalone())

@@ -216,6 +216,8 @@ void RKMixEditor::Strip::mouseDown (const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu())
     {
+        if (owner.isLocked())
+            return;
         owner.showColourMenu (channel, bus, *this);
         return;
     }
@@ -395,6 +397,17 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
 
     layerButtons[kDcaLayer].setTooltip ("The DCAs and mute groups");
 
+    undoButton.onClick = [this] { mixer.getUndo().undo(); refreshUndo(); };
+    redoButton.onClick = [this] { mixer.getUndo().redo(); refreshUndo(); };
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &undoButton, &redoButton, &lockButton })
+        addToCanvas (*c);
+    for (auto& shield : shields)
+    {
+        addToCanvas (shield);
+        shield.setVisible (false);
+    }
+    setWantsKeyboardFocus (true);
+
     sendsBack.onClick = [this] { setSendsOnFader (-1); };
     addToCanvas (sendsBack);
     sendsBack.setVisible (false);
@@ -477,6 +490,12 @@ void RKMixEditor::layoutContent()
         tabs.removeFromLeft (6);
     }
 
+    lockButton.setBounds (tabs.removeFromRight (120));
+    tabs.removeFromRight (6);
+    redoButton.setBounds (tabs.removeFromRight (64));
+    tabs.removeFromRight (4);
+    undoButton.setBounds (tabs.removeFromRight (64));
+
     routingPanel.setBounds (panelArea());
     monitorPanel.setBounds (panelArea());
     scenesPanel.setBounds (panelArea());
@@ -532,6 +551,7 @@ void RKMixEditor::layoutContent()
     }
 
     layoutStrips();
+    applyLock();
 }
 
 void RKMixEditor::layoutStrips()
@@ -800,6 +820,7 @@ void RKMixEditor::setSendsOnFader (int bus)
     for (auto& s : strips)
         s->showSendTo (bus);
     sendsBack.setVisible (bus >= 0);
+    applyLock();
     if (bus >= 0 && layer == kBusLayer)
         setLayer (0);
     refreshAll();
@@ -862,6 +883,7 @@ void RKMixEditor::updateMeters()
 {
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
+    refreshUndo();
 
     // Standalone: a controller learned (or learning ended), the tempo moving with the clock.
     if (mixer.isStandalone())
@@ -1152,6 +1174,8 @@ void RKMixEditor::InsertButton::paint (juce::Graphics& g)
 
 void RKMixEditor::InsertButton::mouseDown (const juce::MouseEvent& e)
 {
+    if (owner.isLocked())
+        return;
     auto& rack = owner.mixer.getRack();
     if (e.mods.isPopupMenu() || rack.get (slot) == nullptr)
         owner.showInsertMenu (slot, *this, rack.get (slot) != nullptr);
@@ -1474,7 +1498,7 @@ void RKMixEditor::showSceneMenu (int scene)
 
 void RKMixEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu() || e.originalComponent == this)
+    if (! e.mods.isPopupMenu() || e.originalComponent == this || isLocked())
         return;
 
     for (int i = 0; i < (int) sceneButtons.size(); ++i)

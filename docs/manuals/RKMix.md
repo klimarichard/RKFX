@@ -123,7 +123,17 @@ RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic t
 - Mute doesn't stop MIDI (a muted kick mic still triggers its sample). Switch the insert off to stop it.
 - **MIDI thru** (Routing page, default off) passes RKMix's MIDI input on to its output.
 
-## DCAs and mute groups
+## Undo and the show lock
+
+**Undo** and **Redo** (top right of the tabs, or Cmd+Z and Cmd+Shift+Z) take back the console's changes a step at a time: faders, mutes, pans, sends, every strip and bus setting, routing, DCAs and mute groups, and scene recalls. Changes less than half a second apart are one step, so a fader drag or a scene recall (with its glide) undoes in one go. **Undoing a scene recall** brings back the mix and the scene before it, and changes neither scene. A Gig Performer widget's moves are undone the same way. The buttons' tooltips say what they undo. Not undone: the inserts' own knobs, inserts added or removed, names and colours. Loading a mix starts a new history.
+
+**Lock** (next to Undo) protects the console from a stray click during the show:
+
+- **Faders and mutes only:** the faders (channels, buses, DCAs, main), Mute, S, the mute groups, Spill, the scenes, TALK and Clear solo still work. The top panel, pans, inserts, names, right-click menus and the solo setup don't.
+- **Everything:** nothing can be changed; you can still switch pages to look.
+
+Either way, Bypass and the preset menu are locked too, and Undo is off. **Hold Lock for a second** to unlock. The lock is for the window only (host parameters and the remote still work) and isn't saved: a reloaded session starts unlocked.
+
 
 The **DCA** page (bottom row) shows the 8 DCAs and the 8 mute groups. Click a name for its members page: every input and bus, switched on or off. You can also right-click any strip and tick its **DCAs** or **Mute groups**. Double-click a name to rename it ("Drums", "Band").
 

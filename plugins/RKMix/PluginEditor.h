@@ -71,6 +71,30 @@ private:
         bool on = false;
     };
 
+    /** Lies over what the show lock protects: takes the clicks, does nothing. */
+    struct LockShield : public juce::Component,
+                        public juce::SettableTooltipClient
+    {
+        LockShield() { setTooltip ("Locked: hold Lock to unlock"); }
+        void paint (juce::Graphics&) override;
+    };
+
+    /** Lock: click for the lock's menu; while locked, hold it a second to unlock. */
+    struct LockButton : public juce::Component,
+                        public juce::SettableTooltipClient,
+                        private juce::Timer
+    {
+        explicit LockButton (RKMixEditor& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void timerCallback() override;
+
+        RKMixEditor& owner;
+        double holdStart = 0.0;
+        bool holding = false;
+    };
+
     /** One insert slot on a strip: the plugin's short name (dimmed while
         off), or "+" when empty. Click: open it (or pick a plugin); right-click:
         on/off, replace, remove. */
@@ -493,6 +517,17 @@ private:
     double lastMeterTime = 0.0;
 
     juce::TimedCallback meterTimer { [this] { updateMeters(); } };
+
+    // Undo, redo and the show lock (in the tab row)
+    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
+    LockButton lockButton { *this };
+    std::array<LockShield, 7> shields;   // the top panel, the master section (two parts), the faders, the scene bar,
+                                         // the preset bar, Bypass
+    int lastUndoVersion = -1;
+    bool isLocked() const noexcept;
+    void applyLock();
+    void refreshUndo();
+    bool keyPressed (const juce::KeyPress&) override;
 
     juce::Rectangle<int> topArea() const;
     juce::Rectangle<int> panelArea() const;

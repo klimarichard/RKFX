@@ -132,6 +132,8 @@ void RKMixEditor::GroupStrip::paint (juce::Graphics& g)
 
 void RKMixEditor::GroupStrip::mouseDown (const juce::MouseEvent& e)
 {
+    if (e.mods.isPopupMenu() && owner.isLocked())
+        return;
     if (e.mods.isPopupMenu() && ! muteGroup)
     {
         juce::PopupMenu menu;

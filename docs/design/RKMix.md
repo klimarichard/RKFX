@@ -277,6 +277,11 @@ RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked 
 - **Names and colours:** `dcaNames`, `dcaColours`, `muteGroupNames` in the extra state.
 - **Window:** a DCA layer between Buses and User 1 (`GroupStrip`: 8 DCAs then 8 mute groups); `GroupPanel` (members grid) in the top panel; Spill puts a DCA's members (up to 15) on the faders with the DCA last; a strip's number row turns warning-coloured while a group mutes it; DCA and mute group submenus on the strip's right-click menu. Scene buttons 34 px so six layer buttons fit.
 
+### As built: undo and the show lock (feat/rkmix-undo, 2026-11-03)
+
+- **MixUndo** (processor, message thread) polls every mix setting and the host parameters except assign*, scene, talk, bypass, 10 times a second, plus the current scene. A step is open while changes keep coming less than 500 ms apart; it stores each control's value before the step and its latest (an index per control, so a big recall is linear). Closing drops controls that came back. Undo / redo set the values back (and `MixScenes::restoreCurrent`, which stores and applies nothing and cancels glides, plus the Scene parameter, whose listener then sees no change). After applying, the poll's snapshot is retaken, so an undo isn't recorded. 200 steps. `setExtraState` clears it. Polling (not listeners) because host automation can come from any thread.
+- **Show lock** (`RKMixProcessor::Lock`: off, faders, everything; not saved). The window lays `LockShield`s over the top panel, the master section (faders mode: all but Clear solo, Talk and Back to faders), the preset bar and Bypass, and in Everything also the faders area and the scene bar; with faders, the strips' pans stop taking clicks, names aren't editable, insert slots and right-click menus do nothing. Lock opens a menu; locked, held 1 s it unlocks.
+
 ## Parameters
 
 Fixed host parameters, in this order (IDs permanent, append only):

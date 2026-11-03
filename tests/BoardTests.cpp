@@ -26,6 +26,15 @@ namespace
         board.prepareToPlay (kRate, kBlock);
     }
 
+    /** Adds a pedal and switches it on in the current scene (new pedals start bypassed). */
+    int addOn (BoardProcessor& board, const juce::String& name, Section section = Section::pre, int position = -1)
+    {
+        const auto id = board.addPedal (name, section, position);
+        if (id != 0)
+            board.setPedalBypassed (id, false);
+        return id;
+    }
+
     void fillNoise (juce::AudioBuffer<float>& buffer, juce::Random& random)
     {
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
@@ -99,10 +108,10 @@ public:
                 prepare (board);
                 if (type.sendsMidi)
                 {
-                    expectEquals (board.addPedal (type.name), 0, type.name + ": not on the board (no MIDI out)");
+                    expectEquals (addOn (board, type.name), 0, type.name + ": not on the board (no MIDI out)");
                     continue;
                 }
-                const auto id = board.addPedal (type.name);
+                const auto id = addOn (board, type.name);
                 expect (id == 1, type.name);
 
                 auto* pedal = board.getPedal (id);
@@ -135,7 +144,7 @@ public:
             board.clearBoard();
             prepare (board);
             for (const auto* name : { "RKChorus", "RKCompress", "RKDelay", "RKVerb", "RKParaEQ", "RKPhase" })
-                board.setPedalBypassed (board.addPedal (name), true);
+                board.setPedalBypassed (addOn (board, name), true);
 
             run (board, 100);   // past any bypass crossfade
             const auto [in, out] = run (board, 1);
@@ -147,19 +156,19 @@ public:
             BoardProcessor board;
             board.clearBoard();
             for (int i = 0; i < BoardProcessor::kMaxPedals; ++i)
-                expect (board.addPedal ("RKUtility") == i + 1);
-            expectEquals (board.addPedal ("RKUtility"), 0);
+                expect (addOn (board, "RKUtility") == i + 1);
+            expectEquals (addOn (board, "RKUtility"), 0);
             expectEquals (board.duplicatePedal (1), 0);
-            expectEquals (board.addPedal ("NoSuchPedal"), 0);
+            expectEquals (addOn (board, "NoSuchPedal"), 0);
         }
 
         beginTest ("Move, duplicate and remove keep pedal IDs");
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto a = board.addPedal ("RKChorus");
-            const auto b = board.addPedal ("RKDelay");
-            const auto c = board.addPedal ("RKVerb");
+            const auto a = addOn (board, "RKChorus");
+            const auto b = addOn (board, "RKDelay");
+            const auto c = addOn (board, "RKVerb");
             expect (board.getChain() == std::vector<int> { a, b, c });
 
             board.movePedal (c, Section::pre, 0);
@@ -181,7 +190,7 @@ public:
             expect (board.getPedal (b) == nullptr);
 
             // A new pedal takes the lowest free ID.
-            expectEquals (board.addPedal ("RKGate"), b);
+            expectEquals (addOn (board, "RKGate"), b);
         }
 
         beginTest ("An Assign slot switches a pedal on and off, both ways");
@@ -190,8 +199,8 @@ public:
             board.clearBoard();
             expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 1, "In, Out, Assign 1-32, Scene");
 
-            const auto chorus = board.addPedal ("RKChorus");
-            const auto delay = board.addPedal ("RKDelay");
+            const auto chorus = addOn (board, "RKChorus");
+            const auto delay = addOn (board, "RKDelay");
             board.movePedal (delay, Section::pre, 0);
 
             board.assign (2, delay, "bypass");
@@ -231,7 +240,7 @@ public:
             board.setScene (0);
 
             // A trails pedal switches on and off through its slot as well.
-            const auto verb = board.addPedal ("RKVerb");
+            const auto verb = addOn (board, "RKVerb");
             board.setTrails (verb, true);
             board.assign (3, verb, "bypass");
             board.getAssignParam (3).setValueNotifyingHost (0.0f);
@@ -252,9 +261,9 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto chorus = board.addPedal ("RKChorus");
-            board.addPedal ("RKDistort");
-            const auto verb = board.addPedal ("RKVerb");
+            const auto chorus = addOn (board, "RKChorus");
+            addOn (board, "RKDistort");
+            const auto verb = addOn (board, "RKVerb");
             board.movePedal (verb, Section::pre, 0);
             board.getPedal (chorus)->findParam ("depth")->setValueNotifyingHost (0.3f);
             board.setPedalBypassed (verb, true);
@@ -277,8 +286,8 @@ public:
 
             BoardProcessor board;
             board.clearBoard();
-            const auto chorus = board.addPedal ("RKChorus");
-            board.addPedal ("RKDelay");
+            const auto chorus = addOn (board, "RKChorus");
+            addOn (board, "RKDelay");
             board.getPedal (chorus)->findParam ("depth")->setValueNotifyingHost (0.3f);
             expect (board.isPresetModified());
 
@@ -309,8 +318,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto a = board.addPedal ("RKChorus");
-            const auto b = board.addPedal ("RKDelay");
+            const auto a = addOn (board, "RKChorus");
+            const auto b = addOn (board, "RKDelay");
 
             {
                 rkboard::BoardEditor editor (board);
@@ -338,8 +347,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto a = board.addPedal ("RKChorus");
-            const auto b = board.addPedal ("RKDelay", Section::post);
+            const auto a = addOn (board, "RKChorus");
+            const auto b = addOn (board, "RKDelay", Section::post);
             expect (! board.isSplitActive());
 
             board.movePedal (a, Section::pathB, 0);
@@ -361,7 +370,7 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathA), true);
             prepare (board);
             run (board, 50);
             const auto [in, out] = run (board, 1);
@@ -384,8 +393,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathA), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathB), true);
 
             auto& split = board.getRouting().param ("split");
             split.setValueNotifyingHost (split.convertTo0to1 (2.0f));   // stereo
@@ -412,8 +421,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathA), true);
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathA), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathB), true);
             auto& split = board.getRouting().param ("split");
             split.setValueNotifyingHost (split.convertTo0to1 (1.0f));
             prepare (board);
@@ -438,9 +447,9 @@ public:
             BoardProcessor board;
             board.clearBoard();
             // A bypassed Saturate still delays its signal by its oversampling latency.
-            const auto saturate = board.addPedal ("RKSaturate", Section::pathA);
+            const auto saturate = addOn (board, "RKSaturate", Section::pathA);
             board.setPedalBypassed (saturate, true);
-            board.setPedalBypassed (board.addPedal ("RKUtility", Section::pathB), true);
+            board.setPedalBypassed (addOn (board, "RKUtility", Section::pathB), true);
             prepare (board);
 
             const auto latency = board.getPedal (saturate)->getLatencySamples();
@@ -458,9 +467,9 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto a = board.addPedal ("RKChorus", Section::pathA);
-            const auto b = board.addPedal ("RKVerb", Section::pathB);
-            const auto c = board.addPedal ("RKCompress", Section::pre);
+            const auto a = addOn (board, "RKChorus", Section::pathA);
+            const auto b = addOn (board, "RKVerb", Section::pathB);
+            const auto c = addOn (board, "RKCompress", Section::pre);
             auto& crossover = board.getRouting().param ("crossover");
             crossover.setValueNotifyingHost (crossover.convertTo0to1 (1200.0f));
 
@@ -498,9 +507,9 @@ public:
             BoardProcessor board;
             board.clearBoard();
             prepare (board);
-            const auto drive = board.addPedal ("RKUtility", Section::pre);
-            const auto chorus = board.addPedal ("RKUtility", Section::pre);
-            const auto verb = board.addPedal ("RKUtility", Section::post);
+            const auto drive = addOn (board, "RKUtility", Section::pre);
+            const auto chorus = addOn (board, "RKUtility", Section::pre);
+            const auto verb = addOn (board, "RKUtility", Section::post);
 
             // A split after the first pedal: chain 0 = [drive], then split 1,
             // chain 1 = [chorus], then the old split (now 2), chain 2 = [verb].
@@ -521,7 +530,7 @@ public:
 
             // Pedals on the paths of different splits: audio passes, each split works.
             board.movePedal (chorus, pathSection (1, 0), 0);
-            board.addPedal ("RKUtility", pathSection (2, 1));
+            addOn (board, "RKUtility", pathSection (2, 1));
             expect (board.isSplitActive (1) && board.isSplitActive (2) && ! board.isSplitActive (0));
             const auto [in, out] = run (board, 8);
             expect (allFinite (out));
@@ -572,7 +581,7 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto delay = board.addPedal ("RKDelay");
+            const auto delay = addOn (board, "RKDelay");
             auto* time = board.getPedal (delay)->findParam ("time");
             time->setValueNotifyingHost (0.3f);
 
@@ -606,8 +615,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto chorus = board.addPedal ("RKChorus");
-            const auto delay = board.addPedal ("RKDelay");
+            const auto chorus = addOn (board, "RKChorus");
+            const auto delay = addOn (board, "RKDelay");
             board.assign (0, delay, "time");
             board.movePedal (delay, Section::pathA, 0);
             expectEquals (board.getAssignment (0).pedal, delay);
@@ -623,7 +632,7 @@ public:
             expectEquals (board.getAssignment (1).pedal, chorus);
 
             // A new pedal taking the old ID doesn't inherit anything.
-            expectEquals (board.addPedal ("RKVerb"), delay);
+            expectEquals (addOn (board, "RKVerb"), delay);
             expectEquals (board.findAssignment (delay, "time"), -1);
         }
 
@@ -631,7 +640,7 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto delay = board.addPedal ("RKDelay");
+            const auto delay = addOn (board, "RKDelay");
             auto* time = board.getPedal (delay)->findParam ("time");
             board.assign (2, delay, "time");
             board.setAssignmentRange (2, time->convertTo0to1 (100.0f), time->convertTo0to1 (800.0f), true);
@@ -661,23 +670,28 @@ public:
             BoardProcessor board;
             board.clearBoard();
             const auto drive = board.addPedal ("RKDistort");
-            const auto delay = board.addPedal ("RKDelay");
+            const auto delay = addOn (board, "RKDelay");
             prepare (board);
             auto* time = board.getPedal (delay)->findParam ("time");
             auto* mix = board.getPedal (delay)->findParam ("mix");
 
+            // A new pedal starts bypassed in every scene.
+            for (int scene = 0; scene < BoardProcessor::kNumScenes; ++scene)
+                expect (board.getSceneBypass (scene, drive), "new pedal off in scene " + juce::String (scene + 1));
+            expect (board.isPedalBypassed (drive));
+
             expect (board.setSceneControlled (delay, "time", true));
             time->setValueNotifyingHost (0.2f);           // scene 1
-            board.setPedalBypassed (drive, true);         // scene 1
+            board.setPedalBypassed (drive, false);        // scene 1
 
             board.setScene (1);
             expectEquals (board.getScene(), 1);
-            expect (! board.isPedalBypassed (drive), "scene 2 kept the drive on");
+            expect (board.isPedalBypassed (drive), "scene 2 kept the drive off");
             time->setValueNotifyingHost (0.7f);           // scene 2
             mix->setValueNotifyingHost (0.9f);            // not scene-controlled: all scenes
 
             board.setScene (0);
-            expect (board.isPedalBypassed (drive));
+            expect (! board.isPedalBypassed (drive));
             expectWithinAbsoluteError (board.getSceneValue (0, delay, "time"), 0.2f, 1.0e-6f);
             expectWithinAbsoluteError (board.getSceneValue (1, delay, "time"), 0.7f, 1.0e-6f);
 
@@ -692,10 +706,10 @@ public:
             // Through the host parameter too.
             board.getSceneParam().setValueNotifyingHost (board.getSceneParam().convertTo0to1 (2.0f));
             expectEquals (board.getScene(), 1);
-            expect (! board.isPedalBypassed (drive));
+            expect (board.isPedalBypassed (drive));
 
             board.copyScene (1, 5);
-            expect (! board.getSceneBypass (5, drive));
+            expect (board.getSceneBypass (5, drive));
             expectWithinAbsoluteError (board.getSceneValue (5, delay, "time"), 0.7f, 1.0e-6f);
         }
 
@@ -703,8 +717,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto drive = board.addPedal ("RKDistort");
-            const auto delay = board.addPedal ("RKDelay");
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
             board.setSceneControlled (delay, "time", true);
             board.setScene (3);
             board.setPedalBypassed (drive, true);
@@ -730,7 +744,7 @@ public:
             {
                 BoardProcessor board;
                 board.clearBoard();
-                const auto delay = board.addPedal ("RKDelay");
+                const auto delay = addOn (board, "RKDelay");
                 expect (board.canHaveTrails (delay));
                 board.setTrails (delay, withTrails);
                 // One echo (375 ms) and no repeats, so the tail is over within the measuring time.
@@ -790,7 +804,7 @@ public:
                 BoardProcessor board;
                 board.clearBoard();
                 prepare (board);
-                const auto id = board.addPedal (name);
+                const auto id = addOn (board, name);
                 if (useTrails)
                     board.setTrails (id, true);
 
@@ -860,8 +874,8 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            const auto verb = board.addPedal ("RKVerb");
-            const auto chorus = board.addPedal ("RKChorus");
+            const auto verb = addOn (board, "RKVerb");
+            const auto chorus = addOn (board, "RKChorus");
             expect (! board.canHaveTrails (chorus));
 
             board.setPedalBypassed (verb, true);
@@ -908,7 +922,7 @@ public:
             BoardProcessor board;
             board.clearBoard();
             prepare (board);
-            const auto id = board.addPedal ("RKLoop");
+            const auto id = addOn (board, "RKLoop");
             auto* loop = dynamic_cast<RKLoopProcessor*> (board.getPedal (id));
             expect (loop != nullptr);
             board.assign (0, id, "record");
@@ -1076,7 +1090,7 @@ public:
             BoardProcessor board;   // not the app: a plugin in a host
             expect (! board.isStandalone());
             board.clearBoard();
-            const auto delay = board.addPedal ("RKDelay");
+            const auto delay = addOn (board, "RKDelay");
             board.setPlayHead (&host);
             prepare (board);
 
@@ -1197,8 +1211,8 @@ public:
             BoardProcessor board;
             board.setStandaloneForTesting (rig);
             board.clearBoard();
-            const auto delay = board.addPedal ("RKDelay");
-            const auto drive = board.addPedal ("RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            const auto drive = addOn (board, "RKDistort");
             board.assign (0, delay, "mix");
             prepare (board);
 

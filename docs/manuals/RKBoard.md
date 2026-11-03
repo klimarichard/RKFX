@@ -35,7 +35,7 @@ Each pedal is a tile in its family color, with its name, an LED and a footswitch
 | Click the footswitch | Bypass on / off (the LED is off while bypassed) |
 | Drag the tile | Moves the pedal: within its section, or to another section or path |
 | Right-click the tile | Duplicate (a copy with the same settings, right after it), Remove, Trails (delay and reverb), **Assign On/Off to** (see Assignable parameters), and on a chain **Insert a split after it** |
-| Click a **+** | Adds a pedal at the end of that section, from a menu grouped by family (on a chain also: **Insert a split here**) |
+| Click a **+** | Adds a pedal at the end of that section, from a menu grouped by family (on a chain also: **Insert a split here**). A new pedal starts bypassed in every scene; switch it on where you want it |
 | Click SPLIT or MERGE | Shows its settings below the board |
 | Right-click SPLIT or MERGE | **Remove this split** |
 
@@ -85,7 +85,7 @@ Assigning a knob never moves it. Turning the knob yourself moves its Assign para
 
 A board has 16 **scenes**. A scene remembers:
 
-- whether each pedal is on or bypassed, and
+- whether each pedal is on or bypassed (a newly added pedal is bypassed in all of them), and
 - the value of every **scene-controlled** knob. Right-click a knob (a pedal's, or a split's or merge's) and tick **Scene controlled** (up to 48 knobs per board). All other knobs are the same in every scene.
 
 Click a scene button to switch. Pedals switch on and off at once; scene-controlled knobs glide to their new values, so nothing clicks. Changes you make while a scene is selected are stored in that scene. Right-click a scene button to copy it to another scene, then change what should differ.

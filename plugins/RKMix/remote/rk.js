@@ -440,6 +440,7 @@ class SegmentedSwitch extends ParamComponent {
     });
   }
   pointerDown(e) {
+    if (this.locked && this.locked()) return false;
     const labels = this.labels || (this.info && this.info.choices) || [];
     const r = this.segArea();
     if (!labels.length || e.y < r.y) return false;

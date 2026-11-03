@@ -50,7 +50,7 @@ class Picker extends Sheet {
         b.fontHeight = 13; b.family = f; this.buttons.push(b);
       }
     this.closeButton = this.add(new TextButton("Cancel", () => this.close()));
-    if (state.clipboard) this.paste = this.add(new TextButton("Paste " + state.clipboard, () => { this.close(); net.send({ t: "insPaste", s: stripKey(strip, index), n: slot }); }));
+    if (state.clipboard && state.clipKind === "insert") this.paste = this.add(new TextButton("Paste " + state.clipboard, () => { this.close(); net.send({ t: "insPaste", s: stripKey(strip, index), n: slot }); }));
   }
   resized() {
     const a = this.area(), cols = Math.max(1, this.families.length), cw = Math.floor((a.w - 24 - (cols - 1) * 8) / cols);
@@ -136,7 +136,7 @@ class InsertView extends Sheet {
     const e = entryOf(this.strip, this.index, this.slot), a = this.area();
     if (!e) { setTimeout(() => this.close(), 0); return; }
     if (this.plugin && this.plugin !== e.p) this.request();   // replaced elsewhere
-    this.on.toggle = e.on; this.paste.enabled = !!state.clipboard;
+    this.on.toggle = e.on; this.paste.enabled = !!state.clipboard && state.clipKind === "insert";
     g.setColour(Colour.hex(e.f)); g.fillRoundedRectangle(a.x + 12, a.y + 12, 5, 30, 2);
     g.setColour(Palette.text); g.setFont(17, true); g.drawText(e.p, a.x + 26, a.y + 10, 220, 34, J.centredLeft);
     g.setColour(Palette.textDim); g.setFont(14);

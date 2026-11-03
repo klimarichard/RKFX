@@ -95,7 +95,7 @@ function receive(msg) {
     }
     case "curve": curves.receive(msg.k, msg.d); break;
     case "types": state.types = msg.list; break;
-    case "clip": state.clipboard = msg.text; break;
+    case "clip": state.clipboard = msg.text; state.clipKind = msg.kind; break;
     case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
   }
   app.dirty = true;
@@ -241,6 +241,7 @@ function start() {
   root = new Root();
   pinScreen = root.pin;
   root.header.setTabs();
+  if (C.afterStart) C.afterStart();
   app.start(root, kDesignHeight);
   root.layout();
   net.connect();

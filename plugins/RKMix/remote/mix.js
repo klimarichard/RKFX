@@ -308,7 +308,7 @@ class MixPage extends Component {
     this.strips = [];
     this.layerButtons = kLayers.map((t, i) => this.add(new TextButton(t, () => { mix.layer = i; mix.spill = -1; this.rebuild(); })));
     this.sceneButtons = [];
-    for (let i = 0; i < 16; i++) this.sceneButtons.push(this.add(new TextButton(num(i), () => net.send({ t: "scene", n: i }))));
+    for (let i = 0; i < 16; i++) this.sceneButtons.push(this.add(new TextButton(num(i), () => { if (!C.isLocked("everything")) net.send({ t: "scene", n: i }); })));
     this.clearSolo = this.add(new TextButton("Clear solo", () => net.send({ t: "clearSolo" })));
     this.talk = this.add(new TalkButton());
     this.main = this.add(new MasterStrip("main"));

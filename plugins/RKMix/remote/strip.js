@@ -11,6 +11,7 @@ const { Palette, J, Component, TextButton, ToggleSwitch, SegmentedSwitch, Knob, 
         ResponseCurve, TransferCurve, app, store, stripColour, drawPanel } = RK;
 const { state, net, num } = C;
 const accent = Palette.accent;
+const PopupMenuShow = (items, anchor) => RK.PopupMenu.show(items, anchor, { minWidth: 200 });
 
 const K = { knobW: 58, knobH: 80, switchW: 50, switchH: 30, title: 22, gap: 8, bottom: 56, procKnobW: 58, procKnobH: 76 };
 
@@ -151,7 +152,7 @@ class StripPage extends Component {
     state.selected = sel;
     this.key = JSON.stringify([sel, this.choices(), sel.kind === "ch" ? s.ch[sel.index].st : 0, s.bus.map(b => [b.t, b.st, b.own])]);
     this.removeAll();
-    this.sections = []; this.dimRules = []; this.extra = {};
+    this.sections = []; this.dimRules = []; this.extra = {}; this.labels = [];
     this.add(this.prev); this.add(this.next);
     this.chips = this.choices().map(([kind, index]) => {
       const name = kind === "ch" ? C.channelName(index) : kind === "bus" ? C.busName(index) : kind === "main" ? "Main" : "Mono";
@@ -162,6 +163,12 @@ class StripPage extends Component {
     });
     store.beginWants();
     if (sel.kind === "ch") this.buildChannel(sel.index); else this.buildChain(sel.kind === "bus" ? sel.index : sel.kind === "main" ? 16 : 17);
+    // Copy a section (the window's right-click menu), paste what was copied
+    const key = sel.kind === "ch" ? "ch" + (sel.index + 1) : sel.kind === "bus" ? "bus" + (sel.index + 1) : sel.kind;
+    const sections = sel.kind === "ch" ? [["input", "Input"], ["delay", "Delay"], ["hpf", "High-pass"], ["gate", "Gate"], ["eq", "EQ"], ["comp", "Compressor"], ["whole", "Whole strip"]]
+                                       : [["eq", "EQ"], ["comp", "Compressor"], ["limit", "Limiter"], ["whole", "Whole strip"]];
+    this.extra.copy = this.add(new TextButton("Copy…", () => PopupMenuShow(sections.map(([k, t]) => ({ text: "Copy " + t, action: () => net.send({ t: "copy", s: key, sec: k }) })), this.extra.copy)));
+    this.extra.paste = this.add(new TextButton("Paste", () => { if (!(C.isLocked && C.isLocked("everything"))) net.send({ t: "paste", s: key }); }));
     C.collectWants(this);
     store.endWants();
     // curves
@@ -281,6 +288,7 @@ class StripPage extends Component {
     x.limit = [this.knob(id("lim_ceiling"), "Ceiling", id("lim_on")), this.knob(id("lim_rel"), "Release", id("lim_on"))];
     this.limitMeter = this.add(new GainReductionMeter(accent, 24));
     this.compCurve = null;
+    if (C.buildSetup) C.buildSetup(this, chain);
     // A bus's sends and group assigns to the other buses (BusSendsPanel)
     x.sends = [];
     if (chain < 16) for (let b = 0; b < 16; b++) {
@@ -300,6 +308,8 @@ class StripPage extends Component {
     const cw = Math.min(90, Math.floor((W - 116 - 12) / Math.max(1, this.chips.length)) - 4);
     this.chips.forEach((b, i) => b.setBounds(116 + i * (cw + 4), by, cw, 32));
     const top = 40, bottom = H - K.bottom - gap;
+    const right = this.ch >= 0 ? W - 8 - 100 - 16 - 8 * 26 - 16 : W - 8 - 8 * 26 - 16;
+    x.paste.setBounds(right - 200, 6, 96, 28); x.copy.setBounds(right - 96, 6, 96, 28);
     this.sections = [];
     const section = (title, a) => { this.sections.push({ title, ...a }); return a; };
     if (this.ch >= 0) this.layoutChannel(W, top, bottom, section);
@@ -403,7 +413,8 @@ class StripPage extends Component {
     if (C.layoutSetup) C.layoutSetup(this, this.setupArea, section);
     // Row 3: a bus's sends
     const cTop = top2 + h + gap;
-    this.sendsArea = this.chain < 16 && bottom - cTop > 120 ? { x: 8, y: cTop, w: W - 16, h: bottom - cTop } : null;
+    const anySend = x.sends.some(c => c.send || c.assign);
+    this.sendsArea = this.chain < 16 && anySend && bottom - cTop > 120 ? { x: 8, y: cTop, w: W - 16, h: bottom - cTop } : null;
     if (this.sendsArea) this.layoutSends(cTop + 30, bottom);
     else this.sendColumns = [];
   }
@@ -423,6 +434,10 @@ class StripPage extends Component {
       if (eq) { x.bands[2].dimmed = store.value(o + "_eq_low_type") < 0.5; x.bands[17].dimmed = store.value(o + "_eq_high_type") < 0.5; }
       x.comp[4].dimmed = !store.on(o + "_comp_on") || store.on(o + "_comp_auto");
     }
+    const kind = this.ch >= 0 ? "channel" : "chain";
+    x.paste.enabled = state.clipKind === kind;
+    x.paste.text = state.clipKind === kind ? "Paste" : "Paste";
+    if (state.clipboard && state.clipKind === kind) { g.setColour(Palette.textDim); g.setFont(11.5); g.drawText("Copied: " + state.clipboard, x.paste.x - 330, 6, 324, 28, J.centredRight); }
     // the header: "Ch 1" and the name, the colours
     g.setColour(Palette.textDim); g.setFont(14, true);
     const head = this.ch >= 0 ? "Ch " + C.channelLabel(this.ch) : this.chain < 16 ? "Bus " + (this.chain + 1) + " · " + C.busTypeNames[s.bus[this.chain].t] : "";
@@ -443,6 +458,7 @@ class StripPage extends Component {
       }
     } else this.swatches = [];
     for (const sec of this.sections) drawPanel(g, sec.x, sec.y, sec.w, sec.h, Palette.tintedPanel, sec.title);
+    for (const [t, lx, ly] of this.labels || []) { g.setColour(Palette.textDim); g.setFont(11.5); g.drawText(t, lx, ly, 200, 16, J.centredLeft); }
     // the sends
     if (this.sendsArea) {
       const sa = this.sendsArea;

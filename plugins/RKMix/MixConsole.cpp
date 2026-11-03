@@ -645,6 +645,54 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
     }
     else if (type.startsWith ("ins"))
         insertCommand (client, type, m);
+    else if (type == "userPage")
+    {
+        // A user page's strips, in order: channels (a pair's left) and kUserPageBus + bus.
+        const auto page = (int) m["p"];
+        juce::Array<int> strips;
+        if (const auto* list = m["list"].getArray())
+            for (const auto& v : *list)
+            {
+                const auto id = (int) v;
+                const auto valid = juce::isPositiveAndBelow (id, kChannels)
+                                || juce::isPositiveAndBelow (id - RKMixProcessor::kUserPageBus, kBuses);
+                if (valid && ! strips.contains (id) && strips.size() < RKMixProcessor::kUserPageStrips)
+                    strips.add (id);
+            }
+        if (juce::isPositiveAndBelow (page, RKMixProcessor::kUserPages))
+            mixer.setUserPage (page, strips);
+    }
+    else if (type == "copy" || type == "paste")
+    {
+        // A section of a channel or a chain (bus, main, mono): "sec" is input, delay,
+        // hpf, gate, eq, comp, limit or whole.
+        const auto chain = strip == "main" ? kMainChain : strip == "mono" ? kMonoChain : bus;
+        if (type == "copy")
+        {
+            static const juce::StringArray names { "input", "delay", "hpf", "gate", "eq", "comp", "limit", "whole" };
+            const auto sec = names.indexOf (m["sec"].toString());
+            if (sec < 0)
+                return;
+            const auto section = (RKMixProcessor::Section) sec;
+            if (ch >= 0)
+                client.clipboard = mixer.copyChannel (ch, section);
+            else if (chain >= 0)
+                client.clipboard = mixer.copyChain (chain, section);
+            else
+                return;
+        }
+        else
+        {
+            if (ch >= 0 && RKMixProcessor::isChannelCopy (client.clipboard))
+                mixer.pasteChannel (ch, client.clipboard);
+            else if (chain >= 0 && RKMixProcessor::isChainCopy (client.clipboard))
+                mixer.pasteChain (chain, client.clipboard);
+            return;
+        }
+        const auto kind = RKMixProcessor::isChannelCopy (client.clipboard) ? "channel" : RKMixProcessor::isChainCopy (client.clipboard) ? "chain" : "";
+        post (client, R"({"type":"clip","kind":")" + juce::String (kind) + R"(","text":)"
+                          + jsonString (RKMixProcessor::describeCopy (client.clipboard)) + "}");
+    }
     else if (type == "ping")
         post (client, R"({"type":"pong"})");
 }
@@ -697,7 +745,7 @@ void MixConsole::insertCommand (Client& client, const juce::String& type, const 
     else if (type == "insCopy")
     {
         client.clipboard = mixer.copyInsert (slot);
-        post (client, R"({"type":"clip","text":)" + jsonString (RKMixProcessor::isInsertCopy (client.clipboard)
+        post (client, R"({"type":"clip","kind":"insert","text":)" + jsonString (RKMixProcessor::isInsertCopy (client.clipboard)
                                                                  ? RKMixProcessor::describeCopy (client.clipboard) : juce::String()) + "}");
     }
     else if (type == "insPaste" && RKMixProcessor::isInsertCopy (client.clipboard))

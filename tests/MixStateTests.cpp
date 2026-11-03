@@ -1145,6 +1145,16 @@ public:
             expect (p.getRack().get (slot) == nullptr, "removed");
             exchange (a, R"({"t":"set","id":")" + firstId + R"(","v":0.5})");   // gone: nothing happens
 
+            // Section copy and paste; a user page's strips.
+            setParam (p.getSettings().param (mix::channelId (4, "gate_thr")), -33.0f);
+            exchange (a, R"({"t":"copy","s":"ch5","sec":"gate"})");
+            expectEquals (a.last ("clip")["kind"].toString(), juce::String ("channel"));
+            exchange (a, R"({"t":"paste","s":"ch7"})");
+            expectWithinAbsoluteError (p.getSettings().value (mix::channelId (6, "gate_thr")), -33.0f, 0.01f, "the gate pasted");
+            exchange (a, R"({"t":"paste","s":"bus1"})");   // a channel's copy never onto a bus
+            exchange (a, R"({"t":"userPage","p":1,"list":[3,101,3,999]})");
+            expect (p.getUserPage (1) == juce::Array<int> { 3, 101 }, "valid strips, once each");
+
             // Remembered: the token signs in without the PIN, until the device is disconnected.
             Fake b;
             console.opened (b);

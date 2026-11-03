@@ -141,6 +141,29 @@ A phone can only change its own mix: its sends, its returns, its level and mute.
 
 The remote settings belong to the computer (`~/Library/Application Support/RKFX/RKMix/remote.json`), not to the mix.
 
+## The console remote (iPad)
+
+The whole console on an iPad, from anywhere in the room: the same server as the monitor remote, protected by a PIN. It looks like RKMix's window, with buttons sized for fingers.
+
+1. On the **Remote** page, switch the remote on. The **Console remote (iPad)** panel shows the **PIN** (4 digits, chosen at random the first time; double-click it to choose your own, 4 to 8 digits) and a **QR code**.
+2. Scan the code with the iPad's camera (or type `http://<this computer's name>.local:8080/console`), type the PIN once. The iPad remembers it.
+3. Share → **Add to Home Screen** opens it full screen like an app, in landscape. The home-screen app is separate from Safari, so it asks for the PIN once more.
+
+Pages (tabs at the top):
+
+- **Mix:** the strips as in the window: **Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA** (with **Spill**), **User 1**, **User 2**; Main and Mono always on the right, the **scenes** at the bottom, **Clear solo** and **TALK** (held, or tapped on and off when Latch is on). Put a finger anywhere on a fader and slide: it moves from where it was, never jumping to the finger. Several fingers move several faders. Pans slide sideways (double-tap: centre). An Aux or FX bus's **Sends** button (on the Buses layer) turns the channel faders into its sends, and the pans into its send pans in an Own bus; **Back to faders** ends it. Tap a strip's name to select it, double-tap it to rename; tap its H G E C letters to open it on the Channel page. Tap an insert slot to add a plugin or open it.
+- **Channel:** the selected channel in full (input, delay, high-pass, gate, output, EQ, compressor) with its sends, taps and direct out; or a bus's, the main's or the mono's EQ, compressor and limiter, with a bus's setup and sends (or the main's routing). The **EQ curve** has a handle per band (and the high-pass, and the bus low-pass): drag it sideways for the frequency, up and down for the gain; double-tap it for 0 dB. Knobs: drag up and down, double-tap for the default. **Copy...** copies a section (or the whole strip), **Paste** puts it on the strip shown. The row at the bottom picks the strip (the Mix page's layer), the arrows step through every strip.
+- **Setup:** solo and the cue output, talkback, the oscillator, which channels and buses each DCA and mute group holds, and which strips the user pages show (in the order tapped).
+
+An open insert shows its controls as knobs and switches, with **On**, **Copy**, **Paste**, **Replace...**, **Remove** (tap it twice) and **Close**. The plugin's own editor, with its curves and pads, is in RKMix's window.
+
+**Lock** (top right) locks the iPad: the faders and mutes only, or everything. Hold it a second to unlock. It's the iPad's own lock, apart from the window's.
+
+- Everything the iPad changes is the same as a change in the window: it goes into the undo history (Undo and Redo are on the iPad too) and the active scene.
+- **Disconnect** (beside each iPad on the Remote page) lets an iPad go: it must type the PIN again. **New PIN** does that for every iPad. After five wrong PINs an iPad waits 30 seconds.
+- **Console on / off** switches the console remote off without stopping the phones' monitor mixes.
+- Set the iPad's Auto-Lock to Never for the show.
+
 ## Ganging, copy and paste
 
 **Gang strips** to move them together: **Cmd-click** (or Shift-click) strip names. The first Cmd-click gangs the selected strip with the one you click; click again to take a strip out. Ganged strips have a bright frame. Moving one ganged fader by hand moves the others by the same travel, each from where it was, so their balance stays (one that reaches the bottom picks up again on the way back within the same move). Muting one mutes them all. Channels and buses can be ganged together; with **Sends on fader** the ganged faders move their sends. Press **Esc**, or right-click a strip and choose **Ungang all**, to end it. A gang belongs to the window: it isn't saved.

@@ -463,3 +463,17 @@ The limiter sits **after the fader**, so on an in-ear mix it protects the ears e
 ## Open questions
 
 - **Accent colour** (`#6B8CA6` proposed) and window size once phase 1 is on screen.
+
+## The console remote (as built)
+
+Branch `feat/rkmix-console-remote`. The whole console on an iPad, a web app on the monitor remote's server (`MixRemote` owns a `MixConsole`).
+
+- **Pages:** `/console` (console.html), `/c/<file>` (rk.js, console.js, mix.js, strip.js, inserts.js, setup.js), `/manifest/console.json`. Every file in `plugins/RKMix/remote/` is embedded as binary data (`RKMix_RemoteFiles`, `MixRemotePage::find`). The demo tool `RKFXRemoteDemo_RKMix [mix.json] [port] [pin]` serves them from disk off a headless RKMix with a test signal (its settings in a temp file).
+- **Sign-in:** WebSocket `/ws/console`, connection tag `MixConsole::kTag`. `{"t":"hello","pin"|"token","name"}`; a right PIN gives a token (kept in localStorage; up to 16 devices in remote.json `console.devices`). Disconnect or a new PIN forgets devices. 5 wrong PINs per address: 30 s wait. Nothing else is handled before sign-in.
+- **Values:** every control is a parameter by ID: host parameters, mix settings, and insert parameters as `ins:<flat slot>:<param id>` (re-resolved when the rack's version changes; `bypass` never). `{"t":"sub","ids":[...]}` replaces the subscription; each tick (MixRemote's 30 Hz timer) sends `{"type":"v","p":{id:[normalised, text(, default, steps, choices)]}}` for what changed. `{"t":"set","id","v"}` sets a normalised value (setValueNotifyingHost), so undo and scenes take it. The page ignores echoes for a control while a finger holds it (and 400 ms after).
+- **Structure** (`"type":"s"`, rebuilt every third tick, sent when it differs): channels (name, colour, stereo, hidden right of a pair, group-muted, soloed, H G E C, inserts), buses (type, stereo, Own), main/mono outputs and inserts, DCAs and mute groups with members, user pages, scene, undo/redo text, anything soloed, talk source set, sample rate.
+- **Curves:** `{"t":"curves","k":["eq:ch3","comp:ch3","eq:bus2"]}`: 128 log-spaced dB values (StripDsp/BusDsp::responseDb) or 121 transfer points, sent when they change.
+- **Meters:** 20 Hz from the push thread (`takeRemoteMeters`: channels, buses L/R, main, mono, gate and comp GR, chain comp and limit GR), in dB. Monitor pages still get theirs every third time (the peaks held between).
+- **Commands:** solo, clearSolo, scene, undo, redo, name, colour, userPage, copy/paste (Section names), insAdd/insRemove/insOn/insCopy/insPaste/insParams; plugin types at sign-in.
+- **Threads:** connections queue messages; the message thread handles them in `tick()` and fills each console's outbox; the push thread sends it (woken by `onOutbox`). A console that stops reading (500 waiting) is let go.
+- **Graphics:** rk.js ports the suite's palette (utility-tinted background and panels, accent #6B8CA6), font heights (JUCE height = 1.193 em of the system font) and the paint code of Knob, ToggleSwitch, SegmentedSwitch, TextButton, MixGui::Fader/Meter/OptionList, the linear slider, GainReductionMeter, ResponseCurve and TransferCurve to one canvas, scaled so every iPad is 850 logical pixels high. Each finger is captured by the component under it.

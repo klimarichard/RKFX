@@ -1075,6 +1075,12 @@ void BoardProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     trailBuffer.setSize (2, currentBlockSize, false, true, true);
     trailIdle.fill (false);
     trailSilence.fill (0);
+    trailRamp.assign ((size_t) currentBlockSize, 0.0f);
+    for (size_t i = 0; i < trailFade.size(); ++i)
+    {
+        trailFade[i].reset (sampleRate, kTrailFadeSeconds);
+        trailFade[i].setCurrentAndTargetValue (trails[i] && trailBypassed[i] ? 1.0f : 0.0f);
+    }
 
     for (auto& buffer : pathBuffers)
         buffer.setSize (2, currentBlockSize, false, true, true);
@@ -1163,7 +1169,45 @@ void BoardProcessor::processSection (const SectionChain& section, juce::AudioBuf
         pedalMidi.clear();
         pedalMidi.addEvents (midi, midiOffset, numSamples, -midiOffset);
 
-        if (! (trails[index] && trailBypassed[index]))
+        const auto inTrails = trails[index] && trailBypassed[index];
+        auto& fade = trailFade[index];
+        fade.setTargetValue (inTrails ? 1.0f : 0.0f);
+
+        if (fade.isSmoothing())
+        {
+            // Switching into or out of trails: the pedal's input fades out
+            // (or in) while the dry signal fades in (or out) beside it, so
+            // neither the input to its echoes nor the dry level jumps.
+            trailIdle[index] = false;
+            trailSilence[index] = 0;
+
+            juce::AudioBuffer<float> dry (trailBuffer.getArrayOfWritePointers(), 2, numSamples);
+            for (int ch = 0; ch < 2; ++ch)
+                dry.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+
+            for (int n = 0; n < numSamples; ++n)
+                trailRamp[(size_t) n] = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * fade.getNextValue());
+
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto* x = buffer.getWritePointer (ch);
+                for (int n = 0; n < numSamples; ++n)
+                    x[n] *= 1.0f - trailRamp[(size_t) n];
+            }
+
+            pedal->processBlock (buffer, pedalMidi);
+
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto* x = buffer.getWritePointer (ch);
+                const auto* d = dry.getReadPointer (ch);
+                for (int n = 0; n < numSamples; ++n)
+                    x[n] += trailRamp[(size_t) n] * d[n];
+            }
+            continue;
+        }
+
+        if (! inTrails)
         {
             trailIdle[index] = false;
             trailSilence[index] = 0;

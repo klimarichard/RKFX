@@ -88,7 +88,8 @@ void OutputStage::process (const float* const* dry, float* const* io, int numCha
         float dryGain, wetGain;
         mixGains (mix.getNextValue(), dryGain, wetGain);
         const auto g = gain.getNextValue();
-        const auto b = bypass.getNextValue();
+        // Bypass fades along an S-curve: no corner where the fade starts or ends.
+        const auto b = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::pi * bypass.getNextValue());
 
         for (int ch = 0; ch < numChannels; ++ch)
         {

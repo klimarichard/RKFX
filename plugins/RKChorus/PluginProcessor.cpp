@@ -13,6 +13,7 @@ namespace
         c.monoToStereo = true;                // mono in, wide stereo chorus out
         c.accent = juce::Colour (0xff5cc2ec); // Modulation family, light sky
         c.family = rkfx::Palette::Family::modulation;
+        c.wakeSeconds = 0.035;               // switched on: fill its longest delay before the wet fades in
         return c;
     }
 }

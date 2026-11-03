@@ -397,6 +397,11 @@ private:
     std::array<bool, kMaxPedals> trailIdle {};              // audio thread
     std::array<int, kMaxPedals> trailSilence {};            // audio thread, samples
     juce::AudioBuffer<float> trailBuffer;
+    // Switching into or out of trails crossfades (audio thread): 0 = the pedal
+    // runs normally, 1 = bypassed with trails (no input, tail over the dry).
+    std::array<juce::SmoothedValue<float>, kMaxPedals> trailFade;
+    std::vector<float> trailRamp;
+    static constexpr double kTrailFadeSeconds = 0.02;
 
     // Standalone
     bool standalone = false;

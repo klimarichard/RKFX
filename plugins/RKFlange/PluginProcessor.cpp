@@ -13,6 +13,7 @@ namespace
         c.monoToStereo = true;                // stereo phase on a mono source
         c.accent = juce::Colour (0xff3b82cc); // Modulation family, cornflower
         c.family = rkfx::Palette::Family::modulation;
+        c.wakeSeconds = 0.045;               // switched on: fill its longest delay before the wet fades in
         return c;
     }
 }

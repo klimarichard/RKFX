@@ -12,6 +12,7 @@ namespace
         c.monoToStereo = true;                // Detune spreads its voices
         c.accent = juce::Colour (0xff5468d4); // Modulation family, indigo blue
         c.family = rkfx::Palette::Family::modulation;
+        c.wakeSeconds = 0.05;               // switched on: fill its longest window before the wet fades in
         return c;
     }
 }

@@ -289,15 +289,12 @@ void RKPlayProcessor::ensureBag (int playlist)
     auto& p = show.playlists[(size_t) playlist];
     if (p.order != PlayPlaylist::Order::shuffle || p.bag.size() == p.songs.size())
         return;
-    PlayShow::reshuffle (p, -1, random);
-    p.nextBag.clear();
     // A list already playing: the song now playing counts as this round's first.
-    if (isPlayed (playlist))
-        if (const auto it = std::find (p.bag.begin(), p.bag.end(), p.cursor); it != p.bag.end())
-        {
-            std::iter_swap (p.bag.begin(), it);
-            p.bagPos = 0;
-        }
+    const auto playing = isPlayed (playlist) && p.cursor >= 0 && p.cursor < (int) p.songs.size();
+    PlayShow::reshuffle (p, -1, random, playing ? p.cursor : -1);
+    p.nextBag.clear();
+    if (playing)
+        p.bagPos = 0;
 }
 
 RKPlayProcessor::Item RKPlayProcessor::following (int playlist, int depth)

@@ -76,7 +76,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 ### RKPlay
 
-[RKPlay](docs/manuals/RKPlay.md) is a music player for intermissions, wedding receptions and background music, mainly as a standalone app. Up to 8 playlists (in order or shuffled, linked to a folder or an .m3u8), a queue for requests, crossfades that skip silence and long fade-outs, and End at (stop at a time of day). Every song is measured once (EBU R128) and played at the same loudness (-18 LUFS by default) by gain alone; quiet, dynamic songs can be lifted a little with a lookahead limiter. It ducks under an announcement mic or a button, has 8 pads for fanfares and entrances, and pre-listen on a cue output. As a standalone app it adds an OSC remote (TouchOSC), MIDI learn, keyboard shortcuts, crash recovery and a history of what played.
+[RKPlay](docs/manuals/RKPlay.md) is a music player for intermissions, wedding receptions and background music, mainly as a standalone app. Up to 8 playlists (in order or shuffled, never one artist twice in a row; linked to a folder or an .m3u8), a queue for requests, crossfades that skip silence and long fade-outs, and End at (stop at a time of day). Every song is measured once (EBU R128) and played at the same loudness (-18 LUFS by default) by gain alone; quiet, dynamic songs can be lifted a little with a lookahead limiter. It ducks under an announcement mic or a button, has 8 pads for fanfares and entrances, and pre-listen on a cue output. As a standalone app it adds an OSC remote (TouchOSC), MIDI learn, keyboard shortcuts, crash recovery and a history of what played.
 
 ## Documentation
 

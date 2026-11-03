@@ -213,15 +213,117 @@ int PlayShow::numProblems() const
     return n;
 }
 
-void PlayShow::reshuffle (PlayPlaylist& p, int avoid, std::mt19937& random)
+void PlayShow::reshuffle (PlayPlaylist& p, int avoid, std::mt19937& random, int first)
 {
+    const auto n = (int) p.songs.size();
+    const auto valid = [n] (int i) { return i >= 0 && i < n; };
+
+    // Songs by one artist (case and spaces aside) share a group; a song with no artist is a group of its own.
+    std::map<juce::String, int> groupOf;
+    std::vector<int> group ((size_t) n);
+    std::vector<std::vector<int>> members;
+    for (int i = 0; i < n; ++i)
+    {
+        const auto key = p.songs[(size_t) i].artist.trim().toLowerCase();
+        const auto [it, added] = key.isEmpty() ? std::pair { groupOf.end(), true } : groupOf.try_emplace (key, (int) members.size());
+        group[(size_t) i] = added ? (int) members.size() : it->second;
+        if (added)
+            members.emplace_back();
+    }
+
+    // Only playable songs are planned: the rest are skipped when they come up, so they go anywhere.
+    std::vector<int> unplayable;
+    int left = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        if (i == first)
+            continue;
+        if (p.songs[(size_t) i].isPlayable())
+        {
+            members[(size_t) group[(size_t) i]].push_back (i);
+            ++left;
+        }
+        else
+            unplayable.push_back (i);
+    }
+    for (auto& m : members)
+        std::shuffle (m.begin(), m.end(), random);
+
     p.bag.clear();
-    for (int i = 0; i < (int) p.songs.size(); ++i)
-        p.bag.push_back (i);
-    std::shuffle (p.bag.begin(), p.bag.end(), random);
-    // The last song of one round never starts the next.
-    if (p.bag.size() > 1 && p.bag.front() == avoid)
-        std::swap (p.bag.front(), p.bag.back());
+    p.bag.reserve ((size_t) n);
+    int previous = -1;   // the group just before: never next, if that can be helped
+    if (valid (first))
+    {
+        p.bag.push_back (first);
+        previous = group[(size_t) first];
+    }
+    else if (valid (avoid))
+    {
+        previous = group[(size_t) avoid];
+    }
+
+    const auto groups = (int) members.size();
+    const auto size = [&members] (int g) { return (int) members[(size_t) g].size(); };
+    while (left > 0)
+    {
+        // Can the rest of the round still go without two by one artist together, after a song of group g?
+        // Only if no other group has more than half of the rest (rounded up), nor g itself more than half (down).
+        int top = -1, topCount = 0, secondCount = 0;
+        for (int g = 0; g < groups; ++g)
+        {
+            if (size (g) > topCount)
+            {
+                secondCount = topCount;
+                topCount = size (g);
+                top = g;
+            }
+            else
+                secondCount = juce::jmax (secondCount, size (g));
+        }
+        const auto rest = left - 1;
+        const auto canFinish = [&] (int g) { return (g == top ? secondCount : topCount) <= (rest + 1) / 2 && size (g) - 1 <= rest / 2; };
+
+        // Any such song, at random (an artist with more songs comes up more).
+        int pick = -1, weight = 0;
+        for (int g = 0; g < groups; ++g)
+            if (g != previous && size (g) > 0 && canFinish (g))
+                weight += size (g);
+        if (weight > 0)
+        {
+            auto r = std::uniform_int_distribution<int> (0, weight - 1) (random);
+            for (int g = 0; g < groups && pick < 0; ++g)
+                if (g != previous && size (g) > 0 && canFinish (g))
+                {
+                    if (r < size (g))
+                        pick = g;
+                    r -= size (g);
+                }
+        }
+        else
+        {
+            // Too many by one artist to keep them all apart: the biggest other group (fewest repeats), else the same again.
+            for (int g = 0; g < groups; ++g)
+                if (g != previous && size (g) > 0 && (pick < 0 || size (g) > size (pick)))
+                    pick = g;
+            if (pick < 0)
+                pick = previous;
+        }
+
+        auto& from = members[(size_t) pick];
+        // The last song of one round never starts the next.
+        if (p.bag.empty() && from.back() == avoid && from.size() > 1)
+            std::swap (from.front(), from.back());
+        p.bag.push_back (from.back());
+        from.pop_back();
+        previous = pick;
+        --left;
+    }
+
+    for (const auto i : unplayable)
+    {
+        const auto at = std::uniform_int_distribution<int> (valid (first) ? 1 : 0, (int) p.bag.size()) (random);
+        p.bag.insert (p.bag.begin() + juce::jmin (at, (int) p.bag.size()), i);
+    }
     p.bagPos = -1;
 }
 

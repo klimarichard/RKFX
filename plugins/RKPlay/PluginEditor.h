@@ -190,6 +190,12 @@ private:
     int lastRigVersion = -1;
     void choosePadFile (int pad);
     void renamePad (int pad);
+    void editTrim (int playlist, int index);
 
     static juce::String timeText (double seconds);
+    static juce::String preciseTime (double seconds);       // 3:44.5
+    static double parseTime (const juce::String&);          // "3:44.5" or "224.5"; empty or bad: -1
+
+    /** Where a song starts and ends (set by hand, else found) on a bar of its length. */
+    static void drawTrim (juce::Graphics&, juce::Rectangle<float> bar, const PlaySong&, const PlayShow&, juce::Colour);
 };

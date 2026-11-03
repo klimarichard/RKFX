@@ -344,7 +344,10 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
     const auto& p = viewedList();
     double total = 0.0;
     for (const auto& s : p.songs)
-        total += s.lengthSeconds;
+    {
+        const auto span = player.getShow().spanOf (s);
+        total += s.isTrimmed() ? span.end - span.start : s.lengthSeconds;
+    }
     juce::String info = juce::String ((int) p.songs.size()) + ((int) p.songs.size() == 1 ? " song, " : " songs, ") + timeText (total);
     if (p.isLinked())
         info << "   ·   linked to " << (p.link == PlayPlaylist::Link::folder ? "the folder " : "") << p.linkFile.getFileName()
@@ -413,7 +416,9 @@ void RKPlayEditor::NowPlaying::paint (juce::Graphics& g)
     g.setFont (rkfx::Fonts::bold (40.0f));
     g.drawText (shown ? timeText (position) : "--:--", times.withWidth (130).withTrimmedTop (20), juce::Justification::centredRight);
     g.setColour (shown ? owner.accent() : rkfx::Palette::textDim);
-    g.drawText (shown ? "-" + timeText (juce::jmax (0.0, length - position)) : timeText (length),
+    const auto span = p.getShow().spanOf (song);
+    const auto endsAt = song.hasEnd() ? span.end : length;   // an end set by hand: the time left to it
+    g.drawText (shown ? "-" + timeText (juce::jmax (0.0, endsAt - position)) : timeText (song.isTrimmed() ? span.end - span.start : length),
                 times.withTrimmedLeft (150).withTrimmedTop (20), juce::Justification::centredRight);
 
     // Names (left), large.
@@ -466,6 +471,8 @@ void RKPlayEditor::NowPlaying::paint (juce::Graphics& g)
         g.setColour (playedColour);
         g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * played), 4.0f);
     }
+    if (has)
+        drawTrim (g, bar, song, p.getShow(), owner.accent());
     if (shown)
     {
         g.setColour (rkfx::Palette::text);
@@ -673,8 +680,8 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
     g.setColour (rkfx::Palette::textDim);
     g.drawText (playing ? juce::String::fromUTF8 ("\xe2\x96\xb6") : juce::String (row + 1), r.removeFromLeft (34), juce::Justification::centredLeft);
 
-    const auto right = r.removeFromRight (100);
-    const auto levelArea = r.removeFromRight (110);
+    const auto right = r.removeFromRight (150);
+    const auto levelArea = r.removeFromRight (100);
     g.setFont (rkfx::Fonts::regular (15.0f));
     g.setColour (colour);
     g.drawFittedText (song.displayName(), r, juce::Justification::centredLeft, 1);
@@ -701,11 +708,20 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
         }
     }
 
+    // Its length (trimmed: what plays, and a mark), or its problem.
+    const auto span = player.getShow().spanOf (song);
+    const auto length = song.isTrimmed() ? span.end - span.start : song.lengthSeconds;
     g.setColour (song.isPlayable() ? rkfx::Palette::textDim : colour);
     const auto statusText = song.status == PlaySong::Status::missing ? juce::String ("missing")
                           : song.status == PlaySong::Status::unreadable ? juce::String ("unreadable")
-                          : next ? juce::String ("next   ") + timeText (song.lengthSeconds) : timeText (song.lengthSeconds);
+                          : next ? juce::String ("next   ") + timeText (length) : timeText (length);
     g.drawText (statusText, right, juce::Justification::centredRight);
+    if (song.isTrimmed() && song.isPlayable())
+    {
+        g.setColour (accent());
+        g.drawText (song.hasStart() && song.hasEnd() ? "start, end" : song.hasStart() ? "start" : "end",
+                    right.withTrimmedRight (next ? 86 : 44), juce::Justification::centredRight);
+    }
 }
 
 void RKPlayEditor::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
@@ -751,12 +767,35 @@ void RKPlayEditor::showSongMenu (int row)
     for (int db = 6; db >= -12; --db)
         gainMenu.addItem (100 + db + 12, (db > 0 ? "+" : "") + juce::String (db) + " dB", true, std::abs (gainNow - db) < 0.01);
     menu.addSubMenu ("Song gain", gainMenu);
+
+    // Start and end: typed, or here (where it's pre-listened, or playing).
+    const auto& song = songs[(size_t) row];
+    juce::PopupMenu trimMenu;
+    trimMenu.addItem (20, "Set the start and end...", song.lengthSeconds > 0.0);
+    const auto cueHere = player.isPreListening() && preListen.playlist == viewed && preListen.index == row
+                      && player.getPreListenSong().file == song.file;
+    const auto cueAt = player.getPreListenPosition();
+    const auto playAt = player.getPositionSeconds();
+    if (cueHere)
+    {
+        trimMenu.addItem (21, "Start here (pre-listen, " + preciseTime (cueAt) + ")");
+        trimMenu.addItem (22, "End here (pre-listen, " + preciseTime (cueAt) + ")");
+    }
+    if (playingThis)
+    {
+        trimMenu.addItem (23, "Start here (playing, " + preciseTime (playAt) + ")");
+        trimMenu.addItem (24, "End here (playing, " + preciseTime (playAt) + ")");
+    }
+    trimMenu.addSeparator();
+    trimMenu.addItem (25, "No start set (from the music start)", song.hasStart());
+    trimMenu.addItem (26, "No end set (to the music end)", song.hasEnd());
+    menu.addSubMenu (song.isTrimmed() ? "Start and end (set)" : "Start and end", trimMenu, playable);
     menu.addSeparator();
     menu.addItem (7, "Show in Finder", songs[(size_t) row].file.exists());
 
     const auto playlist = viewed;
     juce::Component::SafePointer<RKPlayEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, row, playlist] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, row, playlist, cueAt, playAt] (int result)
     {
         if (safe == nullptr)
             return;
@@ -775,6 +814,19 @@ void RKPlayEditor::showSongMenu (int row)
                 safe->preListen.playlist = playlist;
                 safe->preListen.index = row;
                 break;
+            case 20: safe->editTrim (playlist, row); return;
+            case 21: case 22: case 23: case 24:
+            {
+                const auto& s = pl.getShow().playlists[(size_t) playlist].songs[(size_t) row];
+                const auto at = result <= 22 ? cueAt : playAt;
+                if (result == 21 || result == 23)
+                    pl.setSongTrim (playlist, row, at, s.endSeconds);
+                else
+                    pl.setSongTrim (playlist, row, s.startSeconds, at);
+                break;
+            }
+            case 25: pl.setSongTrim (playlist, row, -1.0, pl.getShow().playlists[(size_t) playlist].songs[(size_t) row].endSeconds); break;
+            case 26: pl.setSongTrim (playlist, row, pl.getShow().playlists[(size_t) playlist].songs[(size_t) row].startSeconds, -1.0); break;
             default:
                 if (result >= 100)
                     pl.setSongGain (playlist, row, result - 100 - 12);
@@ -1035,6 +1087,7 @@ void RKPlayEditor::PreListen::paint (juce::Graphics& g)
     const auto played = song.lengthSeconds > 0.0 ? (float) juce::jlimit (0.0, 1.0, p.getPreListenPosition() / song.lengthSeconds) : 0.0f;
     g.setColour (owner.accent().withAlpha (0.7f));
     g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * played), 3.0f);
+    drawTrim (g, bar, song, p.getShow(), rkfx::Palette::text);
 }
 
 void RKPlayEditor::PreListen::mouseDown (const juce::MouseEvent& e)
@@ -1611,6 +1664,77 @@ void RKPlayEditor::tick()
     if (now - limiterTime < 2.0)
         parts.add ("Safety limiter " + juce::String (limiterDb, 1) + " dB");
     status.setText (parts.joinIntoString ("    "), juce::dontSendNotification);
+}
+
+void RKPlayEditor::drawTrim (juce::Graphics& g, juce::Rectangle<float> bar, const PlaySong& song, const PlayShow& show, juce::Colour colour)
+{
+    if (! song.isTrimmed() || song.lengthSeconds <= 0.0)
+        return;
+    const auto span = show.spanOf (song);
+    const auto xOf = [&] (double s) { return bar.getX() + bar.getWidth() * (float) juce::jlimit (0.0, 1.0, s / song.lengthSeconds); };
+    // What doesn't play is shaded; the start and end are lines.
+    g.setColour (rkfx::Palette::background.withAlpha (0.65f));
+    if (song.hasStart())
+        g.fillRect (bar.withRight (xOf (span.start)));
+    if (song.hasEnd())
+        g.fillRect (bar.withLeft (xOf (span.end)));
+    g.setColour (colour);
+    if (song.hasStart())
+        g.fillRect (xOf (span.start) - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+    if (song.hasEnd())
+        g.fillRect (xOf (span.end) - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+}
+
+void RKPlayEditor::editTrim (int playlist, int index)
+{
+    const auto& song = player.getShow().playlists[(size_t) playlist].songs[(size_t) index];
+    PlaySong found = song;
+    found.startSeconds = found.endSeconds = -1.0;
+    const auto detected = player.getShow().spanOf (found);   // where it plays without a trim
+    juce::String hint ("Minutes:seconds (3:44.5) or seconds. Empty: found by RKPlay");
+    if (song.analysis.valid)
+        hint << "\n(the music starts at " << preciseTime (detected.start) << ", the next song is heard alone from "
+             << preciseTime (detected.endPoint) << ")";
+    hint << ".\nThe song is faded out by its end; the crossfade into the next one ends there.";
+
+    auto* window = new juce::AlertWindow ("Start and end: " + song.displayName(), hint, juce::MessageBoxIconType::NoIcon);
+    window->addTextEditor ("start", song.hasStart() ? preciseTime (song.startSeconds) : juce::String(), "Start");
+    window->addTextEditor ("end", song.hasEnd() ? preciseTime (song.endSeconds) : juce::String(), "End");
+    window->addButton ("Set", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    const auto file = song.file;
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, playlist, index, file] (int result)
+    {
+        if (safe != nullptr && result == 1)
+        {
+            const auto& songs = safe->player.getShow().playlists[(size_t) playlist].songs;
+            if (index < (int) songs.size() && songs[(size_t) index].file == file)   // still that song
+            {
+                safe->player.setSongTrim (playlist, index, parseTime (window->getTextEditorContents ("start")),
+                                          parseTime (window->getTextEditorContents ("end")));
+                safe->refresh();
+            }
+        }
+    }), true);
+}
+
+juce::String RKPlayEditor::preciseTime (double seconds)
+{
+    const auto tenths = (int) std::lround (juce::jmax (0.0, seconds) * 10.0);
+    return juce::String (tenths / 600) + ":" + juce::String ((tenths / 10) % 60).paddedLeft ('0', 2) + "." + juce::String (tenths % 10);
+}
+
+double RKPlayEditor::parseTime (const juce::String& text)
+{
+    const auto t = rkfx::Units::withDecimalPoint (text).trim();
+    if (t.isEmpty() || ! t.containsOnly ("0123456789:."))
+        return -1.0;
+    const auto parts = juce::StringArray::fromTokens (t, ":", {});
+    double seconds = 0.0;
+    for (const auto& part : parts)
+        seconds = seconds * 60.0 + part.getDoubleValue();
+    return seconds;
 }
 
 juce::String RKPlayEditor::timeText (double seconds)

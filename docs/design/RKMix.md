@@ -269,6 +269,14 @@ RKTrigger's and RKFollow's MIDI output from an audio effect hasn't been checked 
 - **Tempo** (saved with the mix): the field, Tap and Clock (follow MIDI clock, kept in the rig's settings.json) in the Master section; the inserts' play head in the standalone app.
 - **Tests:** program change to scene, a learned CC gliding an Assign, a momentary Talk switch, the rig's mappings shared between instances, the tempo kept with the mix.
 
+### As built: DCAs and mute groups (feat/rkmix-dca, 2026-11-03)
+
+- **8 DCAs, 8 mute groups.** Host parameters (appended after Talk): `dca_fader_n` (fader law), `dca_mute_n`, `mgrp_n`. Membership is a mix setting per channel and bus (`chN_dcaD`, `busN_dcaD`, `chN_mgrpG`, `busN_mgrpG`, appended); its `ownerBits` are 0, so a change rebuilds nothing.
+- **No engine change.** `readLevels()` (every block) gives each channel and bus fader + the sum of its DCAs' levels (a DCA at the bottom: silence; capped at +10 dB) and ORs its mute with its DCAs' mutes and its active mute groups. So a DCA works exactly as the strip's own fader (post-fader sends and Post-Fader direct outs follow, pre-fader taps don't, glides 20 ms) and a mute group as its Mute (silent at every tap). A linked pair: its left channel's membership.
+- **Scenes:** DCA faders, mutes and mute groups are in the Faders & mutes category; membership in the assigns one (renamed "Assigns & DCAs", key unchanged). Recall safe applies to membership (owned by the strip), never to the DCA faders.
+- **Names and colours:** `dcaNames`, `dcaColours`, `muteGroupNames` in the extra state.
+- **Window:** a DCA layer between Buses and User 1 (`GroupStrip`: 8 DCAs then 8 mute groups); `GroupPanel` (members grid) in the top panel; Spill puts a DCA's members (up to 15) on the faders with the DCA last; a strip's number row turns warning-coloured while a group mutes it; DCA and mute group submenus on the strip's right-click menu. Scene buttons 34 px so six layer buttons fit.
+
 ## Parameters
 
 Fixed host parameters, in this order (IDs permanent, append only):

@@ -2,7 +2,7 @@
 
 **Mixing console** · 32 inputs, 32 outputs · every RKFX effect as an insert · plugin (AU, VST3) and standalone app
 
-RKMix is a live mixing console in one plugin: 32 input channels with a full channel strip, 16 buses that can be groups, monitor mixes or effect returns, a stereo main with a mono sum, and any RKFX effect in insert slots. It has solo, talkback, a test oscillator, 16 scenes and 32 assignable controls. Use it in Gig Performer as the heart of a rig (one plugin for the whole band, with in-ear mixes), or as a standalone app on an audio interface.
+RKMix is a live mixing console in one plugin: 32 input channels with a full channel strip, 16 buses that can be groups, monitor mixes or effect returns, a stereo main with a mono sum, and any RKFX effect in insert slots. It has 8 DCAs and 8 mute groups, solo, talkback, a test oscillator, 16 scenes and 32 assignable controls. Use it in Gig Performer as the heart of a rig (one plugin for the whole band, with in-ear mixes), or as a standalone app on an audio interface.
 
 For knobs, presets and the controls inside each insert, see [Common Controls](Common%20Controls.md).
 
@@ -26,9 +26,9 @@ Every section has its own **On** switch. A section that is off is skipped comple
 - **Master section (top right, always there):** solo settings, Clear solo, TALK, OSC, and in the standalone app the tempo.
 - **Fader area:** 16 strips at a time. Click a strip's name to show it in the top panel.
 - **Main and Mono strips** (right): click one to open the Main page.
-- **Bottom row:** the strip pages (**Inputs 1-16**, **Inputs 17-32**, **Buses**, **User 1**, **User 2**), the scene bar and Bypass.
+- **Bottom row:** the strip pages (**Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA**, **User 1**, **User 2**), the scene bar and Bypass.
 
-Each strip shows its name and colour, the H G E C lights (high-pass, gate, EQ, compressor on; G and C light up while they reduce), its insert slots, the pan, Mute, S (solo), the fader with its level and the meter. Right-click a strip for its colour and its user pages.
+Each strip shows its name and colour, the H G E C lights (high-pass, gate, EQ, compressor on; G and C light up while they reduce), its insert slots, the pan, Mute, S (solo), the fader with its level and the meter. Right-click a strip for its colour, its user pages, and its DCAs and mute groups. A strip whose number is on orange is silenced by a DCA's Mute or a mute group (its own Mute may be off).
 
 ## Channels
 
@@ -123,6 +123,16 @@ RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic t
 - Mute doesn't stop MIDI (a muted kick mic still triggers its sample). Switch the insert off to stop it.
 - **MIDI thru** (Routing page, default off) passes RKMix's MIDI input on to its output.
 
+## DCAs and mute groups
+
+The **DCA** page (bottom row) shows the 8 DCAs and the 8 mute groups. Click a name for its members page: every input and bus, switched on or off. You can also right-click any strip and tick its **DCAs** or **Mute groups**. Double-click a name to rename it ("Drums", "Band").
+
+- **DCA:** one fader that moves several faders at once. -6 dB on the DCA is -6 dB on every member, while their own faders stay where they are, so the balance between them is kept. The DCA's bottom silences its members, its **Mute** mutes them. A DCA sums nothing and adds no processing, and the in-ears don't change (pre-fader sends ignore it, as they ignore the channel's fader). A channel in two DCAs gets both. The total never goes past +10 dB.
+- **Spill:** shows a DCA's members on the faders (up to 15), with the DCA at the right. Click Spill again, or any page button, to go back.
+- **Mute group:** its big **MUTE** silences every member at once, everywhere: the main, groups, sends and the in-ears. "Band" for a speech between songs, "Vocal mics" during a playback. The members' own Mute buttons stay as they are, so when the group is off again everything plays as before.
+
+DCA faders, DCA mutes and the mute groups are host parameters (map a Gig Performer button to **Mute Group 1**), and scenes recall them with **Faders & mutes**. Who is in which DCA and mute group is recalled with **Assigns & DCAs**.
+
 ## User pages
 
 **User 1** and **User 2** show up to 16 strips you choose, channels, pairs and buses mixed, in the order you add them: for example the vocals next to their in-ear buses, or just what you touch during a song.
@@ -141,7 +151,7 @@ The scene bar (bottom row) holds **16 scenes**. Click a number to recall it; rig
 - A scene never changes the **structure**: links, bus types and formats, outputs, taps, which effect sits in which slot, names, user pages, talkback and oscillator setup.
 - **Glide** (Scenes page, 0 to 5 s, default 100 ms): faders and knobs glide to the new scene; switches change at once.
 - **Recall safe** (Scenes page) per channel and bus: scenes leave it alone (a talkback mic, a channel you are sound-checking).
-- **Recall scope** (Scenes page, for each scene): what recalling that scene changes. Switch on any of **Faders & mutes**, **Pans**, **Channel processing** (trim, polarity, delay, high-pass, gate, EQ, compressor), **Bus & main processing** (their EQ, compressor, limiter), **Inserts** (on or off, and the scene-controlled knobs), **Group & main assigns**, and the **Sends to** each bus (**B1** to **B16**: the send levels to that bus, and their pans in an Own bus). **Everything** is the default. For example, scenes that only change the singer's in-ear between songs: switch everything off except **Sends to** the singer's bus. A scene still stores everything, so widening its scope later loses nothing. Pick the scene in the list (it follows the active scene), or right-click a scene button and choose **Recall scope...**. **Copy to all scenes** gives every scene the same scope; copying a scene copies its scope too. A scene that recalls only part of the mix has a dot under its button, and its tooltip says what it recalls.
+- **Recall scope** (Scenes page, for each scene): what recalling that scene changes. Switch on any of **Faders & mutes**, **Pans**, **Channel processing** (trim, polarity, delay, high-pass, gate, EQ, compressor), **Bus & main processing** (their EQ, compressor, limiter), **Inserts** (on or off, and the scene-controlled knobs), **Assigns & DCAs** (group assigns, Main switches, DCA and mute group members), and the **Sends to** each bus (**B1** to **B16**: the send levels to that bus, and their pans in an Own bus). **Everything** is the default. For example, scenes that only change the singer's in-ear between songs: switch everything off except **Sends to** the singer's bus. A scene still stores everything, so widening its scope later loses nothing. Pick the scene in the list (it follows the active scene), or right-click a scene button and choose **Recall scope...**. **Copy to all scenes** gives every scene the same scope; copying a scene copies its scope too. A scene that recalls only part of the mix has a dot under its button, and its tooltip says what it recalls.
 - Recall safe wins over the scope: a recall-safe channel or bus is never changed.
 
 ## Assignable controls
@@ -180,6 +190,7 @@ A preset is a **whole console**: every setting, the inserts with their own setti
 | **Assign 1** … **Assign 32** | See Assignable controls |
 | **Scene** | 1 to 16 |
 | **Talk** | Talkback on or off |
+| **DCA 1 Fader** … **DCA 8 Fader**, **DCA 1 Mute** …, **Mute Group 1** … **Mute Group 8** | The DCAs and mute groups |
 
 Everything else is in the mix itself. A scene that moves a fader moves its host parameter, so Gig Performer widgets follow.
 

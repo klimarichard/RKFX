@@ -780,6 +780,82 @@ public:
             expect (trailsLeak < 1.0e-4f, "no new echoes while bypassed: " + juce::String (trailsLeak));
         }
 
+        beginTest ("Switching a pedal off and on doesn't click (with and without trails)");
+        {
+            // A 110 Hz sine through each pedal, switched off, on and off again:
+            // the sharpest bend (second difference) around a switch stays near
+            // what the pedal produces anyway, on or off.
+            auto measure = [&] (const juce::String& name, bool useTrails, float& offRatio, float& onRatio)
+            {
+                BoardProcessor board;
+                board.clearBoard();
+                prepare (board);
+                const auto id = board.addPedal (name);
+                if (useTrails)
+                    board.setTrails (id, true);
+
+                const int total = (int) kRate * 4;
+                const int switches[3] = { (int) kRate + 77, 2 * (int) kRate + 77, 3 * (int) kRate + 77 };
+                std::vector<float> y ((size_t) total);
+                juce::AudioBuffer<float> buffer (2, kBlock);
+                juce::MidiBuffer midi;
+                double phase = 0.0;
+                for (int start = 0; start < total; start += kBlock)
+                {
+                    for (int k = 0; k < 3; ++k)
+                        if (start <= switches[k] && switches[k] < start + kBlock)
+                            board.setPedalBypassed (id, k != 1);
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        const auto v = (float) (0.3 * std::sin (phase));
+                        phase += juce::MathConstants<double>::twoPi * 110.0 / kRate;
+                        buffer.setSample (0, i, v);
+                        buffer.setSample (1, i, v);
+                    }
+                    board.processBlock (buffer, midi);
+                    for (int i = 0; i < kBlock && start + i < total; ++i)
+                        y[(size_t) (start + i)] = buffer.getSample (0, i);
+                }
+
+                auto bend = [&] (int from, int to)
+                {
+                    float m = 0.0f;
+                    for (int i = from; i < to; ++i)
+                        m = juce::jmax (m, std::abs (y[(size_t) i] - 2.0f * y[(size_t) i - 1] + y[(size_t) i - 2]));
+                    return m;
+                };
+                constexpr int window = 4096;
+                auto steady = 1.0e-6f;
+                for (auto t : switches)
+                    steady = juce::jmax (steady, bend (t - window - kBlock, t - kBlock));
+                offRatio = bend (switches[0] - kBlock, switches[0] + window) / steady;
+                onRatio  = bend (switches[1] - kBlock, switches[1] + window) / steady;
+            };
+
+            for (const auto& type : rkboard::pedalTypes())
+            {
+                if (type.sendsMidi)
+                    continue;
+                for (const bool useTrails : { false, true })
+                {
+                    {
+                        BoardProcessor probe;
+                        probe.clearBoard();
+                        if (useTrails && ! probe.canHaveTrails (probe.addPedal (type.name)))
+                            continue;
+                    }
+                    float off = 0.0f, on = 0.0f;
+                    measure (type.name, useTrails, off, on);
+                    const auto label = type.name + (useTrails ? " (trails)" : "");
+                    expect (off < 4.0f, label + " switched off: " + juce::String (off, 2) + "x");
+                    // A synth's note and a reverb's first reflections start by
+                    // themselves a moment after switching on.
+                    if (type.name != "RKSynth" && type.name != "RKVerb")
+                        expect (on < 4.0f, label + " switched on: " + juce::String (on, 2) + "x");
+                }
+            }
+        }
+
         beginTest ("Trails: switching it doesn't change the bypass; the pedal's own switch bypasses with trails");
         {
             BoardProcessor board;

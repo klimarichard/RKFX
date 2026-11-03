@@ -12,6 +12,7 @@ namespace
         c.monoToStereo = true;                // spread places dry and double apart
         c.accent = juce::Colour (0xff6fa3d8); // Modulation family, steel blue
         c.family = rkfx::Palette::Family::modulation;
+        c.wakeSeconds = 0.07;               // switched on: fill its longest delay and drift before the wet fades in
         return c;
     }
 }

@@ -34,6 +34,7 @@ struct PluginConfig
     int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKRemap); 0 = mono/stereo
     bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
     bool bypassMutes = false;        // Bypass fades to silence instead of passing the input (RKMix: raw inputs must never reach the PA)
+    double wakeSeconds = 0.0;        // switched on from a full bypass, the DSP runs this long (dry still heard) before the wet fades in: fills delay lines so a delayed voice doesn't start abruptly (chorus, doubler, pitch)
     juce::Colour accent;             // per-plugin family tint (active toggles only)
     Palette::Family family = Palette::Family::utility;   // tints the window background
 };
@@ -253,6 +254,7 @@ private:
     juce::AudioBuffer<float> dryView;   // the chunk's part of dryBuffer, for getDryInput()
     int maxBlock = 0;
     bool wetWasIdle = true;
+    int wakeRemaining = 0;           // samples left of config.wakeSeconds (the DSP runs, the dry is heard)
 
     // Preset state
     mutable juce::CriticalSection presetLock;

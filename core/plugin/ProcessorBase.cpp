@@ -156,6 +156,7 @@ void ProcessorBase::prepareToPlay (double sampleRate, int samplesPerBlock)
     prepareDsp (sampleRate, maxBlock, numChannels);
     resetDsp();
     wetWasIdle = false;
+    wakeRemaining = 0;
 }
 
 void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -216,7 +217,14 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
     outputStage.setMix (mixParam != nullptr && ! config.mixInDsp ? valueOf (mixParam) / 100.0f : 1.0f);
     outputStage.setOutputDecibels (outputParam != nullptr ? valueOf (outputParam) : 0.0f);
-    outputStage.setBypassed (valueOf (bypassParam) >= 0.5f);
+    // Switched on from a full bypass: the DSP wakes first (config.wakeSeconds),
+    // the dry signal still heard, then the wet fades in.
+    const auto bypassedNow = valueOf (bypassParam) >= 0.5f;
+    if (bypassedNow)
+        wakeRemaining = 0;
+    else if (wetWasIdle && ! outputStage.wetNeeded() && config.wakeSeconds > 0.0)
+        wakeRemaining = juce::roundToInt (config.wakeSeconds * getSampleRate());
+    outputStage.setBypassed (bypassedNow || wakeRemaining > 0);
 
     // MIDI output: as bypass engages, end what the plugin is sounding first.
     if (config.midiOutput)
@@ -249,6 +257,7 @@ void ProcessorBase::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBu
 
         processChunk (chunk);
     }
+    wakeRemaining = juce::jmax (0, wakeRemaining - numSamples);
 
     // Effects never pass MIDI on; those with MIDI output send their own.
     midi.clear();
@@ -334,7 +343,7 @@ void ProcessorBase::processChunk (juce::AudioBuffer<float>& chunk)
     delayDry (numChannels, numSamples);
     dryView.setDataToReferTo (dryBuffer.getArrayOfWritePointers(), numChannels, 0, numSamples);
 
-    if (outputStage.wetNeeded())
+    if (outputStage.wetNeeded() || wakeRemaining > 0)
     {
         // Coming back from a full bypass: start from clean state, no stale tails.
         if (wetWasIdle)

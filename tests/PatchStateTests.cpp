@@ -1,21 +1,21 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include "../plugins/RKRemap/PluginProcessor.h"
+#include "../plugins/RKPatch/PluginProcessor.h"
 
-/** RKRemap as a plugin: 64 channels each way, straight through by default,
+/** RKPatch as a plugin: 64 channels each way, straight through by default,
     and names and views kept in the session and in preset files (the base
     processor's extraInPresets). Built into RKBoardTests, which links every
     processor. */
-class RemapStateTests : public juce::UnitTest
+class PatchStateTests : public juce::UnitTest
 {
 public:
-    RemapStateTests() : juce::UnitTest ("RKRemap state") {}
+    PatchStateTests() : juce::UnitTest ("RKPatch state") {}
 
     void runTest() override
     {
         beginTest ("64 inputs and 64 outputs, straight through when inserted");
         {
-            RKRemapProcessor p;
+            RKPatchProcessor p;
             expectEquals (p.getTotalNumInputChannels(), 64);
             expectEquals (p.getTotalNumOutputChannels(), 64);
             p.prepareToPlay (48000.0, 128);
@@ -35,7 +35,7 @@ public:
 
         beginTest ("Names and views are kept in the session");
         {
-            RKRemapProcessor a;
+            RKPatchProcessor a;
             a.setInputName (4, "Synth Bass L");
             a.setOutputName (63, "Recorder");
             a.setInputsShown (8);
@@ -43,7 +43,7 @@ public:
             juce::MemoryBlock state;
             a.getStateInformation (state);
 
-            RKRemapProcessor b;
+            RKPatchProcessor b;
             b.setStateInformation (state.getData(), (int) state.getSize());
             expectEquals (b.getInputName (4), juce::String ("Synth Bass L"));
             expectEquals (b.getOutputName (63), juce::String ("Recorder"));
@@ -54,25 +54,25 @@ public:
         beginTest ("Names and views are kept in preset files, and Reset clears them");
         {
             const auto file = juce::File::createTempFile (".json");
-            RKRemapProcessor a;
+            RKPatchProcessor a;
             a.setOutputName (0, "FOH Vocal");
             a.setOutputsShown (12);
             expect (a.savePreset (file).ok);
 
-            RKRemapProcessor b;
+            RKPatchProcessor b;
             expect (b.loadPreset (file).ok);
             expectEquals (b.getOutputName (0), juce::String ("FOH Vocal"));
             expectEquals (b.getOutputsShown(), 12);
 
             b.resetToDefaults();
             expect (b.getOutputName (0).isEmpty(), "Reset: no names");
-            expectEquals (b.getOutputsShown(), RKRemapProcessor::kDefaultShown);
+            expectEquals (b.getOutputsShown(), RKPatchProcessor::kDefaultShown);
             file.deleteFile();
         }
 
         beginTest ("A factory preset brings its names");
         {
-            RKRemapProcessor p;
+            RKPatchProcessor p;
             int index = -1;
             for (int i = 0; i < (int) p.getFactoryPresets().size(); ++i)
                 if (p.getFactoryPresets()[(size_t) i].name == "IEM and FOH")
@@ -88,11 +88,42 @@ public:
 
         beginTest ("Names don't change other plugins' presets");
         {
-            RKRemapProcessor p;
+            RKPatchProcessor p;
             p.setOutputName (1, "x");
             expect (p.isPresetModified(), "a name marks the preset modified");
+        }
+
+        beginTest ("Sessions and presets saved as RKRemap (the old name) still load");
+        {
+            RKPatchProcessor a;
+            a.setOutputName (5, "Old Gig");
+            a.setOutputsShown (24);
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            auto json = state.toString();
+            expect (json.contains ("\"RKPatch\""));
+            json = json.replace ("\"RKPatch\"", "\"RKRemap\"");
+            expect (json.contains ("\"RKRemap\""));
+
+            RKPatchProcessor b;
+            b.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (b.getOutputName (5), juce::String ("Old Gig"));
+            expectEquals (b.getOutputsShown(), 24);
+
+            const auto file = juce::File::createTempFile (".json");
+            file.replaceWithText (json);
+            RKPatchProcessor c;
+            expect (c.loadPreset (file).ok, "an RKRemap preset file loads");
+            expectEquals (c.getOutputName (5), juce::String ("Old Gig"));
+            file.deleteFile();
+
+            const auto other = json.replace ("\"RKRemap\"", "\"RKChorus\"");
+            const auto otherFile = juce::File::createTempFile (".json");
+            otherFile.replaceWithText (other);
+            expect (! c.loadPreset (otherFile).ok, "another plugin's preset is still refused");
+            otherFile.deleteFile();
         }
     }
 };
 
-static RemapStateTests remapStateTests;
+static PatchStateTests patchStateTests;

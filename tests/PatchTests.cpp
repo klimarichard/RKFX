@@ -1,6 +1,6 @@
 #include <juce_audio_basics/juce_audio_basics.h>
 
-#include "RemapEngine.h"
+#include "PatchEngine.h"
 
 #include <cmath>
 
@@ -8,7 +8,7 @@ namespace
 {
     constexpr double kRate = 48000.0;
     constexpr int kBlock = 256;
-    constexpr int kChannels = RemapEngine::kChannels;
+    constexpr int kChannels = PatchEngine::kChannels;
 
     /** Each input n carries its own signal: a sine at 100 + 20 n Hz (distinct, never silent). */
     float inputSample (int input, int i)
@@ -22,7 +22,7 @@ namespace
     };
 
     /** One block from sample @p start, inputs as above; returns the inputs and the outputs. */
-    Run block (RemapEngine& e, int start = 0)
+    Run block (PatchEngine& e, int start = 0)
     {
         Run r;
         for (int ch = 0; ch < kChannels; ++ch)
@@ -49,30 +49,30 @@ namespace
         return true;
     }
 
-    RemapEngine makeEngine (const RemapEngine::Settings& s)
+    PatchEngine makeEngine (const PatchEngine::Settings& s)
     {
-        RemapEngine e;
+        PatchEngine e;
         e.setSettings (s);
         e.prepare (kRate, kBlock);
         return e;
     }
 
-    int pairSource (int pair) { return RemapEngine::kFirstPairSource + pair; }   // pair 0 = In 1/2
+    int pairSource (int pair) { return PatchEngine::kFirstPairSource + pair; }   // pair 0 = In 1/2
 }
 
-/** RKRemap: bit-exact routes and fan-out, linked pairs, mono sums, trim,
+/** RKPatch: bit-exact routes and fan-out, linked pairs, mono sums, trim,
     mute and polarity, every input reachable from every output, and
     click-free switching. */
-class RemapTests : public juce::UnitTest
+class PatchTests : public juce::UnitTest
 {
 public:
-    RemapTests() : juce::UnitTest ("RKRemap engine") {}
+    PatchTests() : juce::UnitTest ("RKPatch engine") {}
 
     void runTest() override
     {
         beginTest ("Routes are bit-exact copies; one input feeds several outputs; Off is silent");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.outputs[0].source = 5;    // Out 1 <- In 5
             s.outputs[9].source = 5;    // Out 10 <- In 5
             s.outputs[63].source = 64;  // Out 64 <- In 64
@@ -89,7 +89,7 @@ public:
             bool all = true;
             for (int input = 0; input < kChannels; input += 7)
             {
-                RemapEngine::Settings s;
+                PatchEngine::Settings s;
                 for (auto& o : s.outputs)
                     o.source = input + 1;
                 auto e = makeEngine (s);
@@ -102,7 +102,7 @@ public:
 
         beginTest ("Linked pairs: left to left, right to right; a single input to both sides");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.inputLinks[2] = true;                  // In 5/6
             s.outputLinks[0] = true;                 // Out 1/2
             s.outputs[0].source = pairSource (2);
@@ -117,7 +117,7 @@ public:
 
         beginTest ("Sum to mono: a pair on a single output, and Mono on a linked pair");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.inputLinks[2] = true;                  // In 5/6 (the synth bass)
             s.outputLinks[0] = true;
             s.outputs[0].source = pairSource (2);    // stereo to the in-ears
@@ -131,7 +131,7 @@ public:
             expect (isAverage (r, 6, 4, 5), "single output: (L + R) / 2");
             expect (isAverage (r, 8, 4, 5) && isAverage (r, 9, 4, 5), "Mono: (L + R) / 2 on both sides");
 
-            RemapEngine::Settings unlinked;
+            PatchEngine::Settings unlinked;
             unlinked.outputs[0].source = pairSource (2);   // In 5/6 not linked: In 5 alone
             auto u = makeEngine (unlinked);
             const auto ur = block (u);
@@ -140,7 +140,7 @@ public:
 
         beginTest ("Mid/side pairs: decoded on a stereo output, the mid on a mono one");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.inputLinks[0] = true;                  // In 1/2: mid, side
             s.inputMidSide[0] = true;
             s.outputLinks[0] = true;                 // Out 1/2: decoded
@@ -168,7 +168,7 @@ public:
 
         beginTest ("Trim, mute and polarity; a linked pair follows its left output");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.outputs[0] = { 1, -6.0f, false, false, false };
             s.outputs[1] = { 2, 0.0f, true, false, false };
             s.outputs[2] = { 3, 0.0f, false, true, false };
@@ -189,7 +189,7 @@ public:
 
         beginTest ("Switching never clicks, and a steady route is exact again afterwards");
         {
-            RemapEngine::Settings s;
+            PatchEngine::Settings s;
             s.outputs[0].source = 1;
             auto e = makeEngine (s);
             float previous = 0.0f, maxStep = 0.0f;
@@ -218,4 +218,4 @@ public:
     }
 };
 
-static RemapTests remapTests;
+static PatchTests patchTests;

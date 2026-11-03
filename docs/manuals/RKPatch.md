@@ -1,20 +1,20 @@
-# RKRemap
+# RKPatch
 
 **Patch bay: 64 inputs to 64 outputs** · Utility family (slate) · zero latency, no processing unless you ask for it
 
-RKRemap is a patch bay for Gig Performer. Instead of a knot of crossing cables between your audio interface's inputs, your plugins and your outputs, every cable goes straight (**In 1 → RKRemap 1**, **RKRemap 1 → Out 1**) and the routing happens inside RKRemap, on one labelled page.
+RKPatch is a patch bay for Gig Performer. Instead of a knot of crossing cables between your audio interface's inputs, your plugins and your outputs, every cable goes straight (**In 1 → RKPatch 1**, **RKPatch 1 → Out 1**) and the routing happens inside RKPatch, on one labelled page.
 
 - **64 inputs and 64 outputs.** Each output picks its source; one input can feed as many outputs as you like.
 - **Stereo pairs** that move as one, and **sum to mono** where a pair has to go to a single output.
 - **Per output:** trim, mute and polarity. **Per channel:** a name and a signal light.
 - **Views:** show only as many inputs and outputs as your rig uses.
 
-A route is an exact copy of its input (bit for bit) unless you set a trim, polarity or mono sum: no processing, no delay. For the header and presets, see [Common Controls](Common%20Controls.md). RKRemap has no Dry/Wet and no Output knob (the trims are per output), only **Bypass**.
+A route is an exact copy of its input (bit for bit) unless you set a trim, polarity or mono sum: no processing, no delay. For the header and presets, see [Common Controls](Common%20Controls.md). RKPatch has no Dry/Wet and no Output knob (the trims are per output), only **Bypass**.
 
 ## Setting it up in Gig Performer
 
-1. Insert RKRemap and wire it **straight**: your interface's input *n* to RKRemap's input *n*, RKRemap's output *n* to the interface's output *n* (or to the plugin that should get it).
-2. A new RKRemap passes **In *n* → Out *n***, so inserting it changes nothing until you change a route.
+1. Insert RKPatch and wire it **straight**: your interface's input *n* to RKPatch's input *n*, RKPatch's output *n* to the interface's output *n* (or to the plugin that should get it).
+2. A new RKPatch passes **In *n* → Out *n***, so inserting it changes nothing until you change a route.
 3. Set **Inputs shown** and **Outputs shown** (bottom row) to what your rig uses, name the channels, and pick each output's source.
 
 ## Inputs
@@ -24,7 +24,7 @@ One row per shown input: its number, its **name** (double-click to type one, for
 A linked pair has **one name**, on its first row. Its second row holds the pair's **L/R | M/S** switch instead:
 
 - **L/R** (default): a left/right stereo pair. In the menus its inputs read "In 1 Keys L", "In 2 Keys R", and the pair "In 1/2 Keys".
-- **M/S**: a mid/side pair (a mid mic and a figure-of-eight side mic, for example). Its inputs read "In 1 Keys Mid", "In 2 Keys Side". As a pair it is **decoded to stereo**: left = Mid + Side, right = Mid − Side (as RKUtility decodes), and its mono is the **Mid** channel alone. The decode is plain arithmetic on each sample: no latency. The mid and side signals must arrive at RKRemap time-aligned (wired straight from the interface, they are).
+- **M/S**: a mid/side pair (a mid mic and a figure-of-eight side mic, for example). Its inputs read "In 1 Keys Mid", "In 2 Keys Side". As a pair it is **decoded to stereo**: left = Mid + Side, right = Mid − Side (as RKUtility decodes), and its mono is the **Mid** channel alone. The decode is plain arithmetic on each sample: no latency. The mid and side signals must arrive at RKPatch time-aligned (wired straight from the interface, they are).
 
 ## Outputs
 
@@ -55,7 +55,7 @@ The **mono sum** is the average of left and right, as RKUtility's Width at 0%: c
 
 Example: a stereo synth bass on inputs 5/6 (linked, named "Synth Bass") goes **In 5/6 → Out 5/6** (linked) in stereo to the in-ear mix, and **In 5/6 → Out 3** in mono to the front of house.
 
-Note that RKRemap **routes**: each output plays one source. Mixing several sources into one output (an in-ear mix of vocal, violin and synth) is a mixer's job; RKRemap feeds the mixer's channels.
+Note that RKPatch **routes**: each output plays one source. Mixing several sources into one output (an in-ear mix of vocal, violin and synth) is a mixer's job; RKPatch feeds the mixer's channels.
 
 ## Switching while playing
 
@@ -84,5 +84,5 @@ These starting points are built into the plugin as **factory presets**: open the
 
 ## Notes
 
-- RKRemap isn't an RKBoard pedal: the board's chain is stereo.
+- RKPatch isn't an RKBoard pedal: the board's chain is stereo.
 - With up to 64 outputs, the outputs list scrolls; the signal lights of hidden rows aren't drawn.

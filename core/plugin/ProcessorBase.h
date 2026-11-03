@@ -20,6 +20,7 @@ namespace rkfx
 struct PluginConfig
 {
     juce::String name;               // "RKFreqShift": plugin name, preset folder, "plugin" key in JSON
+    juce::StringArray formerNames;   // names the plugin had before a rename: their sessions and presets still load, their preset folder is moved (RKPatch was RKRemap)
     int stateVersion = 1;            // bump when a migration is needed; never decrease
     bool hasMix = false;             // dry/wet only where musically meaningful
     bool hasOutput = true;           // false when the plugin's own gain replaces Output (RKUtility)
@@ -31,7 +32,7 @@ struct PluginConfig
     bool midiInput = false;          // receives MIDI (vocoder carrier); also needs MIDI_INPUT in CMake
     bool midiEffect = false;         // MIDI in, MIDI out, no audio (no dry/wet, no output); also needs MIDI_EFFECT in CMake
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
-    int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKRemap); 0 = mono/stereo
+    int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKPatch); 0 = mono/stereo
     bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
     bool bypassMutes = false;        // Bypass fades to silence instead of passing the input (RKMix: raw inputs must never reach the PA)
     double wakeSeconds = 0.0;        // switched on from a full bypass, the DSP runs this long (dry still heard) before the wet fades in: fills delay lines so a delayed voice doesn't start abruptly (chorus, doubler, pitch)
@@ -109,7 +110,7 @@ public:
     juce::File getPresetFile() const;
     bool isPresetModified() const noexcept { return presetModified.load(); }
 
-    /** Marks the preset modified (for changes outside the parameters: RKRemap's names). */
+    /** Marks the preset modified (for changes outside the parameters: RKPatch's names). */
     void markPresetModified() noexcept
     {
         if (! presetModified.exchange (true))
@@ -182,7 +183,7 @@ protected:
     /** The input of the buffer handed to processDsp(), untouched (what Bypass
         passes; delayed by the reported latency). Valid inside processDsp only:
         a plugin whose output overwrites inputs it still needs can read them
-        here instead of copying them (RKRemap). */
+        here instead of copying them (RKPatch). */
     const juce::AudioBuffer<float>& getDryInput() const noexcept { return dryView; }
 
     /** MIDI arriving with the buffer handed to processDsp(): events at
@@ -207,7 +208,7 @@ protected:
     static constexpr int kMaxLatency = 63;
     static constexpr int kMaxMutedLatency = 1 << 16;
 
-    /** State beyond the parameters (RKConduct's MIDI file, RKRemap's names):
+    /** State beyond the parameters (RKConduct's MIDI file, RKPatch's names):
         saved with the host state (as "extra"), and in preset files too when
         config.extraInPresets is set. setExtraState() gets a void var for a
         state without it (and on Reset to defaults). Message thread. */

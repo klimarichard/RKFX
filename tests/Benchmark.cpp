@@ -36,7 +36,7 @@
 #include "TriggerEngine.h"
 #include "HoldEngine.h"
 #include "PolyPitchEngine.h"
-#include "RemapEngine.h"
+#include "PatchEngine.h"
 #include "MixEngine.h"
 
 #include <cstdio>
@@ -481,25 +481,25 @@ int main (int argc, char** argv)
                   e.setSettings (s);
               });
           } },
-        { "RKRemap", "64 outputs, half of them mono sums of pairs", []
+        { "RKPatch", "64 outputs, half of them mono sums of pairs", []
           {
               // Its own 64-channel buffer (the benchmark's is stereo).
-              auto engine = std::make_shared<RemapEngine>();
-              auto buffer = std::make_shared<juce::AudioBuffer<float>> (RemapEngine::kChannels, kBlock);
-              RemapEngine::Settings s;
-              for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
+              auto engine = std::make_shared<PatchEngine>();
+              auto buffer = std::make_shared<juce::AudioBuffer<float>> (PatchEngine::kChannels, kBlock);
+              PatchEngine::Settings s;
+              for (int pair = 0; pair < PatchEngine::kPairs; ++pair)
                   s.inputLinks[(size_t) pair] = true;
-              for (int k = 0; k < RemapEngine::kChannels; ++k)
-                  s.outputs[(size_t) k].source = k % 2 == 0 ? RemapEngine::kFirstPairSource + k / 2 : RemapEngine::kChannels - k;
+              for (int k = 0; k < PatchEngine::kChannels; ++k)
+                  s.outputs[(size_t) k].source = k % 2 == 0 ? PatchEngine::kFirstPairSource + k / 2 : PatchEngine::kChannels - k;
               engine->setSettings (s);
               engine->prepare (kRate, kBlock);
               juce::Random rng (3);
-              for (int ch = 0; ch < RemapEngine::kChannels; ++ch)
+              for (int ch = 0; ch < PatchEngine::kChannels; ++ch)
                   for (int i = 0; i < kBlock; ++i)
                       buffer->setSample (ch, i, rng.nextFloat() - 0.5f);
               return Processor ([engine, buffer] (juce::AudioBuffer<float>&)
               {
-                  engine->process (buffer->getArrayOfWritePointers(), RemapEngine::kChannels, kBlock);
+                  engine->process (buffer->getArrayOfWritePointers(), PatchEngine::kChannels, kBlock);
               });
           } },
         { "RKMix", "32 mono channels to the main and mono sum, delay on", []

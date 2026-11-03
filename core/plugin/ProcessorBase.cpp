@@ -75,6 +75,12 @@ ProcessorBase::ProcessorBase (PluginConfig cfg, ParamBuilder builder)
    #endif
     factoryPresets = factoryPresetsFor (config.name);
 
+    // After a rename, the user's presets move from the old name's folder (once).
+    if (const auto folder = library.getPresetFolder (config.name); ! folder.exists())
+        for (const auto& former : config.formerNames)
+            if (const auto old = library.getPresetFolder (former); old.isDirectory() && old.moveFileTo (folder))
+                break;
+
     // New instances start from the user's Default.json, if there is one.
     const auto defaultFile = library.getDefaultPresetFile (config.name);
     if (defaultFile.existsAsFile())
@@ -434,7 +440,8 @@ void ProcessorBase::parameterValueChanged (int, float)
 PresetReadResult ProcessorBase::readPreset (const juce::String& json, const std::vector<ParamInfo>& infos)
 {
     return PresetFormat::read (json, config.name, config.stateVersion, infos,
-                               [this] (juce::DynamicObject& params, int fromVersion) { migrateParams (params, fromVersion); });
+                               [this] (juce::DynamicObject& params, int fromVersion) { migrateParams (params, fromVersion); },
+                               config.formerNames);
 }
 
 ProcessorBase::PresetResult ProcessorBase::loadPreset (const juce::File& file)

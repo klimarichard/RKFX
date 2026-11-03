@@ -56,12 +56,15 @@ namespace PresetFormat
 
     /** Parses and validates. Refuses (ok == false) only when the text isn't a
         JSON object, belongs to another plugin, or has no "params" object.
+        A file of one of @p formerNames (the plugin's names before a rename)
+        counts as the plugin's own.
         Everything else is lenient: unknown keys and invalid values are
         skipped with a note, out-of-range numbers are clamped with a note,
         missing values take their defaults. */
     PresetReadResult read (const juce::String& json, const juce::String& expectedPlugin,
                            int currentVersion, const std::vector<ParamInfo>& params,
-                           const PresetMigration& migrate = {});
+                           const PresetMigration& migrate = {},
+                           const juce::StringArray& formerNames = {});
 
     /** Every parameter at its default. */
     ParamValues defaults (const std::vector<ParamInfo>& params);

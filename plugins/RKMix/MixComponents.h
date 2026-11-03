@@ -4,6 +4,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <functional>
 
 /** RKMix's own controls: the console fader, the level meter and the strip
     colours. Everything else is the suite's (rk_gui). */
@@ -27,6 +28,12 @@ namespace MixGui
         void setCapColour (juce::Colour c) { capColour = c; repaint(); }
         void setShowScale (bool show) { showScale = show; repaint(); }
 
+        /** Ganging: a move by hand (drag, wheel, double-click, typing) starts
+            (onGestureStart), then moves by @p travel (normalised, from where
+            the gesture started). Not called for changes from elsewhere. */
+        std::function<void()> onGestureStart;
+        std::function<void (float travel)> onUserMove;
+
         /** The track's vertical extent (for a meter beside it). */
         juce::Range<int> getTrackRange() const noexcept { return { trackArea.getY(), trackArea.getBottom() }; }
 
@@ -42,7 +49,7 @@ namespace MixGui
         juce::RangedAudioParameter& param;
         juce::ParameterAttachment attachment;
         juce::Colour capColour;
-        float normalised = 0.0f, dragNormalised = 0.0f, lastDragY = 0.0f;
+        float normalised = 0.0f, dragNormalised = 0.0f, lastDragY = 0.0f, gestureStart = 0.0f;
         bool dragging = false, showScale = true;
         juce::Rectangle<int> trackArea, valueArea;
         juce::TextEditor valueEditor;

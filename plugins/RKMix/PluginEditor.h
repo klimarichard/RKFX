@@ -138,6 +138,19 @@ private:
         int numValues = 0;
     };
 
+    /** A switch that tells the window after a click (ganged mutes follow it). */
+    struct GangSwitch : public rkfx::ToggleSwitch
+    {
+        using rkfx::ToggleSwitch::ToggleSwitch;
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            rkfx::ToggleSwitch::mouseDown (e);
+            if (afterClick != nullptr)
+                afterClick();
+        }
+        std::function<void()> afterClick;
+    };
+
     /** A strip: a channel (a linked pair's left channel shows the pair) or a bus. */
     struct Strip : public juce::Component
     {
@@ -158,7 +171,7 @@ private:
         juce::Slider pan;
         std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
         juce::String panId;                  // the parameter the pan shows
-        std::unique_ptr<rkfx::ToggleSwitch> mute;
+        std::unique_ptr<GangSwitch> mute;
         std::unique_ptr<SoloButton> solo;
         std::unique_ptr<MixGui::Fader> fader;
         MixGui::Meter meter;
@@ -173,6 +186,8 @@ private:
 
         bool isBus() const noexcept { return bus >= 0; }
         juce::String label() const;
+        /** As the user pages list strips: the channel, or kUserPageBus + the bus. */
+        int id() const noexcept;
     };
 
     /** A DCA (name, Spill, mute, fader) or a mute group (name, its big Mute,
@@ -305,6 +320,7 @@ private:
         void paint (juce::Graphics&) override;
         void refresh() override;
         void updateMeters (float compDb, float limitDb, float seconds);
+        void mouseDown (const juce::MouseEvent&) override;
 
         const int chain;
         juce::Rectangle<int> eqArea, compArea, limitArea;
@@ -528,6 +544,26 @@ private:
     void applyLock();
     void refreshUndo();
     bool keyPressed (const juce::KeyPress&) override;
+
+    // Ganging: strips chosen with Cmd- or Shift-click on their names move together.
+    juce::Array<int> gang;                       // strip ids (channels, kUserPageBus + buses)
+    std::vector<std::pair<juce::RangedAudioParameter*, float>> gangStarts;   // at a gesture's start
+    Strip* gangLeader = nullptr;
+    bool isGanged (int stripId) const { return gang.size() > 1 && gang.contains (stripId); }
+    Strip* stripFor (int stripId) const;
+    void toggleGang (int stripId);
+    void clearGang();
+    void gangGestureStart (Strip&);
+    void gangMove (Strip&, float travel);
+    void gangMute (Strip&);
+
+    // Copy and paste of a strip's sections
+    juce::var clipboard;
+    /** The channels a paste on channel @p ch goes to: the ganged channels when it's one of them. */
+    juce::Array<int> pasteTargets (int ch) const;
+    void addCopyPasteItems (juce::PopupMenu&, int channel, int chain, int section, int firstId) const;
+    bool handleCopyPaste (int result, int channel, int chain, int section, int firstId);
+    void showSectionMenu (int channel, int chain, int section, juce::Component& target, juce::Point<int> where);
 
     juce::Rectangle<int> topArea() const;
     juce::Rectangle<int> panelArea() const;

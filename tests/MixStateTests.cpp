@@ -934,6 +934,48 @@ public:
             expectWithinAbsoluteError (value (fader), -10.0f, 0.01f, "and scene 1 its own");
         }
 
+        beginTest ("Copy and paste: a section, the whole strip with inserts; a bus's processing; nothing else moves");
+        {
+            using Section = RKMixProcessor::Section;
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelId (0, "gate_on")), 1.0f);
+            setParam (s.param (mix::channelId (0, "gate_thr")), -33.0f);
+            setParam (s.param (mix::channelId (0, "gate_key")), 4.0f);     // routing: not copied
+            setParam (s.param (mix::channelId (0, "eq_on")), 1.0f);
+            setParam (s.param (mix::channelId (0, "pan")), -50.0f);        // routing: not copied
+            p.setChannelName (0, "Kick");
+            p.getRack().insert ({ Strip::channel, 0, 1 }, "RKChorus", 1);
+
+            const auto gate = p.copyChannel (0, Section::gate);
+            expectEquals (RKMixProcessor::describeCopy (gate), juce::String ("Gate from Kick"));
+            expect (RKMixProcessor::isChannelCopy (gate) && ! RKMixProcessor::isChainCopy (gate));
+            p.pasteChannel (5, gate);
+            expect (s.flag (mix::channelId (5, "gate_on")));
+            expectWithinAbsoluteError (s.value (mix::channelId (5, "gate_thr")), -33.0f, 0.01f);
+            expectEquals (s.choice (mix::channelId (5, "gate_key")), 0, "the key is routing");
+            expect (! s.flag (mix::channelId (5, "eq_on")), "only the gate");
+            expect (p.getRack().get ({ Strip::channel, 5, 1 }) == nullptr, "no inserts with a section");
+
+            p.pasteChannel (6, p.copyChannel (0, Section::whole));
+            expect (s.flag (mix::channelId (6, "eq_on")) && s.flag (mix::channelId (6, "gate_on")));
+            expectWithinAbsoluteError (s.value (mix::channelId (6, "pan")), 0.0f, 0.01f, "not the pan");
+            expect (p.getRack().get ({ Strip::channel, 6, 1 }) != nullptr, "the whole strip brings its inserts");
+            expect (p.getChannelName (6).isEmpty(), "not the name");
+
+            // A bus's compressor onto the main; a channel copy doesn't paste onto a chain.
+            setParam (s.param (mix::chainId (2, "comp_on")), 1.0f);
+            setParam (s.param (mix::chainId (2, "comp_ratio")), 6.0f);
+            setParam (s.param (mix::chainId (2, "eq_on")), 1.0f);
+            p.pasteChain (mix::kMainChain, p.copyChain (2, Section::comp));
+            expect (s.flag (mix::chainId (mix::kMainChain, "comp_on")));
+            expectWithinAbsoluteError (s.value (mix::chainId (mix::kMainChain, "comp_ratio")), 6.0f, 0.01f);
+            expect (! s.flag (mix::chainId (mix::kMainChain, "eq_on")));
+            p.pasteChain (3, gate);
+            expect (! s.flag (mix::chainId (3, "comp_on")), "a channel's gate is not for a bus");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
         {
             RKMixProcessor p;

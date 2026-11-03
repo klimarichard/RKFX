@@ -26,8 +26,9 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     pan.setPopupDisplayEnabled (true, true, nullptr);
     addAndMakeVisible (pan);
 
-    mute = std::make_unique<rkfx::ToggleSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
-                                                 rkfx::Palette::warning, "Mute");
+    mute = std::make_unique<GangSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
+                                         rkfx::Palette::warning, "Mute");
+    mute->afterClick = [this] { owner.gangMute (*this); };
     addAndMakeVisible (*mute);
     solo = std::make_unique<SoloButton> (o, ch, b);
     addAndMakeVisible (*solo);
@@ -68,6 +69,8 @@ void RKMixEditor::Strip::showSendTo (int b)
     auto& param = sendBus >= 0 ? owner.mixer.getSettings().param (channelSendId (channel, sendBus))
                                : *owner.mixer.findParam (isBus() ? busFaderId (bus) : channelFaderId (channel));
     fader = std::make_unique<MixGui::Fader> (param);
+    fader->onGestureStart = [this] { owner.gangGestureStart (*this); };
+    fader->onUserMove = [this] (float travel) { owner.gangMove (*this, travel); };
     if (sendBus >= 0)
         fader->setCapColour (MixGui::stripColour (owner.mixer.getBusColour (sendBus)));
     addAndMakeVisible (*fader);
@@ -177,6 +180,13 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
         g.setColour (owner.accent());
         g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), rkfx::Style::kPanelRadius, 1.0f);
     }
+    // Ganged: a bright frame and a link bar across the bottom.
+    if (owner.isGanged (id()))
+    {
+        g.setColour (owner.accent().brighter (0.5f));
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
+        g.fillRoundedRectangle (getLocalBounds().removeFromBottom (4).reduced (6, 0).toFloat(), 2.0f);
+    }
 
     const auto colour = isBus() ? owner.mixer.getBusColour (bus) : owner.mixer.getChannelColour (channel);
     g.setColour (MixGui::stripColour (colour));
@@ -219,6 +229,11 @@ void RKMixEditor::Strip::mouseDown (const juce::MouseEvent& e)
         if (owner.isLocked())
             return;
         owner.showColourMenu (channel, bus, *this);
+        return;
+    }
+    if (e.mods.isCommandDown() || e.mods.isShiftDown())
+    {
+        owner.toggleGang (id());
         return;
     }
     if (isBus())
@@ -1036,10 +1051,25 @@ void RKMixEditor::showColourMenu (int channel, int bus, juce::Component& target)
     menu.addSubMenu ("DCAs", dcas);
     menu.addSubMenu ("Mute groups", muteGroups);
 
+    // Copy and paste the whole strip; the gang.
+    constexpr int kCopyItem = 400, kUngang = 500;
+    const auto copyChannel = bus >= 0 ? -1 : leaderOf (channel);
+    menu.addSeparator();
+    addCopyPasteItems (menu, copyChannel, bus, -1, kCopyItem);
+    if (! gang.isEmpty())
+        menu.addItem (kUngang, "Ungang all (Esc)");
+
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus, strip, memberId] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus, strip, memberId, copyChannel] (int result)
     {
         if (safe == nullptr || result <= 0)
+            return;
+        if (result == kUngang)
+        {
+            safe->clearGang();
+            return;
+        }
+        if (safe->handleCopyPaste (result, copyChannel, bus, -1, kCopyItem))
             return;
         if (result >= kDcaItem)
         {

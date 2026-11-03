@@ -867,6 +867,182 @@ RKMixProcessor::PresetResult RKMixProcessor::loadChannelPreset (int ch, const ju
     return { true, r.notes.joinIntoString ("; ") };
 }
 
+//==============================================================================
+// Copy and paste
+
+namespace
+{
+    using Section = RKMixProcessor::Section;
+
+    /** True when a channel field ("gate_thr") belongs to the section. */
+    bool inChannelSection (const juce::String& field, Section section)
+    {
+        switch (section)
+        {
+            case Section::input: return field == "trim" || field == "pol" || field == "polr";
+            case Section::delay: return field.startsWith ("delay");
+            case Section::hpf:   return field.startsWith ("hpf");
+            case Section::gate:  return field.startsWith ("gate_") && field != "gate_key";
+            case Section::eq:    return field.startsWith ("eq_");
+            case Section::comp:  return field.startsWith ("comp_") && field != "comp_key";
+            case Section::whole: return true;
+            case Section::limit: break;
+        }
+        return false;
+    }
+
+    /** True when a chain field ("comp_att") belongs to the section: the EQ has the high- and low-pass. */
+    bool inChainSection (const juce::String& field, Section section)
+    {
+        switch (section)
+        {
+            case Section::eq:    return field.startsWith ("eq_") || field.startsWith ("hpf") || field.startsWith ("lpf");
+            case Section::comp:  return field.startsWith ("comp_");
+            case Section::limit: return field.startsWith ("lim_");
+            case Section::whole: return true;
+            default:             break;
+        }
+        return false;
+    }
+
+    const char* sectionKey (Section s)
+    {
+        switch (s)
+        {
+            case Section::input: return "input";
+            case Section::delay: return "delay";
+            case Section::hpf:   return "hpf";
+            case Section::gate:  return "gate";
+            case Section::eq:    return "eq";
+            case Section::comp:  return "comp";
+            case Section::limit: return "limit";
+            case Section::whole: return "whole";
+        }
+        return "whole";
+    }
+
+    Section sectionFromKey (const juce::String& key)
+    {
+        for (auto s : { Section::input, Section::delay, Section::hpf, Section::gate, Section::eq, Section::comp, Section::limit })
+            if (key == sectionKey (s))
+                return s;
+        return Section::whole;
+    }
+
+    juce::var makeCopy (const char* kind, Section section, const juce::String& from, juce::DynamicObject* values, const juce::var& inserts)
+    {
+        auto* root = new juce::DynamicObject();
+        root->setProperty ("kind", kind);
+        root->setProperty ("section", sectionKey (section));
+        root->setProperty ("from", from);
+        root->setProperty ("values", juce::var (values));
+        if (! inserts.isVoid())
+            root->setProperty ("inserts", inserts);
+        return juce::var (root);
+    }
+
+    void pasteValues (const juce::var& copy, const std::function<juce::RangedAudioParameter* (const juce::String&)>& paramFor)
+    {
+        if (auto* values = copy["values"].getDynamicObject())
+            for (const auto& v : values->getProperties())
+                if (auto* p = paramFor (v.name.toString()))
+                {
+                    const auto n = p->convertTo0to1 ((float) v.value);
+                    if (! juce::exactlyEqual (p->getValue(), n))
+                        p->setValueNotifyingHost (n);
+                }
+    }
+}
+
+juce::String RKMixProcessor::sectionName (Section s)
+{
+    switch (s)
+    {
+        case Section::input: return "Input";
+        case Section::delay: return "Delay";
+        case Section::hpf:   return "High-pass";
+        case Section::gate:  return "Gate";
+        case Section::eq:    return "EQ";
+        case Section::comp:  return "Compressor";
+        case Section::limit: return "Limiter";
+        case Section::whole: return "Whole strip";
+    }
+    return {};
+}
+
+juce::var RKMixProcessor::copyChannel (int ch, Section section) const
+{
+    auto* values = new juce::DynamicObject();
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f) && inChannelSection (kChannelFields[f], section))
+            values->setProperty (kChannelFields[f], valueOf (channelParams[(size_t) ch][(size_t) f]));
+    const auto name = getChannelName (ch);
+    return makeCopy ("channel", section, name.isNotEmpty() ? name : "Ch " + mix::num (ch), values,
+                     section == Section::whole ? rack.stripToVar (InsertRack::Strip::channel, ch) : juce::var());
+}
+
+juce::var RKMixProcessor::copyChain (int chain, Section section) const
+{
+    auto* values = new juce::DynamicObject();
+    const auto& fields = MixParams::chainFields();
+    for (size_t f = 0; f < fields.size(); ++f)
+        if (inChainSection (fields[f], section))
+            values->setProperty (fields[f], valueOf (chainParams[(size_t) chain][f]));
+
+    const auto strip = chain == mix::kMainChain ? InsertRack::Strip::main : chain == mix::kMonoChain ? InsertRack::Strip::mono : InsertRack::Strip::bus;
+    const auto name = chain == mix::kMainChain ? juce::String ("Main") : chain == mix::kMonoChain ? juce::String ("Mono")
+                    : getBusName (chain).isNotEmpty() ? getBusName (chain) : "Bus " + mix::num (chain);
+    return makeCopy ("chain", section, name, values,
+                     section == Section::whole ? rack.stripToVar (strip, chain >= mix::kBuses ? 0 : chain) : juce::var());
+}
+
+bool RKMixProcessor::isChannelCopy (const juce::var& copy) { return copy["kind"].toString() == "channel"; }
+bool RKMixProcessor::isChainCopy (const juce::var& copy)   { return copy["kind"].toString() == "chain"; }
+
+juce::String RKMixProcessor::describeCopy (const juce::var& copy)
+{
+    if (! isChannelCopy (copy) && ! isChainCopy (copy))
+        return {};
+    const auto section = sectionFromKey (copy["section"].toString());
+    return (section == Section::whole ? juce::String ("Whole strip") : sectionName (section)) + " from " + copy["from"].toString();
+}
+
+void RKMixProcessor::pasteChannel (int ch, const juce::var& copy)
+{
+    if (! isChannelCopy (copy) || ! juce::isPositiveAndBelow (ch, kChannels))
+        return;
+    pasteValues (copy, [this, ch] (const juce::String& field) -> juce::RangedAudioParameter*
+    {
+        for (int f = 0; f < numChannelFields; ++f)
+            if (isStripField (f) && field == kChannelFields[f])
+                return channelParams[(size_t) ch][(size_t) f];
+        return nullptr;
+    });
+    if (copy.hasProperty ("inserts"))
+        rack.stripFromVar (InsertRack::Strip::channel, ch, copy["inserts"], channelsOf (InsertRack::Strip::channel, ch));
+}
+
+void RKMixProcessor::pasteChain (int chain, const juce::var& copy)
+{
+    if (! isChainCopy (copy) || ! juce::isPositiveAndBelow (chain, mix::kProcessingChains))
+        return;
+    pasteValues (copy, [this, chain] (const juce::String& field) -> juce::RangedAudioParameter*
+    {
+        const auto& fields = MixParams::chainFields();
+        for (size_t f = 0; f < fields.size(); ++f)
+            if (field == fields[f])
+                return chainParams[(size_t) chain][f];
+        return nullptr;
+    });
+    if (copy.hasProperty ("inserts"))
+    {
+        const auto strip = chain == mix::kMainChain ? InsertRack::Strip::main : chain == mix::kMonoChain ? InsertRack::Strip::mono : InsertRack::Strip::bus;
+        const auto index = chain >= mix::kBuses ? 0 : chain;
+        // The mono sum has 2 slots, the others 4: what doesn't fit is left out by the rack.
+        rack.stripFromVar (strip, index, copy["inserts"], channelsOf (strip, index));
+    }
+}
+
 void RKMixProcessor::resetChannelStrip (int ch)
 {
     rack.stripFromVar (InsertRack::Strip::channel, ch, {}, channelsOf (InsertRack::Strip::channel, ch));

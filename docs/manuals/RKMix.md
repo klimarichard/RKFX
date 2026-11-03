@@ -123,7 +123,12 @@ RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic t
 - Mute doesn't stop MIDI (a muted kick mic still triggers its sample). Switch the insert off to stop it.
 - **MIDI thru** (Routing page, default off) passes RKMix's MIDI input on to its output.
 
-## Undo and the show lock
+## Ganging, copy and paste
+
+**Gang strips** to move them together: **Cmd-click** (or Shift-click) strip names. The first Cmd-click gangs the selected strip with the one you click; click again to take a strip out. Ganged strips have a bright frame. Moving one ganged fader by hand moves the others by the same travel, each from where it was, so their balance stays (one that reaches the bottom picks up again on the way back within the same move). Muting one mutes them all. Channels and buses can be ganged together; with **Sends on fader** the ganged faders move their sends. Press **Esc**, or right-click a strip and choose **Ungang all**, to end it. A gang belongs to the window: it isn't saved.
+
+**Copy and paste a section:** right-click a section of the Channel page (Input, Delay, High-pass, Gate, EQ, Compressor) and choose **Copy Gate**, or **Copy whole strip** (every section and the inserts). On another channel, right-click and **Paste**. When that channel is ganged, the paste goes to every ganged channel: copy the vocal EQ once, paste it onto four backing vocals. A bus's, the main's and the mono sum's **EQ**, **Compressor** and **Limiter** copy and paste between each other the same way (right-click them on the Bus or Main page). The strip's right-click menu also has Copy whole strip and Paste. A paste never changes routing (pans, sends, keys, outputs), names or colours, and Undo takes it back in one step.
+
 
 **Undo** and **Redo** (top right of the tabs, or Cmd+Z and Cmd+Shift+Z) take back the console's changes a step at a time: faders, mutes, pans, sends, every strip and bus setting, routing, DCAs and mute groups, and scene recalls. Changes less than half a second apart are one step, so a fader drag or a scene recall (with its glide) undoes in one go. **Undoing a scene recall** brings back the mix and the scene before it, and changes neither scene. A Gig Performer widget's moves are undone the same way. The buttons' tooltips say what they undo. Not undone: the inserts' own knobs, inserts added or removed, names and colours. Loading a mix starts a new history.
 

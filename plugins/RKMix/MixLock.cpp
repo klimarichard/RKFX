@@ -187,5 +187,10 @@ bool RKMixEditor::keyPressed (const juce::KeyPress& key)
         }
         return true;
     }
+    if (key == juce::KeyPress::escapeKey && ! gang.isEmpty())
+    {
+        clearGang();
+        return true;
+    }
     return rkfx::EditorBase::keyPressed (key);
 }

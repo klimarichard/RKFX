@@ -149,6 +149,23 @@ public:
     PresetResult loadChannelPreset (int channel, const juce::File&);
     void resetChannelStrip (int channel);
 
+    /** Copy and paste of a strip's section (message thread). A channel's
+        sections are those of its page; a bus's, the main's and the mono
+        sum's (a chain) are its EQ, compressor and limiter. "Whole" is every
+        section and the inserts (not routing, names or colours). The copy is
+        a var that names its kind and section ("Gate from Lead Vocal"). */
+    enum class Section { input, delay, hpf, gate, eq, comp, limit, whole };
+    static juce::String sectionName (Section);
+    juce::var copyChannel (int channel, Section) const;
+    juce::var copyChain (int chain, Section) const;
+    /** True when @p copy fits a channel (or a chain); then pasting it is allowed. */
+    static bool isChannelCopy (const juce::var& copy);
+    static bool isChainCopy (const juce::var& copy);
+    void pasteChannel (int channel, const juce::var& copy);
+    void pasteChain (int chain, const juce::var& copy);
+    /** "Gate from Lead Vocal". */
+    static juce::String describeCopy (const juce::var& copy);
+
     /** The loudest sample since the last call (message thread, for the meters). */
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }
     float takeMainPeak (int side) noexcept       { return mainPeaks[(size_t) side].exchange (0.0f); }

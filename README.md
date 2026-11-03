@@ -90,7 +90,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 - Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).
-- Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`.
+- Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`. A plugin whose presets need files of their own saves each as a folder (`<name>/preset.json` plus those files): RKConduct's presets hold their MIDI file, so a copied preset still plays its song.
 - Every plugin comes with factory presets (the starting points from its manual), built in and shown under **Factory** in the preset menu. Their source files are in `plugins/<Plugin>/presets/` and are compiled in automatically.
 
 ## Building

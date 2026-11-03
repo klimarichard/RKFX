@@ -47,6 +47,24 @@ RKMixEditor::RemotePanel::RemotePanel (RKMixEditor& o) : Panel (o)
     };
     addAndMakeVisible (newLinks);
 
+    toggle (consoleOn, "Let iPads control the whole console (with the PIN)");
+    consoleOn.onClick = [this] { auto& c = owner.mixer.getRemote().getConsole(); c.setEnabled (! c.isEnabled()); refresh(); };
+    newPin.setTooltip ("A new random PIN: every iPad must type it again");
+    newPin.onClick = [this] { owner.mixer.getRemote().getConsole().setPin (MixConsole::randomPin()); refresh(); };
+    addAndMakeVisible (newPin);
+    pin.setEditable (false, true, false);
+    pin.setJustificationType (juce::Justification::centred);
+    pin.setFont (rkfx::Fonts::bold (18.0f));
+    pin.setColour (juce::Label::outlineColourId, rkfx::Palette::knobTrack);
+    pin.setTooltip ("The console's PIN (double-click to change: 4 to 8 digits)");
+    pin.onTextChange = [this]
+    {
+        if (! owner.mixer.getRemote().getConsole().setPin (pin.getText()))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "PIN", "A PIN is 4 to 8 digits.");
+        refresh();
+    };
+    addAndMakeVisible (pin);
+
     port.setEditable (false, true, false);
     port.setJustificationType (juce::Justification::centred);
     port.setColour (juce::Label::outlineColourId, rkfx::Palette::knobTrack);
@@ -66,6 +84,11 @@ void RKMixEditor::RemotePanel::refresh()
     ipButton.setToggleState (remote.linksUseIpAddress(), juce::dontSendNotification);
     if (! port.isBeingEdited())
         port.setText (juce::String (remote.getPort()), juce::dontSendNotification);
+    auto& console = remote.getConsole();
+    consoleOn.setToggleState (console.isEnabled(), juce::dontSendNotification);
+    consoleOn.setButtonText (console.isEnabled() ? "Console on" : "Console off");
+    if (! pin.isBeingEdited())
+        pin.setText (console.getPin(), juce::dontSendNotification);
 
     // A link for each Aux bus in use (named, or going to an output), in a grid.
     links.clear();
@@ -74,8 +97,30 @@ void RKMixEditor::RemotePanel::refresh()
         if (owner.mixer.getBusType (bus) == BusType::aux
             && (owner.mixer.getBusName (bus).isNotEmpty() || s.choice (busId (bus, "out")) != kTargetOff))
             links.push_back ({ bus, remote.linkFor (bus), {} });
+    lastConsoleVersion = -1;
     resized();
     updateConnections();
+    repaint();
+}
+
+void RKMixEditor::RemotePanel::updateDevices()
+{
+    auto& console = owner.mixer.getRemote().getConsole();
+    if (console.getVersion() == lastConsoleVersion)
+        return;
+    lastConsoleVersion = console.getVersion();
+    devices = console.getDevices();
+    disconnects.clear();
+    for (const auto& d : devices)
+    {
+        auto b = std::make_unique<juce::TextButton> ("Disconnect");
+        const auto id = d.id;
+        b->setTooltip ("Let this iPad go: it must type the PIN again");
+        b->onClick = [this, id] { owner.mixer.getRemote().getConsole().disconnect (id); };
+        addAndMakeVisible (*b);
+        disconnects.push_back (std::move (b));
+    }
+    resized();
     repaint();
 }
 
@@ -84,6 +129,7 @@ void RKMixEditor::RemotePanel::updateConnections()
     auto& remote = owner.mixer.getRemote();
     if (remote.getVersion() != lastVersion)
         return refresh();
+    updateDevices();
     const auto now = remote.connectedByBus();
     if (now != connected)
     {
@@ -97,7 +143,29 @@ void RKMixEditor::RemotePanel::resized()
     auto r = getLocalBounds();
     setupArea = r.removeFromLeft (250);
     r.removeFromLeft (kGap);
+    consoleArea = r.removeFromLeft (250);
+    r.removeFromLeft (kGap);
     linksArea = r;
+
+    auto c = inner (consoleArea);
+    auto top = c.removeFromTop (kSwitchH + 4);
+    consoleOn.setBounds (top.removeFromLeft (110));
+    top.removeFromLeft (6);
+    newPin.setBounds (top);
+    c.removeFromTop (8);
+    auto pinRow = c.removeFromTop (30);
+    pinRow.removeFromLeft (40);   // "PIN"
+    pin.setBounds (pinRow.removeFromLeft (100));
+    c.removeFromTop (6);
+    consoleQr = c.removeFromTop (kQrSize).withSizeKeepingCentre (kQrSize, kQrSize);
+    c.removeFromTop (22);   // the link
+    for (size_t i = 0; i < disconnects.size(); ++i)
+    {
+        auto row = c.removeFromTop (24);
+        c.removeFromTop (2);
+        disconnects[i]->setBounds (row.removeFromRight (84));
+        disconnects[i]->setVisible (row.getBottom() <= consoleArea.getBottom() - 4);
+    }
 
     auto a = inner (setupArea);
     onButton.setBounds (a.removeFromTop (kSwitchH + 4));
@@ -135,6 +203,44 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
                       "The phone and this computer must be on the same network. In Gig Performer, put RKMix in the global "
                       "rackspace (only one RKMix can serve).",
                       text, juce::Justification::topLeft, 12);
+
+    // The console remote
+    {
+        auto& console = remote.getConsole();
+        rkfx::drawPanel (g, consoleArea, owner.panelColour(), "Console remote (iPad)");
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        g.drawText ("PIN", pin.getBounds().withX (pin.getX() - 40).withWidth (36), juce::Justification::centredLeft);
+        const auto link = remote.consoleLink();
+        if (listening && console.isEnabled())
+            MixQr (link).draw (g, consoleQr.toFloat());
+        else
+        {
+            g.setColour (rkfx::Palette::knobTrack);
+            g.drawRoundedRectangle (consoleQr.toFloat().reduced (0.5f), 4.0f, 1.0f);
+            g.setColour (rkfx::Palette::textDim);
+            g.setFont (rkfx::Fonts::regular (11.5f));
+            g.drawFittedText (listening ? "Switch the console on" : "Switch the remote on", consoleQr.reduced (8), juce::Justification::centred, 2);
+        }
+        auto below = inner (consoleArea).withTop (consoleQr.getBottom() + 2);
+        g.setFont (rkfx::Fonts::regular (11.0f));
+        g.setColour (copied == link ? owner.accent().brighter (0.4f) : rkfx::Palette::textDim);
+        g.drawFittedText (copied == link ? juce::String ("Link copied") : link, below.removeFromTop (18), juce::Justification::centred, 1, 0.7f);
+        if (devices.empty())
+        {
+            g.setColour (rkfx::Palette::textDim);
+            g.drawFittedText ("Scan the code with the iPad's camera, type the PIN, then Share > Add to Home Screen. "
+                              "The whole console: faders, sends, every setting.", below.reduced (0, 4), juce::Justification::topLeft, 6);
+        }
+        for (size_t i = 0; i < devices.size() && i < disconnects.size(); ++i)
+        {
+            const auto& d = devices[i];
+            const auto row = disconnects[i]->getBounds().withX (below.getX()).withRight (disconnects[i]->getX() - 4);
+            g.setColour (d.signedIn ? owner.accent().brighter (0.4f) : rkfx::Palette::textDim);
+            g.drawFittedText ((d.name.isNotEmpty() ? d.name : juce::String ("Device")) + " " + d.address
+                              + (d.signedIn ? "" : " (PIN)"), row, juce::Justification::centredLeft, 1, 0.7f);
+        }
+    }
 
     rkfx::drawPanel (g, linksArea, owner.panelColour(), "In-ear mixes: one code per Aux bus (click a code to copy its link)");
     if (links.empty())
@@ -177,6 +283,13 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
 
 void RKMixEditor::RemotePanel::mouseDown (const juce::MouseEvent& e)
 {
+    if (consoleQr.contains (e.getPosition()))
+    {
+        copied = owner.mixer.getRemote().consoleLink();
+        juce::SystemClipboard::copyTextToClipboard (copied);
+        repaint();
+        return;
+    }
     for (const auto& link : links)
         if (link.area.contains (e.getPosition()))
         {

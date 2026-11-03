@@ -59,3 +59,13 @@ target_sources(RKIconRender PRIVATE icons/RenderIcons.cpp)
 target_compile_definitions(RKIconRender PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
 target_link_libraries(RKIconRender PRIVATE juce::juce_graphics juce::juce_events
                       PUBLIC juce::juce_recommended_config_flags)
+
+# RKMix's remote pages served from a headless RKMix (try the console app in a browser).
+juce_add_console_app(RKFXRemoteDemo_RKMix PRODUCT_NAME "RKFXRemoteDemo_RKMix")
+set_target_properties(RKFXRemoteDemo_RKMix PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKFXRemoteDemo_RKMix PRIVATE RemoteDemo.cpp ${RKMIX_SOURCES})
+target_include_directories(RKFXRemoteDemo_RKMix PRIVATE ${RKMIX_INCLUDE_DIRS})
+target_compile_definitions(RKFXRemoteDemo_RKMix PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0 RKMIX_NO_ENTRY_POINT=1
+                           RKMIX_REMOTE_FROM_DISK="${PROJECT_SOURCE_DIR}/plugins/RKMix/remote")
+target_link_libraries(RKFXRemoteDemo_RKMix PRIVATE rkmix_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
+                      PUBLIC juce::juce_recommended_config_flags)

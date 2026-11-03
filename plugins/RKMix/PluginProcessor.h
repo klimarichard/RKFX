@@ -131,8 +131,9 @@ public:
     MixScenes& getScenes() noexcept { return *scenes; }
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
-    /** The remote's meters: the loudest since the last call (resets), apart from the window's. */
-    void takeRemotePeaks (std::array<float, mix::kChannels>& channels, std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept;
+    /** The remote's meters, apart from the window's, since the last call (it resets them). */
+    using RemoteMeters = MixRemoteMeters;
+    void takeRemoteMeters (RemoteMeters&) noexcept;
 
     /** The console's undo history (message thread). */
     MixUndo& getUndo() noexcept { return *undo; }
@@ -345,6 +346,10 @@ private:
     std::unique_ptr<MixRemote> remote;
     std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
+    std::array<std::atomic<float>, 2> remoteMainPeaks {};
+    std::atomic<float> remoteMonoPeak { 0.0f };
+    std::array<std::atomic<float>, kChannels> remoteGate {}, remoteComp {};
+    std::array<std::atomic<float>, mix::kProcessingChains> remoteChainComp {}, remoteChainLimit {};
     std::atomic<int> lock { 0 };
     juce::RangedAudioParameter* sceneParam = nullptr;
     std::atomic<int> pendingScene { -1 };

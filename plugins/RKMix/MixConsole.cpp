@@ -1,0 +1,646 @@
+#include "MixConsole.h"
+
+#include "PluginProcessor.h"
+
+#include <cmath>
+
+using namespace mix;
+
+namespace
+{
+    juce::String jsonString (const juce::String& s) { return juce::JSON::toString (juce::var (s)); }
+    juce::String flag (bool b) { return b ? "true" : "false"; }
+
+    juce::String number (float v, int decimals)
+    {
+        if (! std::isfinite (v))
+            return "0";
+        auto s = juce::String (v, decimals);
+        if (s.containsChar ('.'))
+            s = s.trimCharactersAtEnd ("0").trimCharactersAtEnd (".");
+        return s == "-0" ? juce::String ("0") : s;
+    }
+
+    /** "ch3" -> 2, "bus2" -> 1 (with the prefix), or -1. */
+    int indexAfter (const juce::String& key, const char* prefix, int count)
+    {
+        if (! key.startsWith (prefix))
+            return -1;
+        const auto rest = key.substring ((int) std::strlen (prefix));
+        if (rest.isEmpty() || ! rest.containsOnly ("0123456789"))
+            return -1;
+        const auto n = rest.getIntValue() - 1;
+        return juce::isPositiveAndBelow (n, count) ? n : -1;
+    }
+
+    juce::String hexOf (juce::Colour c) { return "#" + c.toDisplayString (false).toLowerCase(); }
+}
+
+//==============================================================================
+struct MixConsole::Client
+{
+    MixWebServer::Connection* connection = nullptr;
+    int id = 0;
+    juce::String address, name, token;
+    bool signedIn = false;
+    juce::StringArray inbox, outbox;
+    std::vector<Sub> subs;
+    juce::StringArray curves;
+    std::map<juce::String, juce::String> curvesSent;
+    juce::String structureSent;
+};
+
+//==============================================================================
+MixConsole::MixConsole (RKMixProcessor& p) : mixer (p) {}
+
+MixConsole::~MixConsole() = default;
+
+juce::String MixConsole::randomPin()
+{
+    auto& random = juce::Random::getSystemRandom();
+    juce::String s;
+    for (int i = 0; i < 4; ++i)
+        s << random.nextInt (10);
+    return s;
+}
+
+void MixConsole::setEnabled (bool on)
+{
+    if (on == enabled)
+        return;
+    enabled = on;
+    if (! on)
+    {
+        const juce::ScopedLock sl (lock);
+        for (auto& [c, client] : clients)
+            client->connection->close();
+    }
+    settingsChanged();
+}
+
+juce::String MixConsole::getPin() const
+{
+    const juce::ScopedLock sl (lock);
+    return pin;
+}
+
+bool MixConsole::setPin (const juce::String& newPin)
+{
+    const auto digits = newPin.trim();
+    if (digits.length() < 4 || digits.length() > 8 || ! digits.containsOnly ("0123456789"))
+        return false;
+    {
+        const juce::ScopedLock sl (lock);
+        if (digits == pin)
+            return true;
+        pin = digits;
+        known.clear();   // every device must type the new PIN
+        failures.clear();
+        for (auto& [c, client] : clients)
+            client->connection->close();
+    }
+    settingsChanged();
+    return true;
+}
+
+juce::var MixConsole::settingsToVar() const
+{
+    const juce::ScopedLock sl (lock);
+    auto* root = new juce::DynamicObject();
+    root->setProperty ("enabled", enabled);
+    root->setProperty ("pin", pin);
+    juce::Array<juce::var> devices;
+    for (const auto& d : known)
+    {
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("token", d.token);
+        o->setProperty ("name", d.name);
+        o->setProperty ("lastSeen", d.lastSeen);
+        devices.add (juce::var (o));
+    }
+    root->setProperty ("devices", devices);
+    return juce::var (root);
+}
+
+void MixConsole::settingsFromVar (const juce::var& v)
+{
+    const juce::ScopedLock sl (lock);
+    enabled = (bool) v.getProperty ("enabled", true);
+    pin = v.getProperty ("pin", {}).toString();
+    known.clear();
+    if (const auto* devices = v.getProperty ("devices", {}).getArray())
+        for (const auto& d : *devices)
+            if (const auto token = d.getProperty ("token", {}).toString(); token.length() >= 16)
+                known.push_back ({ token, d.getProperty ("name", {}).toString(), (juce::int64) d.getProperty ("lastSeen", 0) });
+    if (pin.length() < 4 || ! pin.containsOnly ("0123456789"))
+    {
+        pin = randomPin();
+        known.clear();
+    }
+}
+
+void MixConsole::settingsChanged()
+{
+    ++version;
+    if (onSettingsChanged != nullptr)
+        onSettingsChanged();
+}
+
+//==============================================================================
+void MixConsole::opened (MixWebServer::Connection& c)
+{
+    const juce::ScopedLock sl (lock);
+    auto client = std::make_unique<Client>();
+    client->connection = &c;
+    client->id = nextId++;
+    client->address = c.address;
+    clients[&c] = std::move (client);
+    ++version;
+}
+
+void MixConsole::closed (MixWebServer::Connection& c)
+{
+    const juce::ScopedLock sl (lock);
+    clients.erase (&c);
+    ++version;
+}
+
+void MixConsole::received (MixWebServer::Connection& c, const juce::String& message)
+{
+    const juce::ScopedLock sl (lock);
+    if (auto it = clients.find (&c); it != clients.end() && it->second->inbox.size() < 2000)
+        it->second->inbox.add (message);
+}
+
+void MixConsole::send (MixWebServer::Connection& c, const juce::String& meters)
+{
+    juce::StringArray out;
+    bool signedIn = false;
+    {
+        const juce::ScopedLock sl (lock);
+        if (auto it = clients.find (&c); it != clients.end())
+        {
+            out.swapWith (it->second->outbox);
+            signedIn = it->second->signedIn;
+        }
+    }
+    for (const auto& text : out)
+        c.send (text);
+    if (signedIn && meters.isNotEmpty())
+        c.send (meters);
+}
+
+void MixConsole::post (Client& client, const juce::String& text)
+{
+    if (client.outbox.size() > 500)   // a device that stopped reading: let it go
+    {
+        client.connection->close();
+        return;
+    }
+    client.outbox.add (text);
+}
+
+std::vector<MixConsole::Device> MixConsole::getDevices()
+{
+    const juce::ScopedLock sl (lock);
+    std::vector<Device> devices;
+    for (auto& [c, client] : clients)
+        devices.push_back ({ client->id, client->name, client->address, client->signedIn });
+    std::sort (devices.begin(), devices.end(), [] (const Device& a, const Device& b) { return a.id < b.id; });
+    return devices;
+}
+
+void MixConsole::disconnect (int id)
+{
+    {
+        const juce::ScopedLock sl (lock);
+        for (auto& [c, client] : clients)
+            if (client->id == id)
+            {
+                const auto token = client->token;
+                known.erase (std::remove_if (known.begin(), known.end(), [&] (const KnownDevice& d) { return d.token == token; }),
+                             known.end());
+                client->signedIn = false;
+                client->connection->close();
+            }
+    }
+    settingsChanged();
+}
+
+//==============================================================================
+void MixConsole::tick()
+{
+    bool posted = false;
+    {
+        const juce::ScopedLock sl (lock);
+        const auto refreshStructure = ticks++ % 3 == 0 || structure.isEmpty();
+        if (refreshStructure && ! clients.empty())
+            structure = structureJson();
+
+        for (auto& [c, clientPtr] : clients)
+        {
+            auto& client = *clientPtr;
+            const auto before = client.outbox.size();
+            juce::StringArray messages;
+            messages.swapWith (client.inbox);
+            for (const auto& text : messages)
+            {
+                juce::var message;
+                if (juce::JSON::parse (text, message).wasOk() && message.isObject())
+                    handle (client, message);
+            }
+            if (client.signedIn)
+            {
+                if (client.structureSent != structure)
+                {
+                    client.structureSent = structure;
+                    post (client, structure);
+                }
+                queueValues (client);
+                queueCurves (client);
+            }
+            posted = posted || client.outbox.size() != before;
+        }
+    }
+    if (posted && onOutbox != nullptr)
+        onOutbox();
+}
+
+void MixConsole::handle (Client& client, const juce::var& message)
+{
+    const auto type = message["t"].toString();
+    if (type == "hello")
+        return signIn (client, message);
+    if (! client.signedIn)
+        return;
+    command (client, type, message);
+}
+
+void MixConsole::signIn (Client& client, const juce::var& message)
+{
+    client.name = message["name"].toString().substring (0, 40);
+    if (! enabled)
+    {
+        post (client, R"({"type":"auth","ok":false,"off":true})");
+        return;
+    }
+
+    const auto token = message["token"].toString();
+    const auto now = juce::Time::currentTimeMillis();
+    if (token.length() >= 16)
+        for (auto& d : known)
+            if (d.token == token)
+            {
+                d.lastSeen = now;
+                if (client.name.isNotEmpty())
+                    d.name = client.name;
+                client.token = token;
+                client.signedIn = true;
+                ++version;
+                post (client, R"({"type":"auth","ok":true})");
+                return;
+            }
+
+    const auto typed = message["pin"].toString();
+    if (typed.isEmpty())
+    {
+        post (client, R"({"type":"auth","ok":false})");
+        return;
+    }
+
+    auto& f = failures[client.address];
+    const auto ms = juce::Time::getMillisecondCounter();
+    if (f.until != 0 && ms < f.until)
+    {
+        post (client, R"({"type":"auth","ok":false,"wait":)" + juce::String ((int) ((f.until - ms) / 1000) + 1) + "}");
+        return;
+    }
+    if (typed != pin)
+    {
+        if (++f.count >= kMaxFailures)
+        {
+            f.count = 0;
+            f.until = ms + (juce::uint32) kLockoutSeconds * 1000;
+            post (client, R"({"type":"auth","ok":false,"wrong":true,"wait":)" + juce::String (kLockoutSeconds) + "}");
+        }
+        else
+            post (client, R"({"type":"auth","ok":false,"wrong":true})");
+        return;
+    }
+
+    failures.erase (client.address);
+    client.token = juce::Uuid().toString() + juce::Uuid().toString().substring (0, 8);
+    known.push_back ({ client.token, client.name, now });
+    while (known.size() > 16)   // the longest unseen goes
+        known.erase (std::min_element (known.begin(), known.end(),
+                                       [] (const KnownDevice& a, const KnownDevice& b) { return a.lastSeen < b.lastSeen; }));
+    client.signedIn = true;
+    post (client, R"({"type":"auth","ok":true,"token":")" + client.token + "\"}");
+    settingsChanged();
+}
+
+//==============================================================================
+juce::RangedAudioParameter* MixConsole::resolve (const juce::String& id) const
+{
+    if (id == "bypass")
+        return nullptr;   // the plugin's own bypass is the host's
+    if (auto* p = mixer.findParam (id))
+        return p;
+    return mixer.getSettings().findParam (id);
+}
+
+void MixConsole::subscribe (Client& client, const juce::var& ids)
+{
+    std::vector<Sub> next;
+    if (const auto* list = ids.getArray())
+        for (const auto& v : *list)
+        {
+            const auto id = v.toString();
+            if (id.isEmpty() || next.size() >= 2000)
+                continue;
+            auto it = std::find_if (client.subs.begin(), client.subs.end(), [&] (const Sub& s) { return s.id == id; });
+            if (it != client.subs.end())
+                next.push_back (*it);
+            else
+                next.push_back ({ id, resolve (id), -1.0f, false });
+        }
+    client.subs = std::move (next);
+}
+
+juce::var MixConsole::describe (const juce::String& id) const
+{
+    auto* p = resolve (id);
+    if (p == nullptr)
+        return {};
+    juce::Array<juce::var> d { p->getValue(), p->getCurrentValueAsText(), p->getDefaultValue() };
+    const auto steps = p->getNumSteps();
+    d.add (steps > 1 && steps < 0x7fffffff ? steps : 0);
+    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (p))
+    {
+        juce::Array<juce::var> names;
+        for (const auto& c : choice->choices)
+            names.add (c);
+        d.add (names);
+    }
+    return d;
+}
+
+void MixConsole::queueValues (Client& client)
+{
+    juce::String json;
+    for (auto& sub : client.subs)
+    {
+        if (sub.param == nullptr)
+            continue;
+        const auto v = sub.param->getValue();
+        if (sub.described && std::abs (v - sub.last) < 1.0e-6f)
+            continue;
+        json << (json.isEmpty() ? "" : ",") << jsonString (sub.id) << ":[" << number (v, 6) << "," << jsonString (sub.param->getCurrentValueAsText());
+        if (! sub.described)
+        {
+            const auto steps = sub.param->getNumSteps();
+            json << "," << number (sub.param->getDefaultValue(), 6) << "," << (steps > 1 && steps < 0x7fffffff ? steps : 0);
+            if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (sub.param))
+            {
+                json << ",[";
+                for (int i = 0; i < choice->choices.size(); ++i)
+                    json << (i > 0 ? "," : "") << jsonString (choice->choices[i]);
+                json << "]";
+            }
+            sub.described = true;
+        }
+        json << "]";
+        sub.last = v;
+    }
+    if (json.isNotEmpty())
+        post (client, R"({"type":"v","p":{)" + json + "}}");
+}
+
+//==============================================================================
+juce::String MixConsole::curveJson (const juce::String& key) const
+{
+    // "eq:ch3", "comp:ch3": a channel's EQ (with its HPF) and compressor;
+    // "eq:bus2", "eq:main", "eq:mono": a chain's EQ.
+    const auto kind = key.upToFirstOccurrenceOf (":", false, false);
+    const auto strip = key.fromFirstOccurrenceOf (":", false, false);
+    const auto rate = mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0;
+    constexpr int points = 128;
+
+    juce::String json;
+    const auto add = [&json] (double v) { json << (json.isEmpty() ? "" : ",") << number ((float) v, 2); };
+    const auto ch = indexAfter (strip, "ch", kChannels);
+    const auto chain = strip == "main" ? kMainChain : strip == "mono" ? kMonoChain : indexAfter (strip, "bus", kBuses);
+
+    if (kind == "eq" && (ch >= 0 || chain >= 0))
+    {
+        const auto channelStrip = ch >= 0 ? mixer.channelSettings (ch).strip : StripDsp::Settings {};
+        const auto chainEq = chain >= 0 ? mixer.chainSettings (chain).eq : BusDsp::Eq {};
+        for (int i = 0; i < points; ++i)
+        {
+            const auto hz = 20.0 * std::pow (1000.0, (double) i / (points - 1));
+            add (ch >= 0 ? StripDsp::responseDb (channelStrip, hz, rate) : BusDsp::responseDb (chainEq, hz, rate));
+        }
+    }
+    else if (kind == "comp" && ch >= 0)
+    {
+        const auto comp = mixer.channelSettings (ch).strip.comp;
+        for (int i = 0; i <= 120; ++i)
+            add (StripDsp::compTransferDb (comp, -60.0f + 0.5f * (float) i));
+    }
+    else
+        return {};
+    return "[" + json + "]";
+}
+
+void MixConsole::queueCurves (Client& client)
+{
+    for (const auto& key : client.curves)
+    {
+        const auto curve = curveJson (key);
+        if (curve.isEmpty() || client.curvesSent[key] == curve)
+            continue;
+        client.curvesSent[key] = curve;
+        post (client, R"({"type":"curve","k":)" + jsonString (key) + R"(,"d":)" + curve + "}");
+    }
+}
+
+//==============================================================================
+juce::String MixConsole::structureJson() const
+{
+    auto& rack = mixer.getRack();
+    auto& s = mixer.getSettings();
+    juce::String json;
+
+    const auto inserts = [&] (InsertRack::Strip strip, int index)
+    {
+        juce::String out = "[";
+        for (int slot = 0; slot < InsertRack::numSlots (strip); ++slot)
+        {
+            const InsertRack::Slot where { strip, index, slot };
+            out << (slot > 0 ? "," : "");
+            if (const auto* type = rack.typeOf (where))
+                out << R"({"n":)" << jsonString (type->shortName) << R"(,"p":)" << jsonString (type->name)
+                    << R"(,"f":")" << hexOf (rkfx::Palette::familyColour (type->family)) << R"(","on":)" << flag (rack.isOn (where))
+                    << R"(,"midi":)" << flag (type->sendsMidi) << R"(,"x":)" << flag (type->sendsMidi && rack.isInConflict (where)) << "}";
+            else
+                out << "null";
+        }
+        return out + "]";
+    };
+
+    json << R"({"type":"s","ch":[)";
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        const auto linked = mixer.isLinked (ch / 2);
+        const auto stereo = ch % 2 == 0 && linked;
+        json << (ch > 0 ? "," : "") << R"({"n":)" << jsonString (mixer.getChannelName (ch))
+             << R"(,"c":)" << mixer.getChannelColour (ch)
+             << R"(,"st":)" << flag (stereo) << R"(,"hid":)" << flag (ch % 2 == 1 && linked)
+             << R"(,"gm":)" << flag (mixer.isChannelGroupMuted (ch)) << R"(,"so":)" << flag (mixer.isChannelSoloed (ch))
+             << R"(,"sec":[)" << flag (s.flag (channelId (ch, "hpf_on"))) << "," << flag (s.flag (channelId (ch, "gate_on")))
+             << "," << flag (s.flag (channelId (ch, "eq_on"))) << "," << flag (s.flag (channelId (ch, "comp_on"))) << "]"
+             << R"(,"ins":)" << inserts (InsertRack::Strip::channel, ch) << "}";
+    }
+    json << R"(],"bus":[)";
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        const auto own = mixer.getBusType (bus) == BusType::aux && mixer.isBusStereo (bus)
+                      && s.choice (busId (bus, "panmode")) == (int) PanMode::own;
+        json << (bus > 0 ? "," : "") << R"({"n":)" << jsonString (mixer.getBusName (bus))
+             << R"(,"c":)" << mixer.getBusColour (bus) << R"(,"t":)" << (int) mixer.getBusType (bus)
+             << R"(,"st":)" << flag (mixer.isBusStereo (bus)) << R"(,"own":)" << flag (own)
+             << R"(,"gm":)" << flag (mixer.isBusGroupMuted (bus)) << R"(,"so":)" << flag (mixer.isBusSoloed (bus))
+             << R"(,"ins":)" << inserts (InsertRack::Strip::bus, bus) << "}";
+    }
+    json << R"(],"main":{"out":)" << jsonString (targetName (s.choice ("main_out")))
+         << R"(,"ins":)" << inserts (InsertRack::Strip::main, 0)
+         << R"(},"mono":{"out":)" << jsonString (targetName (s.choice ("mono_out")))
+         << R"(,"ins":)" << inserts (InsertRack::Strip::mono, 0) << "}";
+
+    const auto members = [] (const juce::Array<int>& list)
+    {
+        juce::String out = "[";
+        for (int i = 0; i < list.size(); ++i)
+            out << (i > 0 ? "," : "") << list[i];
+        return out + "]";
+    };
+    json << R"(,"dca":[)";
+    for (int d = 0; d < kDcas; ++d)
+        json << (d > 0 ? "," : "") << R"({"n":)" << jsonString (mixer.getDcaName (d)) << R"(,"c":)" << mixer.getDcaColour (d)
+             << R"(,"m":)" << members (mixer.getDcaMembers (d)) << "}";
+    json << R"(],"mg":[)";
+    for (int g = 0; g < kMuteGroups; ++g)
+        json << (g > 0 ? "," : "") << R"({"n":)" << jsonString (mixer.getMuteGroupName (g))
+             << R"(,"m":)" << members (mixer.getMuteGroupMembers (g)) << "}";
+    json << R"(],"up":[)" << members (mixer.getUserPage (0)) << "," << members (mixer.getUserPage (1)) << "]";
+
+    auto& undo = mixer.getUndo();
+    json << R"(,"scene":)" << mixer.getScenes().getCurrent()
+         << R"(,"undo":)" << jsonString (undo.canUndo() ? undo.undoDescription() : juce::String())
+         << R"(,"redo":)" << jsonString (undo.canRedo() ? undo.redoDescription() : juce::String())
+         << R"(,"anySolo":)" << flag (mixer.isAnythingSoloed())
+         << R"(,"talkSrc":)" << flag (s.choice ("talk_src") != 0)
+         << R"(,"rate":)" << (int) (mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0) << "}";
+    return json;
+}
+
+//==============================================================================
+void MixConsole::command (Client& client, const juce::String& type, const juce::var& m)
+{
+    const auto strip = m["s"].toString();
+    const auto ch = indexAfter (strip, "ch", kChannels);
+    const auto bus = indexAfter (strip, "bus", kBuses);
+
+    if (type == "sub")
+        subscribe (client, m["ids"]);
+    else if (type == "curves")
+    {
+        client.curves.clear();
+        if (const auto* list = m["k"].getArray())
+            for (const auto& k : *list)
+                if (client.curves.size() < 8)
+                    client.curves.addIfNotAlreadyThere (k.toString());
+        client.curvesSent.clear();
+    }
+    else if (type == "set")
+    {
+        auto* p = resolve (m["id"].toString());
+        const auto v = (float) (double) m["v"];
+        if (p != nullptr && std::isfinite (v))
+        {
+            const auto n = juce::jlimit (0.0f, 1.0f, v);
+            if (! juce::exactlyEqual (p->getValue(), n))
+                p->setValueNotifyingHost (n);
+        }
+    }
+    else if (type == "solo")
+    {
+        if (ch >= 0)
+            mixer.setChannelSolo (ch, (bool) m["on"]);
+        else if (bus >= 0)
+            mixer.setBusSolo (bus, (bool) m["on"]);
+    }
+    else if (type == "clearSolo")
+        mixer.clearSolo();
+    else if (type == "scene")
+    {
+        const auto n = (int) m["n"];
+        if (juce::isPositiveAndBelow (n, MixScenes::kNumScenes))
+            mixer.recallScene (n);
+    }
+    else if (type == "undo" && mixer.getUndo().canUndo())
+        mixer.getUndo().undo();
+    else if (type == "redo" && mixer.getUndo().canRedo())
+        mixer.getUndo().redo();
+    else if (type == "name")
+    {
+        const auto text = m["text"].toString().substring (0, 32);
+        if (ch >= 0)
+            mixer.setChannelName (ch, text);
+        else if (bus >= 0)
+            mixer.setBusName (bus, text);
+        else if (const auto d = indexAfter (strip, "dca", kDcas); d >= 0)
+            mixer.setDcaName (d, text);
+        else if (const auto g = indexAfter (strip, "mg", kMuteGroups); g >= 0)
+            mixer.setMuteGroupName (g, text);
+    }
+    else if (type == "colour")
+    {
+        const auto c = juce::jlimit (0, RKMixProcessor::kNumColours - 1, (int) m["c"]);
+        if (ch >= 0)
+            mixer.setChannelColour (ch, c);
+        else if (bus >= 0)
+            mixer.setBusColour (bus, c);
+        else if (const auto d = indexAfter (strip, "dca", kDcas); d >= 0)
+            mixer.setDcaColour (d, c);
+    }
+    else if (type == "ping")
+        post (client, R"({"type":"pong"})");
+}
+
+//==============================================================================
+juce::String MixConsole::metersJson (const MixRemoteMeters& m)
+{
+    juce::String json;
+    const auto db = [] (float gain) { return number (juce::Decibels::gainToDecibels (gain, -100.0f), 1); };
+    const auto list = [&json] (const char* name, auto begin, auto end, auto convert)
+    {
+        json << ",\"" << name << "\":[";
+        for (auto it = begin; it != end; ++it)
+            json << (it != begin ? "," : "") << convert (*it);
+        json << "]";
+    };
+    const auto reduction = [] (float v) { return number (juce::jmax (-60.0f, v), 1); };
+
+    json << R"({"type":"m")";
+    list ("c", m.channels.begin(), m.channels.end(), db);
+    json << ",\"b\":[";
+    for (size_t bus = 0; bus < m.buses.size(); ++bus)
+        json << (bus > 0 ? "," : "") << db (m.buses[bus][0]) << "," << db (m.buses[bus][1]);
+    json << "],\"mn\":[" << db (m.main[0]) << "," << db (m.main[1]) << "],\"mo\":" << db (m.mono);
+    list ("g", m.gate.begin(), m.gate.end(), reduction);
+    list ("k", m.comp.begin(), m.comp.end(), reduction);
+    list ("cc", m.chainComp.begin(), m.chainComp.end(), reduction);
+    list ("cl", m.chainLimit.begin(), m.chainLimit.end(), reduction);
+    return json + "}";
+}

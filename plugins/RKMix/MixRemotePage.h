@@ -1,10 +1,10 @@
 #pragma once
 
-#include <cstddef>
+#include <juce_core/juce_core.h>
 
-/** The remote's web page (remote/monitor.html, embedded at build time). */
+/** The remote's web pages and the console app's files (remote/, embedded at build time). */
 namespace MixRemotePage
 {
-    extern const char* const monitorHtml;
-    extern const int monitorHtmlSize;
+    /** The file called @p name ("monitor.html", "console.js"), or nullptr. */
+    const char* find (const juce::String& name, int& size);
 }

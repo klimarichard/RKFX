@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "MixConsole.h"
 #include "MixLayout.h"
 #include "MixWebServer.h"
 
@@ -24,6 +25,9 @@ class RKMixProcessor;
 
     The page gets the bus's mix when it changes and meters 15 times a second.
     The page is a web app: Add to Home Screen in Safari opens it full screen.
+
+    The same server serves the console remote (MixConsole): the whole console
+    on an iPad at /console, behind a PIN.
 
     Settings (on, port, links by IP address) are the computer's, shared by
     the plugin and the standalone app. In Gig Performer the first RKMix to
@@ -52,6 +56,11 @@ public:
 
     /** The address of the page for Aux bus @p bus (with the computer's name or IP). */
     juce::String linkFor (int bus) const;
+    /** The address of the console app (the iPad's). */
+    juce::String consoleLink() const;
+
+    /** The console remote: its PIN, the iPads connected. */
+    MixConsole& getConsole() noexcept { return console; }
     juce::String getHostName() const;
 
     /** The phones connected, by bus. */
@@ -63,6 +72,8 @@ public:
     /** Tests: the settings file, and an answer without a network. */
     void setSettingsFileForTesting (const juce::File&);
     MixWebServer::Response answer (const juce::String& path) const { return http (path); }
+    /** The console's messages are handled now (tests: no message loop). */
+    void tickConsole() { console.tick(); }
     /** The mix a page on @p bus is sent (JSON). */
     juce::String mixFor (int bus) const;
     /** Handles a page's message as if it came from a phone on @p bus (applied on the next timer tick, or now with @p now). */
@@ -75,6 +86,7 @@ public:
 private:
     RKMixProcessor& mixer;
     MixWebServer server;
+    MixConsole console;
     juce::File settingsFile;
     bool enabled = false, useIp = false;
     int port = 8080;
@@ -89,7 +101,7 @@ private:
     // Each connection's last mix sent (by the pusher thread).
     class Pusher;
     std::unique_ptr<Pusher> pusher;
-    std::atomic<int> clientsOpen { 0 };
+    std::atomic<int> clientsOpen { 0 }, consolesOpen { 0 };
 
     juce::MemoryBlock icon;
 

@@ -23,8 +23,28 @@ struct PlaySong
     double gainDb = 0.0;          // the song's own gain, on top of loudness matching (±12 dB)
     PlayAnalysis analysis;        // valid once measured (or found in the cache)
 
+    // Set by hand (a trim): where the song starts, and where it is over (faded out
+    // by then). < 0: the music start and end (or fade-out point) found by the analysis.
+    double startSeconds = -1.0, endSeconds = -1.0;
+
     bool isPlayable() const noexcept { return status == Status::ok; }
+    bool hasStart() const noexcept { return startSeconds >= 0.0; }
+    bool hasEnd() const noexcept { return endSeconds > 0.0; }
+    bool isTrimmed() const noexcept { return hasStart() || hasEnd(); }
     juce::String displayName() const { return artist.isNotEmpty() ? artist + " - " + title : title; }
+
+    /** What the user set on this song (gain, trim, and its names if @p names), onto it found again. */
+    void keepEditsOf (const PlaySong& other, bool names)
+    {
+        gainDb = other.gainDb;
+        startSeconds = other.startSeconds;
+        endSeconds = other.endSeconds;
+        if (names)
+        {
+            title = other.title;
+            artist = other.artist;
+        }
+    }
 };
 
 /** A playlist: its songs (its own, or a linked folder's or .m3u8 file's),
@@ -139,9 +159,22 @@ struct PlayShow
     int relink (const juce::File& folder, juce::AudioFormatManager&);
 
     /** Where a song plays from and to (seconds), and when the next one should
-        be heard alone (its end point: the fade-out point with Smart crossfade). */
-    struct Span { double start = 0.0, end = 0.0, endPoint = 0.0; };
+        be heard alone (its end point: the fade-out point with Smart crossfade,
+        or the end set by hand). */
+    struct Span
+    {
+        double start = 0.0, end = 0.0, endPoint = 0.0;
+        bool handStart = false, handEnd = false;   // set by hand: the stream fades in (briefly) and out there
+    };
     Span spanOf (const PlaySong&) const;
+
+    static constexpr double kMinTrimmedLength = 2.0;   // a trimmed song is at least this long
+    static constexpr double kTrimFadeIn = 0.01;        // a hand start: a fade-in this short (never a click)
+    static constexpr double kTrimFadeOut = 1.0;        // a hand end: the song is faded out over this, by the end
+
+    /** Puts a start and end set by hand (seconds, < 0: none) within @p song,
+        at least kMinTrimmedLength apart; an end at the file's end is none. */
+    static void clampTrim (const PlaySong& song, double& start, double& end);
 
     int numProblems() const;
 

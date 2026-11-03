@@ -79,6 +79,9 @@ public:
     void moveSong (int playlist, int from, int to);
     void clearSongs (int playlist);
     void setSongGain (int playlist, int index, double db);
+    /** A start and end set by hand (seconds, < 0: found by the analysis). The
+        playing song takes a new end at once (the next song is lined up again). */
+    void setSongTrim (int playlist, int index, double startSeconds, double endSeconds);
 
     // Pads
     static constexpr double kMaxPadSeconds = 60.0;
@@ -269,8 +272,8 @@ private:
     void timerCallback() override { update(); }
 
     // Slots
-    int load (const Item&, double startSeconds);    // < 0: where its music starts
-    PlayStream::Options optionsFor (const Item&, double startSeconds) const;
+    int load (const Item&, double startSeconds, bool wholeFile = false);   // < 0: where its music starts
+    PlayStream::Options optionsFor (const Item&, double startSeconds, bool wholeFile = false) const;   // whole: pre-listen, no trim
     double leadOf (int slot) const;
     void drop (int& slot);
     void markSent (int slot) { if (slot >= 0) slots[(size_t) slot].lastCommand = engine.commandsSent(); }
@@ -296,6 +299,7 @@ private:
     void attachAnalyses();
     void takeAnalyses();
     void playlistEdited (int playlist, const std::function<int (int)>& moveIndex);
+    void forCopiesOf (const juce::File&, const std::function<void (PlaySong&)>&);   // playing, armed, queued, pre-listened
     void setNote (const juce::String&);
     void showChanged() { ++showVersion; }
     void edited() { markPresetModified(); showChanged(); }

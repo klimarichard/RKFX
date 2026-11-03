@@ -103,18 +103,19 @@ void PlayShow::rescan (int index, juce::AudioFormatManager& formats)
     if (! p.isLinked())
         return;
 
-    std::map<juce::String, double> gains;
+    // What was set on each song (gain, trim) stays with it, by its path.
+    std::map<juce::String, PlaySong> edits;
     for (const auto& s : p.songs)
-        if (std::abs (s.gainDb) > 0.001)
-            gains[s.file.getFullPathName()] = s.gainDb;
+        if (std::abs (s.gainDb) > 0.001 || s.isTrimmed())
+            edits[s.file.getFullPathName()] = s;
 
     p.songs.clear();
     if (p.linkFile.exists())
         for (const auto& f : filesIn (p.linkFile, p.linkSubfolders, formats))
         {
             auto song = makeSong (f, formats);
-            if (const auto it = gains.find (f.getFullPathName()); it != gains.end())
-                song.gainDb = it->second;
+            if (const auto it = edits.find (f.getFullPathName()); it != edits.end())
+                song.keepEditsOf (it->second, false);
             p.songs.push_back (std::move (song));
         }
     p.cursor = juce::jlimit (0, juce::jmax (0, (int) p.songs.size() - 1), p.cursor);
@@ -148,12 +149,9 @@ int PlayShow::setMusicFolder (const juce::File& folder, juce::AudioFormatManager
             if (s.status == PlaySong::Status::missing && s.file.isAChildOf (old))
                 if (const auto moved = folder.getChildFile (s.file.getRelativePathFrom (old)); moved.existsAsFile())
                 {
-                    const auto gain = s.gainDb;
-                    const auto title = s.title, artist = s.artist;
+                    const auto was = s;
                     s = makeSong (moved, formats);
-                    s.gainDb = gain;
-                    s.title = title;
-                    s.artist = artist;
+                    s.keepEditsOf (was, true);
                     ++found;
                 }
     return found;
@@ -180,12 +178,9 @@ int PlayShow::relink (const juce::File& folder, juce::AudioFormatManager& format
             for (auto it = from; it != to; ++it)
                 if (s.fileSize > 0 && it->second.getSize() == s.fileSize)
                     pick = it->second;
-            const auto gain = s.gainDb;
-            const auto title = s.title, artist = s.artist;
+            const auto was = s;
             s = makeSong (pick, formats);
-            s.gainDb = gain;
-            s.title = title;
-            s.artist = artist;
+            s.keepEditsOf (was, true);
             ++found;
         }
     return found;
@@ -194,14 +189,47 @@ int PlayShow::relink (const juce::File& folder, juce::AudioFormatManager& format
 //==============================================================================
 PlayShow::Span PlayShow::spanOf (const PlaySong& song) const
 {
-    Span span { 0.0, song.lengthSeconds, song.lengthSeconds };
+    const auto length = song.lengthSeconds;
+    Span span { 0.0, length, length };
     if (smartCrossfade && song.analysis.valid)
     {
         span.start = song.analysis.musicStart;
         span.end = juce::jmax (span.start, song.analysis.musicEnd);
         span.endPoint = juce::jlimit (span.start, span.end, song.analysis.fadeOutPoint);
     }
+
+    // A start and end set by hand win, with or without Smart crossfade.
+    if (song.hasStart())
+    {
+        span.start = juce::jlimit (0.0, length, song.startSeconds);
+        span.handStart = true;
+    }
+    if (song.hasEnd())
+    {
+        span.end = span.endPoint = juce::jlimit (span.start, length, song.endSeconds);
+        span.handEnd = true;
+    }
+    span.end = juce::jmax (span.start, span.end);
+    span.endPoint = juce::jlimit (span.start, span.end, span.endPoint);
     return span;
+}
+
+void PlayShow::clampTrim (const PlaySong& song, double& start, double& end)
+{
+    const auto length = song.lengthSeconds;
+    if (length <= kMinTrimmedLength)
+    {
+        start = end = -1.0;
+        return;
+    }
+    if (start >= 0.0)
+        start = start < 0.005 ? -1.0 : juce::jmin (start, length - kMinTrimmedLength);
+    if (end > 0.0)
+    {
+        end = juce::jlimit (juce::jmax (0.0, start) + kMinTrimmedLength, length, end);
+        if (end >= length - 0.005)
+            end = -1.0;
+    }
 }
 
 int PlayShow::numProblems() const
@@ -361,6 +389,10 @@ juce::var PlayShow::toVar() const
                 item->setProperty ("artist", song.artist);
             if (std::abs (song.gainDb) > 0.001)
                 item->setProperty ("gain", song.gainDb);
+            if (song.hasStart())
+                item->setProperty ("start", song.startSeconds);
+            if (song.hasEnd())
+                item->setProperty ("end", song.endSeconds);
             if (song.fileSize > 0)
                 item->setProperty ("size", song.fileSize);
             songs.add (juce::var (item));
@@ -486,6 +518,10 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
                 if (item.hasProperty ("artist"))
                     song.artist = item["artist"].toString();
                 song.gainDb = juce::jlimit (-12.0, 12.0, (double) item.getProperty ("gain", 0.0));
+                song.startSeconds = item.getProperty ("start", -1.0);
+                song.endSeconds = item.getProperty ("end", -1.0);
+                if (song.lengthSeconds > 0.0)   // a missing file keeps its trim as it was
+                    clampTrim (song, song.startSeconds, song.endSeconds);
                 if (song.fileSize == 0)
                     song.fileSize = (juce::int64) item.getProperty ("size", 0);
                 p.songs.push_back (std::move (song));

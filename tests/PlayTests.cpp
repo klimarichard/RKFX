@@ -583,6 +583,116 @@ public:
             }
         }
 
+        beginTest ("A start and end set by hand: faded in and out there, never a click");
+        {
+            const auto file = writeWav ("trim-stream", kRate, 3 * 48000, [] (int, int) { return 0.5f; });
+            PlayStream stream;
+            stream.prepare (kRate);
+            PlayStream::Options o;
+            o.startSeconds = 0.5;
+            o.endSeconds = 2.5;
+            o.fadeInSeconds = PlayShow::kTrimFadeIn;
+            o.fadeOutSeconds = PlayShow::kTrimFadeOut;
+            stream.open (readerFor (file), o);
+            stream.fillNow();
+            expectEquals (stream.available(), 96000, "two seconds");
+            juce::AudioBuffer<float> got (2, 96000);
+            stream.read (got.getArrayOfWritePointers(), 0, 96000);
+            expectLessThan (std::abs (got.getSample (0, 0)), 0.01f, "fades in from silence");
+            expectWithinAbsoluteError (got.getSample (0, 960), 0.5f, 1.0e-6f, "in after 10 ms");
+            expectWithinAbsoluteError (got.getSample (0, 48000 - 1), 0.5f, 1.0e-3f, "untouched until a second before the end");
+            expectWithinAbsoluteError (got.getSample (0, 96000 - 24000), 0.25f, 1.0e-3f, "half way down half a second before");
+            expectLessThan (std::abs (got.getSample (1, 96000 - 1)), 1.0e-4f, "silent by the end");
+            float step = 0.0f;
+            for (int i = 1; i < 96000; ++i)
+                step = juce::jmax (step, std::abs (got.getSample (0, i) - got.getSample (0, i - 1)));
+            expectLessThan (step, 0.01f, "no step anywhere");
+        }
+
+        beginTest ("A trim wins over the analysis, stays within the song, and is kept by the show");
+        {
+            PlayShow show;
+            PlaySong song;
+            song.lengthSeconds = 200.0;
+            song.analysis.valid = true;
+            song.analysis.lengthSeconds = 200.0;
+            song.analysis.musicStart = 0.3;
+            song.analysis.musicEnd = 199.0;
+            song.analysis.fadeOutPoint = 190.0;
+            auto span = show.spanOf (song);
+            expectEquals (span.start, 0.3);
+            expectEquals (span.endPoint, 190.0);
+            expect (! span.handStart && ! span.handEnd);
+
+            song.startSeconds = 12.0;
+            song.endSeconds = 150.0;
+            span = show.spanOf (song);
+            expectEquals (span.start, 12.0);
+            expectEquals (span.end, 150.0);
+            expectEquals (span.endPoint, 150.0, "a hand end: over there, no lead");
+            expect (span.handStart && span.handEnd);
+            show.smartCrossfade = false;
+            expectEquals (show.spanOf (song).start, 12.0, "with Smart crossfade off too");
+
+            double start = 199.5, end = 50.0;
+            PlayShow::clampTrim (song, start, end);
+            expectEquals (start, 200.0 - PlayShow::kMinTrimmedLength, "a start leaves room for the song");
+            expectEquals (end, -1.0, "an end at the file's end is none");
+            start = 10.0; end = 11.0;
+            PlayShow::clampTrim (song, start, end);
+            expectEquals (end, 10.0 + PlayShow::kMinTrimmedLength, "at least this long");
+            start = 0.0; end = 300.0;
+            PlayShow::clampTrim (song, start, end);
+            expect (start < 0.0 && end < 0.0, "the whole file is no trim");
+
+            const auto files = songsIn ("trim-show", 2, 4.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setSongTrim (0, 1, 1.0, 3.0);
+            p.setSongGain (0, 1, -2.0);
+            TestPlayer q;
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            const auto& kept = q.getShow().playlists[0].songs[1];
+            expectEquals (kept.startSeconds, 1.0);
+            expectEquals (kept.endSeconds, 3.0);
+            expectEquals (kept.gainDb, -2.0);
+            expect (! q.getShow().playlists[0].songs[0].isTrimmed());
+
+            // A linked folder keeps a song's trim through Rescan.
+            TestPlayer r;
+            r.linkPlaylist (0, files[0].getParentDirectory());
+            r.setSongTrim (0, 0, 0.5, 2.5);
+            r.rescan (0);
+            expectEquals (r.getShow().playlists[0].songs[0].endSeconds, 2.5, "kept by its path");
+        }
+
+        beginTest ("A trimmed song plays from its start to its end, then the next comes in");
+        {
+            const auto files = songsIn ("trim-play", 2, 4.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setCrossfade (0.0);
+            p.setSongTrim (0, 0, -1.0, 2.0);   // song 1 over at 2 s
+            p.setSongTrim (0, 1, 1.5, -1.0);   // song 2 from 1.5 s
+            p.play();
+            p.runFor (2.3);
+            expectEquals (p.getCurrentIndex(), 1, "the second song by 2.3 s");
+            expectGreaterThan (p.getPositionSeconds(), 1.5, "from its start");
+            expectLessThan (p.getPositionSeconds(), 2.0);
+
+            // The playing song takes a new end at once.
+            TestPlayer q;
+            q.addFiles (0, files);
+            q.setCrossfade (0.0);
+            q.play();
+            q.runFor (0.5);
+            q.setSongTrim (0, 0, -1.0, 2.0);
+            q.runFor (1.8);
+            expectEquals (q.getCurrentIndex(), 1, "the new end, not the file's");
+        }
+
         beginTest ("The analysis cache: found again, and missed when the file changes");
         {
             const auto cacheFile = tempCache().getSiblingFile ("cache-test.json");

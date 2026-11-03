@@ -161,7 +161,7 @@ void RKPlayProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 //==============================================================================
 // Slots
 
-int RKPlayProcessor::load (const Item& item, double startSeconds)
+int RKPlayProcessor::load (const Item& item, double startSeconds, bool wholeFile)
 {
     if (! item.isValid() || ! item.song.isPlayable() || sampleRate <= 0.0)
         return -1;
@@ -187,7 +187,7 @@ int RKPlayProcessor::load (const Item& item, double startSeconds)
         return -1;
     }
 
-    const auto options = optionsFor (item, startSeconds);
+    const auto options = optionsFor (item, startSeconds, wholeFile);
     auto& stream = streams[(size_t) slot];
     diskThread.removeTimeSliceClient (&stream);
     stream.open (std::move (reader), options);
@@ -214,28 +214,34 @@ PlayLevel RKPlayProcessor::levelOf (const PlaySong& song, int playlist) const
     return PlayLevel::plan (song.analysis, show.level, song.gainDb + listGain);
 }
 
-PlayStream::Options RKPlayProcessor::optionsFor (const Item& item, double startSeconds) const
+PlayStream::Options RKPlayProcessor::optionsFor (const Item& item, double startSeconds, bool wholeFile) const
 {
     const auto span = show.spanOf (item.song);
     const auto level = levelOf (item.song, item.playlist);
     PlayStream::Options o;
-    o.startSeconds = startSeconds < 0.0 ? span.start : startSeconds;
-    o.endSeconds = item.song.analysis.valid && show.smartCrossfade ? span.end : -1.0;
     o.gainDb = level.gainDb;
     o.limitCeilingDb = level.limitDb > 0.0 ? show.level.peakCeilingDb : 1.0;
+    if (wholeFile)
+    {
+        o.startSeconds = juce::jmax (0.0, startSeconds);   // pre-listen: the whole file, to find the places
+        return o;
+    }
+    o.startSeconds = startSeconds < 0.0 ? span.start : startSeconds;
+    o.endSeconds = span.handEnd || (item.song.analysis.valid && show.smartCrossfade) ? span.end : -1.0;
+    o.fadeInSeconds = startSeconds < 0.0 && span.handStart && span.start > 0.0 ? PlayShow::kTrimFadeIn : 0.0;
+    o.fadeOutSeconds = span.handEnd ? PlayShow::kTrimFadeOut : 0.0;
     return o;
 }
 
 double RKPlayProcessor::leadOf (int slot) const
 {
-    // Smart crossfade: the song is over at its fade-out point, before the stream's end.
-    if (slot < 0 || ! show.smartCrossfade)
+    // Smart crossfade: the song is over at its fade-out point, before the stream's end
+    // (an end set by hand is both: no lead).
+    if (slot < 0)
         return 0.0;
     const auto& entry = slots[(size_t) slot];
-    if (! entry.song.analysis.valid)
-        return 0.0;
     const auto streamEnd = entry.options.endSeconds < 0.0 ? entry.song.lengthSeconds : entry.options.endSeconds;
-    return juce::jmax (0.0, streamEnd - entry.song.analysis.fadeOutPoint);
+    return juce::jmax (0.0, streamEnd - show.spanOf (entry.song).endPoint);
 }
 
 void RKPlayProcessor::drop (int& slot)
@@ -542,7 +548,8 @@ void RKPlayProcessor::keepArmed()
         const auto same = juce::approximatelyEqual (have.startSeconds, wantOptions.startSeconds)
                        && juce::approximatelyEqual (have.endSeconds, wantOptions.endSeconds)
                        && juce::approximatelyEqual (have.gainDb, wantOptions.gainDb)
-                       && juce::approximatelyEqual (have.limitCeilingDb, wantOptions.limitCeilingDb);
+                       && juce::approximatelyEqual (have.limitCeilingDb, wantOptions.limitCeilingDb)
+                       && juce::approximatelyEqual (have.fadeOutSeconds, wantOptions.fadeOutSeconds);
         if (same)
         {
             if (! juce::exactlyEqual (seconds, armedCrossfade) || ! juce::exactlyEqual (lead, armedLead))
@@ -1253,14 +1260,46 @@ void RKPlayProcessor::setSongGain (int playlist, int index, double db)
     if (index < 0 || index >= (int) songs.size())
         return;
     songs[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
-    // The copies of it (playing, armed, queued) follow.
-    for (auto* item : { &current, &armed })
-        if (item->isValid() && item->song.file == songs[(size_t) index].file)
-            item->song.gainDb = songs[(size_t) index].gainDb;
-    for (auto& q : queue)
-        if (q.song.file == songs[(size_t) index].file)
-            q.song.gainDb = songs[(size_t) index].gainDb;
+    const auto gain = songs[(size_t) index].gainDb;
+    forCopiesOf (songs[(size_t) index].file, [gain] (PlaySong& s) { s.gainDb = gain; });
     edited();
+}
+
+void RKPlayProcessor::setSongTrim (int playlist, int index, double startSeconds, double endSeconds)
+{
+    if (playlist < 0 || playlist >= (int) show.playlists.size())
+        return;
+    auto& songs = show.playlists[(size_t) playlist].songs;
+    if (index < 0 || index >= (int) songs.size())
+        return;
+    auto& song = songs[(size_t) index];
+    PlayShow::clampTrim (song, startSeconds, endSeconds);
+    const auto endChanged = ! juce::approximatelyEqual (song.endSeconds, endSeconds);
+    song.startSeconds = startSeconds;
+    song.endSeconds = endSeconds;
+    forCopiesOf (song.file, [startSeconds, endSeconds] (PlaySong& s) { s.startSeconds = startSeconds; s.endSeconds = endSeconds; });
+
+    // The playing song: a new end now (opened again where it is, a short crossfade),
+    // unless that end has already gone by; a new start counts from the next time.
+    if (endChanged && state != State::stopped && current.isValid() && current.song.file == song.file)
+    {
+        const auto position = getPositionSeconds();
+        if (! current.song.hasEnd() || current.song.endSeconds > position + 0.5)
+            seek (position);
+    }
+    edited();
+}
+
+void RKPlayProcessor::forCopiesOf (const juce::File& file, const std::function<void (PlaySong&)>& change)
+{
+    for (auto* item : { &current, &armed })
+        if (item->isValid() && item->song.file == file)
+            change (item->song);
+    for (auto& q : queue)
+        if (q.song.file == file)
+            change (q.song);
+    if (cueSong.file == file)
+        change (cueSong);
 }
 
 //==============================================================================
@@ -1498,7 +1537,7 @@ void RKPlayProcessor::preListen (int playlist, int index, double startSeconds)
     const auto item = itemAt (playlist, index);
     if (! item.isValid() || ! item.song.isPlayable())
         return;
-    const auto slot = load (item, juce::jmax (0.0, startSeconds));
+    const auto slot = load (item, juce::jmax (0.0, startSeconds), true);
     if (slot < 0)
         return;
     engine.cueStart (slot, 1.0f);

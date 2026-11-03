@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <random>
 
 namespace
 {
@@ -653,6 +654,116 @@ public:
                 expect (r == std::vector<int> ({ 0, 1, 2, 3, 4, 5 }), "round " + juce::String (round + 1) + ": " + sequence (order));
             }
             expect (order[6] != order[5] && order[12] != order[11], "no repeat across rounds: " + sequence (order));
+        }
+
+        beginTest ("Shuffle: no two songs by one artist in a row, where the list allows it");
+        {
+            const auto listOf = [] (std::initializer_list<const char*> artists)
+            {
+                PlayPlaylist p;
+                for (const auto* a : artists)
+                {
+                    PlaySong s;
+                    s.artist = a;
+                    s.status = PlaySong::Status::ok;
+                    p.songs.push_back (s);
+                }
+                return p;
+            };
+            const auto key = [] (const PlayPlaylist& p, int i) { return p.songs[(size_t) i].artist.trim().toLowerCase(); };
+            const auto isRound = [] (const PlayPlaylist& p)
+            {
+                auto r = p.bag;
+                std::sort (r.begin(), r.end());
+                for (int i = 0; i < (int) r.size(); ++i)
+                    if (r[(size_t) i] != i)
+                        return false;
+                return r.size() == p.songs.size();
+            };
+            // Neighbours by one artist, among the songs that play (an artist-less song matches none).
+            const auto repeats = [&key] (const PlayPlaylist& p)
+            {
+                int n = 0;
+                juce::String last;
+                for (const auto i : p.bag)
+                {
+                    if (! p.songs[(size_t) i].isPlayable())
+                        continue;
+                    n += key (p, i).isNotEmpty() && key (p, i) == last ? 1 : 0;
+                    last = key (p, i);
+                }
+                return n;
+            };
+
+            std::mt19937 random (7);
+            bool allRounds = true, apart = true, newRound = true, pinned = true, fewest = true, missing = true, caseless = true, noArtist = true;
+            for (int trial = 0; trial < 500; ++trial)
+            {
+                // Possible: 5 + 3 + 2, after a song by the 5 (the end of the last round).
+                auto p = listOf ({ "A", "A", "A", "A", "A", "B", "B", "B", "C", "C" });
+                PlayShow::reshuffle (p, 0, random);
+                allRounds = allRounds && isRound (p);
+                apart = apart && repeats (p) == 0;
+                newRound = newRound && key (p, p.bag.front()) != "a";
+
+                // The song playing now pinned first; the rest still apart from it.
+                PlayShow::reshuffle (p, -1, random, 6);
+                pinned = pinned && isRound (p) && p.bag.front() == 6 && repeats (p) == 0;
+
+                // Impossible: 7 by one artist and 3 others can't avoid 3 repeats, and has no more.
+                auto crowded = listOf ({ "A", "A", "A", "A", "A", "A", "A", "B", "B", "B" });
+                PlayShow::reshuffle (crowded, -1, random);
+                fewest = fewest && isRound (crowded) && repeats (crowded) == 3;
+
+                // Missing songs are skipped, so they don't count; the ones that play still alternate.
+                auto gaps = listOf ({ "A", "A", "A", "B", "B", "B", "A", "A" });
+                gaps.songs[6].status = gaps.songs[7].status = PlaySong::Status::missing;
+                PlayShow::reshuffle (gaps, -1, random);
+                missing = missing && isRound (gaps) && repeats (gaps) == 0;
+
+                // One artist however it's written.
+                auto spelled = listOf ({ "ABBA", " abba ", "Queen", "Queen" });
+                PlayShow::reshuffle (spelled, -1, random);
+                caseless = caseless && repeats (spelled) == 0;
+
+                // No artists: a plain shuffle that never starts with the last song.
+                auto unnamed = listOf ({ "", "", "", "" });
+                PlayShow::reshuffle (unnamed, 2, random);
+                noArtist = noArtist && isRound (unnamed) && unnamed.bag.front() != 2;
+            }
+            expect (allRounds, "every song once a round");
+            expect (apart, "no two by one artist together");
+            expect (newRound, "a round never starts with the artist that just played");
+            expect (pinned, "the song playing now starts the round");
+            expect (fewest, "too many by one artist: the fewest repeats");
+            expect (missing, "missing songs don't count");
+            expect (caseless, "artists match whatever their case and spaces");
+            expect (noArtist, "songs without an artist shuffle freely");
+
+            // Played: across rounds too.
+            juce::Array<juce::File> files;
+            const char* artists[] = { "Alpha", "Alpha", "Alpha", "Beta", "Beta", "Gamma" };
+            for (int n = 0; n < 6; ++n)
+                files.add (writeWav (juce::String ("artists/") + artists[n] + " - Song " + juce::String (n + 1), kRate, (int) (0.5 * kRate),
+                                     [n] (int, int) { return 0.01f * (float) (n + 1); }));
+            TestPlayer player;
+            player.addFiles (0, files);
+            player.setOrder (0, PlayPlaylist::Order::shuffle);
+            player.setCrossfade (0.0);
+            player.play();
+            std::vector<int> order;
+            for (int k = 0; k < 24; ++k)
+            {
+                order.push_back (player.getCurrent().index);
+                player.runFor (0.02);
+                player.next();
+                player.runFor (0.02);
+            }
+            const auto& songs = player.getShow().playlists[0].songs;
+            bool together = false;
+            for (size_t k = 1; k < order.size(); ++k)
+                together = together || songs[(size_t) order[k]].artist == songs[(size_t) order[k - 1]].artist;
+            expect (! together, "four rounds, never one artist twice in a row: " + sequence (order));
         }
 
         beginTest ("The queue plays before the playlist goes on where it was; Play now is a one-off");

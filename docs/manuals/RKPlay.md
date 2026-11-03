@@ -41,7 +41,7 @@ Each playlist has its own settings, above its songs:
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| **In order / Shuffle** | Shuffle plays every song once, in a random order, before any plays again (and never the same song twice in a row between rounds) | In order |
+| **In order / Shuffle** | Shuffle plays every song once, in a random order, before any plays again (and never the same song twice in a row between rounds). Two songs by the same artist never play one after the other, between rounds too, unless one artist has more than about half the playlist; then they come together as rarely as possible. The artist is the song's tag, or the part before " - " in its file name | In order |
 | **At the end** | Stop, Repeat, or **Then:** another playlist | Repeat |
 | **Stop after each** | Waits for Play after every song (a ceremony, songs started by hand) | Off |
 | **Crossfade** | How long songs overlap, 0 to 15 s (0: back to back, no gap) | 6 s |

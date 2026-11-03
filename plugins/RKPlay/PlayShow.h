@@ -145,6 +145,8 @@ struct PlayShow
 
     int numProblems() const;
 
-    /** Shuffle: a new round's order for @p playlist, never starting with @p avoid. */
-    static void reshuffle (PlayPlaylist&, int avoid, std::mt19937&);
+    /** Shuffle: a new round's order for @p playlist, starting with @p first if
+        given. No two songs by one artist follow each other where the list allows
+        it, nor does the round start with @p avoid's artist (the song before it). */
+    static void reshuffle (PlayPlaylist&, int avoid, std::mt19937&, int first = -1);
 };

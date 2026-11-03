@@ -80,7 +80,7 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     addToCanvas (tabs);
     inOrderButton.onClick = [this] { player.setOrder (viewed, PlayPlaylist::Order::inOrder); };
     shuffleButton.onClick = [this] { player.setOrder (viewed, PlayPlaylist::Order::shuffle); };
-    shuffleButton.setTooltip ("Every song once, in a random order, before any plays again");
+    shuffleButton.setTooltip ("Every song once, in a random order, before any plays again; never one artist twice in a row");
     atEnd.setTooltip ("What happens after the last song");
     atEnd.onChange = [this]
     {

@@ -94,6 +94,9 @@ function receive(msg) {
       break;
     }
     case "curve": curves.receive(msg.k, msg.d); break;
+    case "types": state.types = msg.list; break;
+    case "clip": state.clipboard = msg.text; break;
+    case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
   }
   app.dirty = true;
 }

@@ -147,7 +147,11 @@ private:
     int ticks = 0;
     juce::String structure;          // the latest structure message
 
+    /** A parameter by ID: a host parameter, a mix setting, or an insert's
+        ("ins:<slot number>:<its parameter ID>"). */
     juce::RangedAudioParameter* resolve (const juce::String& id) const;
+    void insertCommand (Client&, const juce::String& type, const juce::var& message);
+    juce::String typesJson() const;
     void handle (Client&, const juce::var& message);
     void signIn (Client&, const juce::var& message);
     void command (Client&, const juce::String& type, const juce::var& message);

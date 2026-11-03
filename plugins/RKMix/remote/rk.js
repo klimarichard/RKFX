@@ -315,7 +315,7 @@ const app = {
 // default, steps, choices]. A control moved here is set at once (and sent);
 // what the server says about it is ignored while a finger holds it.
 const store = {
-  values: new Map(), held: new Map(), pending: new Map(), wanted: new Set(), sentWanted: "", listeners: new Set(), send: null,
+  values: new Map(), held: new Map(), pending: new Map(), wanted: new Set(), extra: new Set(), sentWanted: "", listeners: new Set(), send: null,
   get(id) { return this.values.get(id); },
   value(id, fallback = 0) { const v = this.values.get(id); return v ? v.v : fallback; },
   text(id) { const v = this.values.get(id); return v ? v.text : ""; },
@@ -364,7 +364,7 @@ const store = {
   want(id) { if (id) this.wanted.add(id); },
   beginWants() { this.wanted = new Set(); },
   endWants() {
-    const list = [...this.wanted].sort(), key = list.join(",");
+    const list = [...new Set([...this.wanted, ...this.extra])].sort(), key = list.join(",");
     if (key !== this.sentWanted && this.send) { this.sentWanted = key; this.send({ t: "sub", ids: list }); }
   },
   resend() { this.sentWanted = ""; this.endWants(); },

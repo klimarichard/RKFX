@@ -1,6 +1,7 @@
 #include "MixConsole.h"
 
 #include "PluginProcessor.h"
+#include "host/PedalRegistry.h"
 
 #include <cmath>
 
@@ -48,6 +49,8 @@ struct MixConsole::Client
     juce::StringArray curves;
     std::map<juce::String, juce::String> curvesSent;
     juce::String structureSent;
+    int rackVersion = -1;
+    juce::var clipboard;              // a copied insert
 };
 
 //==============================================================================
@@ -251,6 +254,18 @@ void MixConsole::tick()
             }
             if (client.signedIn)
             {
+                // Inserts came or went: their parameters again.
+                if (const auto v = mixer.getRack().getVersion(); v != client.rackVersion)
+                {
+                    client.rackVersion = v;
+                    for (auto& sub : client.subs)
+                        if (sub.id.startsWith ("ins:"))
+                            if (auto* p = resolve (sub.id); p != sub.param)
+                            {
+                                sub.param = p;
+                                sub.described = false;
+                            }
+                }
                 if (client.structureSent != structure)
                 {
                     client.structureSent = structure;
@@ -298,6 +313,7 @@ void MixConsole::signIn (Client& client, const juce::var& message)
                 client.signedIn = true;
                 ++version;
                 post (client, R"({"type":"auth","ok":true})");
+                post (client, typesJson());
                 return;
             }
 
@@ -336,6 +352,7 @@ void MixConsole::signIn (Client& client, const juce::var& message)
                                        [] (const KnownDevice& a, const KnownDevice& b) { return a.lastSeen < b.lastSeen; }));
     client.signedIn = true;
     post (client, R"({"type":"auth","ok":true,"token":")" + client.token + "\"}");
+    post (client, typesJson());
     settingsChanged();
 }
 
@@ -344,6 +361,18 @@ juce::RangedAudioParameter* MixConsole::resolve (const juce::String& id) const
 {
     if (id == "bypass")
         return nullptr;   // the plugin's own bypass is the host's
+    if (id.startsWith ("ins:"))
+    {
+        const auto flat = id.fromFirstOccurrenceOf ("ins:", false, false).upToFirstOccurrenceOf (":", false, false);
+        const auto pid = id.fromFirstOccurrenceOf ("ins:", false, false).fromFirstOccurrenceOf (":", false, false);
+        if (! flat.containsOnly ("0123456789") || flat.isEmpty() || pid == "bypass")
+            return nullptr;   // an insert's bypass is its On, a command
+        const auto n = flat.getIntValue();
+        if (! juce::isPositiveAndBelow (n, InsertRack::kTotalSlots))
+            return nullptr;
+        auto* plugin = mixer.getRack().get (InsertRack::slotAt (n));
+        return plugin != nullptr ? plugin->findParam (pid) : nullptr;
+    }
     if (auto* p = mixer.findParam (id))
         return p;
     return mixer.getSettings().findParam (id);
@@ -614,8 +643,87 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
         else if (const auto d = indexAfter (strip, "dca", kDcas); d >= 0)
             mixer.setDcaColour (d, c);
     }
+    else if (type.startsWith ("ins"))
+        insertCommand (client, type, m);
     else if (type == "ping")
         post (client, R"({"type":"pong"})");
+}
+
+//==============================================================================
+juce::String MixConsole::typesJson() const
+{
+    juce::String json = R"({"type":"types","list":[)";
+    bool first = true;
+    for (const auto& t : rkfx::pedals::pedalTypes())
+    {
+        json << (first ? "" : ",") << R"({"n":)" << jsonString (t.name) << R"(,"s":)" << jsonString (t.shortName)
+             << R"(,"f":")" << hexOf (rkfx::Palette::familyColour (t.family)) << R"(","fam":)"
+             << jsonString (rkfx::pedals::familyName (t.family)) << R"(,"midi":)" << flag (t.sendsMidi) << "}";
+        first = false;
+    }
+    return json + "]}";
+}
+
+void MixConsole::insertCommand (Client& client, const juce::String& type, const juce::var& m)
+{
+    // The slot: "s" (ch3, bus2, main, mono) and "n" (0-based).
+    const auto strip = m["s"].toString();
+    InsertRack::Slot slot;
+    if (const auto ch = indexAfter (strip, "ch", kChannels); ch >= 0)
+        slot = { InsertRack::Strip::channel, ch, 0 };
+    else if (const auto bus = indexAfter (strip, "bus", kBuses); bus >= 0)
+        slot = { InsertRack::Strip::bus, bus, 0 };
+    else if (strip == "main" || strip == "mono")
+        slot = { strip == "main" ? InsertRack::Strip::main : InsertRack::Strip::mono, 0, 0 };
+    else
+        return;
+    if (slot.strip == InsertRack::Strip::channel && slot.index % 2 == 1 && mixer.isLinked (slot.index / 2))
+        return;   // a linked pair's inserts are its left channel's
+    slot.slot = (int) m["n"];
+    if (! juce::isPositiveAndBelow (slot.slot, InsertRack::numSlots (slot.strip)))
+        return;
+
+    auto& rack = mixer.getRack();
+    const auto flat = InsertRack::flatIndex (slot);
+    if (type == "insAdd")
+    {
+        if (const auto* t = rkfx::pedals::findPedalType (m["p"].toString()))
+            rack.insert (slot, t->name, mixer.channelsOf (slot.strip, slot.index));
+    }
+    else if (type == "insRemove")
+        rack.remove (slot);
+    else if (type == "insOn" && rack.get (slot) != nullptr)
+        rack.setOn (slot, (bool) m["on"]);
+    else if (type == "insCopy")
+    {
+        client.clipboard = mixer.copyInsert (slot);
+        post (client, R"({"type":"clip","text":)" + jsonString (RKMixProcessor::isInsertCopy (client.clipboard)
+                                                                 ? RKMixProcessor::describeCopy (client.clipboard) : juce::String()) + "}");
+    }
+    else if (type == "insPaste" && RKMixProcessor::isInsertCopy (client.clipboard))
+        mixer.pasteInsert (slot, client.clipboard);
+    else if (type == "insParams")
+    {
+        // The insert's controls, for the generic list: ID, name, kind.
+        juce::String json;
+        json << R"({"type":"insParams","s":)" << jsonString (strip) << R"(,"n":)" << slot.slot << R"(,"slot":)" << flat;
+        if (auto* plugin = rack.get (slot))
+        {
+            json << R"(,"p":)" << jsonString (rack.typeOf (slot) != nullptr ? rack.typeOf (slot)->name : juce::String()) << R"(,"params":[)";
+            bool first = true;
+            for (auto* param : plugin->getParameters())
+                if (auto* p = dynamic_cast<juce::RangedAudioParameter*> (param); p != nullptr && p->getParameterID() != "bypass")
+                {
+                    const auto kind = dynamic_cast<juce::AudioParameterBool*> (p) != nullptr ? "bool"
+                                    : dynamic_cast<juce::AudioParameterChoice*> (p) != nullptr ? "choice" : "float";
+                    json << (first ? "" : ",") << R"({"id":)" << jsonString ("ins:" + juce::String (flat) + ":" + p->getParameterID())
+                         << R"(,"name":)" << jsonString (p->getName (40)) << R"(,"k":")" << kind << "\"}";
+                    first = false;
+                }
+            json << "]";
+        }
+        post (client, json + "}");
+    }
 }
 
 //==============================================================================

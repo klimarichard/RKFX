@@ -1123,6 +1123,28 @@ public:
             exchange (a, R"({"t":"curves","k":["eq:ch1","comp:ch1"]})");
             expectEquals (a.last ("curve")["d"].size(), 121, "a compressor curve");
 
+            // Inserts: add one, its parameters by ID, on/off, copy and paste, remove.
+            exchange (a, R"({"t":"insAdd","s":"ch2","n":1,"p":"RKCompress"})");
+            const InsertRack::Slot slot { InsertRack::Strip::channel, 1, 1 };
+            expect (p.getRack().get (slot) != nullptr, "an insert added");
+            exchange (a, R"({"t":"insParams","s":"ch2","n":1})");
+            const auto params = a.last ("insParams")["params"];
+            expect (params.size() > 3, "its controls listed");
+            const auto firstId = params[0]["id"].toString();
+            expect (firstId.startsWith ("ins:" + juce::String (InsertRack::flatIndex (slot)) + ":"));
+            exchange (a, R"({"t":"sub","ids":[")" + firstId + "\"]}");
+            expect (a.last ("v")["p"].hasProperty (firstId), "an insert's value");
+            exchange (a, R"({"t":"set","id":")" + firstId + R"(","v":0.1})");
+            expectWithinAbsoluteError (p.getRack().get (slot)->getParameters()[0]->getValue(), 0.1f, 0.01f, "an insert's knob moved");
+            exchange (a, R"({"t":"insOn","s":"ch2","n":1,"on":false})");
+            expect (! p.getRack().isOn (slot));
+            exchange (a, R"({"t":"insCopy","s":"ch2","n":1})");
+            exchange (a, R"({"t":"insPaste","s":"bus3","n":0})");
+            expect (p.getRack().get ({ InsertRack::Strip::bus, 2, 0 }) != nullptr, "pasted onto a bus");
+            exchange (a, R"({"t":"insRemove","s":"ch2","n":1})");
+            expect (p.getRack().get (slot) == nullptr, "removed");
+            exchange (a, R"({"t":"set","id":")" + firstId + R"(","v":0.5})");   // gone: nothing happens
+
             // Remembered: the token signs in without the PIN, until the device is disconnected.
             Fake b;
             console.opened (b);

@@ -67,6 +67,7 @@ public:
     void setPlaylistCrossfade (int, double seconds);
     void setPlaylistGain (int, double db);
     void setPlaylistAsMastered (int, bool);   // not loudness matched: peaks at the ceiling
+    void setPlaylistFadeIn (int, double seconds);   // Play from stopped fades the first song in; 0: none
     bool linkPlaylist (int, const juce::File& folderOrM3u);   // the list becomes the folder's or file's songs
     void unlinkPlaylist (int);                                // keeps the songs as its own
     void rescan (int);
@@ -125,6 +126,7 @@ public:
         not the playing one); returns how many. */
     int removeProblemSongs();
     void setEndAt (bool on, int minutes, bool atSongEnd);
+    void setSwitchAt (bool on, int minutes, int toPlaylist, PlayShow::SwitchAt::How);
 
     /** Bumped when the show changes (the editor polls it). */
     int getShowVersion() const noexcept { return showVersion; }
@@ -163,6 +165,8 @@ public:
 
     /** End at: seconds until the music ends (< 0: not set). */
     double getEndAtRemaining() const;
+    /** Switch at: seconds until it switches (< 0: not set). */
+    double getSwitchAtRemaining() const;
 
     /** A short message for the window (a skipped file, a slow disk); bumped version. */
     juce::String getNote() const { return note; }
@@ -253,6 +257,11 @@ private:
     juce::Time endAtDeadline;
     bool endingAtSongEnd = false;
 
+    // Switch at
+    juce::Time switchAtDeadline;
+    int startAfterFade = -1;           // Fade out, then start: this playlist starts once the fade is over
+    juce::Time startAfterFadeAt;       // (the clock)
+
     juce::String note;
     int noteVersion = 0;
 
@@ -306,6 +315,9 @@ private:
     void pollTriggers();
     void checkEndAt();
     void findEndAtDeadline();
+    void checkSwitchAt();
+    void findSwitchAtDeadline();
+    double fadeInOf (const Item&) const;
     void attachAnalyses();
     void takeAnalyses();
     void paceAnalysis();

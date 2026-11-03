@@ -370,6 +370,7 @@ juce::var PlayShow::toVar() const
         o->setProperty ("crossfade", p.crossfadeSeconds);
         o->setProperty ("gain", p.gainDb);
         o->setProperty ("loudness", p.asMastered ? "asMastered" : "match");
+        o->setProperty ("fadeIn", p.fadeInSeconds);
         o->setProperty ("link", linkKey (p.link));
         if (p.isLinked())
         {
@@ -418,6 +419,14 @@ juce::var PlayShow::toVar() const
     root->setProperty ("endAtOn", endAt.on);
     root->setProperty ("endAt", juce::String (endAt.minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (endAt.minutes % 60).paddedLeft ('0', 2));
     root->setProperty ("endAtSongEnd", endAt.atSongEnd);
+    {
+        auto* s = new juce::DynamicObject();
+        s->setProperty ("on", switchAt.on);
+        s->setProperty ("at", juce::String (switchAt.minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (switchAt.minutes % 60).paddedLeft ('0', 2));
+        s->setProperty ("to", switchAt.to + 1);
+        s->setProperty ("how", switchAt.how == SwitchAt::How::crossfade ? "crossfade" : switchAt.how == SwitchAt::How::afterSong ? "afterSong" : "fadeThenStart");
+        root->setProperty ("switchAt", juce::var (s));
+    }
 
     auto* d = new juce::DynamicObject();
     d->setProperty ("auto", duck.automatic);
@@ -469,6 +478,15 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
     endAt.atSongEnd = v.getProperty ("endAtSongEnd", false);
     if (const auto t = juce::StringArray::fromTokens (v["endAt"].toString(), ":", {}); t.size() == 2)
         endAt.minutes = juce::jlimit (0, 24 * 60 - 1, t[0].getIntValue() * 60 + t[1].getIntValue());
+    if (const auto& s = v["switchAt"]; s.isObject())
+    {
+        switchAt.on = s.getProperty ("on", false);
+        if (const auto t = juce::StringArray::fromTokens (s["at"].toString(), ":", {}); t.size() == 2)
+            switchAt.minutes = juce::jlimit (0, 24 * 60 - 1, t[0].getIntValue() * 60 + t[1].getIntValue());
+        switchAt.to = (int) s.getProperty ("to", 1) - 1;
+        const auto how = s["how"].toString();
+        switchAt.how = how == "crossfade" ? SwitchAt::How::crossfade : how == "afterSong" ? SwitchAt::How::afterSong : SwitchAt::How::fadeThenStart;
+    }
 
     const auto& d = v["duck"];
     duck.automatic = d.getProperty ("auto", false);
@@ -546,6 +564,7 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
             p.crossfadeSeconds = juce::jlimit (0.0, kMaxCrossfade, (double) item.getProperty ("crossfade", 6.0));
             p.gainDb = juce::jlimit (-12.0, 12.0, (double) item.getProperty ("gain", 0.0));
             p.asMastered = item["loudness"].toString() == "asMastered";
+            p.fadeInSeconds = juce::jlimit (0.0, kMaxFadeIn, (double) item.getProperty ("fadeIn", 0.0));
             const auto link = item["link"].toString();
             p.link = link == "folder" ? PlayPlaylist::Link::folder : link == "m3u" ? PlayPlaylist::Link::m3u : PlayPlaylist::Link::none;
             p.linkSubfolders = item.getProperty ("subfolders", true);
@@ -579,6 +598,7 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
         playlists.back().name = "Playlist 1";
     }
     active = juce::jlimit (0, (int) playlists.size() - 1, (int) v.getProperty ("active", 1) - 1);
+    switchAt.to = juce::jlimit (0, (int) playlists.size() - 1, switchAt.to);
     for (auto& p : playlists)
     {
         p.goTo = juce::jlimit (0, (int) playlists.size() - 1, p.goTo);

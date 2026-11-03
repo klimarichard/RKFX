@@ -468,6 +468,14 @@ void RKPlayProcessor::commit (const Item& item)
         pendingSwitch = -1;
 }
 
+double RKPlayProcessor::fadeInOf (const Item& item) const
+{
+    // Play from stopped: the playlist's Fade in (a request: the active list's), else just no click.
+    const auto playlist = item.playlist >= 0 && item.playlist < (int) show.playlists.size() && ! item.queued ? item.playlist : show.active;
+    const auto seconds = show.playlists[(size_t) playlist].fadeInSeconds;
+    return seconds > 0.0 ? seconds : 0.01;
+}
+
 double RKPlayProcessor::crossfadeInto (const Item& item) const
 {
     const auto playlist = item.playlist >= 0 && item.playlist < (int) show.playlists.size() && ! item.queued ? item.playlist : show.active;
@@ -502,8 +510,9 @@ void RKPlayProcessor::startItem (const Item& item, double crossfade)
     disarm();
     finishCurrent();
     currentStarted = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    startAfterFade = -1;   // something plays: a Switch at's start waiting for its fade is off
     if (state == State::stopped)
-        engine.start (slot, 0.01, 1.0f);
+        engine.start (slot, fadeInOf (item), 1.0f);
     else
         engine.crossfadeTo (slot, state == State::paused ? kSeekFade : juce::jmax (0.0, crossfade), 1.0f);
     markSent (slot);
@@ -667,6 +676,7 @@ void RKPlayProcessor::fadeOut()
 
 void RKPlayProcessor::stop()
 {
+    startAfterFade = -1;
     if (state == State::stopped)
         return;
     disarm();
@@ -686,6 +696,7 @@ void RKPlayProcessor::stop()
 
 void RKPlayProcessor::panic()
 {
+    startAfterFade = -1;
     disarm();
     finishCurrent();
     engine.fadeOutAll (kPanicFade);
@@ -859,6 +870,86 @@ void RKPlayProcessor::checkEndAt()
 }
 
 //==============================================================================
+// Switch at
+
+void RKPlayProcessor::setSwitchAt (bool on, int minutes, int toPlaylist, PlayShow::SwitchAt::How how)
+{
+    show.switchAt = { on, juce::jlimit (0, 24 * 60 - 1, minutes), juce::jlimit (0, (int) show.playlists.size() - 1, toPlaylist), how };
+    findSwitchAtDeadline();
+    edited();
+}
+
+void RKPlayProcessor::findSwitchAtDeadline()
+{
+    const auto now = clock();
+    const auto minutes = show.switchAt.minutes;
+    auto deadline = juce::Time (now.getYear(), now.getMonth(), now.getDayOfMonth(), minutes / 60, minutes % 60, 0, 0, true);
+    if (deadline <= now)
+        deadline += juce::RelativeTime::days (1);
+    switchAtDeadline = deadline;
+}
+
+double RKPlayProcessor::getSwitchAtRemaining() const
+{
+    return show.switchAt.on ? (switchAtDeadline - clock()).inSeconds() : -1.0;
+}
+
+void RKPlayProcessor::checkSwitchAt()
+{
+    // A start waiting for its fade (Fade out, then start).
+    if (startAfterFade >= 0 && clock() >= startAfterFadeAt)
+    {
+        const auto playlist = startAfterFade;
+        startAfterFade = -1;
+        if (state == State::stopped && playlist < (int) show.playlists.size())
+        {
+            if (const auto item = following (playlist); item.isValid())
+                startItem (item, 0.0);
+            else
+                setNote ("Switch at: nothing to play in " + show.playlists[(size_t) playlist].name);
+        }
+    }
+
+    if (! show.switchAt.on || clock() < switchAtDeadline)
+        return;
+    show.switchAt.on = false;   // once
+    const auto to = juce::jlimit (0, (int) show.playlists.size() - 1, show.switchAt.to);
+    const auto& name = show.playlists[(size_t) to].name;
+    if (state == State::stopped)
+    {
+        switchPlaylist (to, true);   // stopped: Play starts it
+        setNote ("Switch at: " + name + " is next, Play starts it");
+    }
+    else if (state == State::paused)
+    {
+        switchPlaylist (to, false);
+        setNote ("Switch at: " + name + " plays after this song");
+    }
+    else
+        switch (show.switchAt.how)
+        {
+            case PlayShow::SwitchAt::How::fadeThenStart:
+                fadeOut();
+                show.active = to;
+                pendingSwitch = -1;
+                syncPlaylistParam();
+                startAfterFade = to;
+                startAfterFadeAt = clock() + juce::RelativeTime::seconds (show.fadeOutSeconds);
+                setNote ("Switch at: fading out, then " + name);
+                break;
+            case PlayShow::SwitchAt::How::crossfade:
+                switchPlaylist (to, true);
+                setNote ("Switch at: now " + name);
+                break;
+            case PlayShow::SwitchAt::How::afterSong:
+                switchPlaylist (to, false);
+                setNote ("Switch at: " + name + " after this song");
+                break;
+        }
+    showChanged();
+}
+
+//==============================================================================
 // The message thread's regular work
 
 void RKPlayProcessor::update()
@@ -885,6 +976,7 @@ void RKPlayProcessor::update()
     takeAnalyses();
     paceAnalysis();
     checkEndAt();
+    checkSwitchAt();
     keepArmed();
     engine.setSafetyLimiter (show.safetyLimiter);
     engine.setManualDuck (valueOf (duckParam) >= 0.5f);
@@ -1074,6 +1166,11 @@ void RKPlayProcessor::removePlaylist (int index)
     show.active = juce::jlimit (0, (int) show.playlists.size() - 1, moved (show.active) < 0 ? 0 : moved (show.active));
     for (auto& p : show.playlists)
         p.goTo = juce::jmax (0, moved (p.goTo));
+    if (moved (show.switchAt.to) < 0)
+        show.switchAt.on = false;   // its playlist is gone
+    show.switchAt.to = juce::jmax (0, moved (show.switchAt.to));
+    if (startAfterFade >= 0)
+        startAfterFade = moved (startAfterFade);
     if (current.isValid())
         current.playlist = moved (current.playlist);
     for (auto& q : queue)
@@ -1127,6 +1224,14 @@ void RKPlayProcessor::setPlaylistCrossfade (int index, double seconds)
 void RKPlayProcessor::setPlaylistGain (int index, double db)
 {
     show.playlists[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
+    edited();
+}
+
+void RKPlayProcessor::setPlaylistFadeIn (int index, double seconds)
+{
+    if (index < 0 || index >= (int) show.playlists.size())
+        return;
+    show.playlists[(size_t) index].fadeInSeconds = juce::jlimit (0.0, PlayShow::kMaxFadeIn, seconds);
     edited();
 }
 
@@ -1697,6 +1802,8 @@ void RKPlayProcessor::setExtraState (const juce::var& extra)
         show.fromVar (extra, formats);
     cursorPlayed.assign (show.playlists.size(), false);
     findEndAtDeadline();
+    findSwitchAtDeadline();
+    startAfterFade = -1;
     if (const auto problems = show.numProblems())
         setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable: the red button lists them");
     attachAnalyses();

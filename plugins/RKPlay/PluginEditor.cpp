@@ -96,13 +96,20 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     loudnessMode.setTooltip ("Loudness matched: every song as loud as the Target. As mastered: each song as the artist made it, "
                              "only its peaks brought to the Peak ceiling (an artist's own mastered tracks)");
     loudnessMode.onChange = [this] { player.setPlaylistAsMastered (viewed, loudnessMode.getSelectedId() == 2); };
+    fadeIn.setTooltip ("Play (from stopped) fades the first song in slowly, an ambient list's start; "
+                       "songs after it crossfade as usual");
+    fadeIn.onChange = [this]
+    {
+        if (const auto id = fadeIn.getSelectedId(); id > 0)
+            player.setPlaylistFadeIn (viewed, (id - 1) * 0.5);
+    };
     setUpSlider (crossfade, 0.0, PlayShow::kMaxCrossfade, 0.5, " s", 50);
     crossfade.setTooltip ("How long songs overlap; 0 plays them back to back, with no gap");
     crossfade.onValueChange = [this] { player.setPlaylistCrossfade (viewed, crossfade.getValue()); };
     setUpSlider (listGain, -12.0, 12.0, 0.5, " dB", 60);
     listGain.setTooltip ("The whole list louder or quieter, on top of loudness matching (a quieter Dinner list)");
     listGain.onValueChange = [this] { player.setPlaylistGain (viewed, listGain.getValue()); };
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &loudnessMode, &crossfade, &listGain })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &loudnessMode, &fadeIn, &crossfade, &listGain })
         addToCanvas (*c);
 
     list.setRowHeight (kRowHeight);
@@ -141,6 +148,24 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     endAtTime.onFocusLost = [this] { applyEndAt(); };
     endAtMode.onChange = [this] { applyEndAt(); };
     for (juce::Component* c : std::initializer_list<juce::Component*> { &endAtOn, &endAtTime, &endAtMode })
+        addToCanvas (*c);
+
+    switchAtOn.setTooltip ("At a time of day, go on to another playlist (the pre-show list fades out, the Intro starts)");
+    switchAtTime.setJustification (juce::Justification::centred);
+    switchAtTime.setInputRestrictions (5, "0123456789:");
+    switchAtTime.setFont (rkfx::Fonts::bold (16.0f));
+    switchAtMode.addItem ("Fade out, start", 1);
+    switchAtMode.addItem ("Crossfade", 2);
+    switchAtMode.addItem ("After the song", 3);
+    switchAtMode.setTooltip ("Fade out, start: the music fades out (the Fade out time, in Settings), then the playlist starts "
+                             "(with its own Fade in). Crossfade: into it at once. After the song: when the song playing then ends");
+    switchAtTo.setTooltip ("The playlist it goes on to");
+    switchAtOn.onClick = [this] { applySwitchAt(); };
+    switchAtTime.onReturnKey = [this] { applySwitchAt(); };
+    switchAtTime.onFocusLost = [this] { applySwitchAt(); };
+    switchAtTo.onChange = [this] { applySwitchAt(); };
+    switchAtMode.onChange = [this] { applySwitchAt(); };
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &switchAtOn, &switchAtTime, &switchAtTo, &switchAtMode })
         addToCanvas (*c);
 
     addToCanvas (preListen);
@@ -282,24 +307,32 @@ void RKPlayEditor::layoutContent()
     // Right: the queue, then End at.
     auto side = r.removeFromRight (kSideWidth);
     r.removeFromRight (kGap);
-    endAtArea = side.removeFromBottom (146);
+    endAtArea = side.removeFromBottom (176);   // End at and Switch at
     side.removeFromBottom (kGap);
     preListenArea = side.removeFromBottom (104);
     side.removeFromBottom (kGap);
     queueArea = side;
     preListen.setBounds (preListenArea);
     {
-        auto q = queueArea.reduced (10, 8).withTrimmedTop (22);
-        clearQueueButton.setBounds (q.removeFromBottom (28));
-        q.removeFromBottom (6);
-        queueList.setBounds (q);
+        // Clear sits in the title row, so the list keeps its rows.
+        clearQueueButton.setBounds (queueArea.reduced (10, 6).removeFromTop (22).removeFromRight (60));
+        queueList.setBounds (queueArea.reduced (10, 8).withTrimmedTop (24));
 
         auto e = endAtArea.reduced (10, 8).withTrimmedTop (22);
         auto row = e.removeFromTop (30);
-        endAtOn.setBounds (row.removeFromLeft (110));
-        endAtTime.setBounds (row.removeFromLeft (90).reduced (0, 2));
-        e.removeFromTop (8);
+        endAtOn.setBounds (row.removeFromLeft (98));
+        endAtTime.setBounds (row.removeFromLeft (70).reduced (0, 2));
+        e.removeFromTop (4);
         endAtMode.setBounds (e.removeFromTop (28));
+        e.removeFromTop (12);
+        row = e.removeFromTop (30);
+        switchAtOn.setBounds (row.removeFromLeft (98));
+        switchAtTime.setBounds (row.removeFromLeft (70).reduced (0, 2));
+        e.removeFromTop (4);
+        row = e.removeFromTop (28);
+        switchAtTo.setBounds (row.removeFromLeft (row.getWidth() / 2 + 6));
+        row.removeFromLeft (6);
+        switchAtMode.setBounds (row);
     }
 
     // Left: tabs, the playlist's settings, its songs, its buttons.
@@ -308,11 +341,13 @@ void RKPlayEditor::layoutContent()
     inOrderButton.setBounds (bar.removeFromLeft (80));
     shuffleButton.setBounds (bar.removeFromLeft (80));
     bar.removeFromLeft (12);
-    atEnd.setBounds (bar.removeFromLeft (170));
-    bar.removeFromLeft (12);
-    stopAfterEach.setBounds (bar.removeFromLeft (140));
-    bar.removeFromLeft (12);
-    loudnessMode.setBounds (bar.removeFromLeft (180));
+    atEnd.setBounds (bar.removeFromLeft (165));
+    bar.removeFromLeft (10);
+    stopAfterEach.setBounds (bar.removeFromLeft (132));
+    bar.removeFromLeft (10);
+    loudnessMode.setBounds (bar.removeFromLeft (155));
+    bar.removeFromLeft (10);
+    fadeIn.setBounds (bar.removeFromLeft (juce::jmin (130, bar.getWidth())));
     // The info line: the list's size and link on the left, its crossfade and gain on the right.
     infoArea = r.removeFromTop (kInfoHeight);
     auto sliders = infoArea.reduced (0, 4);
@@ -354,7 +389,7 @@ void RKPlayEditor::layoutContent()
 void RKPlayEditor::paintContent (juce::Graphics& g)
 {
     drawSection (g, queueArea, "Queue");
-    drawSection (g, endAtArea, "End at");
+    drawSection (g, endAtArea, "Times");
 
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (13.0f));
@@ -387,8 +422,15 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
     {
         g.setColour (accent());
         g.setFont (rkfx::Fonts::bold (15.0f));
-        g.drawText ("The music ends in " + timeText (left), endAtMode.getBounds().translated (0, 30).withHeight (22),
-                    juce::Justification::centredLeft);
+        g.drawText ("in " + timeText (left), endAtTime.getBounds().withX (endAtTime.getRight() + 8).withRight (endAtMode.getRight()),
+                    juce::Justification::centredRight);
+    }
+    if (const auto left = player.getSwitchAtRemaining(); left >= 0.0)
+    {
+        g.setColour (accent());
+        g.setFont (rkfx::Fonts::bold (15.0f));
+        g.drawText ("in " + timeText (left), switchAtTime.getBounds().withX (switchAtTime.getRight() + 8).withRight (switchAtMode.getRight()),
+                    juce::Justification::centredRight);
     }
 
     // An empty playlist says how to fill it; a drag over the window lights it up.
@@ -1222,12 +1264,26 @@ void RKPlayEditor::PreListen::mouseDown (const juce::MouseEvent& e)
 //==============================================================================
 // End at
 
-void RKPlayEditor::applyEndAt()
+int RKPlayEditor::clockMinutes (const juce::String& text)
 {
-    const auto parts = juce::StringArray::fromTokens (endAtTime.getText(), ":", {});
+    const auto parts = juce::StringArray::fromTokens (text, ":", {});
     const auto hours = juce::jlimit (0, 23, parts[0].getIntValue());
     const auto minutes = juce::jlimit (0, 59, parts.size() > 1 ? parts[1].getIntValue() : 0);
-    player.setEndAt (endAtOn.getToggleState(), hours * 60 + minutes, endAtMode.getSelectedId() == 2);
+    return hours * 60 + minutes;
+}
+
+void RKPlayEditor::applyEndAt()
+{
+    player.setEndAt (endAtOn.getToggleState(), clockMinutes (endAtTime.getText()), endAtMode.getSelectedId() == 2);
+    refresh();
+}
+
+void RKPlayEditor::applySwitchAt()
+{
+    const auto mode = switchAtMode.getSelectedId();
+    player.setSwitchAt (switchAtOn.getToggleState(), clockMinutes (switchAtTime.getText()), juce::jmax (0, switchAtTo.getSelectedId() - 1),
+                        mode == 2 ? PlayShow::SwitchAt::How::crossfade : mode == 3 ? PlayShow::SwitchAt::How::afterSong
+                                                                       : PlayShow::SwitchAt::How::fadeThenStart);
     refresh();
 }
 
@@ -1826,6 +1882,19 @@ void RKPlayEditor::refresh()
                          juce::dontSendNotification);
     stopAfterEach.setToggleState (p.stopAfterEach, juce::dontSendNotification);
     loudnessMode.setSelectedId (p.asMastered ? 2 : 1, juce::dontSendNotification);
+    // Fade in: id = half-seconds + 1 (1: none); a value not in the list (a show file) gets its own entry.
+    fadeIn.clear (juce::dontSendNotification);
+    fadeIn.addItem ("No fade-in", 1);
+    const auto fadeInId = 1 + (int) std::lround (p.fadeInSeconds * 2.0);
+    bool listed = fadeInId == 1;
+    for (const auto seconds : { 2, 4, 8, 15, 30 })
+    {
+        fadeIn.addItem ("Fade in " + juce::String (seconds) + " s", 1 + seconds * 2);
+        listed = listed || fadeInId == 1 + seconds * 2;
+    }
+    if (! listed)
+        fadeIn.addItem ("Fade in " + juce::String (p.fadeInSeconds, 1) + " s", fadeInId);
+    fadeIn.setSelectedId (fadeInId, juce::dontSendNotification);
     // As mastered: its gain only turns it down (the peaks are at the ceiling already).
     listGain.setRange (-12.0, p.asMastered ? 0.0 : 12.0, 0.5);
     listGain.setTooltip (p.asMastered ? "The whole list quieter (as mastered, its peaks are at the ceiling already)"
@@ -1840,6 +1909,17 @@ void RKPlayEditor::refresh()
                            juce::dontSendNotification);
     endAtOn.setToggleState (show.endAt.on, juce::dontSendNotification);
     endAtMode.setSelectedId (show.endAt.atSongEnd ? 2 : 1, juce::dontSendNotification);
+
+    if (! switchAtTime.hasKeyboardFocus (true))
+        switchAtTime.setText (juce::String (show.switchAt.minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (show.switchAt.minutes % 60).paddedLeft ('0', 2),
+                              juce::dontSendNotification);
+    switchAtOn.setToggleState (show.switchAt.on, juce::dontSendNotification);
+    switchAtTo.clear (juce::dontSendNotification);
+    for (int i = 0; i < (int) show.playlists.size(); ++i)
+        switchAtTo.addItem ("To " + show.playlists[(size_t) i].name, i + 1);
+    switchAtTo.setSelectedId (show.switchAt.to + 1, juce::dontSendNotification);
+    switchAtMode.setSelectedId (show.switchAt.how == PlayShow::SwitchAt::How::crossfade ? 2
+                                : show.switchAt.how == PlayShow::SwitchAt::How::afterSong ? 3 : 1, juce::dontSendNotification);
 
     const auto state = player.getState();
     playButton.setButtonText (state == RKPlayProcessor::State::playing ? "Pause" : "Play");
@@ -1876,6 +1956,8 @@ void RKPlayEditor::tick()
     {
         nowPlaying.repaint();
         if (player.getShow().endAt.on)
+            repaint (endAtArea);
+        if (player.getShow().switchAt.on)
             repaint (endAtArea);
     }
     for (int pad = 0; pad < PlayEngine::kPads; ++pad)

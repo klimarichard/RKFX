@@ -1050,6 +1050,117 @@ public:
             expectEquals (sequence (heard), juce::String ("1 0"), "song 1 to its end, then nothing");
         }
 
+        beginTest ("Fade in: Play from stopped fades the first song in; songs after it, and a list without it, start at once");
+        {
+            const auto levelAfter = [] (TestPlayer& p, double seconds)
+            {
+                juce::AudioBuffer<float> buffer (2, kBlock);
+                juce::MidiBuffer midi;
+                for (int b = 0; b < (int) (seconds * kRate) / kBlock; ++b)
+                {
+                    buffer.clear();
+                    p.processBlock (buffer, midi);
+                    p.update();
+                }
+                return buffer.getSample (0, kBlock - 1);
+            };
+            TestPlayer p;
+            p.addFiles (0, songsIn ("fadein", 3, 6.0));
+            p.setCrossfade (0.0);
+            p.setPlaylistFadeIn (0, 2.0);
+            p.play();
+            const auto early = levelAfter (p, 0.5);
+            const auto full = levelAfter (p, 2.5);
+            expectWithinAbsoluteError (full, 0.01f, 0.0005f, "in by the fade's end");
+            expect (early > 0.0f && early < 0.75f * full, "rising at 0.5 s of 2 s: " + juce::String (early));
+            p.next();
+            expectWithinAbsoluteError (levelAfter (p, 0.1), 0.02f, 0.0005f, "Next: no fade-in");
+
+            p.stop();
+            levelAfter (p, 0.2);
+            p.setPlaylistFadeIn (0, 0.0);
+            p.jumpTo (0, 0);
+            expectWithinAbsoluteError (levelAfter (p, 0.05), 0.01f, 0.0005f, "no fade-in: at once");
+
+            p.setPlaylistFadeIn (0, 8.0);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectWithinAbsoluteError (q.getShow().playlists[0].fadeInSeconds, 8.0, 1.0e-9, "kept by the show");
+        }
+
+        beginTest ("Switch at: at the time, fade out then start the other list, crossfade into it, or after the song");
+        {
+            auto now = juce::Time (2026, 11, 3, 19, 9, 59, 0, true);
+            TestPlayer p;
+            p.setClockForTesting ([&now] { return now; });
+            p.addFiles (0, songsIn ("switchat", 3, 5.0));
+            const auto intro = p.addPlaylist ("Intro");
+            p.addFiles (intro, songsIn ("switchat/b", 2, 5.0, 10));
+            p.setCrossfade (0.0);
+            p.setFadeOut (0.5);
+            p.setSwitchAt (true, 19 * 60 + 10, intro, PlayShow::SwitchAt::How::fadeThenStart);
+            expectWithinAbsoluteError (p.getSwitchAtRemaining(), 1.0, 0.01);
+            p.play();
+            p.runFor (0.3);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (0.1);
+            expect (p.getState() == RKPlayProcessor::State::stopped, "fading out");
+            expect (! p.getShow().switchAt.on, "once");
+            p.runFor (0.3);
+            expect (p.getState() == RKPlayProcessor::State::stopped, "waits for the fade");
+            now = now + juce::RelativeTime::seconds (0.6);
+            const auto heard = p.runFor (0.5);
+            expect (p.getState() == RKPlayProcessor::State::playing && p.getCurrent().playlist == intro && p.getCurrent().index == 0,
+                    "then the Intro from its first song");
+            expectEquals (sequence (heard).getLastCharacters (2), juce::String ("11"), "its first song heard");
+
+            // Stop during the fade: it doesn't start.
+            now = juce::Time (2026, 11, 3, 19, 9, 59, 0, true);
+            p.jumpTo (0, 0);
+            p.setSwitchAt (true, 19 * 60 + 10, intro, PlayShow::SwitchAt::How::fadeThenStart);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (0.1);
+            p.stop();
+            now = now + juce::RelativeTime::seconds (1.0);
+            p.runFor (0.3);
+            expect (p.getState() == RKPlayProcessor::State::stopped, "Stop called it off");
+
+            now = juce::Time (2026, 11, 3, 19, 9, 59, 0, true);
+            p.jumpTo (0, 0);
+            p.setSwitchAt (true, 19 * 60 + 10, intro, PlayShow::SwitchAt::How::crossfade);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (0.2);
+            expect (p.getState() == RKPlayProcessor::State::playing && p.getCurrent().playlist == intro, "crossfade: at once");
+
+            now = juce::Time (2026, 11, 3, 19, 9, 59, 0, true);
+            p.jumpTo (0, 0);
+            p.setSwitchAt (true, 19 * 60 + 10, intro, PlayShow::SwitchAt::How::afterSong);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (0.2);
+            expectEquals (p.getCurrent().playlist, 0, "after the song: this one plays on");
+            expectEquals (p.getPendingSwitch(), intro);
+
+            now = juce::Time (2026, 11, 3, 19, 9, 59, 0, true);
+            p.stop();
+            p.switchPlaylist (0, true);
+            p.setSwitchAt (true, 19 * 60 + 10, intro, PlayShow::SwitchAt::How::fadeThenStart);
+            now = now + juce::RelativeTime::seconds (2.0);
+            p.runFor (0.2);
+            expect (p.getState() == RKPlayProcessor::State::stopped && p.getShow().active == intro, "stopped: Play starts it");
+
+            p.setSwitchAt (true, 7 * 60 + 5, intro, PlayShow::SwitchAt::How::crossfade);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            const auto& s = q.getShow().switchAt;
+            expect (s.on && s.minutes == 7 * 60 + 5 && s.to == intro && s.how == PlayShow::SwitchAt::How::crossfade, "kept by the show");
+            q.removePlaylist (intro);
+            expect (! q.getShow().switchAt.on, "its playlist removed: off");
+        }
+
         beginTest (".m3u8: a linked playlist reads it (relative paths, comments), and exports it back");
         {
             const auto files = songsIn ("m3u/songs", 3);
@@ -1388,6 +1499,55 @@ public:
             expect (find (changed, "/rkplay/playlist/1/name") == nullptr, "unchanged names aren't sent again");
             rig.handleOsc (juce::OSCMessage ("/rkplay/hello"));
             expect (rig.takeFeedback (false).size() == all.size(), "hello: everything again");
+        }
+
+        beginTest ("OSC song list: a page of the playing list, select a song, play it next or now; the queue, the level in dB");
+        {
+            TestPlayer p;
+            p.setStandaloneForTesting (rigFolder ("songs"));
+            auto& rig = *p.getRig();
+            p.addFiles (0, songsIn ("songs", 25, 5.0));
+            const auto value = [&rig] (const juce::String& address) -> juce::String
+            {
+                for (const auto& m : rig.takeFeedback (true))
+                    if (m.getAddressPattern().toString() == "/rkplay/" + address)
+                        return m[0].isString() ? m[0].getString() : juce::String (m[0].getFloat32());
+                return "(none)";
+            };
+            expectEquals (value ("songs/page"), juce::String ("1-10 of 25"));
+            expectEquals (value ("song/1/name"), juce::String ("Song 01"));
+            expectEquals (value ("song/1/time"), juce::String ("0:05"));
+            expectEquals (value ("song/11/name"), juce::String ("(none)"), "10 rows");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/songs/down", 1.0f));
+            expectEquals (value ("songs/page"), juce::String ("11-20 of 25"));
+            rig.handleOsc (juce::OSCMessage ("/rkplay/songs/down", 1.0f));
+            rig.handleOsc (juce::OSCMessage ("/rkplay/songs/down", 1.0f));
+            expectEquals (value ("songs/page"), juce::String ("21-25 of 25"), "the last page");
+            expectEquals (value ("song/6/name"), juce::String());
+            rig.handleOsc (juce::OSCMessage ("/rkplay/songs/up", 1.0f));
+            rig.handleOsc (juce::OSCMessage ("/rkplay/song/3", 1.0f));
+            expectEquals (rig.getSelected(), 12);
+            expectEquals (value ("song/3"), juce::String ("1"), "the selected row lights");
+            expectEquals (value ("selected"), juce::String ("Song 13"));
+
+            rig.handleOsc (juce::OSCMessage ("/rkplay/selected/next", 1.0f));
+            expect (p.getQueue().size() == 1 && p.getQueue().front().index == 12, "Play next: the queue");
+            expectEquals (value ("queue/1"), juce::String ("Song 13"));
+            expectEquals (value ("queue/count"), juce::String ("1 request"));
+            p.clearQueue();
+            rig.handleOsc (juce::OSCMessage ("/rkplay/selected/now", 1.0f));
+            p.runFor (0.1);
+            expect (p.getState() == RKPlayProcessor::State::playing && p.getCurrent().index == 12, "Play now");
+            expect (value ("song/3/name").endsWith ("Song 13") && value ("song/3/name") != "Song 13", "the playing song is marked");
+
+            rig.handleOsc (juce::OSCMessage ("/rkplay/songs/rows", 20.0f));
+            expectEquals (value ("songs/page"), juce::String ("1-20 of 25"), "a tablet's 20 rows");
+            rig.handleOsc (juce::OSCMessage ("/rkplay/level/db", -6.0f));
+            expectEquals (value ("level/db"), juce::String ("-6.0 dB"));
+            p.removeSong (0, 0);
+            expectEquals (rig.getSelected(), 12);
+            value ("selected");
+            expectEquals (rig.getSelected(), -1, "the list changed: nothing selected");
         }
 
         beginTest ("MIDI: a learned footswitch plays, program changes switch playlists");

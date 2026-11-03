@@ -162,6 +162,56 @@ void PlayRig::handleOsc (const juce::OSCMessage& m)
     if (command == "stop" && pressed)             { player.stop(); return; }
     if (command == "panic" && pressed)            { player.panic(); return; }
 
+    if (command == "song")
+    {
+        // /rkplay/song/3: a row of the list, selected (it plays with selected/next or /now).
+        if (! pressed || parts.size() < 2)
+            return;
+        const auto index = listTop + parts[1].getIntValue() - 1;
+        const auto& songs = player.getShow().current().songs;
+        if (parts[1].getIntValue() >= 1 && index < (int) songs.size())
+        {
+            selected = index;
+            selectedFile = songs[(size_t) index].file;
+        }
+        return;
+    }
+    if (command == "songs")
+    {
+        // /rkplay/songs/up, /down, /playing (the page with the playing song), /rows n
+        const auto what = parts[1];
+        if (what == "rows")
+        {
+            rows = juce::jlimit (1, kMaxRows, (int) number (m, 0, (float) kDefaultRows));
+            sent.clear();
+            showPage (listTop);
+            return;
+        }
+        if (! pressed)
+            return;
+        if (what == "up" || what == "down")
+        {
+            showPage (listTop + (what == "up" ? -rows : rows));
+            scrolledAt = juce::Time::getMillisecondCounterHiRes() * 0.001;
+        }
+        else if (what == "playing")
+        {
+            scrolledAt = -1.0e9;
+            followedIndex = -1;   // the feedback moves the page to it
+        }
+        return;
+    }
+    if (command == "selected")
+    {
+        // /rkplay/selected/next (the queue), /now (a one-off now), /jump (the playlist goes on from it)
+        if (! pressed || ! selectedIsValid())
+            return;
+        const auto playlist = player.getShow().active;
+        if (parts[1] == "next")      player.queueNext (playlist, selected);
+        else if (parts[1] == "now")  player.playNow (playlist, selected);
+        else if (parts[1] == "jump") player.jumpTo (playlist, selected);
+        return;
+    }
     if (command == "duck")
     {
         // A toggle button sends 1 and 0; no argument toggles.
@@ -210,6 +260,19 @@ void PlayRig::handleOsc (const juce::OSCMessage& m)
     }
 }
 
+void PlayRig::showPage (int top)
+{
+    const auto count = (int) player.getShow().current().songs.size();
+    listTop = juce::jlimit (0, juce::jmax (0, count - 1) / rows * rows, juce::jmax (0, top) / rows * rows);
+}
+
+bool PlayRig::selectedIsValid() const
+{
+    const auto& songs = player.getShow().current().songs;
+    return listPlaylist == player.getShow().active && selected >= 0 && selected < (int) songs.size()
+           && songs[(size_t) selected].file == selectedFile;
+}
+
 std::vector<juce::OSCMessage> PlayRig::takeFeedback (bool everything)
 {
     // What a TouchOSC layout shows: buttons light on their own addresses, labels get text.
@@ -221,7 +284,10 @@ std::vector<juce::OSCMessage> PlayRig::takeFeedback (bool everything)
     const auto nextItem = player.peekNext();
     const auto& song = ! stopped ? item.song : nextItem.song;
     const auto position = stopped ? 0.0 : player.getPositionSeconds();
-    const auto length = song.lengthSeconds;
+    // An end set by hand: the time left to it (as the window shows it).
+    const auto span = show.spanOf (song);
+    const auto endsAt = song.hasEnd() ? span.end : song.lengthSeconds;
+    const auto length = stopped && song.isTrimmed() ? span.end - span.start : endsAt;
 
     now["play"] = state == RKPlayProcessor::State::playing ? 1.0f : 0.0f;
     now["pause"] = state == RKPlayProcessor::State::paused ? 1.0f : 0.0f;
@@ -229,8 +295,8 @@ std::vector<juce::OSCMessage> PlayRig::takeFeedback (bool everything)
     now["title"] = song.title;
     now["artist"] = song.artist;
     now["elapsed"] = clock (position);
-    now["remaining"] = stopped ? clock (length) : "-" + clock (juce::jmax (0.0, length - position));
-    now["progress"] = length > 0.0 ? (float) juce::jlimit (0.0, 1.0, position / length) : 0.0f;
+    now["remaining"] = stopped ? clock (length) : "-" + clock (juce::jmax (0.0, endsAt - position));
+    now["progress"] = ! stopped && endsAt > 0.0 ? (float) juce::jlimit (0.0, 1.0, position / endsAt) : 0.0f;
     now["next"] = ! stopped && nextItem.isValid() ? nextItem.song.displayName() : juce::String();
     now["playlist/name"] = show.current().name;
     for (int i = 0; i < PlayShow::kMaxPlaylists; ++i)
@@ -250,7 +316,61 @@ std::vector<juce::OSCMessage> PlayRig::takeFeedback (bool everything)
     now["endat"] = left >= 0.0 ? juce::String (show.endAt.minutes / 60).paddedLeft ('0', 2) + ":" + juce::String (show.endAt.minutes % 60).paddedLeft ('0', 2)
                                      + "  in " + clock (left)
                                : juce::String();
-    now["level"] = player.findParam ("level")->getValue();
+    auto* levelParam = player.findParam ("level");
+    now["level"] = levelParam->getValue();
+    const auto levelDb = levelParam->convertFrom0to1 (levelParam->getValue());
+    now["level/db"] = levelDb <= -59.95f ? juce::String ("Off") : juce::String (levelDb, 1) + " dB";
+
+    // The song list: the playing playlist, a page of it.
+    const auto& list = show.current();
+    const auto count = (int) list.songs.size();
+    if (listPlaylist != show.active)
+    {
+        listPlaylist = show.active;
+        selected = -1;
+        followedIndex = -1;
+        scrolledAt = -1.0e9;
+        showPage (0);
+    }
+    showPage (listTop);   // the list may have shrunk
+    const auto playingIndex = ! stopped && item.playlist == show.active ? item.index : -1;   // a request from it too
+    const auto followIndex = playingIndex >= 0 && ! item.queued ? playingIndex : list.cursor;
+    if (followIndex != followedIndex && juce::Time::getMillisecondCounterHiRes() * 0.001 - scrolledAt > kFollowAfterSeconds)
+    {
+        followedIndex = followIndex;
+        showPage (followIndex);
+    }
+    if (! selectedIsValid())
+        selected = -1;
+    now["songs/page"] = count == 0 ? juce::String ("No songs")
+                                   : juce::String (listTop + 1) + "-" + juce::String (juce::jmin (count, listTop + rows)) + " of " + juce::String (count);
+    for (int row = 0; row < rows; ++row)
+    {
+        const auto index = listTop + row;
+        const auto key = "song/" + juce::String (row + 1);
+        if (index < count)
+        {
+            const auto& s = list.songs[(size_t) index];
+            const auto sSpan = show.spanOf (s);
+            now[key + "/name"] = (index == playingIndex ? juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xb6 ")) : juce::String())
+                                 + (s.isPlayable() ? juce::String() : juce::String ("(missing) ")) + s.displayName();
+            now[key + "/time"] = clock (s.isTrimmed() ? sSpan.end - sSpan.start : s.lengthSeconds);
+        }
+        else
+        {
+            now[key + "/name"] = juce::String();
+            now[key + "/time"] = juce::String();
+        }
+        now[key] = index == selected ? 1.0f : 0.0f;
+    }
+    now["selected"] = selected >= 0 ? list.songs[(size_t) selected].displayName() : juce::String ("Tap a song");
+
+    // The queue: the requests waiting.
+    const auto& queue = player.getQueue();
+    for (int row = 0; row < kQueueRows; ++row)
+        now["queue/" + juce::String (row + 1)] = row < (int) queue.size() ? queue[(size_t) row].song.displayName() : juce::String();
+    now["queue/count"] = queue.empty() ? juce::String ("No requests")
+                                       : juce::String ((int) queue.size()) + ((int) queue.size() == 1 ? " request" : " requests");
 
     std::vector<juce::OSCMessage> messages;
     for (const auto& [key, value] : now)

@@ -170,3 +170,22 @@ void RKMixEditor::showSectionMenu (int channel, int chain, int section, juce::Co
             safe->handleCopyPaste (result, channel, chain, section, kFirst);
     });
 }
+
+std::vector<InsertRack::Slot> RKMixEditor::insertPasteTargets (InsertRack::Slot slot) const
+{
+    std::vector<InsertRack::Slot> targets { slot };
+    const auto isChannel = slot.strip == InsertRack::Strip::channel, isBus = slot.strip == InsertRack::Strip::bus;
+    const auto id = isChannel ? slot.index : isBus ? RKMixProcessor::kUserPageBus + slot.index : -1;
+    if (id < 0 || ! isGanged (id))
+        return targets;
+    for (const auto other : gang)
+    {
+        if (other == id)
+            continue;
+        const InsertRack::Slot t { other >= RKMixProcessor::kUserPageBus ? InsertRack::Strip::bus : InsertRack::Strip::channel,
+                                   other >= RKMixProcessor::kUserPageBus ? other - RKMixProcessor::kUserPageBus : other, slot.slot };
+        if (slot.slot < InsertRack::numSlots (t.strip))
+            targets.push_back (t);
+    }
+    return targets;
+}

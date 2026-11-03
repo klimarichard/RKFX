@@ -52,7 +52,7 @@ Each strip shows its name and colour, the H G E C lights (high-pass, gate, EQ, c
 
 ### Inserts
 
-Each channel has **2 insert slots** (after the compressor), each bus and the main **4**, the mono sum **2**. Click an empty slot (**+**) to choose any RKFX effect, by family. Click a filled slot to open the effect's own window over the console, with **On**, **Remove** and **Close**; right-click a slot to switch it on or off, replace or remove it. An effect that is off costs nothing. On a mono channel or mono bus the effect runs in mono.
+Each channel has **2 insert slots** (after the compressor), each bus and the main **4**, the mono sum **2**. Click an empty slot (**+**) to choose any RKFX effect, by family. Click a filled slot to open the effect's own window over the console, with **On**, **Remove** and **Close**; right-click a slot to switch it on or off, replace or remove it. **Copy an insert:** right-click a filled slot and choose **Copy insert**, then right-click any slot (empty or filled) on a channel, a bus, the main or the mono sum and choose **Paste**. The copy has the same settings and is on or off like the original; on a stereo strip it runs in stereo. A paste on a ganged strip goes into the same slot of every ganged strip. An effect that is off costs nothing. On a mono channel or mono bus the effect runs in mono.
 
 ## Sends and direct outs
 

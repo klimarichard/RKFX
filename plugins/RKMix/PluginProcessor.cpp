@@ -1017,6 +1017,8 @@ bool RKMixProcessor::isChainCopy (const juce::var& copy)   { return copy["kind"]
 
 juce::String RKMixProcessor::describeCopy (const juce::var& copy)
 {
+    if (isInsertCopy (copy))
+        return copy["plugin"].toString() + " from " + copy["from"].toString();
     if (! isChannelCopy (copy) && ! isChainCopy (copy))
         return {};
     const auto section = sectionFromKey (copy["section"].toString());
@@ -1057,6 +1059,43 @@ void RKMixProcessor::pasteChain (int chain, const juce::var& copy)
         // The mono sum has 2 slots, the others 4: what doesn't fit is left out by the rack.
         rack.stripFromVar (strip, index, copy["inserts"], channelsOf (strip, index));
     }
+}
+
+juce::var RKMixProcessor::copyInsert (InsertRack::Slot slot) const
+{
+    auto* plugin = rack.get (slot);
+    if (plugin == nullptr)
+        return {};
+    juce::String from;
+    switch (slot.strip)
+    {
+        case InsertRack::Strip::channel: from = getChannelName (slot.index).isNotEmpty() ? getChannelName (slot.index) : "Ch " + mix::num (slot.index); break;
+        case InsertRack::Strip::bus:     from = getBusName (slot.index).isNotEmpty() ? getBusName (slot.index) : "Bus " + mix::num (slot.index); break;
+        case InsertRack::Strip::main:    from = "Main"; break;
+        case InsertRack::Strip::mono:    from = "Mono"; break;
+    }
+    auto* root = new juce::DynamicObject();
+    root->setProperty ("kind", "insert");
+    root->setProperty ("plugin", plugin->getName());
+    root->setProperty ("from", from);
+    root->setProperty ("on", rack.isOn (slot));
+    root->setProperty ("preset", plugin->getPresetVar (false));
+    return juce::var (root);
+}
+
+bool RKMixProcessor::isInsertCopy (const juce::var& copy) { return copy["kind"].toString() == "insert"; }
+
+bool RKMixProcessor::pasteInsert (InsertRack::Slot slot, const juce::var& copy)
+{
+    if (! isInsertCopy (copy) || ! juce::isPositiveAndBelow (slot.slot, InsertRack::numSlots (slot.strip)))
+        return false;
+    const auto& preset = copy["preset"];
+    auto* plugin = rack.insert (slot, preset["plugin"].toString(), channelsOf (slot.strip, slot.index));
+    if (plugin == nullptr)
+        return false;
+    plugin->loadPresetVar (preset, false);
+    rack.setOn (slot, (bool) copy.getProperty ("on", true));
+    return true;
 }
 
 void RKMixProcessor::resetChannelStrip (int ch)

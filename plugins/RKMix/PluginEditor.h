@@ -583,6 +583,8 @@ private:
     juce::var clipboard;
     /** The channels a paste on channel @p ch goes to: the ganged channels when it's one of them. */
     juce::Array<int> pasteTargets (int ch) const;
+    /** The slots a copied insert pastes into: @p slot, and the same slot of the other ganged strips that have it. */
+    std::vector<InsertRack::Slot> insertPasteTargets (InsertRack::Slot) const;
     void addCopyPasteItems (juce::PopupMenu&, int channel, int chain, int section, int firstId) const;
     bool handleCopyPaste (int result, int channel, int chain, int section, int firstId);
     void showSectionMenu (int channel, int chain, int section, juce::Component& target, juce::Point<int> where);

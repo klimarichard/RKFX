@@ -1365,7 +1365,17 @@ void RKMixEditor::addInsertTypes (juce::PopupMenu& menu, int firstId) const
 
 void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target, bool full)
 {
-    enum { openItem = 1, toggleItem, removeItem, firstType = 100 };
+    enum { openItem = 1, toggleItem, removeItem, copyItem, pasteItem, firstType = 100 };
+
+    // Paste a copied insert here, and into the same slot of the other ganged strips.
+    const auto targets = insertPasteTargets (slot);
+    const auto pasteText = [&]
+    {
+        auto text = "Paste " + RKMixProcessor::describeCopy (clipboard);
+        if (targets.size() > 1)
+            text << " to " << targets.size() << " ganged strips";
+        return text;
+    };
 
     juce::PopupMenu menu;
     if (full)
@@ -1376,21 +1386,38 @@ void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target
         addInsertTypes (replace, firstType);
         menu.addSubMenu ("Replace with", replace);
         menu.addSeparator();
+        menu.addItem (copyItem, "Copy insert (with its settings)");
+        if (RKMixProcessor::isInsertCopy (clipboard))
+            menu.addItem (pasteItem, pasteText());
+        menu.addSeparator();
         menu.addItem (removeItem, "Remove");
     }
     else
     {
+        if (RKMixProcessor::isInsertCopy (clipboard))
+        {
+            menu.addItem (pasteItem, pasteText());
+            menu.addSeparator();
+        }
         addInsertTypes (menu, firstType);
     }
 
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, slot] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, slot, targets] (int result)
     {
         if (safe == nullptr || result == 0)
             return;
 
         auto& rack = safe->mixer.getRack();
-        if (result == openItem)
+        if (result == copyItem)
+            safe->clipboard = safe->mixer.copyInsert (slot);
+        else if (result == pasteItem)
+        {
+            const auto copy = safe->clipboard;   // kept, to paste again elsewhere
+            for (const auto& t : targets)
+                safe->mixer.pasteInsert (t, copy);
+        }
+        else if (result == openItem)
             safe->openInsert (slot);
         else if (result == toggleItem)
             rack.setOn (slot, ! rack.isOn (slot));

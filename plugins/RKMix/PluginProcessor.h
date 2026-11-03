@@ -169,8 +169,14 @@ public:
     static bool isChainCopy (const juce::var& copy);
     void pasteChannel (int channel, const juce::var& copy);
     void pasteChain (int chain, const juce::var& copy);
-    /** "Gate from Lead Vocal". */
+    /** "Gate from Lead Vocal", "RKVerb from Reverb". */
     static juce::String describeCopy (const juce::var& copy);
+
+    /** One insert with its settings and on/off (nothing when the slot is empty). */
+    juce::var copyInsert (InsertRack::Slot) const;
+    static bool isInsertCopy (const juce::var& copy);
+    /** Puts a copied insert in @p slot of any strip (replacing what was there), mono or stereo as the strip. */
+    bool pasteInsert (InsertRack::Slot, const juce::var& copy);
 
     /** The loudest sample since the last call (message thread, for the meters). */
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }

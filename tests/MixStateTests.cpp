@@ -1113,6 +1113,35 @@ public:
             dir.deleteRecursively();
         }
 
+        beginTest ("Copy an insert: its settings and on/off, from a channel to a stereo bus, a channel, the main");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            auto& rack = p.getRack();
+            auto* chorus = rack.insert ({ Strip::channel, 0, 0 }, "RKChorus", 1);
+            setParam (*chorus->findParam ("depth"), 77.0f);
+            rack.setOn ({ Strip::channel, 0, 0 }, false);
+            p.setChannelName (0, "Guitar");
+            expect (p.copyInsert ({ Strip::channel, 1, 0 }).isVoid(), "an empty slot copies nothing");
+
+            const auto copy = p.copyInsert ({ Strip::channel, 0, 0 });
+            expect (RKMixProcessor::isInsertCopy (copy) && ! RKMixProcessor::isChannelCopy (copy));
+            expectEquals (RKMixProcessor::describeCopy (copy), juce::String ("RKChorus from Guitar"));
+
+            for (const auto slot : { InsertRack::Slot { Strip::bus, 3, 2 }, InsertRack::Slot { Strip::channel, 7, 1 },
+                                     InsertRack::Slot { Strip::main, 0, 3 } })
+            {
+                expect (p.pasteInsert (slot, copy));
+                auto* pasted = rack.get (slot);
+                expect (pasted != nullptr && pasted != chorus && pasted->getName() == "RKChorus");
+                expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (pasted->findParam ("depth")), 77.0f, 0.01f, "its settings");
+                expect (! rack.isOn (slot), "and off, as the copied one");
+            }
+            expectEquals (p.channelsOf (Strip::bus, 3), 2, "a stereo bus: the copy runs in stereo");
+            expect (! p.pasteInsert ({ Strip::mono, 0, 3 }, copy), "the mono sum has 2 slots");
+            expect (! p.pasteInsert ({ Strip::bus, 0, 0 }, p.copyChannel (0, RKMixProcessor::Section::gate)), "not a strip section");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
         {
             RKMixProcessor p;

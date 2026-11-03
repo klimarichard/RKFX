@@ -106,6 +106,8 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     list.setColour (juce::ListBox::outlineColourId, rkfx::Palette::outline);
     list.setOutlineThickness (1);
     addToCanvas (list);
+    addToCanvas (dropLine);
+    dropLine.setVisible (false);
 
     addFilesButton.onClick = [this] { chooseFiles (false); };
     addFolderButton.onClick = [this] { chooseFiles (true); };
@@ -379,6 +381,102 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
         g.setColour (accent());
         g.drawRoundedRectangle (listArea.toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
     }
+    if (queueHighlight)
+    {
+        g.setColour (accent());
+        g.drawRoundedRectangle (queueArea.toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
+    }
+}
+
+//==============================================================================
+// Dragging songs: a new place in the list, or onto the queue
+
+juce::var RKPlayEditor::getDragSourceDescription (const juce::SparseSet<int>& rows)
+{
+    if (rows.isEmpty())
+        return {};
+    return "rkplay-song:" + juce::String (viewed) + ":" + juce::String (rows[0]);
+}
+
+bool RKPlayEditor::isInterestedInDragSource (const SourceDetails& details)
+{
+    return details.description.toString().startsWith ("rkplay-song:");
+}
+
+bool RKPlayEditor::overQueue (juce::Point<int> pos) const
+{
+    const auto* canvas = queueList.getParentComponent();   // the areas are in the canvas's coordinates
+    return canvas != nullptr && queueArea.contains (canvas->getLocalPoint (this, pos));
+}
+
+int RKPlayEditor::dropIndexAt (juce::Point<int> pos) const
+{
+    const auto inList = list.getLocalPoint (this, pos);
+    if (! list.getLocalBounds().contains (inList))
+        return -1;
+    const auto n = (int) viewedList().songs.size();
+    const auto row = list.getRowContainingPosition (inList.x, inList.y);
+    if (row < 0)
+        return n;
+    return inList.y > list.getRowPosition (row, true).getCentreY() ? row + 1 : row;
+}
+
+void RKPlayEditor::itemDragMove (const SourceDetails& details)
+{
+    const auto pos = details.localPosition;
+    const auto queueWas = queueHighlight;
+    queueHighlight = overQueue (pos);
+    if (queueHighlight != queueWas)
+        repaint();
+
+    // Within the list (not a linked one): a line where it goes; near the top or bottom, the list scrolls.
+    const auto index = viewedList().isLinked() ? -1 : dropIndexAt (pos);
+    dropLine.setVisible (index >= 0);
+    if (index < 0)
+        return;
+    if (auto* viewport = list.getViewport())
+    {
+        const auto inViewport = viewport->getLocalPoint (this, pos);
+        viewport->autoScroll (inViewport.x, inViewport.y, kRowHeight, 12);
+    }
+    const auto n = getNumRows();
+    const auto y = index < n ? list.getRowPosition (index, true).getY()
+                             : (n > 0 ? list.getRowPosition (n - 1, true).getBottom() : 0);
+    dropLine.colour = accent();
+    dropLine.setBounds (list.getX() + 4, list.getY() + juce::jlimit (0, list.getHeight() - 2, y - 1), list.getWidth() - 8, 3);
+    dropLine.toFront (false);
+}
+
+void RKPlayEditor::itemDragExit (const SourceDetails&)
+{
+    dropLine.setVisible (false);
+    queueHighlight = false;
+    repaint();
+}
+
+void RKPlayEditor::itemDropped (const SourceDetails& details)
+{
+    dropLine.setVisible (false);
+    queueHighlight = false;
+    const auto parts = juce::StringArray::fromTokens (details.description.toString().fromFirstOccurrenceOf (":", false, false), ":", {});
+    const auto playlist = parts[0].getIntValue(), row = parts[1].getIntValue();
+    const auto pos = details.localPosition;
+    if (overQueue (pos))
+    {
+        player.queueNext (playlist, row);
+    }
+    else if (playlist == viewed && ! viewedList().isLinked())
+    {
+        // Before the row it was dropped on: one less below the row it came from.
+        const auto index = dropIndexAt (pos);
+        if (index >= 0)
+        {
+            const auto to = index > row ? index - 1 : index;
+            player.moveSong (playlist, row, to);
+            list.selectRow (to);
+        }
+    }
+    refresh();
 }
 
 //==============================================================================

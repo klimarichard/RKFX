@@ -26,6 +26,8 @@
     over the lower half. */
 class RKPlayEditor : public rkfx::EditorBase,
                      public juce::FileDragAndDropTarget,
+                     public juce::DragAndDropContainer,
+                     public juce::DragAndDropTarget,
                      private juce::ListBoxModel
 {
 public:
@@ -40,6 +42,12 @@ public:
     void filesDropped (const juce::StringArray&, int x, int y) override;
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHighlight = true; repaint(); }
     void fileDragExit (const juce::StringArray&) override { dropHighlight = false; repaint(); }
+
+    // Songs dragged within the list (a new place) or onto the queue (Play next)
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
     void mouseDown (const juce::MouseEvent&) override;   // right-click a button: its MIDI learn (and Stop: Panic)
     bool keyPressed (const juce::KeyPress&) override;    // the keyboard shortcuts
@@ -172,6 +180,19 @@ private:
     void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
     void listBoxItemClicked (int row, const juce::MouseEvent&) override;
     void deleteKeyPressed (int lastRowSelected) override;
+    juce::var getDragSourceDescription (const juce::SparseSet<int>& rows) override;
+
+    /** Where a song dragged to @p pos (editor coordinates) goes: before this row (n: the end), -1: not the list. */
+    int dropIndexAt (juce::Point<int> pos) const;
+    bool overQueue (juce::Point<int> pos) const;
+    struct DropLine : public juce::Component
+    {
+        DropLine() { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics& g) override { g.fillAll (colour); }
+        juce::Colour colour;
+    };
+    DropLine dropLine;
+    bool queueHighlight = false;
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

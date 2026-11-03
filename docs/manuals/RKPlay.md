@@ -186,6 +186,8 @@ RKPlay can be played from **TouchOSC** (or any OSC app) on a phone or tablet on 
 2. In TouchOSC, set the connection's host to that address, send port 8000, receive port 9000.
 3. Type the phone's address into RKPlay (port 9000) so the phone gets feedback: song names, times, button lights.
 
+**Ready-made layouts** are in `plugins/RKPlay/remote`: **RKPlay iPhone.tosc** (four pages: Play, Songs, Lists, Pads) and **RKPlay iPad.tosc** (landscape, everything on one screen, 20 song rows). Open one in TouchOSC and set its connection as above. On opening, the layout tells RKPlay how many song rows it has and asks for everything; if RKPlay was started later (or restarted), press **Sync**. **Stop** and **Panic** only work after pressing **Unlock**, and lock again after one press, so a stray finger can't stop the music. Tapping a song selects it; **Play next** or **Play now** plays it.
+
 The remote controls playback only, not the show's setup. The commands:
 
 | Address | What it does |

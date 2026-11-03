@@ -199,7 +199,51 @@
       "ch4_send6": -10,
       "ch5_send6": 0,
       "bus1_send6": -8,
-      "bus2_send6": -12
-    }
+      "bus2_send6": -12,
+      "ch1_dca1": true,
+      "ch2_dca1": true,
+      "ch3_dca2": true,
+      "ch4_dca2": true,
+      "ch5_dca2": true,
+      "bus1_dca2": true,
+      "ch3_mgrp1": true,
+      "ch4_mgrp1": true,
+      "ch5_mgrp1": true,
+      "ch7_mgrp1": true,
+      "ch8_mgrp1": true,
+      "ch9_mgrp1": true,
+      "ch1_mgrp2": true,
+      "ch2_mgrp2": true
+    },
+    "dcaNames": [
+      "Vocals",
+      "Band",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    "dcaColours": [
+      1,
+      2,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "muteGroupNames": [
+      "Band",
+      "Vocal mics",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
   }
 }

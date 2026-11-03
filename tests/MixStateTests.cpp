@@ -328,6 +328,10 @@ public:
                     expectEquals (p.getUserPage (0).size(), 6);
                     expectEquals (p.getSettings().choice (mix::busId (2, "panmode")), (int) mix::PanMode::own, "IEM Vocals: own pans");
                     expectWithinAbsoluteError (p.getSettings().value (mix::channelSendPanId (2, 2)), -40.0f, 0.01f, "guitar left");
+                    expectEquals (p.getDcaName (0), juce::String ("Vocals"));
+                    expectEquals (p.getDcaMembers (1).size(), 4, "DCA Band: guitar, bass, keys, the Drums group");
+                    expectEquals (p.getMuteGroupName (0), juce::String ("Band"));
+                    expectEquals (p.getMuteGroupMembers (0).size(), 6, "Mute Band: every instrument channel");
                 }
                 if (preset.name == "Recording Feed")
                     expectEquals (p.getSettings().choice (mix::channelId (15, "direct_out")), 32);

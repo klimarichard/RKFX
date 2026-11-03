@@ -205,7 +205,7 @@ These mixes are built in as **factory presets**: open the preset menu and choose
 | Factory mix | What it sets up |
 | --- | --- |
 | **Duo** | Vocal 1 and 2 (high-pass 100 Hz, compressor -18 dB 3:1), Guitar (high-pass 80 Hz), Keys on 5/6 as a stereo pair; an FX bus "Reverb" (RKVerb at 100%) with sends from all four; the main limiter on |
-| **Band with In-Ears** | Lead and backing vocals, guitar, bass, keys (5/6), kick, snare, overheads (9/10); a "Drums" group, a "Reverb" FX bus, and four stereo in-ear mixes (IEM Vocals, Guitar, Bass, Keys) on Out 3/4 to 9/10, each with its player up front and a little reverb (IEM Vocals has its own pans: guitar left, keys and backing vocal right); User 1 holds the vocals and the in-ear buses |
+| **Band with In-Ears** | Lead and backing vocals, guitar, bass, keys (5/6), kick, snare, overheads (9/10); a "Drums" group, a "Reverb" FX bus, and four stereo in-ear mixes (IEM Vocals, Guitar, Bass, Keys) on Out 3/4 to 9/10, each with its player up front and a little reverb (IEM Vocals has its own pans: guitar left, keys and backing vocal right); User 1 holds the vocals and the in-ear buses; DCAs Vocals and Band (guitar, bass, keys, the Drums group), mute groups Band (every instrument) and Vocal mics |
 | **Recording Feed** | Inputs 1-16 straight to Out 17-32 (direct outs at Input) for a multitrack recorder, alongside the main on Out 1/2 |
 | **Mono Fill** | The mono sum on Out 3 for a front fill or a centre speaker (high-pass 80 Hz, limiter), the main with a 30 Hz high-pass and limiter |
 

@@ -386,6 +386,9 @@ int BoardProcessor::addPedal (const juce::String& typeName, Section section, int
     if (pedal == nullptr)
         return 0;
 
+    // A new pedal starts bypassed, in every scene, so adding it never
+    // changes the sound until it is switched on.
+    pedal->getBypassParameter()->setValue (1.0f);
     attachPedal (id, std::move (pedal));
 
     auto& list = layout[(size_t) section];

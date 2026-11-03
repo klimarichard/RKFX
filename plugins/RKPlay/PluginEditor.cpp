@@ -160,6 +160,17 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     addToCanvas (settings);
     settings.setVisible (false);
 
+    // Show check: a red button while files are missing, opening the list of them.
+    problemsButton.setColour (juce::TextButton::buttonColourId, kProblem.withAlpha (0.85f));
+    problemsButton.setColour (juce::TextButton::buttonOnColourId, kProblem);
+    problemsButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+    problemsButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+    problemsButton.setTooltip ("Songs whose files are missing or unreadable: the list, and what to do");
+    problemsButton.onClick = [this] { showShowCheck (! showCheck.isVisible()); };
+    addToCanvas (problemsButton);
+    addToCanvas (showCheck);
+    showCheck.setVisible (false);
+
     addMouseListener (this, true);
     setWantsKeyboardFocus (true);
     finishSetup();
@@ -257,6 +268,8 @@ void RKPlayEditor::layoutContent()
         buttons[i]->setBounds (transport.removeFromLeft (widths[i]));
         transport.removeFromLeft (kGap);
     }
+    problemsButton.setBounds (transport.removeFromRight (170).withSizeKeepingCentre (170, 40));
+    transport.removeFromRight (kGap);
     messageArea = transport;
     r.removeFromTop (kGap);
     const auto lower = r;
@@ -313,6 +326,7 @@ void RKPlayEditor::layoutContent()
     clearButton.setBounds (listButtons.removeFromRight (90));
 
     settings.setBounds (lower);
+    showCheck.setBounds (lower);
 
     auto g = globalArea();
     level->setBounds (g.removeFromLeft (90));
@@ -1278,20 +1292,7 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     };
     clearFolder.onClick = [this] { owner.player.setMusicFolder ({}); owner.refresh(); };
     relink.setTooltip ("Find missing songs in a folder (by file name, checked by size)");
-    relink.onClick = [this]
-    {
-        owner.chooser = std::make_unique<juce::FileChooser> ("Where the missing songs are now", owner.player.getShow().musicFolder);
-        juce::Component::SafePointer<RKPlayEditor> safe (&owner);
-        owner.chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                                    [safe] (const juce::FileChooser& fc)
-        {
-            if (safe != nullptr && fc.getResult() != juce::File())
-            {
-                safe->player.relink (fc.getResult());
-                safe->refresh();
-            }
-        });
-    };
+    relink.onClick = [this] { owner.chooseRelink(); };
     close.onClick = [this] { owner.showSettings (false); };
 
     showPage.onClick = [this] { setPage (false); };
@@ -1555,8 +1556,154 @@ void RKPlayEditor::Settings::refresh()
     repaint();
 }
 
+void RKPlayEditor::chooseRelink()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Where the missing songs are now", player.getShow().musicFolder);
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe] (const juce::FileChooser& fc)
+    {
+        if (safe != nullptr && fc.getResult() != juce::File())
+        {
+            safe->player.relink (fc.getResult());
+            safe->refresh();
+        }
+    });
+}
+
+void RKPlayEditor::showShowCheck (bool shown)
+{
+    if (shown)
+        showSettings (false);
+    showCheck.setVisible (shown);
+    if (shown)
+    {
+        showCheck.refresh();
+        showCheck.toFront (false);
+    }
+    refresh();
+}
+
+//==============================================================================
+// Show check
+
+RKPlayEditor::ShowCheck::ShowCheck (RKPlayEditor& o) : owner (o)
+{
+    list.setRowHeight (28);
+    list.setColour (juce::ListBox::backgroundColourId, rkfx::Palette::background);
+    list.setColour (juce::ListBox::outlineColourId, rkfx::Palette::outline);
+    list.setOutlineThickness (1);
+    addAndMakeVisible (list);
+    recheck.setTooltip ("Look at the files again (a drive plugged in since the show was opened)");
+    recheck.onClick = [this] { owner.player.recheck(); owner.refresh(); };
+    relink.setTooltip ("Find the missing songs in a folder (by file name, checked by size)");
+    relink.onClick = [this] { owner.chooseRelink(); };
+    remove.setTooltip ("Take them out of their playlists (linked playlists follow their folder or file)");
+    remove.onClick = [this] { owner.player.removeProblemSongs(); owner.refresh(); };
+    close.onClick = [this] { owner.showShowCheck (false); };
+    for (auto* b : { &recheck, &relink, &remove, &close })
+        addAndMakeVisible (*b);
+}
+
+void RKPlayEditor::ShowCheck::refresh()
+{
+    problems.clear();
+    const auto& lists = owner.player.getShow().playlists;
+    for (int p = 0; p < (int) lists.size(); ++p)
+        for (int i = 0; i < (int) lists[(size_t) p].songs.size(); ++i)
+            if (! lists[(size_t) p].songs[(size_t) i].isPlayable())
+                problems.emplace_back (p, i);
+    list.updateContent();
+    list.repaint();
+    list.setVisible (! problems.empty());
+    remove.setEnabled (! problems.empty());
+    recheck.setEnabled (! problems.empty());
+    relink.setEnabled (! problems.empty());
+    repaint();
+}
+
+void RKPlayEditor::ShowCheck::resized()
+{
+    auto r = getLocalBounds().reduced (16, 12).withTrimmedTop (34);
+    auto buttons = r.removeFromBottom (32);
+    close.setBounds (buttons.removeFromRight (100));
+    recheck.setBounds (buttons.removeFromLeft (130));
+    buttons.removeFromLeft (8);
+    relink.setBounds (buttons.removeFromLeft (200));
+    buttons.removeFromLeft (8);
+    remove.setBounds (buttons.removeFromLeft (240));
+    r.removeFromBottom (10);
+    list.setBounds (r);
+}
+
+void RKPlayEditor::ShowCheck::paint (juce::Graphics& g)
+{
+    g.setColour (owner.panelColour());
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
+    g.setColour (rkfx::Palette::outline);
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), rkfx::Style::kPanelRadius, 1.0f);
+    auto title = getLocalBounds().reduced (16, 10).removeFromTop (24);
+    g.setColour (rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (16.0f));
+    g.drawText ("Show check", title, juce::Justification::centredLeft);
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    g.drawText (problems.empty() ? juce::String ("Every song's file is there and readable.")
+                                 : juce::String ((int) problems.size()) + ((int) problems.size() == 1 ? " song is" : " songs are")
+                                       + " skipped when their turn comes. Double-click one to show its folder.",
+                title.withTrimmedLeft (120), juce::Justification::centredLeft);
+    if (problems.empty())
+    {
+        g.setFont (rkfx::Fonts::regular (16.0f));
+        g.drawText ("Nothing to fix", list.getBounds(), juce::Justification::centred);
+    }
+}
+
+void RKPlayEditor::ShowCheck::paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected)
+{
+    if (row < 0 || row >= (int) problems.size())
+        return;
+    const auto& lists = owner.player.getShow().playlists;
+    const auto [p, i] = problems[(size_t) row];
+    if (p >= (int) lists.size() || i >= (int) lists[(size_t) p].songs.size())
+        return;
+    const auto& song = lists[(size_t) p].songs[(size_t) i];
+    if (selected)
+        g.fillAll (rkfx::Palette::knobBody);
+    auto r = juce::Rectangle<int> (0, 0, width, height).reduced (8, 0);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    g.setColour (rkfx::Palette::textDim);
+    g.drawFittedText (lists[(size_t) p].name + "  " + juce::String (i + 1), r.removeFromLeft (130), juce::Justification::centredLeft, 1);
+    g.setColour (kProblem);
+    g.drawText (song.status == PlaySong::Status::missing ? "missing" : "unreadable", r.removeFromRight (90), juce::Justification::centredRight);
+    g.setFont (rkfx::Fonts::regular (14.0f));
+    g.setColour (rkfx::Palette::text);
+    g.drawFittedText (song.displayName(), r.removeFromLeft (r.getWidth() / 2), juce::Justification::centredLeft, 1);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    g.setColour (rkfx::Palette::textDim);
+    g.drawFittedText (song.file.getFullPathName(), r.withTrimmedLeft (10), juce::Justification::centredLeft, 1, 0.8f);
+}
+
+void RKPlayEditor::ShowCheck::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
+{
+    if (row < 0 || row >= (int) problems.size())
+        return;
+    const auto [p, i] = problems[(size_t) row];
+    const auto& lists = owner.player.getShow().playlists;
+    if (p < (int) lists.size() && i < (int) lists[(size_t) p].songs.size())
+    {
+        // The nearest folder that is still there.
+        auto folder = lists[(size_t) p].songs[(size_t) i].file.getParentDirectory();
+        while (! folder.isDirectory() && folder != folder.getParentDirectory())
+            folder = folder.getParentDirectory();
+        folder.revealToUser();
+    }
+}
+
 void RKPlayEditor::showSettings (bool shown)
 {
+    if (shown)
+        showCheck.setVisible (false);
     if (shown && ! settings.isVisible())
         settings.setPage (settings.remote);
     settings.setVisible (shown);
@@ -1696,6 +1843,12 @@ void RKPlayEditor::refresh()
     for (auto& b : padButtons)
         b->repaint();
     settings.refresh();
+    const auto problems = show.numProblems();
+    problemsButton.setVisible (problems > 0);
+    problemsButton.setButtonText (juce::String (problems) + (problems == 1 ? " file missing" : " files missing"));
+    problemsButton.setToggleState (showCheck.isVisible(), juce::dontSendNotification);
+    if (showCheck.isVisible())
+        showCheck.refresh();
     tabs.repaint();
     nowPlaying.repaint();
     repaint();

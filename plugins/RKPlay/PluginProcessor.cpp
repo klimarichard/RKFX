@@ -1336,6 +1336,48 @@ int RKPlayProcessor::relink (const juce::File& folder)
     return found;
 }
 
+int RKPlayProcessor::recheck()
+{
+    int fine = 0;
+    for (auto& p : show.playlists)
+        for (auto& s : p.songs)
+            if (! s.isPlayable())
+            {
+                const auto was = s;
+                s = PlayShow::makeSong (was.file, formats);
+                s.keepEditsOf (was, true);
+                fine += s.isPlayable() ? 1 : 0;
+            }
+    if (fine > 0)
+    {
+        attachAnalyses();
+        showChanged();
+    }
+    const auto left = show.numProblems();
+    setNote (fine == 0 && left > 0 ? juce::String ("Still missing or unreadable: ") + juce::String (left)
+                                   : juce::String (fine) + (fine == 1 ? " song" : " songs") + " found again"
+                                         + (left > 0 ? ", " + juce::String (left) + " still missing" : juce::String()));
+    return fine;
+}
+
+int RKPlayProcessor::removeProblemSongs()
+{
+    int removed = 0;
+    for (int p = 0; p < (int) show.playlists.size(); ++p)
+    {
+        if (show.playlists[(size_t) p].isLinked())
+            continue;
+        for (int i = (int) show.playlists[(size_t) p].songs.size() - 1; i >= 0; --i)
+            if (! show.playlists[(size_t) p].songs[(size_t) i].isPlayable()
+                && ! (current.isValid() && ! current.queued && current.playlist == p && current.index == i))
+            {
+                removeSong (p, i);
+                ++removed;
+            }
+    }
+    return removed;
+}
+
 //==============================================================================
 // Analysis: from the cache at once, the rest measured in the background
 
@@ -1625,7 +1667,7 @@ void RKPlayProcessor::setExtraState (const juce::var& extra)
     cursorPlayed.assign (show.playlists.size(), false);
     findEndAtDeadline();
     if (const auto problems = show.numProblems())
-        setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable (marked in red)");
+        setNote (juce::String (problems) + (problems == 1 ? " file" : " files") + " missing or unreadable: the red button lists them");
     attachAnalyses();
     stopPreListen();
     for (int pad = 0; pad < PlayEngine::kPads; ++pad)

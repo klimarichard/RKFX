@@ -1031,6 +1031,36 @@ public:
             expect (q.getShow().playlists[0].songs[1].isPlayable());
         }
 
+        beginTest ("Show check: a file back again is found by Check again; Remove takes the missing out");
+        {
+            const auto files = songsIn ("check", 3, 1.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setSongTrim (0, 1, -1.0, 0.0);   // (too short to trim: none)
+            p.setSongGain (0, 1, -3.0);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+
+            const auto moved = files[1].getSiblingFile ("away.wav");
+            files[1].moveFileTo (moved);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (q.getShow().numProblems(), 1);
+            expectEquals (q.recheck(), 0, "still gone");
+            moved.moveFileTo (files[1]);
+            expectEquals (q.recheck(), 1, "plugged in again");
+            expectEquals (q.getShow().numProblems(), 0);
+            expectEquals (q.getShow().playlists[0].songs[1].gainDb, -3.0, "its gain kept");
+
+            files[1].moveFileTo (moved);
+            TestPlayer r;
+            r.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (r.removeProblemSongs(), 1);
+            expectEquals ((int) r.getShow().playlists[0].songs.size(), 2);
+            expectEquals (r.getShow().numProblems(), 0);
+            moved.moveFileTo (files[1]);
+        }
+
         beginTest ("The Playlist host parameter crossfades into that list; a show keeps its playlists");
         {
             TestPlayer p;

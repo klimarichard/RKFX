@@ -118,6 +118,11 @@ public:
     void setSafetyLimiter (bool);
     void setMusicFolder (const juce::File&);
     int relink (const juce::File& folder);
+    /** Show check: looks at every missing or unreadable file again (a drive plugged in since); returns how many are fine now. */
+    int recheck();
+    /** Show check: removes the missing and unreadable songs from their playlists (not linked ones,
+        not the playing one); returns how many. */
+    int removeProblemSongs();
     void setEndAt (bool on, int minutes, bool atSongEnd);
 
     /** Bumped when the show changes (the editor polls it). */

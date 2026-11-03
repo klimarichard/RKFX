@@ -138,6 +138,25 @@ private:
         void applyOsc();
     };
 
+    /** Show check, over the lower half: every missing or unreadable song, and what to do about them. */
+    struct ShowCheck : public juce::Component, private juce::ListBoxModel
+    {
+        explicit ShowCheck (RKPlayEditor&);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void refresh();
+
+        int getNumRows() override { return (int) problems.size(); }
+        void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
+        void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
+
+        RKPlayEditor& owner;
+        std::vector<std::pair<int, int>> problems;   // playlist, song
+        juce::ListBox list { "Problems", this };
+        juce::TextButton recheck { "Check again" }, relink { "Relink missing songs..." },
+                         remove { "Remove them from the playlists" }, close { "Close" };
+    };
+
     RKPlayProcessor& player;
     int viewed = 0;                       // the playlist the list shows
     NowPlaying nowPlaying { *this };
@@ -161,6 +180,8 @@ private:
     std::unique_ptr<rkfx::Knob> level;
     juce::Label note, status;
     Settings settings { *this };
+    ShowCheck showCheck { *this };
+    juce::TextButton problemsButton;
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;
@@ -201,6 +222,8 @@ private:
     void showSongMenu (int row);
     void showTabMenu (int playlist);
     void showSettings (bool);
+    void showShowCheck (bool);
+    void chooseRelink();
     void renamePlaylist (int playlist);
     void chooseFiles (bool folders);
     void chooseLink (int playlist, bool folder);

@@ -344,6 +344,21 @@ void RKMixEditor::ChannelPanel::paint (juce::Graphics& g)
 
 void RKMixEditor::ChannelPanel::mouseDown (const juce::MouseEvent& e)
 {
+    // Right-click a section: copy it, or paste.
+    if (e.mods.isPopupMenu())
+    {
+        using Section = RKMixProcessor::Section;
+        const std::array<int, numSections> asSection { (int) Section::input, (int) Section::delay, (int) Section::hpf,
+                                                       (int) Section::gate, -1, (int) Section::eq, (int) Section::comp };
+        for (int i = 0; i < numSections; ++i)
+            if (sections[(size_t) i].area.contains (e.getPosition()))
+            {
+                owner.showSectionMenu (channel, -1, asSection[(size_t) i], *this, e.getPosition());
+                return;
+            }
+        owner.showSectionMenu (channel, -1, -1, *this, e.getPosition());
+        return;
+    }
     if (const auto i = swatchAt (swatches, e.getPosition()); i >= 0)
         owner.mixer.setChannelColour (channel, i);
 }
@@ -681,6 +696,17 @@ void RKMixEditor::ProcessingPanel::resized()
     limit[0]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
     limit[1]->setBounds (limitKnobs.removeFromTop (kProcKnobH));
     limitMeter->setBounds (a.withWidth (40).withTrimmedBottom (4));
+}
+
+void RKMixEditor::ProcessingPanel::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu())
+        return;
+    using Section = RKMixProcessor::Section;
+    const auto at = e.getPosition();
+    const auto section = eqArea.contains (at) ? (int) Section::eq : compArea.contains (at) ? (int) Section::comp
+                       : limitArea.contains (at) ? (int) Section::limit : -1;
+    owner.showSectionMenu (-1, chain, section, *this, at);
 }
 
 void RKMixEditor::ProcessingPanel::paint (juce::Graphics& g)
@@ -1098,7 +1124,7 @@ RKMixEditor::ScenesPanel::ScenesPanel (RKMixEditor& o) : Panel (o)
         "Trim, polarity, delay, high-pass, gate, EQ and compressor of every channel",
         "The EQ, compressor and limiter of the buses, the main and the mono sum",
         "Inserts on or off, and the scene-controlled insert knobs",
-        "Group assigns and Main switches",
+        "Group assigns, Main switches, and who is in each DCA and mute group",
     };
     for (int c = 0; c < Scope::numCategories; ++c)
     {

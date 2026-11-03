@@ -127,11 +127,21 @@ void Fader::paint (juce::Graphics& g)
 
 void Fader::setNormalised (float value, bool asCompleteGesture)
 {
-    const auto denormalised = param.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, value));
+    // A single move (not a drag) is a gesture of its own.
+    if (asCompleteGesture)
+    {
+        gestureStart = normalised;
+        if (onGestureStart != nullptr)
+            onGestureStart();
+    }
+    value = juce::jlimit (0.0f, 1.0f, value);
+    const auto denormalised = param.convertFrom0to1 (value);
     if (asCompleteGesture)
         attachment.setValueAsCompleteGesture (denormalised);
     else
         attachment.setValueAsPartOfGesture (denormalised);
+    if (onUserMove != nullptr)
+        onUserMove (param.getValue() - gestureStart);
 }
 
 void Fader::mouseDown (const juce::MouseEvent& e)
@@ -150,8 +160,11 @@ void Fader::mouseDown (const juce::MouseEvent& e)
 
     dragging = true;
     dragNormalised = normalised;
+    gestureStart = normalised;
     lastDragY = e.position.y;
     attachment.beginGesture();
+    if (onGestureStart != nullptr)
+        onGestureStart();
 }
 
 void Fader::mouseDrag (const juce::MouseEvent& e)
@@ -188,7 +201,7 @@ void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetai
 void Fader::commitValueEditor()
 {
     valueEditor.setVisible (false);
-    attachment.setValueAsCompleteGesture (param.convertFrom0to1 (param.getValueForText (valueEditor.getText())));
+    setNormalised (param.getValueForText (valueEditor.getText()), true);
     repaint();
 }
 

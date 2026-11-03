@@ -136,6 +136,14 @@ namespace MixParams
             p.addPercent (assignId (slot), "Assign " + num (slot), 0.0f, 100.0f, 0.0f);
         p.addInt ("scene", "Scene", 1, 16, 1);
         p.addBool ("talk", "Talk", false);
+
+        // DCAs and mute groups (appended).
+        for (int dca = 0; dca < kDcas; ++dca)
+            addFader (p, dcaFaderId (dca), "DCA " + num (dca) + " Fader");
+        for (int dca = 0; dca < kDcas; ++dca)
+            p.addBool (dcaMuteId (dca), "DCA " + num (dca) + " Mute", false);
+        for (int group = 0; group < kMuteGroups; ++group)
+            p.addBool (muteGroupId (group), "Mute Group " + num (group), false);
         return p;
     }
 
@@ -318,6 +326,22 @@ namespace MixParams
         for (int ch = 0; ch < kChannels; ++ch)
             for (int bus = 0; bus < kBuses; ++bus)
                 addPan (p, channelSendPanId (ch, bus), channelName (ch) + "Send Pan " + num (bus));
+
+        // Membership of the DCAs and mute groups (appended).
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            for (int dca = 0; dca < kDcas; ++dca)
+                p.addBool (channelDcaId (ch, dca), channelName (ch) + "DCA " + num (dca), false);
+            for (int group = 0; group < kMuteGroups; ++group)
+                p.addBool (channelMuteGroupId (ch, group), channelName (ch) + "Mute Group " + num (group), false);
+        }
+        for (int bus = 0; bus < kBuses; ++bus)
+        {
+            for (int dca = 0; dca < kDcas; ++dca)
+                p.addBool (busDcaId (bus, dca), busName (bus) + "DCA " + num (dca), false);
+            for (int group = 0; group < kMuteGroups; ++group)
+                p.addBool (busMuteGroupId (bus, group), busName (bus) + "Mute Group " + num (group), false);
+        }
 
         return p;
     }

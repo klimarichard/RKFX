@@ -6,6 +6,8 @@
 #include "MixAssigns.h"
 #include "MixInserts.h"
 #include "MixScenes.h"
+#include "MixUndo.h"
+#include "MixRemote.h"
 #include "host/MidiMap.h"
 #include "host/Tempo.h"
 #include "MixParams.h"
@@ -70,6 +72,24 @@ public:
     juce::Array<int> getUserPage (int page) const;
     void setUserPage (int page, const juce::Array<int>&);
 
+    /** DCA and mute group names, DCA colours (message thread). Saved with the mix. */
+    juce::String getDcaName (int dca) const;
+    void setDcaName (int dca, const juce::String&);
+    int getDcaColour (int dca) const noexcept { return dcaColours[(size_t) dca].load(); }
+    void setDcaColour (int dca, int colour);
+    juce::String getMuteGroupName (int group) const;
+    void setMuteGroupName (int group, const juce::String&);
+
+    /** The members of a DCA or a mute group, as the user pages list strips:
+        a channel (a linked pair's left channel) or kUserPageBus + a bus. */
+    juce::Array<int> getDcaMembers (int dca) const;
+    juce::Array<int> getMuteGroupMembers (int group) const;
+
+    /** True while a DCA's mute or an active mute group silences the strip
+        (its own Mute may be off). A linked pair: its left channel. */
+    bool isChannelGroupMuted (int ch) const;
+    bool isBusGroupMuted (int bus) const;
+
     mix::BusType getBusType (int bus) const { return (mix::BusType) settings.choice (mix::busId (bus, "type")); }
     bool isBusStereo (int bus) const { return settings.choice (mix::busId (bus, "format")) == 1; }
 
@@ -109,6 +129,18 @@ public:
 
     /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
     MixScenes& getScenes() noexcept { return *scenes; }
+    /** The monitor remote (message thread). */
+    MixRemote& getRemote() noexcept { return *remote; }
+    /** The remote's meters: the loudest since the last call (resets), apart from the window's. */
+    void takeRemotePeaks (std::array<float, mix::kChannels>& channels, std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept;
+
+    /** The console's undo history (message thread). */
+    MixUndo& getUndo() noexcept { return *undo; }
+
+    /** Show lock (the window): Off, faders and mutes only, or everything. Not saved. */
+    enum class Lock { off = 0, faders, everything };
+    Lock getLock() const noexcept { return (Lock) lock.load(); }
+    void setLock (Lock l) noexcept { lock = (int) l; }
     MixAssigns& getAssigns() noexcept { return *assigns; }
     void recallScene (int scene);
     /** "Vocal: Fader", "Bus 2, insert 1: Time": an assignment's control. */
@@ -122,6 +154,29 @@ public:
     PresetResult saveChannelPreset (int channel, const juce::File&);
     PresetResult loadChannelPreset (int channel, const juce::File&);
     void resetChannelStrip (int channel);
+
+    /** Copy and paste of a strip's section (message thread). A channel's
+        sections are those of its page; a bus's, the main's and the mono
+        sum's (a chain) are its EQ, compressor and limiter. "Whole" is every
+        section and the inserts (not routing, names or colours). The copy is
+        a var that names its kind and section ("Gate from Lead Vocal"). */
+    enum class Section { input, delay, hpf, gate, eq, comp, limit, whole };
+    static juce::String sectionName (Section);
+    juce::var copyChannel (int channel, Section) const;
+    juce::var copyChain (int chain, Section) const;
+    /** True when @p copy fits a channel (or a chain); then pasting it is allowed. */
+    static bool isChannelCopy (const juce::var& copy);
+    static bool isChainCopy (const juce::var& copy);
+    void pasteChannel (int channel, const juce::var& copy);
+    void pasteChain (int chain, const juce::var& copy);
+    /** "Gate from Lead Vocal", "RKVerb from Reverb". */
+    static juce::String describeCopy (const juce::var& copy);
+
+    /** One insert with its settings and on/off (nothing when the slot is empty). */
+    juce::var copyInsert (InsertRack::Slot) const;
+    static bool isInsertCopy (const juce::var& copy);
+    /** Puts a copied insert in @p slot of any strip (replacing what was there), mono or stereo as the strip. */
+    bool pasteInsert (InsertRack::Slot, const juce::var& copy);
 
     /** The loudest sample since the last call (message thread, for the meters). */
     float takeChannelPeak (int channel) noexcept { return channelPeaks[(size_t) channel].exchange (0.0f); }
@@ -218,6 +273,21 @@ private:
     std::array<std::vector<juce::RangedAudioParameter*>, mix::kProcessingChains> chainParams;   // by MixParams::chainFields()
     juce::RangedAudioParameter *mainFader = nullptr, *mainMute = nullptr, *monoFader = nullptr, *monoMute = nullptr;
 
+    // DCAs and mute groups: their host parameters, and each strip's membership.
+    std::array<juce::RangedAudioParameter*, mix::kDcas> dcaFaders {}, dcaMutes {};
+    std::array<juce::RangedAudioParameter*, mix::kMuteGroups> muteGroups {};
+    struct Membership
+    {
+        std::array<juce::RangedAudioParameter*, mix::kDcas> dcas {};
+        std::array<juce::RangedAudioParameter*, mix::kMuteGroups> muteGroups {};
+    };
+    std::array<Membership, kChannels> channelMembership {};
+    std::array<Membership, mix::kBuses> busMembership {};
+
+    /** A strip's fader with its DCAs (dB), and whether a DCA or a mute group mutes it. */
+    float withDcas (float faderDb, const Membership&, const std::array<float, mix::kDcas>& dcaDb) const;
+    bool groupMuted (const Membership&) const;
+
     InsertRack rack;
     MixEngine engine;
     MixEngine::Settings engineSettings;                 // audio thread
@@ -271,6 +341,11 @@ private:
 
     std::unique_ptr<MixScenes> scenes;
     std::unique_ptr<MixAssigns> assigns;
+    std::unique_ptr<MixUndo> undo;
+    std::unique_ptr<MixRemote> remote;
+    std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
+    std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
+    std::atomic<int> lock { 0 };
     juce::RangedAudioParameter* sceneParam = nullptr;
     std::atomic<int> pendingScene { -1 };
 
@@ -296,6 +371,9 @@ private:
     mutable juce::CriticalSection namesLock;
     std::array<juce::String, kChannels> channelNames, outputNames;
     std::array<juce::String, mix::kBuses> busNames;
+    std::array<juce::String, mix::kDcas> dcaNames;
+    std::array<juce::String, mix::kMuteGroups> muteGroupNames;
+    std::array<std::atomic<int>, mix::kDcas> dcaColours {};
     std::array<juce::Array<int>, kUserPages> userPages;
     std::array<std::atomic<int>, kChannels> channelColours {};
     std::array<std::atomic<int>, mix::kBuses> busColours {};

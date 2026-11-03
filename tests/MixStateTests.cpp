@@ -1,6 +1,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "../plugins/RKMix/PluginProcessor.h"
+#include "../plugins/RKMix/MixQr.h"
 
 /** RKMix as a plugin: 32 channels each way, the default console, bypass to
     silence, and the mix (settings, names, colours) kept in the session and
@@ -327,6 +328,10 @@ public:
                     expectEquals (p.getUserPage (0).size(), 6);
                     expectEquals (p.getSettings().choice (mix::busId (2, "panmode")), (int) mix::PanMode::own, "IEM Vocals: own pans");
                     expectWithinAbsoluteError (p.getSettings().value (mix::channelSendPanId (2, 2)), -40.0f, 0.01f, "guitar left");
+                    expectEquals (p.getDcaName (0), juce::String ("Vocals"));
+                    expectEquals (p.getDcaMembers (1).size(), 4, "DCA Band: guitar, bass, keys, the Drums group");
+                    expectEquals (p.getMuteGroupName (0), juce::String ("Band"));
+                    expectEquals (p.getMuteGroupMembers (0).size(), 6, "Mute Band: every instrument channel");
                 }
                 if (preset.name == "Recording Feed")
                     expectEquals (p.getSettings().choice (mix::channelId (15, "direct_out")), 32);
@@ -359,7 +364,7 @@ public:
         {
             RKMixProcessor a;
             auto& s = a.getSettings();
-            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (2));     // Out 3/4
+            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (4));   // Out 5/6     // Out 3/4
             setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
             setParam (*a.findParam (mix::busFaderId (0)), 10.0f);
             setParam (s.param (mix::chainId (0, "lim_on")), 1.0f);
@@ -613,6 +618,11 @@ public:
             expect (MixScenes::isInScope (only (Scope::routing), mix::channelAssignId (3, 2)));
             expect (MixScenes::isInScope (only (Scope::routing), mix::channelId (3, "main")));
             expect (MixScenes::isInScope (only (Scope::routing), mix::busId (3, "main")));
+            expect (MixScenes::isInScope (only (Scope::faders), mix::dcaFaderId (2)), "a DCA fader");
+            expect (MixScenes::isInScope (only (Scope::faders), mix::dcaMuteId (2)), "a DCA mute");
+            expect (MixScenes::isInScope (only (Scope::faders), mix::muteGroupId (7)), "a mute group");
+            expect (MixScenes::isInScope (only (Scope::routing), mix::channelDcaId (3, 2)), "DCA membership is an assign");
+            expect (MixScenes::isInScope (only (Scope::routing), mix::busMuteGroupId (3, 2)), "mute group membership too");
         }
 
         beginTest ("Recall scope: a scene that recalls only the sends to bus 1 leaves the rest; kept in the session; copied");
@@ -767,10 +777,376 @@ public:
             rig.deleteRecursively();
         }
 
-        beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
+        beginTest ("DCAs: a member's fader moves by the DCA's level; DCA mutes and mute groups silence their members");
         {
             RKMixProcessor p;
-            expectEquals (p.getParameters().size(), 135);
+            p.prepareToPlay (48000.0, 128);
+            const auto centred = 0.5f * std::sqrt (0.5f);
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelDcaId (0, 2)), 1.0f);
+            setParam (*p.findParam (mix::dcaFaderId (2)), -6.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (-6.0f), 1.0e-5f, "DCA 3 at -6 dB");
+
+            setParam (*p.findParam (mix::channelFaderId (0)), -4.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (-10.0f), 1.0e-5f,
+                                       "the channel's fader and the DCA add up");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelFaderId (0))), -4.0f, 0.01f,
+                                       "the channel's own fader stays where it is");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), mix::kFaderMinDb);
+            expectEquals (run (p, 20).getMagnitude (0, 0, 128), 0.0f, "a DCA at the bottom: silence");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), 10.0f);
+            setParam (*p.findParam (mix::channelFaderId (0)), 8.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (10.0f), 1.0e-4f,
+                                       "never past the top of a fader");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), 0.0f);
+            setParam (*p.findParam (mix::channelFaderId (0)), 0.0f);
+            setParam (*p.findParam (mix::dcaMuteId (2)), 1.0f);
+            expectEquals (run (p, 20).getMagnitude (0, 0, 128), 0.0f, "the DCA's mute");
+            expect (p.isChannelGroupMuted (0));
+            setParam (*p.findParam (mix::dcaMuteId (2)), 0.0f);
+            expect (! p.isChannelGroupMuted (0));
+
+            setParam (s.param (mix::channelDcaId (0, 2)), 0.0f);
+            setParam (*p.findParam (mix::dcaFaderId (2)), -20.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred, 1.0e-5f, "not a member: untouched");
+
+            // Mute groups: a channel's pre-fader send to an Aux bus goes silent too.
+            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (4));   // Out 5/6
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
+            setParam (s.param (mix::channelMuteGroupId (0, 4)), 1.0f);
+            auto b = run (p, 20);
+            expect (b.getMagnitude (4, 0, 128) > 0.1f, "the in-ear mix before the mute group");
+            setParam (*p.findParam (mix::muteGroupId (4)), 1.0f);
+            b = run (p, 20);
+            expectEquals (b.getMagnitude (0, 0, 128), 0.0f, "mute group 5: the main");
+            expectEquals (b.getMagnitude (4, 0, 128), 0.0f, "and the pre-fader send");
+
+            // A bus in a mute group.
+            setParam (s.param (mix::channelMuteGroupId (0, 4)), 0.0f);
+            setParam (s.param (mix::busMuteGroupId (0, 4)), 1.0f);
+            b = run (p, 20);
+            expect (b.getMagnitude (0, 0, 128) > 0.1f, "the channel back in the main");
+            expectEquals (b.getMagnitude (4, 0, 128), 0.0f, "the Aux bus muted by the group");
+            expect (p.isBusGroupMuted (0));
+            expectEquals (p.getMuteGroupMembers (4).size(), 1);
+            expectEquals (p.getMuteGroupMembers (4)[0], RKMixProcessor::kUserPageBus);
+
+            // Names, colours and membership are kept with the mix.
+            p.setDcaName (2, "Drums");
+            p.setDcaColour (2, 5);
+            p.setMuteGroupName (4, "Band");
+            setParam (s.param (mix::channelDcaId (6, 2)), 1.0f);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (q.getDcaName (2), juce::String ("Drums"));
+            expectEquals (q.getDcaColour (2), 5);
+            expectEquals (q.getMuteGroupName (4), juce::String ("Band"));
+            expectEquals (q.getDcaMembers (2).size(), 1);
+            expectEquals (q.getDcaMembers (2)[0], 6);
+            expect (q.isBusGroupMuted (0), "the mute group's state");
+        }
+
+        beginTest ("Scenes recall the DCA faders, mutes and mute groups");
+        {
+            RKMixProcessor p;
+            setParam (p.getSettings().param ("scene_glide"), 0.0f);
+            setParam (*p.findParam (mix::dcaFaderId (0)), -12.0f);
+            p.recallScene (1);
+            setParam (*p.findParam (mix::dcaFaderId (0)), 3.0f);
+            setParam (*p.findParam (mix::muteGroupId (1)), 1.0f);
+            p.recallScene (0);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::dcaFaderId (0))), -12.0f, 0.01f);
+            expect (rkfx::ProcessorBase::valueOf (p.findParam (mix::muteGroupId (1))) < 0.5f);
+            p.recallScene (1);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::dcaFaderId (0))), 3.0f, 0.01f);
+        }
+
+        beginTest ("Undo: a step at a time, back and forward; a new change drops the redo; a load clears the history");
+        {
+            RKMixProcessor p;
+            auto& undo = p.getUndo();
+            auto& fader = *p.findParam (mix::channelFaderId (2));
+            auto& trim = p.getSettings().param (mix::channelId (2, "trim"));
+            const auto value = [] (juce::RangedAudioParameter& r) { return rkfx::ProcessorBase::valueOf (&r); };
+            expect (! undo.canUndo());
+
+            // A drag: several values, one step.
+            setParam (fader, -3.0f); undo.poll();
+            setParam (fader, -8.0f); undo.poll();
+            undo.closeStep();
+            setParam (trim, 6.0f); undo.poll();
+            undo.closeStep();
+            expect (undo.canUndo());
+            expectEquals (undo.undoDescription(), juce::String ("Ch 3 Trim"));
+
+            undo.undo();
+            expectWithinAbsoluteError (value (trim), 0.0f, 0.01f, "the trim back");
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f, "the fader not yet");
+            undo.undo();
+            expectWithinAbsoluteError (value (fader), 0.0f, 0.01f, "the whole drag back to where it started");
+            expect (! undo.canUndo() && undo.canRedo());
+
+            undo.redo();
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f, "redo");
+            undo.poll();
+            expect (undo.canRedo(), "an undo or redo is not itself a change");
+
+            setParam (fader, -1.0f); undo.poll();
+            expect (! undo.canRedo(), "a new change drops what was undone");
+            undo.undo();
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f);
+
+            // A load clears it.
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            p.setStateInformation (state.getData(), (int) state.getSize());
+            expect (! undo.canUndo() && ! undo.canRedo());
+        }
+
+        beginTest ("Undo a scene recall: the values and the scene before it; neither scene changes");
+        {
+            RKMixProcessor p;
+            auto& undo = p.getUndo();
+            setParam (p.getSettings().param ("scene_glide"), 0.0f);
+            auto& fader = *p.findParam (mix::channelFaderId (0));
+            const auto value = [] (juce::RangedAudioParameter& r) { return rkfx::ProcessorBase::valueOf (&r); };
+
+            setParam (fader, -10.0f);
+            p.recallScene (1);              // scene 2 starts as the mix is
+            setParam (fader, -20.0f);       // scene 2's own fader
+            p.recallScene (0);              // back to scene 1: -10
+            undo.poll();
+            undo.closeStep();
+            p.recallScene (1);              // scene 2: -20
+            undo.poll();
+            undo.closeStep();
+            expectWithinAbsoluteError (value (fader), -20.0f, 0.01f);
+            expectEquals (undo.undoDescription(), juce::String ("Scene 2 recall"));
+
+            undo.undo();
+            expectEquals (p.getScenes().getCurrent(), 0, "scene 1 current again");
+            expectEquals (juce::roundToInt (value (*p.findParam ("scene"))), 1, "the Scene parameter too");
+            expectWithinAbsoluteError (value (fader), -10.0f, 0.01f, "scene 1's fader");
+
+            p.recallScene (1);
+            expectWithinAbsoluteError (value (fader), -20.0f, 0.01f, "scene 2 kept its values");
+            p.recallScene (0);
+            expectWithinAbsoluteError (value (fader), -10.0f, 0.01f, "and scene 1 its own");
+        }
+
+        beginTest ("Copy and paste: a section, the whole strip with inserts; a bus's processing; nothing else moves");
+        {
+            using Section = RKMixProcessor::Section;
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelId (0, "gate_on")), 1.0f);
+            setParam (s.param (mix::channelId (0, "gate_thr")), -33.0f);
+            setParam (s.param (mix::channelId (0, "gate_key")), 4.0f);     // routing: not copied
+            setParam (s.param (mix::channelId (0, "eq_on")), 1.0f);
+            setParam (s.param (mix::channelId (0, "pan")), -50.0f);        // routing: not copied
+            p.setChannelName (0, "Kick");
+            p.getRack().insert ({ Strip::channel, 0, 1 }, "RKChorus", 1);
+
+            const auto gate = p.copyChannel (0, Section::gate);
+            expectEquals (RKMixProcessor::describeCopy (gate), juce::String ("Gate from Kick"));
+            expect (RKMixProcessor::isChannelCopy (gate) && ! RKMixProcessor::isChainCopy (gate));
+            p.pasteChannel (5, gate);
+            expect (s.flag (mix::channelId (5, "gate_on")));
+            expectWithinAbsoluteError (s.value (mix::channelId (5, "gate_thr")), -33.0f, 0.01f);
+            expectEquals (s.choice (mix::channelId (5, "gate_key")), 0, "the key is routing");
+            expect (! s.flag (mix::channelId (5, "eq_on")), "only the gate");
+            expect (p.getRack().get ({ Strip::channel, 5, 1 }) == nullptr, "no inserts with a section");
+
+            p.pasteChannel (6, p.copyChannel (0, Section::whole));
+            expect (s.flag (mix::channelId (6, "eq_on")) && s.flag (mix::channelId (6, "gate_on")));
+            expectWithinAbsoluteError (s.value (mix::channelId (6, "pan")), 0.0f, 0.01f, "not the pan");
+            expect (p.getRack().get ({ Strip::channel, 6, 1 }) != nullptr, "the whole strip brings its inserts");
+            expect (p.getChannelName (6).isEmpty(), "not the name");
+
+            // A bus's compressor onto the main; a channel copy doesn't paste onto a chain.
+            setParam (s.param (mix::chainId (2, "comp_on")), 1.0f);
+            setParam (s.param (mix::chainId (2, "comp_ratio")), 6.0f);
+            setParam (s.param (mix::chainId (2, "eq_on")), 1.0f);
+            p.pasteChain (mix::kMainChain, p.copyChain (2, Section::comp));
+            expect (s.flag (mix::chainId (mix::kMainChain, "comp_on")));
+            expectWithinAbsoluteError (s.value (mix::chainId (mix::kMainChain, "comp_ratio")), 6.0f, 0.01f);
+            expect (! s.flag (mix::chainId (mix::kMainChain, "eq_on")));
+            p.pasteChain (3, gate);
+            expect (! s.flag (mix::chainId (3, "comp_on")), "a channel's gate is not for a bus");
+        }
+
+        beginTest ("Remote: SHA-1 and the WebSocket handshake key; a QR code for a link");
+        {
+            const juce::String abc ("abc");
+            const auto digest = MixWebServer::sha1 (abc.toRawUTF8(), 3);
+            expectEquals (juce::String::toHexString (digest.getData(), 20, 0), juce::String ("a9993e364706816aba3e25717850c26c9cd0d89d"));
+            const juce::String key ("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11");   // RFC 6455's example
+            const auto accept = MixWebServer::sha1 (key.toRawUTF8(), key.getNumBytesAsUTF8());
+            expectEquals (juce::Base64::toBase64 (accept.getData(), accept.getSize()), juce::String ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+
+            MixQr qr ("http://Richards-MacBook-Pro.local:8080/m/3f9a2c71b0aa");
+            expect (qr.isValid());
+            expectEquals (qr.getSize(), 33, "version 4");
+            expect (qr.isDark (0, 0) && qr.isDark (6, 6) && ! qr.isDark (1, 1), "a finder pattern in the corner");
+            expect (! MixQr (juce::String::repeatedString ("x", 300)).isValid(), "too long for version 10");
+        }
+
+        beginTest ("Remote: a bus's page and manifest; a phone changes only its own bus");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-remote");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& s = p.getSettings();
+            p.setBusName (2, "IEM <Vocals>");
+            p.setChannelName (0, "Lead Vocal");
+            setParam (s.param (mix::busId (3, "type")), (float) (int) mix::BusType::fx);
+
+            const auto key = remote.getKey (2);
+            expectEquals (key.length(), 12);
+            expect (remote.getKey (2) != remote.getKey (3), "one link per bus");
+            const auto page = remote.answer ("/m/" + key);
+            expectEquals (page.status, 200);
+            expect (page.body.toString().contains ("IEM &lt;Vocals&gt;"), "the bus name, escaped");
+            expect (page.body.toString().contains ("const KEY = \"" + key + "\""), "the page knows its key");
+            expectEquals (remote.answer ("/m/000000000000").status, 404, "a wrong key");
+            const auto manifest = juce::JSON::parse (remote.answer ("/manifest/" + key + ".json").body.toString());
+            expectEquals (manifest["start_url"].toString(), "/m/" + key);
+            expectEquals (manifest["display"].toString(), juce::String ("standalone"));
+            expectEquals (remote.answer ("/icon.png").contentType, juce::String ("image/png"));
+
+            const auto mixJson = juce::JSON::parse (remote.mixFor (2));
+            expectEquals (mixJson["type"].toString(), juce::String ("mix"));
+            expectEquals (mixJson["bus"]["name"].toString(), juce::String ("IEM <Vocals>"));
+            const auto* rows = mixJson["rows"].getArray();
+            expect (rows != nullptr && rows->size() == 32 + 1, "32 channels and the FX return");
+            expect ((bool) (*rows)[0]["used"], "a named channel is in use");
+            expect (! (bool) (*rows)[1]["used"], "an unnamed silent one isn't");
+
+            remote.receive (2, R"({"t":"send","k":"ch1","v":-6})", true);
+            expectWithinAbsoluteError (s.value (mix::channelSendId (0, 2)), -6.0f, 0.01f, "its send");
+            remote.receive (2, R"({"t":"pan","k":"ch1","v":-40})", true);
+            expectWithinAbsoluteError (s.value (mix::channelSendPanId (0, 2)), -40.0f, 0.01f, "its send pan");
+            remote.receive (2, R"({"t":"send","k":"bus4","v":-10})", true);
+            expectWithinAbsoluteError (s.value (mix::busSendId (3, 2)), -10.0f, 0.01f, "the reverb return");
+            remote.receive (2, R"({"t":"fader","v":-3})", true);
+            remote.receive (2, R"({"t":"mute","v":1})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::busFaderId (2))), -3.0f, 0.01f);
+            expect (p.findParam (mix::busMuteId (2))->getValue() > 0.5f);
+
+            // Nothing else: another bus, the channel's own fader, a group bus's page.
+            remote.receive (2, R"({"t":"send","k":"ch1","v":-6,"bus":5})", true);
+            expectEquals (s.value (mix::channelSendId (0, 4)), mix::kFaderMinDb, "never another bus's send");
+            remote.receive (2, R"({"t":"fader","k":"ch1","v":-20})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelFaderId (0))), 0.0f, 0.01f);
+            remote.receive (2, R"({"t":"set","id":"ch1_trim","v":12})", true);
+            expectWithinAbsoluteError (s.value (mix::channelId (0, "trim")), 0.0f, 0.01f);
+            remote.receive (3, R"({"t":"fader","v":-30})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::busFaderId (3))), 0.0f, 0.01f, "an FX bus has no remote");
+            dir.deleteRecursively();
+        }
+
+        beginTest ("Remote: a WebSocket on the local network sets the send and gets the mix");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-remote-ws");
+            dir.createDirectory();
+            const auto port = 18000 + juce::Random::getSystemRandom().nextInt (2000);
+            dir.getChildFile ("remote.json").replaceWithText (R"({"enabled":true,"port":)" + juce::String (port) + R"(,"secret":"0123456789abcdef0123"})");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            expect (remote.isListening(), remote.getStatus());
+
+            juce::StreamingSocket socket;
+            expect (socket.connect ("127.0.0.1", port, 2000));
+            const auto request = "GET /ws/" + remote.getKey (0) + " HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+            socket.write (request.toRawUTF8(), (int) request.getNumBytesAsUTF8());
+            juce::MemoryOutputStream reply;
+            for (int i = 0; i < 2000 && ! reply.toString().contains ("\r\n\r\n"); ++i)
+                if (socket.waitUntilReady (true, 50) > 0)
+                {
+                    char c;
+                    if (socket.read (&c, 1, false) == 1)
+                        reply.writeByte (c);
+                }
+            expect (reply.toString().startsWith ("HTTP/1.1 101"), reply.toString());
+            expect (reply.toString().contains ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), reply.toString());
+
+            // A masked text frame, as a browser sends it.
+            const juce::String msg (R"({"t":"send","k":"ch2","v":-12})");
+            juce::MemoryOutputStream frame;
+            frame.writeByte ((char) 0x81);
+            frame.writeByte ((char) (0x80 | msg.length()));
+            const std::uint8_t mask[4] { 0x12, 0x34, 0x56, 0x78 };
+            frame.write (mask, 4);
+            for (int i = 0; i < msg.length(); ++i)
+                frame.writeByte ((char) (msg.toRawUTF8()[i] ^ mask[i % 4]));
+            socket.write (frame.getData(), (int) frame.getDataSize());
+
+            // The pusher sends the mix (a text frame starting {"type":"mix").
+            juce::MemoryOutputStream in;
+            for (int i = 0; i < 60 && ! in.toString().contains ("\"type\":\"mix\""); ++i)
+                if (socket.waitUntilReady (true, 50) > 0)
+                {
+                    char buf[4096];
+                    if (const auto n = socket.read (buf, sizeof (buf), false); n > 0)
+                        in.write (buf, (size_t) n);
+                }
+            expect (in.toString().contains ("\"type\":\"mix\""), "the mix arrives");
+
+            for (int i = 0; i < 40 && juce::exactlyEqual (p.getSettings().value (mix::channelSendId (1, 0)), mix::kFaderMinDb); ++i)
+            {
+                juce::Thread::sleep (25);
+                remote.flush();
+            }
+            expectWithinAbsoluteError (p.getSettings().value (mix::channelSendId (1, 0)), -12.0f, 0.01f, "the phone's send");
+            socket.close();
+            remote.setEnabled (false);
+            expect (! remote.isListening());
+            dir.deleteRecursively();
+        }
+
+        beginTest ("Copy an insert: its settings and on/off, from a channel to a stereo bus, a channel, the main");
+        {
+            using Strip = InsertRack::Strip;
+            RKMixProcessor p;
+            auto& rack = p.getRack();
+            auto* chorus = rack.insert ({ Strip::channel, 0, 0 }, "RKChorus", 1);
+            setParam (*chorus->findParam ("depth"), 77.0f);
+            rack.setOn ({ Strip::channel, 0, 0 }, false);
+            p.setChannelName (0, "Guitar");
+            expect (p.copyInsert ({ Strip::channel, 1, 0 }).isVoid(), "an empty slot copies nothing");
+
+            const auto copy = p.copyInsert ({ Strip::channel, 0, 0 });
+            expect (RKMixProcessor::isInsertCopy (copy) && ! RKMixProcessor::isChannelCopy (copy));
+            expectEquals (RKMixProcessor::describeCopy (copy), juce::String ("RKChorus from Guitar"));
+
+            for (const auto slot : { InsertRack::Slot { Strip::bus, 3, 2 }, InsertRack::Slot { Strip::channel, 7, 1 },
+                                     InsertRack::Slot { Strip::main, 0, 3 } })
+            {
+                expect (p.pasteInsert (slot, copy));
+                auto* pasted = rack.get (slot);
+                expect (pasted != nullptr && pasted != chorus && pasted->getName() == "RKChorus");
+                expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (pasted->findParam ("depth")), 77.0f, 0.01f, "its settings");
+                expect (! rack.isOn (slot), "and off, as the copied one");
+            }
+            expectEquals (p.channelsOf (Strip::bus, 3), 2, "a stereo bus: the copy runs in stereo");
+            expect (! p.pasteInsert ({ Strip::mono, 0, 3 }, copy), "the mono sum has 2 slots");
+            expect (! p.pasteInsert ({ Strip::bus, 0, 0 }, p.copyChannel (0, RKMixProcessor::Section::gate)), "not a strip section");
+        }
+
+        beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
+        {
+            RKMixProcessor p;
+            expectEquals (p.getParameters().size(), 159);
+            expect (p.findParam ("dca_fader_8") != nullptr && p.findParam ("dca_mute_8") != nullptr && p.findParam ("mgrp_8") != nullptr);
             expect (p.findParam ("ch_fader_32") != nullptr && p.findParam ("bus_mute_16") != nullptr
                     && p.findParam ("mono_mute") != nullptr && p.findParam ("assign32") != nullptr
                     && p.findParam ("scene") != nullptr && p.findParam ("talk") != nullptr);

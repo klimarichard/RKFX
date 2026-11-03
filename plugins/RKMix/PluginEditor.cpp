@@ -26,8 +26,9 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     pan.setPopupDisplayEnabled (true, true, nullptr);
     addAndMakeVisible (pan);
 
-    mute = std::make_unique<rkfx::ToggleSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
-                                                 rkfx::Palette::warning, "Mute");
+    mute = std::make_unique<GangSwitch> (*o.mixer.findParam (isBus() ? busMuteId (bus) : channelMuteId (ch)),
+                                         rkfx::Palette::warning, "Mute");
+    mute->afterClick = [this] { owner.gangMute (*this); };
     addAndMakeVisible (*mute);
     solo = std::make_unique<SoloButton> (o, ch, b);
     addAndMakeVisible (*solo);
@@ -68,6 +69,8 @@ void RKMixEditor::Strip::showSendTo (int b)
     auto& param = sendBus >= 0 ? owner.mixer.getSettings().param (channelSendId (channel, sendBus))
                                : *owner.mixer.findParam (isBus() ? busFaderId (bus) : channelFaderId (channel));
     fader = std::make_unique<MixGui::Fader> (param);
+    fader->onGestureStart = [this] { owner.gangGestureStart (*this); };
+    fader->onUserMove = [this] (float travel) { owner.gangMove (*this, travel); };
     if (sendBus >= 0)
         fader->setCapColour (MixGui::stripColour (owner.mixer.getBusColour (sendBus)));
     addAndMakeVisible (*fader);
@@ -99,6 +102,7 @@ void RKMixEditor::Strip::refresh()
 {
     stereo = isBus() ? owner.mixer.isBusStereo (bus) : owner.isStereo (channel);
     meter.setNumBars (stereo ? 2 : 1);
+    groupMuted = isBus() ? owner.mixer.isBusGroupMuted (bus) : owner.mixer.isChannelGroupMuted (channel);
 
     const auto text = isBus() ? owner.mixer.getBusName (bus) : owner.mixer.getChannelName (channel);
     if (! name.isBeingEdited())
@@ -165,8 +169,7 @@ void RKMixEditor::Strip::resized()
 
 void RKMixEditor::Strip::paint (juce::Graphics& g)
 {
-    const auto isSelected = isBus() ? owner.selectedBus == bus
-                                    : owner.selected == channel && owner.selectedBus < 0 && owner.selectedChain < 0;
+    const auto isSelected = isBus() ? owner.selectedBus == bus : owner.selected == channel && owner.isChannelSelected();
     const auto showingSend = sendBus >= 0;
     g.setColour (isSelected ? owner.accent().withAlpha (0.16f)
                             : showingSend ? MixGui::stripColour (owner.mixer.getBusColour (sendBus)).withAlpha (0.12f)
@@ -177,14 +180,28 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
         g.setColour (owner.accent());
         g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), rkfx::Style::kPanelRadius, 1.0f);
     }
+    // Ganged: a bright frame and a link bar across the bottom.
+    if (owner.isGanged (id()))
+    {
+        g.setColour (owner.accent().brighter (0.5f));
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
+        g.fillRoundedRectangle (getLocalBounds().removeFromBottom (4).reduced (6, 0).toFloat(), 2.0f);
+    }
 
     const auto colour = isBus() ? owner.mixer.getBusColour (bus) : owner.mixer.getChannelColour (channel);
     g.setColour (MixGui::stripColour (colour));
     g.fillRoundedRectangle (getLocalBounds().removeFromTop (kColourBar).reduced (4, 0).toFloat().withY (2.0f), 2.0f);
 
-    g.setColour (rkfx::Palette::textDim);
+    // Silenced by a DCA or a mute group: the number on red.
+    const juce::Rectangle<int> numberRow (0, kColourBar + 2 + kStripNameHeight, getWidth(), kStripNumberHeight);
+    if (groupMuted)
+    {
+        g.setColour (rkfx::Palette::warning.withAlpha (0.8f));
+        g.fillRoundedRectangle (numberRow.reduced (6, 0).toFloat(), 3.0f);
+    }
+    g.setColour (groupMuted ? rkfx::Palette::text : rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (11.0f));
-    g.drawText (label(), 0, kColourBar + 2 + kStripNameHeight, getWidth(), kStripNumberHeight, juce::Justification::centred);
+    g.drawText (label(), numberRow, juce::Justification::centred);
 
     if (isBus())
         return;
@@ -209,7 +226,14 @@ void RKMixEditor::Strip::mouseDown (const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu())
     {
+        if (owner.isLocked())
+            return;
         owner.showColourMenu (channel, bus, *this);
+        return;
+    }
+    if (e.mods.isCommandDown() || e.mods.isShiftDown())
+    {
+        owner.toggleGang (id());
         return;
     }
     if (isBus())
@@ -301,6 +325,16 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
         busStrips.push_back (std::make_unique<Strip> (*this, -1, bus));
         addToCanvas (*busStrips.back());
     }
+    for (int dca = 0; dca < kDcas; ++dca)
+    {
+        dcaStrips.push_back (std::make_unique<GroupStrip> (*this, dca, false));
+        addToCanvas (*dcaStrips.back());
+    }
+    for (int group = 0; group < kMuteGroups; ++group)
+    {
+        muteGroupStrips.push_back (std::make_unique<GroupStrip> (*this, group, true));
+        addToCanvas (*muteGroupStrips.back());
+    }
     addToCanvas (mainStrip);
     addToCanvas (monoStrip);
     addToCanvas (routingPanel);
@@ -308,8 +342,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (monitorPanel);
     addToCanvas (scenesPanel);
     addToCanvas (assignPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
         addToCanvas (*tab);
+    remotePanel = std::make_unique<RemotePanel> (*this);
+    addToCanvas (*remotePanel);
+    remotePage.onClick = [this] { setPage (Page::remote); };
+    remotePage.setTooltip ("The musicians' phones set their own in-ear mixes");
     scenesPage.onClick = [this] { setPage (Page::scenes); };
     assignPage.onClick = [this] { setPage (Page::assign); };
 
@@ -363,6 +401,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     {
         layerButtons[l].onClick = [this, l]
         {
+            if (spillDca >= 0)
+                setSpill (-1);   // back from a spilled DCA
             setLayer (l);
             // An empty user page: choose its strips straight away.
             if (l >= kUserLayer && userPageStrips (l - kUserLayer).isEmpty())
@@ -373,6 +413,19 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)
         layerButtons[kUserLayer + userPage].setTooltip ("A page of the strips you choose: right-click to choose them "
                                                    "(or right-click a strip)");
+
+    layerButtons[kDcaLayer].setTooltip ("The DCAs and mute groups");
+
+    undoButton.onClick = [this] { mixer.getUndo().undo(); refreshUndo(); };
+    redoButton.onClick = [this] { mixer.getUndo().redo(); refreshUndo(); };
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &undoButton, &redoButton, &lockButton })
+        addToCanvas (*c);
+    for (auto& shield : shields)
+    {
+        addToCanvas (shield);
+        shield.setVisible (false);
+    }
+    setWantsKeyboardFocus (true);
 
     sendsBack.onClick = [this] { setSendsOnFader (-1); };
     addToCanvas (sendsBack);
@@ -450,16 +503,23 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
     {
         tab->setBounds (tabs.removeFromLeft (100));
         tabs.removeFromLeft (6);
     }
 
+    lockButton.setBounds (tabs.removeFromRight (120));
+    tabs.removeFromRight (6);
+    redoButton.setBounds (tabs.removeFromRight (64));
+    tabs.removeFromRight (4);
+    undoButton.setBounds (tabs.removeFromRight (64));
+
     routingPanel.setBounds (panelArea());
     monitorPanel.setBounds (panelArea());
     scenesPanel.setBounds (panelArea());
     assignPanel.setBounds (panelArea());
+    remotePanel->setBounds (panelArea());
 
     // The Master section
     auto m = masterArea().removeFromTop (kTopHeight).reduced (10, 0).withTrimmedTop (28);
@@ -495,7 +555,7 @@ void RKMixEditor::layoutContent()
     sendsBack.toFront (false);
 
     auto layers = globalArea().withSizeKeepingCentre (globalArea().getWidth(), 30);
-    const int layerWidths[kNumLayers] { 104, 104, 76, 68, 68 };
+    const int layerWidths[kNumLayers] { 104, 104, 76, 60, 68, 68 };
     for (int l = 0; l < kNumLayers; ++l)
     {
         layerButtons[l].setBounds (layers.removeFromLeft (layerWidths[l]));
@@ -503,14 +563,15 @@ void RKMixEditor::layoutContent()
     }
 
     // The scene bar
-    layers.removeFromLeft (60);   // "Scene"
+    layers.removeFromLeft (56);   // "Scene"
     for (auto& b : sceneButtons)
     {
-        b.setBounds (layers.removeFromLeft (36));
+        b.setBounds (layers.removeFromLeft (34));
         layers.removeFromLeft (3);
     }
 
     layoutStrips();
+    applyLock();
 }
 
 void RKMixEditor::layoutStrips()
@@ -519,20 +580,50 @@ void RKMixEditor::layoutStrips()
     const auto width = (area.getWidth() - (kStripsPerLayer - 1) * 4) / kStripsPerLayer;
     int x = area.getX();
 
-    // A user page: its strips in the order chosen.
-    if (layer >= kUserLayer)
+    for (auto* list : { &dcaStrips, &muteGroupStrips })
+        for (auto& s : *list)
+            s->setVisible (false);
+
+    // The DCA page: the DCAs, then the mute groups. Spilled: a DCA's members, then the DCA.
+    if (layer == kDcaLayer && spillDca < 0)
     {
         for (auto& s : strips)
             s->setVisible (false);
         for (auto& s : busStrips)
             s->setVisible (false);
-        for (const auto s : userPageStrips (layer - kUserLayer))
+        for (auto* list : { &dcaStrips, &muteGroupStrips })
+            for (auto& s : *list)
+            {
+                s->setVisible (true);
+                s->setBounds (x, area.getY(), width, area.getHeight());
+                x += width + 4;
+            }
+        return;
+    }
+
+    // A user page: its strips in the order chosen.
+    if (layer >= kUserLayer || layer == kDcaLayer)
+    {
+        for (auto& s : strips)
+            s->setVisible (false);
+        for (auto& s : busStrips)
+            s->setVisible (false);
+        auto shown = layer == kDcaLayer ? mixer.getDcaMembers (spillDca) : userPageStrips (layer - kUserLayer);
+        if (layer == kDcaLayer)
+            shown.removeRange (kStripsPerLayer - 1, shown.size());   // and the DCA last
+        for (const auto s : shown)
         {
             auto& strip = s >= RKMixProcessor::kUserPageBus ? *busStrips[(size_t) (s - RKMixProcessor::kUserPageBus)]
                                                             : *strips[(size_t) s];
             strip.setVisible (true);
             strip.setBounds (x, area.getY(), width, area.getHeight());
             x += width + 4;
+        }
+        if (layer == kDcaLayer)
+        {
+            auto& dca = *dcaStrips[(size_t) spillDca];
+            dca.setVisible (true);
+            dca.setBounds (area.getRight() - width, area.getY(), width, area.getHeight());
         }
         return;
     }
@@ -584,7 +675,7 @@ void RKMixEditor::paintContent (juce::Graphics& g)
 
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::bold (12.0f));
-    g.drawText ("SCENE", sceneButtons[0].getBounds().translated (-58, 0).withWidth (54), juce::Justification::centredRight);
+    g.drawText ("SCENE", sceneButtons[0].getBounds().translated (-54, 0).withWidth (50), juce::Justification::centredRight);
 
     // A dot under a scene that recalls only part of the mix (its recall scope).
     g.setColour (accent());
@@ -627,6 +718,11 @@ void RKMixEditor::rebuildPanels()
     {
         stripPanel = std::make_unique<MainPanel> (*this, selectedChain);
     }
+    else if (selectedDca >= 0 || selectedMuteGroup >= 0)
+    {
+        stripPanel = selectedDca >= 0 ? std::make_unique<GroupPanel> (*this, selectedDca, false)
+                                      : std::make_unique<GroupPanel> (*this, selectedMuteGroup, true);
+    }
     else if (selectedBus >= 0)
     {
         stripPanel = std::make_unique<BusPanel> (*this, selectedBus);
@@ -645,12 +741,16 @@ void RKMixEditor::rebuildPanels()
             panel->setBounds (panelArea());
         }
 
-    stripPage.setButtonText (selectedChain >= 0 ? "Main" : selectedBus >= 0 ? "Bus" : "Channel");
+    stripPage.setButtonText (selectedChain >= 0 ? "Main" : selectedBus >= 0 ? "Bus" : selectedDca >= 0 ? "DCA"
+                             : selectedMuteGroup >= 0 ? "Mute group" : "Channel");
     sendsPage.setEnabled (sendsPanel != nullptr);
     for (auto& s : strips)
         s->repaint();
     for (auto& s : busStrips)
         s->repaint();
+    for (auto* list : { &dcaStrips, &muteGroupStrips })
+        for (auto& s : *list)
+            s->repaint();
     mainStrip.repaint();
     monoStrip.repaint();
 }
@@ -660,6 +760,7 @@ void RKMixEditor::select (int channel)
     selected = leaderOf (juce::jlimit (0, kChannels - 1, channel));
     selectedBus = -1;
     selectedChain = -1;
+    selectedDca = selectedMuteGroup = -1;
     rebuildPanels();
     setPage (page == Page::routing ? Page::strip : page);
 }
@@ -668,6 +769,7 @@ void RKMixEditor::selectBus (int bus)
 {
     selectedBus = juce::jlimit (0, kBuses - 1, bus);
     selectedChain = -1;
+    selectedDca = selectedMuteGroup = -1;
     rebuildPanels();
     setPage (page == Page::sends ? Page::sends : Page::strip);
 }
@@ -676,6 +778,7 @@ void RKMixEditor::selectMain (int chain)
 {
     selectedChain = chain == kMonoChain ? kMonoChain : kMainChain;
     selectedBus = -1;
+    selectedDca = selectedMuteGroup = -1;
     rebuildPanels();
     setPage (Page::strip);
 }
@@ -702,6 +805,10 @@ void RKMixEditor::setPage (Page p)
     monitorPanel.setVisible (page == Page::monitor);
     scenesPanel.setVisible (page == Page::scenes);
     assignPanel.setVisible (page == Page::assign);
+    remotePanel->setVisible (page == Page::remote);
+    if (page == Page::remote)
+        remotePanel->refresh();
+    remotePage.setToggleState (page == Page::remote, juce::dontSendNotification);
     if (page == Page::scenes)
         scenesPanel.refresh();
     if (page == Page::assign)
@@ -737,6 +844,7 @@ void RKMixEditor::setSendsOnFader (int bus)
     for (auto& s : strips)
         s->showSendTo (bus);
     sendsBack.setVisible (bus >= 0);
+    applyLock();
     if (bus >= 0 && layer == kBusLayer)
         setLayer (0);
     refreshAll();
@@ -750,6 +858,9 @@ void RKMixEditor::refreshAll()
         s->refresh();
     for (auto& s : busStrips)
         s->refresh();
+    for (auto* list : { &dcaStrips, &muteGroupStrips })
+        for (auto& s : *list)
+            s->refresh();
     for (auto* panel : { stripPanel.get(), sendsPanel.get() })
         if (panel != nullptr)
             panel->refresh();
@@ -759,6 +870,8 @@ void RKMixEditor::refreshAll()
         monitorPanel.refresh();
     if (scenesPanel.isVisible())
         scenesPanel.refresh();
+    if (remotePanel != nullptr && remotePanel->isVisible())
+        remotePanel->refresh();
     refreshScenes();
 
     const auto target = [this] (const char* id) { return targetName (mixer.getSettings().choice (id)); };
@@ -771,8 +884,12 @@ void RKMixEditor::refreshAll()
 
 void RKMixEditor::onSettingsChange()
 {
+    // A spilled DCA left with no members: back to the DCA page.
+    if (spillDca >= 0 && mixer.getDcaMembers (spillDca).isEmpty())
+        setSpill (-1);
+
     // A pair linked or unlinked changes which strips there are.
-    if (selectedBus < 0 && selectedChain < 0)
+    if (isChannelSelected())
     {
         auto* panel = dynamic_cast<ChannelPanel*> (stripPanel.get());
         if (panel != nullptr && panel->stereo != isStereo (selected))
@@ -792,6 +909,9 @@ void RKMixEditor::updateMeters()
 {
     if (mixer.getNamesVersion() != lastNamesVersion)
         refreshAll();
+    refreshUndo();
+    if (remotePanel->isVisible())
+        remotePanel->updateConnections();
 
     // Standalone: a controller learned (or learning ended), the tempo moving with the clock.
     if (mixer.isStandalone())
@@ -882,6 +1002,20 @@ void RKMixEditor::updateMeters()
             channelPanel->updateMeters (compDb, elapsed);
     }
 
+    // Strips silenced by a DCA or a mute group.
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (auto& strip = *strips[(size_t) ch]; strip.groupMuted != mixer.isChannelGroupMuted (ch))
+        {
+            strip.groupMuted = ! strip.groupMuted;
+            strip.repaint();
+        }
+    for (int bus = 0; bus < kBuses; ++bus)
+        if (auto& strip = *busStrips[(size_t) bus]; strip.groupMuted != mixer.isBusGroupMuted (bus))
+        {
+            strip.groupMuted = ! strip.groupMuted;
+            strip.repaint();
+        }
+
     for (int bus = 0; bus < kBuses; ++bus)
     {
         const auto left = mixer.takeBusPeak (bus, 0);
@@ -915,11 +1049,48 @@ void RKMixEditor::showColourMenu (int channel, int bus, juce::Component& target)
                       on || shown.size() < RKMixProcessor::kUserPageStrips, on);
     }
 
+    // In the DCAs and mute groups
+    constexpr int kDcaItem = 200, kMuteGroupItem = 300;
+    const auto memberId = [channel, bus, this] (bool muteGroup, int n)
+    {
+        return bus >= 0 ? (muteGroup ? busMuteGroupId (bus, n) : busDcaId (bus, n))
+                        : (muteGroup ? channelMuteGroupId (leaderOf (channel), n) : channelDcaId (leaderOf (channel), n));
+    };
+    juce::PopupMenu dcas, muteGroups;
+    for (int n = 0; n < kDcas; ++n)
+        dcas.addItem (kDcaItem + n, dcaDisplayName (n), true, mixer.getSettings().flag (memberId (false, n)));
+    for (int n = 0; n < kMuteGroups; ++n)
+        muteGroups.addItem (kMuteGroupItem + n, muteGroupDisplayName (n), true, mixer.getSettings().flag (memberId (true, n)));
+    menu.addSubMenu ("DCAs", dcas);
+    menu.addSubMenu ("Mute groups", muteGroups);
+
+    // Copy and paste the whole strip; the gang.
+    constexpr int kCopyItem = 400, kUngang = 500;
+    const auto copyChannel = bus >= 0 ? -1 : leaderOf (channel);
+    menu.addSeparator();
+    addCopyPasteItems (menu, copyChannel, bus, -1, kCopyItem);
+    if (! gang.isEmpty())
+        menu.addItem (kUngang, "Ungang all (Esc)");
+
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus, strip] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, channel, bus, strip, memberId, copyChannel] (int result)
     {
         if (safe == nullptr || result <= 0)
             return;
+        if (result == kUngang)
+        {
+            safe->clearGang();
+            return;
+        }
+        if (safe->handleCopyPaste (result, copyChannel, bus, -1, kCopyItem))
+            return;
+        if (result >= kDcaItem)
+        {
+            const auto muteGroup = result >= kMuteGroupItem;
+            auto& p = safe->mixer.getSettings().param (memberId (muteGroup, result - (muteGroup ? kMuteGroupItem : kDcaItem)));
+            p.setValueNotifyingHost (p.getValue() >= 0.5f ? 0.0f : 1.0f);
+            return;
+        }
         if (result >= kUserPageItem)
         {
             safe->toggleOnUserPage (result - kUserPageItem, strip);
@@ -1046,6 +1217,8 @@ void RKMixEditor::InsertButton::paint (juce::Graphics& g)
 
 void RKMixEditor::InsertButton::mouseDown (const juce::MouseEvent& e)
 {
+    if (owner.isLocked())
+        return;
     auto& rack = owner.mixer.getRack();
     if (e.mods.isPopupMenu() || rack.get (slot) == nullptr)
         owner.showInsertMenu (slot, *this, rack.get (slot) != nullptr);
@@ -1192,7 +1365,17 @@ void RKMixEditor::addInsertTypes (juce::PopupMenu& menu, int firstId) const
 
 void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target, bool full)
 {
-    enum { openItem = 1, toggleItem, removeItem, firstType = 100 };
+    enum { openItem = 1, toggleItem, removeItem, copyItem, pasteItem, firstType = 100 };
+
+    // Paste a copied insert here, and into the same slot of the other ganged strips.
+    const auto targets = insertPasteTargets (slot);
+    const auto pasteText = [&]
+    {
+        auto text = "Paste " + RKMixProcessor::describeCopy (clipboard);
+        if (targets.size() > 1)
+            text << " to " << targets.size() << " ganged strips";
+        return text;
+    };
 
     juce::PopupMenu menu;
     if (full)
@@ -1203,21 +1386,38 @@ void RKMixEditor::showInsertMenu (InsertRack::Slot slot, juce::Component& target
         addInsertTypes (replace, firstType);
         menu.addSubMenu ("Replace with", replace);
         menu.addSeparator();
+        menu.addItem (copyItem, "Copy insert (with its settings)");
+        if (RKMixProcessor::isInsertCopy (clipboard))
+            menu.addItem (pasteItem, pasteText());
+        menu.addSeparator();
         menu.addItem (removeItem, "Remove");
     }
     else
     {
+        if (RKMixProcessor::isInsertCopy (clipboard))
+        {
+            menu.addItem (pasteItem, pasteText());
+            menu.addSeparator();
+        }
         addInsertTypes (menu, firstType);
     }
 
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, slot] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [safe, slot, targets] (int result)
     {
         if (safe == nullptr || result == 0)
             return;
 
         auto& rack = safe->mixer.getRack();
-        if (result == openItem)
+        if (result == copyItem)
+            safe->clipboard = safe->mixer.copyInsert (slot);
+        else if (result == pasteItem)
+        {
+            const auto copy = safe->clipboard;   // kept, to paste again elsewhere
+            for (const auto& t : targets)
+                safe->mixer.pasteInsert (t, copy);
+        }
+        else if (result == openItem)
             safe->openInsert (slot);
         else if (result == toggleItem)
             rack.setOn (slot, ! rack.isOn (slot));
@@ -1368,7 +1568,7 @@ void RKMixEditor::showSceneMenu (int scene)
 
 void RKMixEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu() || e.originalComponent == this)
+    if (! e.mods.isPopupMenu() || e.originalComponent == this || isLocked())
         return;
 
     for (int i = 0; i < (int) sceneButtons.size(); ++i)

@@ -135,6 +135,28 @@ RKMixProcessor::RKMixProcessor()
     for (int bus = 0; bus < kBuses; ++bus)
         busSoloSafeParams[(size_t) bus] = &settings.param (busId (bus, "solosafe"));
 
+    for (int dca = 0; dca < kDcas; ++dca)
+    {
+        dcaFaders[(size_t) dca] = findParam (dcaFaderId (dca));
+        dcaMutes[(size_t) dca] = findParam (dcaMuteId (dca));
+    }
+    for (int group = 0; group < kMuteGroups; ++group)
+        muteGroups[(size_t) group] = findParam (muteGroupId (group));
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        for (int dca = 0; dca < kDcas; ++dca)
+            channelMembership[(size_t) ch].dcas[(size_t) dca] = &settings.param (channelDcaId (ch, dca));
+        for (int group = 0; group < kMuteGroups; ++group)
+            channelMembership[(size_t) ch].muteGroups[(size_t) group] = &settings.param (channelMuteGroupId (ch, group));
+    }
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        for (int dca = 0; dca < kDcas; ++dca)
+            busMembership[(size_t) bus].dcas[(size_t) dca] = &settings.param (busDcaId (bus, dca));
+        for (int group = 0; group < kMuteGroups; ++group)
+            busMembership[(size_t) bus].muteGroups[(size_t) group] = &settings.param (busMuteGroupId (bus, group));
+    }
+
     mainFader = findParam ("main_fader");
     mainMute = findParam ("main_mute");
     monoFader = findParam ("mono_fader");
@@ -173,6 +195,26 @@ RKMixProcessor::RKMixProcessor()
     sceneParam = findParam ("scene");
     sceneParam->addListener (&sceneSync);
 
+    // Undo: every mix setting and the host's faders and mutes (not the
+    // assignables, which follow their controls, nor scene, talk, bypass).
+    std::vector<juce::RangedAudioParameter*> tracked;
+    for (auto* p : settings.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+            tracked.push_back (r);
+    for (auto* p : getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (const auto id = r->getParameterID(); ! id.startsWith ("assign") && id != "scene" && id != "talk" && id != "bypass")
+                tracked.push_back (r);
+    undo = std::make_unique<MixUndo> (std::move (tracked), *scenes, [this] (int scene)
+    {
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scene + 1)));
+    });
+
+    // The monitor remote: only in the plugin and the app (never in tests and tools).
+    remote = std::make_unique<MixRemote> (*this);
+    if (wrapperType != wrapperType_Undefined)
+        remote->begin();
+
     // The standalone app: MIDI learn and its rig settings in Application Support/RKFX/RKMix.
     standalone = wrapperType == wrapperType_Standalone;
     if (standalone)
@@ -197,6 +239,8 @@ RKMixProcessor::RKMixProcessor()
 RKMixProcessor::~RKMixProcessor()
 {
     sceneParam->removeListener (&sceneSync);
+    remote.reset();
+    undo.reset();
     assigns.reset();
     rack.aboutToRemove = nullptr;
     settings.onChange = nullptr;
@@ -446,6 +490,16 @@ juce::String RKMixProcessor::describeTarget (const MixAssigns::Target& t) const
     return text;
 }
 
+void RKMixProcessor::takeRemotePeaks (std::array<float, mix::kChannels>& channels,
+                                      std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        channels[(size_t) ch] = remoteChannelPeaks[(size_t) ch].exchange (0.0f);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        for (int side = 0; side < 2; ++side)
+            buses[(size_t) bus][(size_t) side] = remoteBusPeaks[(size_t) bus][(size_t) side].exchange (0.0f);
+}
+
 void RKMixProcessor::setChannelSolo (int ch, bool on)
 {
     channelSolo[(size_t) (ch % 2 == 1 && isLinked (ch / 2) ? ch - 1 : ch)] = on;
@@ -549,6 +603,45 @@ void RKMixProcessor::setBusColour (int bus, int colour)
     markPresetModified();
 }
 
+juce::String RKMixProcessor::getDcaName (int dca) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return dcaNames[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)];
+}
+
+void RKMixProcessor::setDcaName (int dca, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        dcaNames[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
+void RKMixProcessor::setDcaColour (int dca, int colour)
+{
+    dcaColours[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)] = juce::jlimit (0, kNumColours - 1, colour);
+    ++namesVersion;
+    markPresetModified();
+}
+
+juce::String RKMixProcessor::getMuteGroupName (int group) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return muteGroupNames[(size_t) juce::jlimit (0, mix::kMuteGroups - 1, group)];
+}
+
+void RKMixProcessor::setMuteGroupName (int group, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        muteGroupNames[(size_t) juce::jlimit (0, mix::kMuteGroups - 1, group)] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
 juce::String RKMixProcessor::getOutputName (int output) const
 {
     const juce::ScopedLock sl (namesLock);
@@ -598,7 +691,7 @@ juce::var RKMixProcessor::getExtraState() const
     auto* root = new juce::DynamicObject();
     root->setProperty ("settings", settings.toVar());
 
-    juce::Array<juce::var> names, colours, buses, busColourList, outputs;
+    juce::Array<juce::var> names, colours, buses, busColourList, outputs, dcas, dcaColourList, muteGroupList;
     {
         const juce::ScopedLock sl (namesLock);
         for (int ch = 0; ch < kChannels; ++ch)
@@ -612,6 +705,13 @@ juce::var RKMixProcessor::getExtraState() const
             buses.add (busNames[(size_t) bus]);
             busColourList.add (busColours[(size_t) bus].load());
         }
+        for (int dca = 0; dca < mix::kDcas; ++dca)
+        {
+            dcas.add (dcaNames[(size_t) dca]);
+            dcaColourList.add (dcaColours[(size_t) dca].load());
+        }
+        for (int group = 0; group < mix::kMuteGroups; ++group)
+            muteGroupList.add (muteGroupNames[(size_t) group]);
     }
     root->setProperty ("tempo", tempo.load());
     root->setProperty ("inserts", rack.toVar());
@@ -622,6 +722,9 @@ juce::var RKMixProcessor::getExtraState() const
     root->setProperty ("busNames", buses);
     root->setProperty ("busColours", busColourList);
     root->setProperty ("outputNames", outputs);
+    root->setProperty ("dcaNames", dcas);
+    root->setProperty ("dcaColours", dcaColourList);
+    root->setProperty ("muteGroupNames", muteGroupList);
 
     // User pages as "ch3", "bus2" (1-based, readable)
     juce::Array<juce::var> pages;
@@ -674,6 +777,10 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
         }
         for (int bus = 0; bus < mix::kBuses; ++bus)
             busNames[(size_t) bus] = text (extra["busNames"], bus);
+        for (int dca = 0; dca < mix::kDcas; ++dca)
+            dcaNames[(size_t) dca] = text (extra["dcaNames"], dca);
+        for (int group = 0; group < mix::kMuteGroups; ++group)
+            muteGroupNames[(size_t) group] = text (extra["muteGroupNames"], group);
 
         const auto* pages = extra["userPages"].getArray();
         for (int page = 0; page < kUserPages; ++page)
@@ -698,7 +805,13 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
         channelColours[(size_t) ch] = colour (extra["colours"], ch);
     for (int bus = 0; bus < mix::kBuses; ++bus)
         busColours[(size_t) bus] = colour (extra["busColours"], bus);
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        dcaColours[(size_t) dca] = colour (extra["dcaColours"], dca);
     ++namesVersion;
+
+    // A mix loaded: nothing to undo into.
+    if (undo != nullptr)
+        undo->clear();
 }
 
 //==============================================================================
@@ -768,6 +881,221 @@ RKMixProcessor::PresetResult RKMixProcessor::loadChannelPreset (int ch, const ju
     if (root.hasProperty ("colour"))
         setChannelColour (ch, (int) root["colour"]);
     return { true, r.notes.joinIntoString ("; ") };
+}
+
+//==============================================================================
+// Copy and paste
+
+namespace
+{
+    using Section = RKMixProcessor::Section;
+
+    /** True when a channel field ("gate_thr") belongs to the section. */
+    bool inChannelSection (const juce::String& field, Section section)
+    {
+        switch (section)
+        {
+            case Section::input: return field == "trim" || field == "pol" || field == "polr";
+            case Section::delay: return field.startsWith ("delay");
+            case Section::hpf:   return field.startsWith ("hpf");
+            case Section::gate:  return field.startsWith ("gate_") && field != "gate_key";
+            case Section::eq:    return field.startsWith ("eq_");
+            case Section::comp:  return field.startsWith ("comp_") && field != "comp_key";
+            case Section::whole: return true;
+            case Section::limit: break;
+        }
+        return false;
+    }
+
+    /** True when a chain field ("comp_att") belongs to the section: the EQ has the high- and low-pass. */
+    bool inChainSection (const juce::String& field, Section section)
+    {
+        switch (section)
+        {
+            case Section::eq:    return field.startsWith ("eq_") || field.startsWith ("hpf") || field.startsWith ("lpf");
+            case Section::comp:  return field.startsWith ("comp_");
+            case Section::limit: return field.startsWith ("lim_");
+            case Section::whole: return true;
+            default:             break;
+        }
+        return false;
+    }
+
+    const char* sectionKey (Section s)
+    {
+        switch (s)
+        {
+            case Section::input: return "input";
+            case Section::delay: return "delay";
+            case Section::hpf:   return "hpf";
+            case Section::gate:  return "gate";
+            case Section::eq:    return "eq";
+            case Section::comp:  return "comp";
+            case Section::limit: return "limit";
+            case Section::whole: return "whole";
+        }
+        return "whole";
+    }
+
+    Section sectionFromKey (const juce::String& key)
+    {
+        for (auto s : { Section::input, Section::delay, Section::hpf, Section::gate, Section::eq, Section::comp, Section::limit })
+            if (key == sectionKey (s))
+                return s;
+        return Section::whole;
+    }
+
+    juce::var makeCopy (const char* kind, Section section, const juce::String& from, juce::DynamicObject* values, const juce::var& inserts)
+    {
+        auto* root = new juce::DynamicObject();
+        root->setProperty ("kind", kind);
+        root->setProperty ("section", sectionKey (section));
+        root->setProperty ("from", from);
+        root->setProperty ("values", juce::var (values));
+        if (! inserts.isVoid())
+            root->setProperty ("inserts", inserts);
+        return juce::var (root);
+    }
+
+    void pasteValues (const juce::var& copy, const std::function<juce::RangedAudioParameter* (const juce::String&)>& paramFor)
+    {
+        if (auto* values = copy["values"].getDynamicObject())
+            for (const auto& v : values->getProperties())
+                if (auto* p = paramFor (v.name.toString()))
+                {
+                    const auto n = p->convertTo0to1 ((float) v.value);
+                    if (! juce::exactlyEqual (p->getValue(), n))
+                        p->setValueNotifyingHost (n);
+                }
+    }
+}
+
+juce::String RKMixProcessor::sectionName (Section s)
+{
+    switch (s)
+    {
+        case Section::input: return "Input";
+        case Section::delay: return "Delay";
+        case Section::hpf:   return "High-pass";
+        case Section::gate:  return "Gate";
+        case Section::eq:    return "EQ";
+        case Section::comp:  return "Compressor";
+        case Section::limit: return "Limiter";
+        case Section::whole: return "Whole strip";
+    }
+    return {};
+}
+
+juce::var RKMixProcessor::copyChannel (int ch, Section section) const
+{
+    auto* values = new juce::DynamicObject();
+    for (int f = 0; f < numChannelFields; ++f)
+        if (isStripField (f) && inChannelSection (kChannelFields[f], section))
+            values->setProperty (kChannelFields[f], valueOf (channelParams[(size_t) ch][(size_t) f]));
+    const auto name = getChannelName (ch);
+    return makeCopy ("channel", section, name.isNotEmpty() ? name : "Ch " + mix::num (ch), values,
+                     section == Section::whole ? rack.stripToVar (InsertRack::Strip::channel, ch) : juce::var());
+}
+
+juce::var RKMixProcessor::copyChain (int chain, Section section) const
+{
+    auto* values = new juce::DynamicObject();
+    const auto& fields = MixParams::chainFields();
+    for (size_t f = 0; f < fields.size(); ++f)
+        if (inChainSection (fields[f], section))
+            values->setProperty (fields[f], valueOf (chainParams[(size_t) chain][f]));
+
+    const auto strip = chain == mix::kMainChain ? InsertRack::Strip::main : chain == mix::kMonoChain ? InsertRack::Strip::mono : InsertRack::Strip::bus;
+    const auto name = chain == mix::kMainChain ? juce::String ("Main") : chain == mix::kMonoChain ? juce::String ("Mono")
+                    : getBusName (chain).isNotEmpty() ? getBusName (chain) : "Bus " + mix::num (chain);
+    return makeCopy ("chain", section, name, values,
+                     section == Section::whole ? rack.stripToVar (strip, chain >= mix::kBuses ? 0 : chain) : juce::var());
+}
+
+bool RKMixProcessor::isChannelCopy (const juce::var& copy) { return copy["kind"].toString() == "channel"; }
+bool RKMixProcessor::isChainCopy (const juce::var& copy)   { return copy["kind"].toString() == "chain"; }
+
+juce::String RKMixProcessor::describeCopy (const juce::var& copy)
+{
+    if (isInsertCopy (copy))
+        return copy["plugin"].toString() + " from " + copy["from"].toString();
+    if (! isChannelCopy (copy) && ! isChainCopy (copy))
+        return {};
+    const auto section = sectionFromKey (copy["section"].toString());
+    return (section == Section::whole ? juce::String ("Whole strip") : sectionName (section)) + " from " + copy["from"].toString();
+}
+
+void RKMixProcessor::pasteChannel (int ch, const juce::var& copy)
+{
+    if (! isChannelCopy (copy) || ! juce::isPositiveAndBelow (ch, kChannels))
+        return;
+    pasteValues (copy, [this, ch] (const juce::String& field) -> juce::RangedAudioParameter*
+    {
+        for (int f = 0; f < numChannelFields; ++f)
+            if (isStripField (f) && field == kChannelFields[f])
+                return channelParams[(size_t) ch][(size_t) f];
+        return nullptr;
+    });
+    if (copy.hasProperty ("inserts"))
+        rack.stripFromVar (InsertRack::Strip::channel, ch, copy["inserts"], channelsOf (InsertRack::Strip::channel, ch));
+}
+
+void RKMixProcessor::pasteChain (int chain, const juce::var& copy)
+{
+    if (! isChainCopy (copy) || ! juce::isPositiveAndBelow (chain, mix::kProcessingChains))
+        return;
+    pasteValues (copy, [this, chain] (const juce::String& field) -> juce::RangedAudioParameter*
+    {
+        const auto& fields = MixParams::chainFields();
+        for (size_t f = 0; f < fields.size(); ++f)
+            if (field == fields[f])
+                return chainParams[(size_t) chain][f];
+        return nullptr;
+    });
+    if (copy.hasProperty ("inserts"))
+    {
+        const auto strip = chain == mix::kMainChain ? InsertRack::Strip::main : chain == mix::kMonoChain ? InsertRack::Strip::mono : InsertRack::Strip::bus;
+        const auto index = chain >= mix::kBuses ? 0 : chain;
+        // The mono sum has 2 slots, the others 4: what doesn't fit is left out by the rack.
+        rack.stripFromVar (strip, index, copy["inserts"], channelsOf (strip, index));
+    }
+}
+
+juce::var RKMixProcessor::copyInsert (InsertRack::Slot slot) const
+{
+    auto* plugin = rack.get (slot);
+    if (plugin == nullptr)
+        return {};
+    juce::String from;
+    switch (slot.strip)
+    {
+        case InsertRack::Strip::channel: from = getChannelName (slot.index).isNotEmpty() ? getChannelName (slot.index) : "Ch " + mix::num (slot.index); break;
+        case InsertRack::Strip::bus:     from = getBusName (slot.index).isNotEmpty() ? getBusName (slot.index) : "Bus " + mix::num (slot.index); break;
+        case InsertRack::Strip::main:    from = "Main"; break;
+        case InsertRack::Strip::mono:    from = "Mono"; break;
+    }
+    auto* root = new juce::DynamicObject();
+    root->setProperty ("kind", "insert");
+    root->setProperty ("plugin", plugin->getName());
+    root->setProperty ("from", from);
+    root->setProperty ("on", rack.isOn (slot));
+    root->setProperty ("preset", plugin->getPresetVar (false));
+    return juce::var (root);
+}
+
+bool RKMixProcessor::isInsertCopy (const juce::var& copy) { return copy["kind"].toString() == "insert"; }
+
+bool RKMixProcessor::pasteInsert (InsertRack::Slot slot, const juce::var& copy)
+{
+    if (! isInsertCopy (copy) || ! juce::isPositiveAndBelow (slot.slot, InsertRack::numSlots (slot.strip)))
+        return false;
+    const auto& preset = copy["preset"];
+    auto* plugin = rack.insert (slot, preset["plugin"].toString(), channelsOf (slot.strip, slot.index));
+    if (plugin == nullptr)
+        return false;
+    plugin->loadPresetVar (preset, false);
+    rack.setOn (slot, (bool) copy.getProperty ("on", true));
+    return true;
 }
 
 void RKMixProcessor::resetChannelStrip (int ch)
@@ -926,18 +1254,88 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
     return c;
 }
 
+float RKMixProcessor::withDcas (float faderDb, const Membership& m, const std::array<float, mix::kDcas>& dcaDb) const
+{
+    // A DCA moves its members' faders by its own level: silence at its bottom,
+    // never past the top of a fader.
+    auto db = faderDb;
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        if (m.dcas[(size_t) dca]->getValue() >= 0.5f)
+        {
+            if (dcaDb[(size_t) dca] <= mix::kFaderMinDb + 0.001f)
+                return mix::kFaderMinDb;
+            db += dcaDb[(size_t) dca];
+        }
+    return db <= mix::kFaderMinDb + 0.001f ? mix::kFaderMinDb : juce::jmin (db, mix::kFaderMaxDb);
+}
+
+bool RKMixProcessor::groupMuted (const Membership& m) const
+{
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        if (dcaMutes[(size_t) dca]->getValue() >= 0.5f && m.dcas[(size_t) dca]->getValue() >= 0.5f)
+            return true;
+    for (int group = 0; group < mix::kMuteGroups; ++group)
+        if (muteGroups[(size_t) group]->getValue() >= 0.5f && m.muteGroups[(size_t) group]->getValue() >= 0.5f)
+            return true;
+    return false;
+}
+
+bool RKMixProcessor::isChannelGroupMuted (int ch) const
+{
+    return groupMuted (channelMembership[(size_t) juce::jlimit (0, kChannels - 1, ch)]);
+}
+
+bool RKMixProcessor::isBusGroupMuted (int bus) const
+{
+    return groupMuted (busMembership[(size_t) juce::jlimit (0, mix::kBuses - 1, bus)]);
+}
+
+juce::Array<int> RKMixProcessor::getDcaMembers (int dca) const
+{
+    juce::Array<int> members;
+    if (! juce::isPositiveAndBelow (dca, mix::kDcas))
+        return members;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if ((ch % 2 == 0 || ! isLinked (ch / 2)) && channelMembership[(size_t) ch].dcas[(size_t) dca]->getValue() >= 0.5f)
+            members.add (ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        if (busMembership[(size_t) bus].dcas[(size_t) dca]->getValue() >= 0.5f)
+            members.add (kUserPageBus + bus);
+    return members;
+}
+
+juce::Array<int> RKMixProcessor::getMuteGroupMembers (int group) const
+{
+    juce::Array<int> members;
+    if (! juce::isPositiveAndBelow (group, mix::kMuteGroups))
+        return members;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if ((ch % 2 == 0 || ! isLinked (ch / 2)) && channelMembership[(size_t) ch].muteGroups[(size_t) group]->getValue() >= 0.5f)
+            members.add (ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        if (busMembership[(size_t) bus].muteGroups[(size_t) group]->getValue() >= 0.5f)
+            members.add (kUserPageBus + bus);
+    return members;
+}
+
 MixEngine::Levels RKMixProcessor::readLevels() const
 {
     MixEngine::Levels levels;
+    std::array<float, mix::kDcas> dcaDb {};
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        dcaDb[(size_t) dca] = valueOf (dcaFaders[(size_t) dca]);
+
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        levels.channelDb[(size_t) ch] = valueOf (channelFaders[(size_t) ch]);
-        levels.channelMute[(size_t) ch] = valueOf (channelMutes[(size_t) ch]) >= 0.5f;
+        const auto& m = channelMembership[(size_t) ch];
+        levels.channelDb[(size_t) ch] = withDcas (valueOf (channelFaders[(size_t) ch]), m, dcaDb);
+        levels.channelMute[(size_t) ch] = valueOf (channelMutes[(size_t) ch]) >= 0.5f || groupMuted (m);
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
-        levels.busDb[(size_t) bus] = valueOf (busFaders[(size_t) bus]);
-        levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f;
+        const auto& m = busMembership[(size_t) bus];
+        levels.busDb[(size_t) bus] = withDcas (valueOf (busFaders[(size_t) bus]), m, dcaDb);
+        levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f || groupMuted (m);
     }
     for (int ch = 0; ch < kChannels; ++ch)
         levels.channelSolo[(size_t) ch] = channelSolo[(size_t) ch].load();
@@ -1046,14 +1444,20 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     };
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        raise (channelPeaks[(size_t) ch], engine.takeChannelPeak (ch));
+        const auto peak = engine.takeChannelPeak (ch);
+        raise (channelPeaks[(size_t) ch], peak);
+        raise (remoteChannelPeaks[(size_t) ch], peak);
         lower (gateReduction[(size_t) ch], engine.takeGateReductionDb (ch));
         lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
         for (int side = 0; side < 2; ++side)
-            raise (busPeaks[(size_t) bus][(size_t) side], engine.takeBusPeak (bus, side));
+        {
+            const auto peak = engine.takeBusPeak (bus, side);
+            raise (busPeaks[(size_t) bus][(size_t) side], peak);
+            raise (remoteBusPeaks[(size_t) bus][(size_t) side], peak);
+        }
         lower (chainCompReduction[(size_t) bus], engine.takeBusCompReductionDb (bus));
         lower (chainLimitReduction[(size_t) bus], engine.takeBusLimitReductionDb (bus));
     }

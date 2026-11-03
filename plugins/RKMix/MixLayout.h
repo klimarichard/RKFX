@@ -14,6 +14,8 @@ namespace mix
     constexpr int kChannels = 32;
     constexpr int kPairs = kChannels / 2;
     constexpr int kBuses = 16;
+    constexpr int kDcas = 8;          // control groups: a fader and mute over their members' faders
+    constexpr int kMuteGroups = 8;
 
     //==============================================================================
     // Output targets (main, mono, buses): 0 = off, 1..32 = one output,
@@ -206,6 +208,9 @@ namespace mix
     inline juce::String busFaderId (int bus)    { return "bus_fader_" + num (bus); }
     inline juce::String busMuteId (int bus)     { return "bus_mute_" + num (bus); }
     inline juce::String assignId (int slot)     { return "assign" + num (slot); }
+    inline juce::String dcaFaderId (int dca)    { return "dca_fader_" + num (dca); }
+    inline juce::String dcaMuteId (int dca)     { return "dca_mute_" + num (dca); }
+    inline juce::String muteGroupId (int group) { return "mgrp_" + num (group); }
 
     // Mix settings
     inline juce::String channelId (int ch, const char* name) { return "ch" + num (ch) + "_" + name; }
@@ -229,6 +234,12 @@ namespace mix
     }
     inline juce::String chainId (int chain, const char* name) { return chainOwner (chain) + "_" + name; }
     inline juce::String busAssignId (int bus, int to)     { return busId (bus, ("grp" + num (to)).toRawUTF8()); }
+
+    // Membership of a DCA or a mute group: "ch5_dca2", "bus3_mgrp1".
+    inline juce::String channelDcaId (int ch, int dca)         { return channelId (ch, ("dca" + num (dca)).toRawUTF8()); }
+    inline juce::String busDcaId (int bus, int dca)            { return busId (bus, ("dca" + num (dca)).toRawUTF8()); }
+    inline juce::String channelMuteGroupId (int ch, int group) { return channelId (ch, ("mgrp" + num (group)).toRawUTF8()); }
+    inline juce::String busMuteGroupId (int bus, int group)    { return busId (bus, ("mgrp" + num (group)).toRawUTF8()); }
 
     /** The channel whose controls channel @p ch uses: the left of a linked pair. */
     template <typename Links>

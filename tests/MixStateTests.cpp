@@ -1052,6 +1052,142 @@ public:
             dir.deleteRecursively();
         }
 
+        beginTest ("Console remote: PIN, remembered devices, subscriptions, commands");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-console");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& console = remote.getConsole();
+            expectEquals (console.getPin().length(), 4, "a PIN from the start");
+            expect (console.setPin ("2468"));
+            expect (! console.setPin ("12a4") && ! console.setPin ("123"), "digits only, 4 to 8");
+
+            struct Fake : MixWebServer::Connection
+            {
+                juce::StringArray sent;
+                bool closed = false;
+                bool send (const juce::String& t) override { sent.add (t); return true; }
+                void close() override { closed = true; }
+                juce::var last (const juce::String& type)
+                {
+                    for (int i = sent.size(); --i >= 0;)
+                        if (const auto v = juce::JSON::parse (sent[i]); v["type"].toString() == type)
+                            return v;
+                    return {};
+                }
+            };
+            const auto exchange = [&] (Fake& c, const juce::String& message)
+            {
+                console.received (c, message);
+                console.tick();
+                console.send (c, {});
+            };
+
+            Fake a;
+            a.address = "10.0.0.5";
+            console.opened (a);
+            exchange (a, R"({"t":"set","id":"ch_fader_1","v":0.5})");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelFaderId (0))), 0.0f, 0.01f,
+                                       "nothing before signing in");
+            exchange (a, R"({"t":"hello","pin":"1111","name":"iPad"})");
+            expect ((bool) a.last ("auth")["wrong"], "a wrong PIN");
+            exchange (a, R"({"t":"hello","pin":"2468","name":"iPad"})");
+            const auto token = a.last ("auth")["token"].toString();
+            expect ((bool) a.last ("auth")["ok"] && token.length() >= 16, "signed in, with a token");
+            expect (a.last ("s")["ch"].size() == mix::kChannels, "the structure follows");
+
+            // Values: subscribed IDs come with their description, then only changes.
+            exchange (a, R"({"t":"sub","ids":["ch_fader_1","ch1_trim","bus1_type","nonsense"]})");
+            const auto v = a.last ("v")["p"];
+            expect (v.hasProperty ("ch_fader_1") && v.hasProperty ("ch1_trim") && ! v.hasProperty ("nonsense"));
+            expectEquals (v["bus1_type"][4].size(), 3, "a choice's names");
+            expectEquals (v["ch1_trim"][1].toString(), juce::String ("0.0 dB"));
+            a.sent.clear();
+            exchange (a, R"({"t":"set","id":"ch1_trim","v":0.75})");
+            expectWithinAbsoluteError (p.getSettings().value (mix::channelId (0, "trim")), 12.0f, 0.01f, "a setting moved");
+            const auto changed = a.last ("v")["p"];
+            expect (changed.hasProperty ("ch1_trim") && ! changed.hasProperty ("ch_fader_1"), "only what changed");
+            exchange (a, R"({"t":"set","id":"bypass","v":1})");
+            expect (p.findParam ("bypass")->getValue() < 0.5f, "never the plugin's bypass");
+
+            // Commands
+            exchange (a, R"({"t":"solo","s":"ch3","on":true})");
+            expect (p.isChannelSoloed (2));
+            exchange (a, R"({"t":"clearSolo"})");
+            expect (! p.isAnythingSoloed());
+            exchange (a, R"({"t":"name","s":"bus2","text":"Wedges"})");
+            expectEquals (p.getBusName (1), juce::String ("Wedges"));
+            exchange (a, R"({"t":"colour","s":"ch1","c":4})");
+            expectEquals (p.getChannelColour (0), 4);
+            exchange (a, R"({"t":"curves","k":["eq:ch1","comp:ch1"]})");
+            expectEquals (a.last ("curve")["d"].size(), 121, "a compressor curve");
+
+            // Inserts: add one, its parameters by ID, on/off, copy and paste, remove.
+            exchange (a, R"({"t":"insAdd","s":"ch2","n":1,"p":"RKCompress"})");
+            const InsertRack::Slot slot { InsertRack::Strip::channel, 1, 1 };
+            expect (p.getRack().get (slot) != nullptr, "an insert added");
+            exchange (a, R"({"t":"insParams","s":"ch2","n":1})");
+            const auto params = a.last ("insParams")["params"];
+            expect (params.size() > 3, "its controls listed");
+            const auto firstId = params[0]["id"].toString();
+            expect (firstId.startsWith ("ins:" + juce::String (InsertRack::flatIndex (slot)) + ":"));
+            exchange (a, R"({"t":"sub","ids":[")" + firstId + "\"]}");
+            expect (a.last ("v")["p"].hasProperty (firstId), "an insert's value");
+            exchange (a, R"({"t":"set","id":")" + firstId + R"(","v":0.1})");
+            expectWithinAbsoluteError (p.getRack().get (slot)->getParameters()[0]->getValue(), 0.1f, 0.01f, "an insert's knob moved");
+            exchange (a, R"({"t":"insOn","s":"ch2","n":1,"on":false})");
+            expect (! p.getRack().isOn (slot));
+            exchange (a, R"({"t":"insCopy","s":"ch2","n":1})");
+            exchange (a, R"({"t":"insPaste","s":"bus3","n":0})");
+            expect (p.getRack().get ({ InsertRack::Strip::bus, 2, 0 }) != nullptr, "pasted onto a bus");
+            exchange (a, R"({"t":"insRemove","s":"ch2","n":1})");
+            expect (p.getRack().get (slot) == nullptr, "removed");
+            exchange (a, R"({"t":"set","id":")" + firstId + R"(","v":0.5})");   // gone: nothing happens
+
+            // Section copy and paste; a user page's strips.
+            setParam (p.getSettings().param (mix::channelId (4, "gate_thr")), -33.0f);
+            exchange (a, R"({"t":"copy","s":"ch5","sec":"gate"})");
+            expectEquals (a.last ("clip")["kind"].toString(), juce::String ("channel"));
+            exchange (a, R"({"t":"paste","s":"ch7"})");
+            expectWithinAbsoluteError (p.getSettings().value (mix::channelId (6, "gate_thr")), -33.0f, 0.01f, "the gate pasted");
+            exchange (a, R"({"t":"paste","s":"bus1"})");   // a channel's copy never onto a bus
+            exchange (a, R"({"t":"userPage","p":1,"list":[3,101,3,999]})");
+            expect (p.getUserPage (1) == juce::Array<int> { 3, 101 }, "valid strips, once each");
+
+            // Remembered: the token signs in without the PIN, until the device is disconnected.
+            Fake b;
+            console.opened (b);
+            exchange (b, R"({"t":"hello","token":")" + token + "\"}");
+            expect ((bool) b.last ("auth")["ok"], "the token is enough");
+            const auto devices = console.getDevices();
+            expectEquals ((int) devices.size(), 2);
+            console.disconnect (devices[1].id);
+            expect (b.closed, "disconnected");
+            console.closed (b);
+            Fake c;
+            console.opened (c);
+            exchange (c, R"({"t":"hello","token":")" + token + "\"}");
+            expect (! (bool) c.last ("auth")["ok"], "a forgotten device types the PIN again");
+
+            // Five wrong PINs: wait.
+            for (int i = 0; i < MixConsole::kMaxFailures; ++i)
+                exchange (c, R"({"t":"hello","pin":"0000"})");
+            exchange (c, R"({"t":"hello","pin":"2468"})");
+            expect ((int) c.last ("auth")["wait"] > 0 && ! (bool) c.last ("auth")["ok"], "locked out for a while");
+
+            // The settings survive a restart; the console app is served.
+            RKMixProcessor q;
+            q.getRemote().setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            expectEquals (q.getRemote().getConsole().getPin(), juce::String ("2468"));
+            expect (q.getRemote().answer ("/console").body.toString().contains ("/c/console.js"));
+            expectEquals (q.getRemote().answer ("/c/rk.js").contentType, juce::String ("text/javascript; charset=utf-8"));
+            expectEquals (q.getRemote().answer ("/c/../remote.json").status, 404);
+            console.closed (a);
+            console.closed (c);
+            dir.deleteRecursively();
+        }
+
         beginTest ("Remote: a WebSocket on the local network sets the send and gets the mix");
         {
             RKMixProcessor p;

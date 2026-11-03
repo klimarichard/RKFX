@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "MixComponents.h"
 #include "MixRemotePage.h"
+#include "RKMixRemoteFiles.h"
 
 #include <map>
 #include <unistd.h>
@@ -48,8 +49,36 @@ namespace
     }
 }
 
+const char* MixRemotePage::find (const juce::String& name, int& size)
+{
+   #ifdef RKMIX_REMOTE_FROM_DISK
+    // The remote demo tool: the pages as they are on disk (no rebuild for each change).
+    {
+        static juce::CriticalSection cacheLock;
+        static std::map<juce::String, juce::MemoryBlock> cache;
+        const juce::ScopedLock sl (cacheLock);
+        const auto file = juce::File (RKMIX_REMOTE_FROM_DISK).getChildFile (name);
+        if (file.existsAsFile())
+        {
+            auto& block = cache[name];
+            block.reset();
+            file.loadFileAsData (block);
+            size = (int) block.getSize();
+            return static_cast<const char*> (block.getData());
+        }
+    }
+   #endif
+    for (int i = 0; i < RKMixRemoteFiles::namedResourceListSize; ++i)
+        if (name == RKMixRemoteFiles::originalFilenames[i])
+            return RKMixRemoteFiles::getNamedResource (RKMixRemoteFiles::namedResourceList[i], size);
+    size = 0;
+    return nullptr;
+}
+
 //==============================================================================
-// Every 50 ms: each page's mix when it changed, and the meters every third tick.
+// Every 50 ms (sooner when a console has something waiting): each monitor
+// page's mix when it changed and its meters every third time; what waits for
+// each console, and its meters every time.
 class MixRemote::Pusher : public juce::Thread
 {
 public:
@@ -58,17 +87,41 @@ public:
 
     void run() override
     {
-        for (int tick = 0; ! threadShouldExit(); ++tick)
+        int meterTicks = 0;
+        auto lastMeters = juce::Time::getMillisecondCounter();
+        while (! threadShouldExit())
         {
-            wait (50);
-            const auto sendMeters = tick % 3 == 0;
+            wait (50);   // notify() wakes it early
+            const auto now = juce::Time::getMillisecondCounter();
+            juce::String consoleMeters;
+            auto sendMeters = false;
+            if (now - lastMeters >= 45)
+            {
+                lastMeters = now;
+                MixRemoteMeters m;
+                owner.mixer.takeRemoteMeters (m);
+                for (size_t i = 0; i < m.channels.size(); ++i)
+                    monitorMeters.channels[i] = juce::jmax (monitorMeters.channels[i], m.channels[i]);
+                for (size_t i = 0; i < m.buses.size(); ++i)
+                    for (size_t side = 0; side < 2; ++side)
+                        monitorMeters.buses[i][side] = juce::jmax (monitorMeters.buses[i][side], m.buses[i][side]);
+                sendMeters = ++meterTicks % 3 == 0;
+                if (owner.consolesOpen.load() > 0)
+                    consoleMeters = MixConsole::metersJson (m);
+            }
             if (sendMeters)
-                owner.mixer.takeRemotePeaks (channelLevels, busLevels);
+            {
+                channelLevels = monitorMeters.channels;
+                busLevels = monitorMeters.buses;
+                monitorMeters = {};
+            }
 
             std::map<int, juce::String> mixes, meters;   // by bus, made once for all its phones
             const juce::ScopedLock sl (sentLock);
             owner.server.forEachConnection ([&] (MixWebServer::Connection& c)
             {
+                if (c.tag == MixConsole::kTag)
+                    return owner.console.send (c, consoleMeters);
                 const auto bus = c.tag;
                 if (mixes.count (bus) == 0)
                     mixes[bus] = owner.mixFor (bus);
@@ -96,19 +149,37 @@ public:
 
 private:
     MixRemote& owner;
+    MixRemoteMeters monitorMeters;
     juce::CriticalSection sentLock;
     std::map<const MixWebServer::Connection*, juce::String> sent;
 };
 
 //==============================================================================
-MixRemote::MixRemote (RKMixProcessor& p) : mixer (p)
+MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p)
 {
+    console.onSettingsChanged = [this] { saveSettings(); ++version; };
+    console.onOutbox = [this]
+    {
+        if (pusher != nullptr)
+            pusher->notify();
+    };
     settingsFile = rkfx::PresetLibrary::defaultSettingsFile().getParentDirectory().getChildFile ("RKMix").getChildFile ("remote.json");
     icon = makeIcon();
 
     server.onHttp = [this] (const juce::String& path) { return http (path); };
     server.onOpen = [this] (MixWebServer::Connection& c)
     {
+        if (c.path == "/ws/console")
+        {
+            if (! console.isEnabled())
+                return false;
+            c.tag = MixConsole::kTag;
+            console.opened (c);
+            consolesOpen.fetch_add (1);
+            mixer.windowsOpen.fetch_add (1);
+            ++version;
+            return true;
+        }
         const auto bus = busForKey (c.path.fromLastOccurrenceOf ("/", false, false));
         if (! c.path.startsWith ("/ws/") || bus < 0)
             return false;
@@ -120,10 +191,22 @@ MixRemote::MixRemote (RKMixProcessor& p) : mixer (p)
         ++version;
         return true;
     };
-    server.onMessage = [this] (MixWebServer::Connection& c, const juce::String& message) { receive (c.tag, message); };
+    server.onMessage = [this] (MixWebServer::Connection& c, const juce::String& message)
+    {
+        if (c.tag == MixConsole::kTag)
+            console.received (c, message);
+        else
+            receive (c.tag, message);
+    };
     server.onClose = [this] (MixWebServer::Connection& c)
     {
-        if (c.tag >= 0)
+        if (c.tag == MixConsole::kTag)
+        {
+            console.closed (c);
+            consolesOpen.fetch_sub (1);
+            mixer.windowsOpen.fetch_sub (1);
+        }
+        else if (c.tag >= 0)
         {
             clientsOpen.fetch_sub (1);
             mixer.windowsOpen.fetch_sub (1);
@@ -167,11 +250,12 @@ void MixRemote::loadSettings()
     port = juce::jlimit (1024, 65535, (int) root.getProperty ("port", 8080));
     useIp = (bool) root.getProperty ("useIp", false);
     secret = root.getProperty ("secret", {}).toString();
+    console.settingsFromVar (root.getProperty ("console", {}));
+    const auto hadPin = root.getProperty ("console", {}).getProperty ("pin", {}).toString() == console.getPin();
     if (secret.length() < 16)
-    {
         secret = juce::Uuid().toString();
-        saveSettings();
-    }
+    if (! hadPin || secret != root.getProperty ("secret", {}).toString())
+        saveSettings();   // a new secret or a new PIN
 }
 
 void MixRemote::saveSettings() const
@@ -181,6 +265,7 @@ void MixRemote::saveSettings() const
     root->setProperty ("port", port);
     root->setProperty ("useIp", useIp);
     root->setProperty ("secret", secret);
+    root->setProperty ("console", console.settingsToVar());
     settingsFile.getParentDirectory().createDirectory();
     rkfx::PresetLibrary::writeAtomically (settingsFile, juce::JSON::toString (juce::var (root)));
 }
@@ -280,12 +365,17 @@ juce::String MixRemote::linkFor (int bus) const
     return "http://" + getHostName() + ":" + juce::String (port) + "/m/" + keyFor (bus);
 }
 
+juce::String MixRemote::consoleLink() const
+{
+    return "http://" + getHostName() + ":" + juce::String (port) + "/console";
+}
+
 std::array<int, mix::kBuses> MixRemote::connectedByBus()
 {
     std::array<int, mix::kBuses> n {};
     server.forEachConnection ([&n] (MixWebServer::Connection& c)
     {
-        if (juce::isPositiveAndBelow (c.tag, mix::kBuses))
+        if (c.tag != MixConsole::kTag && juce::isPositiveAndBelow (c.tag, mix::kBuses))
             ++n[(size_t) c.tag];
     });
     return n;
@@ -315,9 +405,50 @@ MixWebServer::Response MixRemote::http (const juce::String& path) const
         const auto bus = busForKey (key);
         if (bus < 0)
             return Response::notFound();
-        auto page = juce::String::fromUTF8 (MixRemotePage::monitorHtml, MixRemotePage::monitorHtmlSize);
+        int size = 0;
+        const auto* data = MixRemotePage::find ("monitor.html", size);
+        auto page = juce::String::fromUTF8 (data, size);
         page = page.replace ("{{KEY}}", key).replace ("{{TITLE}}", htmlEscape (busName (bus)));
         return Response::text (page);
+    }
+
+    // The console app: its page, its scripts, its manifest (the page signs in with the PIN).
+    if (path == "/console" || path == "/console/")
+    {
+        int size = 0;
+        const auto* data = MixRemotePage::find ("console.html", size);
+        return data != nullptr ? Response::text (juce::String::fromUTF8 (data, size)) : Response::notFound();
+    }
+    if (path.startsWith ("/c/"))
+    {
+        const auto name = path.fromFirstOccurrenceOf ("/c/", false, false);
+        int size = 0;
+        const auto* data = name.containsOnly ("abcdefghijklmnopqrstuvwxyz0123456789-_.") ? MixRemotePage::find (name, size) : nullptr;
+        if (data == nullptr)
+            return Response::notFound();
+        Response r;
+        r.contentType = name.endsWith (".js") ? "text/javascript; charset=utf-8" : name.endsWith (".css") ? "text/css; charset=utf-8"
+                                                                                                           : "text/html; charset=utf-8";
+        r.body.append (data, (size_t) size);
+        return r;
+    }
+    if (path == "/manifest/console.json")
+    {
+        auto* m = new juce::DynamicObject();
+        m->setProperty ("name", "RKMix Console");
+        m->setProperty ("short_name", "RKMix");
+        m->setProperty ("start_url", "/console");
+        m->setProperty ("scope", "/");
+        m->setProperty ("display", "standalone");
+        m->setProperty ("orientation", "landscape");
+        m->setProperty ("background_color", "#1c1d20");
+        m->setProperty ("theme_color", "#1c1d20");
+        auto* i = new juce::DynamicObject();
+        i->setProperty ("src", "/icon.png");
+        i->setProperty ("sizes", "180x180");
+        i->setProperty ("type", "image/png");
+        m->setProperty ("icons", juce::Array<juce::var> { juce::var (i) });
+        return Response::text (juce::JSON::toString (juce::var (m)), "application/manifest+json");
     }
 
     if (path.startsWith ("/manifest/") && path.endsWith (".json"))
@@ -481,6 +612,7 @@ void MixRemote::receive (int bus, const juce::String& message, bool now)
 void MixRemote::timerCallback()
 {
     applyPending();
+    console.tick();
 }
 
 void MixRemote::applyPending()

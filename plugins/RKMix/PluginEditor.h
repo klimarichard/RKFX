@@ -5,6 +5,7 @@
 #include "gui/ResponseCurve.h"
 
 #include "MixComponents.h"
+#include "MixConsole.h"
 #include "MixInserts.h"
 #include "MixLayout.h"
 #include "MixScenes.h"
@@ -481,6 +482,15 @@ private:
         juce::TextButton onButton { "Remote on" }, ipButton { "Links by IP address" }, newLinks { "New links" };
         juce::Label port;
         juce::Rectangle<int> setupArea, linksArea;
+
+        // The console remote (the iPad): on/off, the PIN, its QR code, the iPads connected.
+        juce::TextButton consoleOn { "Console on" }, newPin { "New PIN" };
+        juce::Label pin;
+        juce::Rectangle<int> consoleArea, consoleQr;
+        std::vector<MixConsole::Device> devices;
+        std::vector<std::unique_ptr<juce::TextButton>> disconnects;
+        int lastConsoleVersion = -1;
+        void updateDevices();
         struct Link { int bus; juce::String url; juce::Rectangle<int> area; };
         std::vector<Link> links;
         std::array<int, mix::kBuses> connected {};

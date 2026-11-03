@@ -490,14 +490,25 @@ juce::String RKMixProcessor::describeTarget (const MixAssigns::Target& t) const
     return text;
 }
 
-void RKMixProcessor::takeRemotePeaks (std::array<float, mix::kChannels>& channels,
-                                      std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept
+void RKMixProcessor::takeRemoteMeters (RemoteMeters& m) noexcept
 {
     for (int ch = 0; ch < kChannels; ++ch)
-        channels[(size_t) ch] = remoteChannelPeaks[(size_t) ch].exchange (0.0f);
+    {
+        m.channels[(size_t) ch] = remoteChannelPeaks[(size_t) ch].exchange (0.0f);
+        m.gate[(size_t) ch] = remoteGate[(size_t) ch].exchange (0.0f);
+        m.comp[(size_t) ch] = remoteComp[(size_t) ch].exchange (0.0f);
+    }
     for (int bus = 0; bus < mix::kBuses; ++bus)
         for (int side = 0; side < 2; ++side)
-            buses[(size_t) bus][(size_t) side] = remoteBusPeaks[(size_t) bus][(size_t) side].exchange (0.0f);
+            m.buses[(size_t) bus][(size_t) side] = remoteBusPeaks[(size_t) bus][(size_t) side].exchange (0.0f);
+    for (int side = 0; side < 2; ++side)
+        m.main[(size_t) side] = remoteMainPeaks[(size_t) side].exchange (0.0f);
+    m.mono = remoteMonoPeak.exchange (0.0f);
+    for (int chain = 0; chain < mix::kProcessingChains; ++chain)
+    {
+        m.chainComp[(size_t) chain] = remoteChainComp[(size_t) chain].exchange (0.0f);
+        m.chainLimit[(size_t) chain] = remoteChainLimit[(size_t) chain].exchange (0.0f);
+    }
 }
 
 void RKMixProcessor::setChannelSolo (int ch, bool on)
@@ -1442,13 +1453,23 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         auto current = reduction.load();
         while (value < current && ! reduction.compare_exchange_weak (current, value)) {}
     };
+    const auto chainReduction = [&] (int chain, float compDb, float limitDb)
+    {
+        lower (chainCompReduction[(size_t) chain], compDb);
+        lower (chainLimitReduction[(size_t) chain], limitDb);
+        lower (remoteChainComp[(size_t) chain], compDb);
+        lower (remoteChainLimit[(size_t) chain], limitDb);
+    };
     for (int ch = 0; ch < kChannels; ++ch)
     {
         const auto peak = engine.takeChannelPeak (ch);
         raise (channelPeaks[(size_t) ch], peak);
         raise (remoteChannelPeaks[(size_t) ch], peak);
-        lower (gateReduction[(size_t) ch], engine.takeGateReductionDb (ch));
-        lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
+        const auto gateDb = engine.takeGateReductionDb (ch), compDb = engine.takeCompReductionDb (ch);
+        lower (gateReduction[(size_t) ch], gateDb);
+        lower (compReduction[(size_t) ch], compDb);
+        lower (remoteGate[(size_t) ch], gateDb);
+        lower (remoteComp[(size_t) ch], compDb);
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
@@ -1458,18 +1479,21 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
             raise (busPeaks[(size_t) bus][(size_t) side], peak);
             raise (remoteBusPeaks[(size_t) bus][(size_t) side], peak);
         }
-        lower (chainCompReduction[(size_t) bus], engine.takeBusCompReductionDb (bus));
-        lower (chainLimitReduction[(size_t) bus], engine.takeBusLimitReductionDb (bus));
+        chainReduction (bus, engine.takeBusCompReductionDb (bus), engine.takeBusLimitReductionDb (bus));
     }
-    lower (chainCompReduction[(size_t) mix::kMainChain], engine.getMainDsp().takeCompReductionDb());
-    lower (chainLimitReduction[(size_t) mix::kMainChain], engine.getMainDsp().takeLimitReductionDb());
-    lower (chainCompReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeCompReductionDb());
-    lower (chainLimitReduction[(size_t) mix::kMonoChain], engine.getMonoDsp().takeLimitReductionDb());
+    chainReduction (mix::kMainChain, engine.getMainDsp().takeCompReductionDb(), engine.getMainDsp().takeLimitReductionDb());
+    chainReduction (mix::kMonoChain, engine.getMonoDsp().takeCompReductionDb(), engine.getMonoDsp().takeLimitReductionDb());
     raise (cuePeaks[0], engine.takeCuePeak (0));
     raise (cuePeaks[1], engine.takeCuePeak (1));
-    raise (mainPeaks[0], engine.takeMainPeak (0));
-    raise (mainPeaks[1], engine.takeMainPeak (1));
-    raise (monoPeak, engine.takeMonoPeak());
+    for (int side = 0; side < 2; ++side)
+    {
+        const auto peak = engine.takeMainPeak (side);
+        raise (mainPeaks[(size_t) side], peak);
+        raise (remoteMainPeaks[(size_t) side], peak);
+    }
+    const auto mono = engine.takeMonoPeak();
+    raise (monoPeak, mono);
+    raise (remoteMonoPeak, mono);
 }
 
 juce::AudioProcessorEditor* RKMixProcessor::createEditor()

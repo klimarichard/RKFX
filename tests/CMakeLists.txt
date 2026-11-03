@@ -222,3 +222,26 @@ target_link_libraries(RKPlayTests
         juce::juce_recommended_warning_flags
 )
 add_test(NAME RKPlayTests COMMAND RKPlayTests)
+
+# RKConduct: its presets are folders (preset.json and the MIDI file).
+juce_add_console_app(RKConductTests PRODUCT_NAME "RKConductTests")
+target_sources(RKConductTests PRIVATE
+    ConductPresetTests.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKConduct/PluginProcessor.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKConduct/PluginEditor.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKConduct/ConductEngine.cpp
+    ${CMAKE_BINARY_DIR}/plugins/RKConduct/FactoryPresetList.cpp
+)
+target_include_directories(RKConductTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKConduct)
+target_compile_definitions(RKConductTests PRIVATE RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
+target_link_libraries(RKConductTests
+    PRIVATE
+        RKConduct_FactoryPresets
+        rkfx_core
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKConductTests COMMAND RKConductTests)

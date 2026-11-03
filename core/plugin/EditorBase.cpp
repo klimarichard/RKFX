@@ -13,7 +13,14 @@ void addPresetMenuItems (juce::PopupMenu& menu, const juce::File& folder, std::v
 
     for (const auto& f : entries)
     {
-        if (f.isDirectory())
+        if (f.isDirectory() && f.getChildFile (PresetLibrary::folderPresetFileName).existsAsFile())
+        {
+            // A folder preset: one item, not a sub-menu.
+            const auto file = f.getChildFile (PresetLibrary::folderPresetFileName);
+            files.push_back (file);
+            menu.addItem ((int) files.size(), f.getFileName(), true, file == current);
+        }
+        else if (f.isDirectory())
         {
             juce::PopupMenu sub;
             addPresetMenuItems (sub, f, files, current);
@@ -24,7 +31,7 @@ void addPresetMenuItems (juce::PopupMenu& menu, const juce::File& folder, std::v
 
     for (const auto& f : entries)
     {
-        if (f.existsAsFile() && f.hasFileExtension ("json"))
+        if (f.existsAsFile() && f.hasFileExtension ("json") && ! PresetLibrary::isFolderPreset (f))
         {
             files.push_back (f);
             menu.addItem ((int) files.size(), f.getFileNameWithoutExtension(), true, f == current);
@@ -304,7 +311,7 @@ void EditorBase::save()
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
                                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
                                       .withTitle ("Save preset")
-                                      .withMessage ("Overwrite \"" + file.getFileNameWithoutExtension() + "\"?")
+                                      .withMessage ("Overwrite \"" + PresetLibrary::presetName (file) + "\"?")
                                       .withButton ("Overwrite")
                                       .withButton ("Cancel")
                                       .withAssociatedComponent (this),
@@ -326,11 +333,15 @@ void EditorBase::saveAs()
     const auto folder = proc.getLibrary().getPresetFolder (proc.getConfig().name);
     folder.createDirectory();
 
+    const auto folders = proc.getConfig().presetFolders;
     const auto current = proc.getPresetFile();
-    const auto start = current.existsAsFile() ? current
-                                               : folder.getChildFile (juce::File::createLegalFileName (proc.getPresetName()) + ".json");
+    const auto legalName = juce::File::createLegalFileName (proc.getPresetName());
+    const auto start = folders ? (current.existsAsFile() && PresetLibrary::isFolderPreset (current)
+                                      ? current.getParentDirectory() : folder.getChildFile (legalName))
+                               : (current.existsAsFile() ? current : folder.getChildFile (legalName + ".json"));
 
-    chooser = std::make_unique<juce::FileChooser> ("Save preset as", start, "*.json");
+    // A folder preset is saved as a folder of that name (preset.json and its files).
+    chooser = std::make_unique<juce::FileChooser> ("Save preset as", start, folders ? "*" : "*.json");
 
     juce::Component::SafePointer<EditorBase> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::saveMode
@@ -345,7 +356,18 @@ void EditorBase::saveAs()
                               if (file == juce::File())
                                   return;
 
-                              if (! file.hasFileExtension ("json"))
+                              if (safe->proc.getConfig().presetFolders)
+                              {
+                                  const auto dir = file.withFileExtension ({});
+                                  file = dir.getChildFile (PresetLibrary::folderPresetFileName);
+                                  // Never turn a folder of other presets (or anything else) into one preset.
+                                  if (dir.exists() && ! file.existsAsFile())
+                                  {
+                                      safe->showNote ("\"" + dir.getFileName() + "\" already exists; choose another name", true);
+                                      return;
+                                  }
+                              }
+                              else if (! file.hasFileExtension ("json"))
                                   file = file.withFileExtension ("json");
 
                               const auto r = safe->proc.savePreset (file);

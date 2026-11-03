@@ -31,8 +31,20 @@ public:
 
     juce::File getPresetFolder (const juce::String& pluginName) const;
 
-    /** The file every new instance of the plugin starts with, if present. */
+    /** The file every new instance of the plugin starts with, if present
+        (Default.json, or the Default folder's preset.json). */
     juce::File getDefaultPresetFile (const juce::String& pluginName) const;
+
+    /** A folder preset (config.presetFolders) is a folder holding this file
+        and the files the preset needs (RKConduct's MIDI file):
+
+            <library>/Presets/<PluginName>/<name>/preset.json */
+    static constexpr const char* folderPresetFileName = "preset.json";
+    static bool isFolderPreset (const juce::File& presetFile);
+
+    /** The name a preset file is shown by: the file's name, or for a folder
+        preset its folder's. */
+    static juce::String presetName (const juce::File& presetFile);
 
     /** Writes to a temporary file next to @p target, then swaps it in, so a
         failed write never damages an existing file. */

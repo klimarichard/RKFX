@@ -49,7 +49,21 @@ juce::File PresetLibrary::getPresetFolder (const juce::String& pluginName) const
 
 juce::File PresetLibrary::getDefaultPresetFile (const juce::String& pluginName) const
 {
-    return getPresetFolder (pluginName).getChildFile ("Default.json");
+    const auto folder = getPresetFolder (pluginName);
+    const auto file = folder.getChildFile ("Default.json");
+    const auto inFolder = folder.getChildFile ("Default").getChildFile (folderPresetFileName);
+    return ! file.existsAsFile() && inFolder.existsAsFile() ? inFolder : file;
+}
+
+bool PresetLibrary::isFolderPreset (const juce::File& presetFile)
+{
+    return presetFile.getFileName() == folderPresetFileName;
+}
+
+juce::String PresetLibrary::presetName (const juce::File& presetFile)
+{
+    return isFolderPreset (presetFile) ? presetFile.getParentDirectory().getFileName()
+                                       : presetFile.getFileNameWithoutExtension();
 }
 
 bool PresetLibrary::writeAtomically (const juce::File& target, const juce::String& text)

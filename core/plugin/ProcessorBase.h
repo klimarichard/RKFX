@@ -34,6 +34,7 @@ struct PluginConfig
     bool midiOutput = false;         // an audio effect that also sends MIDI (sendMidi); also needs MIDI_OUTPUT in CMake
     int channels = 0;                // > 0: that many discrete inputs and outputs, one bus each way (RKPatch); 0 = mono/stereo
     bool extraInPresets = false;     // getExtraState() is also saved in (and read from) preset files, not only the session
+    bool presetFolders = false;      // presets are saved as folders (<name>/preset.json plus the files it needs, see writePresetFiles); flat .json presets still load
     bool bypassMutes = false;        // Bypass fades to silence instead of passing the input (RKMix: raw inputs must never reach the PA)
     double wakeSeconds = 0.0;        // switched on from a full bypass, the DSP runs this long (dry still heard) before the wet fades in: fills delay lines so a delayed voice doesn't start abruptly (chorus, doubler, pitch)
     juce::Colour accent;             // per-plugin family tint (active toggles only)
@@ -214,6 +215,15 @@ protected:
         state without it (and on Reset to defaults). Message thread. */
     virtual juce::var getExtraState() const { return {}; }
     virtual void setExtraState (const juce::var&) {}
+
+    /** Folder presets (config.presetFolders): writes the files the preset
+        needs into @p folder and returns the "extra" object for its
+        preset.json, which names them instead of embedding them. */
+    virtual juce::var writePresetFiles (const juce::File& /*folder*/) const { return getExtraState(); }
+
+    /** Reads what writePresetFiles() wrote (@p extra may be void: the preset
+        had nothing). Returns a note for the user (a missing file), or empty. */
+    virtual juce::String readPresetFiles (const juce::var& extra, const juce::File& /*folder*/) { setExtraState (extra); return {}; }
 
     /** Bring an older state's params object up to the current version. */
     virtual void migrateParams (juce::DynamicObject& /*params*/, int /*fromVersion*/) {}

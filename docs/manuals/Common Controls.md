@@ -84,6 +84,7 @@ The header shows the current preset name. A `*` after the name means you have ch
 
 - The library sits under Music rather than Documents, so iCloud's "Desktop & Documents" sync can never move your presets to the cloud.
 - **Default.json:** save a preset with this name, and every new instance of that plugin starts with it.
+- **Folder presets:** a plugin whose presets need files of their own (RKConduct's MIDI file) saves each preset as a folder: the folder's name is the preset's name, and it holds `preset.json` and those files. Such a folder shows in the menu as one preset, not a sub-menu, and is copied or shared as a whole. **Save as** asks for the folder's name. A folder named **Default** works like Default.json.
 - Preset files are plain, readable text (JSON) and can be copied, shared and backed up like any file. A preset holds only the settings that differ from the defaults.
 - If a preset contains something the plugin doesn't understand (for example a value edited by hand), that value is skipped, the default is used instead, and a short note appears in the header. A preset never fails to load because of one bad value.
 

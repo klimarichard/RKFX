@@ -454,11 +454,16 @@ ProcessorBase::PresetResult ProcessorBase::loadPreset (const juce::File& file)
         return { false, r.error };
 
     applyValues (r.values);
-    if (config.extraInPresets)
-        setExtraState (juce::JSON::parse (file.loadFileAsString())["extra"]);
-    setPresetState (r.name.isNotEmpty() ? r.name : file.getFileNameWithoutExtension(), file, false);
+    auto notes = r.notes;
+    const auto extra = juce::JSON::parse (file.loadFileAsString())["extra"];
+    if (config.presetFolders && PresetLibrary::isFolderPreset (file))
+        notes.addIfNotAlreadyThere (readPresetFiles (extra, file.getParentDirectory()));
+    else if (config.extraInPresets)
+        setExtraState (extra);
+    notes.removeEmptyStrings();
+    setPresetState (r.name.isNotEmpty() ? r.name : PresetLibrary::presetName (file), file, false);
 
-    return { true, r.notes.joinIntoString ("; ") };
+    return { true, notes.joinIntoString ("; ") };
 }
 
 ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
@@ -482,15 +487,22 @@ ProcessorBase::PresetResult ProcessorBase::loadFactoryPreset (int index)
 ProcessorBase::PresetResult ProcessorBase::savePreset (const juce::File& file)
 {
     auto preset = PresetFormat::toVar (config.name, config.stateVersion, {}, presetInfos, currentValues(), true);
-    if (config.extraInPresets)
-        if (const auto extra = getExtraState(); ! extra.isVoid())
-            preset.getDynamicObject()->setProperty ("extra", extra);
+    if (! file.getParentDirectory().createDirectory())
+        return { false, "Could not save " + PresetLibrary::presetName (file) };
+
+    juce::var extra;
+    if (config.presetFolders && PresetLibrary::isFolderPreset (file))
+        extra = writePresetFiles (file.getParentDirectory());
+    else if (config.extraInPresets)
+        extra = getExtraState();
+    if (! extra.isVoid())
+        preset.getDynamicObject()->setProperty ("extra", extra);
     const auto json = PresetFormat::toJson (preset);
 
-    if (! file.getParentDirectory().createDirectory() || ! PresetLibrary::writeAtomically (file, json))
-        return { false, "Could not save " + file.getFileName() };
+    if (! PresetLibrary::writeAtomically (file, json))
+        return { false, "Could not save " + PresetLibrary::presetName (file) };
 
-    setPresetState (file.getFileNameWithoutExtension(), file, false);
+    setPresetState (PresetLibrary::presetName (file), file, false);
     return { true, {} };
 }
 

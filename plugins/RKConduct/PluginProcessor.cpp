@@ -9,6 +9,7 @@ namespace
         c.name = "RKConduct";
         c.stateVersion = 1;
         c.midiEffect = true;
+        c.presetFolders = true;   // a preset is a folder: preset.json and the MIDI file
         c.accent = juce::Colour (0xffb0478f); // MIDI family, plum
         c.family = rkfx::Palette::Family::midi;
         return c;
@@ -69,6 +70,19 @@ juce::String RKConductProcessor::useSong (const juce::MemoryBlock& data, const j
     return {};
 }
 
+void RKConductProcessor::clearSong()
+{
+    if (songData.isEmpty() && songName.isEmpty())
+        return;
+    songData.reset();
+    songName.clear();
+    tracks.clear();
+    songLength = 0.0;
+    songTempo = 120.0;
+    engine.setSong (nullptr);   // the old one is deleted here, on the message thread
+    ++songVersion;
+}
+
 juce::String RKConductProcessor::loadFile (const juce::File& file)
 {
     juce::MemoryBlock data;
@@ -85,6 +99,29 @@ juce::String RKConductProcessor::loadFile (const juce::File& file)
     return error;
 }
 
+namespace
+{
+    juce::var tracksVar (const std::vector<ConductEngine::TrackInfo>& tracks,
+                         const std::array<std::atomic<bool>, ConductEngine::kMaxTracks>& trackOn,
+                         const std::array<std::atomic<int>, ConductEngine::kMaxTracks>& trackChannel)
+    {
+        juce::Array<juce::var> list;
+        for (int t = 0; t < (int) tracks.size(); ++t)
+        {
+            auto* entry = new juce::DynamicObject();
+            entry->setProperty ("on", trackOn[(size_t) t].load());
+            entry->setProperty ("channel", trackChannel[(size_t) t].load());
+            list.add (juce::var (entry));
+        }
+        return list;
+    }
+
+    bool isMidiFile (const juce::File& f)
+    {
+        return f.hasFileExtension ("mid;midi;smf");
+    }
+}
+
 juce::var RKConductProcessor::getExtraState() const
 {
     if (songData.isEmpty())
@@ -94,16 +131,82 @@ juce::var RKConductProcessor::getExtraState() const
     auto* state = new juce::DynamicObject();
     state->setProperty ("name", songName);
     state->setProperty ("data", juce::Base64::toBase64 (songData.getData(), songData.getSize()));   // standard base64
-    juce::Array<juce::var> list;
-    for (int t = 0; t < (int) tracks.size(); ++t)
-    {
-        auto* entry = new juce::DynamicObject();
-        entry->setProperty ("on", trackOn[(size_t) t].load());
-        entry->setProperty ("channel", trackChannel[(size_t) t].load());
-        list.add (juce::var (entry));
-    }
-    state->setProperty ("tracks", list);
+    state->setProperty ("tracks", tracksVar (tracks, trackOn, trackChannel));
     return juce::var (state);
+}
+
+juce::var RKConductProcessor::writePresetFiles (const juce::File& folder) const
+{
+    // The preset's folder holds exactly one MIDI file: the song (or none).
+    const auto fileName = songData.isEmpty() ? juce::String()
+                                             : juce::File::createLegalFileName (songName.isNotEmpty() ? songName : "Song") + ".mid";
+    for (const auto& f : folder.findChildFiles (juce::File::findFiles, false, "*"))
+        if (isMidiFile (f) && f.getFileName() != fileName)
+            f.deleteFile();
+
+    if (songData.isEmpty())
+        return {};
+
+    const auto target = folder.getChildFile (fileName);
+    juce::MemoryBlock existing;
+    if (! (target.loadFileAsData (existing) && existing == songData))
+    {
+        juce::TemporaryFile temp (target);
+        if (! (temp.getFile().replaceWithData (songData.getData(), songData.getSize()) && temp.overwriteTargetFileWithTemporary()))
+            return getExtraState();   // couldn't write it: embed it, so nothing is lost
+    }
+
+    auto* state = new juce::DynamicObject();
+    state->setProperty ("name", songName);
+    state->setProperty ("file", fileName);
+    state->setProperty ("tracks", tracksVar (tracks, trackOn, trackChannel));
+    return juce::var (state);
+}
+
+juce::String RKConductProcessor::readPresetFiles (const juce::var& extra, const juce::File& folder)
+{
+    if (extra.isObject() && extra.hasProperty ("data"))   // embedded (a preset that couldn't write its file)
+    {
+        setExtraState (extra);
+        return {};
+    }
+
+    const auto fileName = extra.isObject() ? extra["file"].toString() : juce::String();
+    if (fileName.isEmpty())
+    {
+        clearSong();
+        return {};
+    }
+
+    juce::MemoryBlock data;
+    if (! folder.getChildFile (fileName).loadFileAsData (data))
+    {
+        clearSong();
+        return "MIDI file missing from the preset folder: " + fileName;
+    }
+
+    if (const auto error = useSong (data, extra["name"].toString()); error.isNotEmpty())
+    {
+        clearSong();
+        return fileName + ": " + error;
+    }
+    applyTracks (extra["tracks"]);
+    return {};
+}
+
+void RKConductProcessor::applyTracks (const juce::var& tracksState)
+{
+    for (int t = 0; t < ConductEngine::kMaxTracks; ++t)
+    {
+        trackOn[(size_t) t] = true;
+        trackChannel[(size_t) t] = 0;
+    }
+    if (const auto* list = tracksState.getArray())
+        for (int t = 0; t < list->size() && t < ConductEngine::kMaxTracks; ++t)
+        {
+            trackOn[(size_t) t] = (bool) (*list)[t]["on"];
+            trackChannel[(size_t) t] = juce::jlimit (0, 16, (int) (*list)[t]["channel"]);
+        }
 }
 
 void RKConductProcessor::setExtraState (const juce::var& state)
@@ -117,12 +220,7 @@ void RKConductProcessor::setExtraState (const juce::var& state)
     if (useSong (data, state["name"].toString()).isNotEmpty())
         return;
 
-    if (const auto* list = state["tracks"].getArray())
-        for (int t = 0; t < list->size() && t < ConductEngine::kMaxTracks; ++t)
-        {
-            trackOn[(size_t) t] = (bool) (*list)[t]["on"];
-            trackChannel[(size_t) t] = juce::jlimit (0, 16, (int) (*list)[t]["channel"]);
-        }
+    applyTracks (state["tracks"]);
 }
 
 void RKConductProcessor::processMidi (juce::MidiBuffer& midi, int numSamples)

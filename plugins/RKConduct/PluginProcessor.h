@@ -43,6 +43,8 @@ protected:
 
     juce::var getExtraState() const override;
     void setExtraState (const juce::var&) override;
+    juce::var writePresetFiles (const juce::File& folder) const override;
+    juce::String readPresetFiles (const juce::var& extra, const juce::File& folder) override;
 
 private:
     juce::RangedAudioParameter *tapEvery, *tempo, *fileTempo, *countIn, *loop, *key1, *key2, *tapCC, *tapButton, *stopButton,
@@ -59,6 +61,8 @@ private:
     std::array<std::atomic<int>, ConductEngine::kMaxTracks> trackChannel {};
 
     juce::String useSong (const juce::MemoryBlock&, const juce::String& name);
+    void clearSong();
+    void applyTracks (const juce::var& tracksState);   // every track on, channel as recorded, then the saved list
 
     /** Tap and Stop: each press acts once (counted as the parameter changes). */
     struct ButtonListener : public juce::AudioProcessorParameter::Listener

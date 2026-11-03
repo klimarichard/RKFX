@@ -72,7 +72,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 ### RKMix
 
-[RKMix](docs/manuals/RKMix.md) is a live mixing console: 32 inputs (linkable into stereo pairs) and 32 outputs. Each channel has a full strip (trim, polarity, delay, high-pass, gate and compressor with key inputs, 4-band EQ) and 2 insert slots for any RKFX effect; 16 buses are Group, Aux (in-ear and monitor mixes, each send at its own tap point, panned as the channels, mirrored, or with their own pans) or FX returns, each with an EQ, glue compressor, limiter and 4 inserts; the stereo main and its mono sum have the same. Channels also have direct outs at any tap point (for a recorder). It has solo (cue PFL/AFL or in place), talkback, a sine and pink-noise oscillator, MIDI out from RKTrigger and RKFollow inserts, 16 scenes (each with a recall scope, e.g. only the sends to one in-ear mix), 32 assignable host parameters, two user pages of chosen strips, and latency alignment across every path. As a standalone app it adds tap tempo and MIDI clock, MIDI learn and program-change scene recall.
+[RKMix](docs/manuals/RKMix.md) is a live mixing console: 32 inputs (linkable into stereo pairs) and 32 outputs. Each channel has a full strip (trim, polarity, delay, high-pass, gate and compressor with key inputs, 4-band EQ) and 2 insert slots for any RKFX effect; 16 buses are Group, Aux (in-ear and monitor mixes, each send at its own tap point, panned as the channels, mirrored, or with their own pans) or FX returns, each with an EQ, glue compressor, limiter and 4 inserts; the stereo main and its mono sum have the same. Channels also have direct outs at any tap point (for a recorder). It has 8 DCAs (with spill) and 8 mute groups, solo (cue PFL/AFL or in place), talkback, a sine and pink-noise oscillator, MIDI out from RKTrigger and RKFollow inserts, 16 scenes (each with a recall scope, e.g. only the sends to one in-ear mix), undo and redo (scene recalls too), a show lock, ganged faders and mutes, copy and paste of strip sections and inserts, 32 assignable host parameters, two user pages of chosen strips, and latency alignment across every path. Its **monitor remote** lets each musician set their own in-ear mix on a phone: RKMix serves a web page on the local network (WebSocket), one QR code per mix, and the page can be added to the home screen like an app. As a standalone app it adds tap tempo and MIDI clock, MIDI learn and program-change scene recall.
 
 ### RKPlay
 
@@ -148,7 +148,7 @@ host/              the pedal host shared by RKBoard and RKMix: every plugin's
                    processor as a pedal or insert, the Wah and Volume pedals,
                    MIDI learn, tap tempo and MIDI clock
 plugins/RKBoard/   the pedalboard
-plugins/RKMix/     the mixing console (engine, strip, buses, inserts, scenes)
+plugins/RKMix/     the mixing console (engine, strip, buses, inserts, scenes, DCAs, undo, the remote and its web page)
 plugins/RKPlay/    the music player (streaming engine, analysis, shows, remote)
 tests/             DSP and format tests, CPU benchmark
 tools/             snapshot tool: renders a plugin's window to PNG; icons/: the RKMusic icon renderer and its fonts

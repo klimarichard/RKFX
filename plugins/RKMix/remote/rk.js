@@ -228,8 +228,10 @@ const app = {
   dirty: true, scale: 1, width: 1180, height: 820, root: null, overlays: [], frameHooks: new Set(),
   canvas: null, ctx: null, touches: new Map(), lastDown: null,
 
-  start(root, designHeight) {
-    this.root = root; this.designHeight = designHeight;
+  // @p designHeight: the screen is scaled to that many logical pixels high; or,
+  // with opts.fitWidth (a phone, in portrait), to about that many wide.
+  start(root, designHeight, opts = {}) {
+    this.root = root; this.designHeight = designHeight; this.fitWidth = opts.fitWidth || 0;
     this.canvas = document.getElementById("screen");
     this.ctx = this.canvas.getContext("2d");
     const resize = () => this.resize();
@@ -254,8 +256,8 @@ const app = {
   },
   resize() {
     const w = window.innerWidth, h = window.innerHeight, dpr = window.devicePixelRatio || 1;
-    this.scale = h / this.designHeight;
-    this.width = w / this.scale; this.height = this.designHeight;
+    if (this.fitWidth) { this.scale = Math.max(0.85, Math.min(1.3, w / this.fitWidth)); this.width = w / this.scale; this.height = h / this.scale; }
+    else { this.scale = h / this.designHeight; this.width = w / this.scale; this.height = this.designHeight; }
     this.canvas.width = Math.round(w * dpr); this.canvas.height = Math.round(h * dpr);
     this.canvas.style.width = w + "px"; this.canvas.style.height = h + "px";
     this.dpr = dpr;

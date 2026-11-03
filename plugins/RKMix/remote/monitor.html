@@ -7,180 +7,339 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="{{TITLE}}">
-<meta name="theme-color" content="#1b1e22">
+<meta name="theme-color" content="#1c1d20">
 <link rel="manifest" href="/manifest/{{KEY}}.json">
 <link rel="apple-touch-icon" href="/icon.png">
 <title>{{TITLE}}</title>
 <style>
-  :root { --bg:#1b1e22; --panel:#262a30; --panel2:#2e333a; --text:#e8eaed; --dim:#8b929b; --accent:#6b8ca6; --warn:#e3a33b; --meter:#5cb85c; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { margin:0; background:var(--bg); color:var(--text); font:15px -apple-system, system-ui, sans-serif; }
-  body { padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); -webkit-user-select:none; user-select:none; }
-  header { position:sticky; top:0; z-index:2; background:var(--bg); padding:10px 12px 8px; border-bottom:1px solid #000; }
-  .top { display:flex; align-items:center; gap:10px; }
-  .dot { width:12px; height:12px; border-radius:50%; flex:none; }
-  h1 { font-size:19px; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  button { font:inherit; color:var(--text); background:var(--panel2); border:0; border-radius:8px; padding:8px 12px; }
-  button.on { background:var(--warn); color:#000; }
-  #lock.on { background:var(--accent); color:#000; }
-  .row { background:var(--panel); margin:6px 8px; border-radius:10px; padding:8px 10px 10px; border-left:5px solid #6e737b; }
-  .row.master { margin:8px 0 0; }
-  .line { display:flex; align-items:baseline; gap:8px; }
-  .name { font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sub { color:var(--dim); font-size:12px; }
-  .db { font-variant-numeric:tabular-nums; color:var(--dim); min-width:56px; text-align:right; }
-  .slider { position:relative; height:38px; margin-top:6px; touch-action:pan-y; }
-  .track { position:absolute; left:0; right:0; top:15px; height:8px; border-radius:4px; background:#14171a; overflow:hidden; }
-  .fill { position:absolute; left:0; top:0; bottom:0; background:var(--accent); opacity:.55; }
-  .meter { position:absolute; left:0; bottom:0; height:3px; background:var(--meter); transition:width 60ms linear; }
-  .unity { position:absolute; top:11px; width:2px; height:16px; background:var(--dim); opacity:.6; }
-  .thumb { position:absolute; top:3px; width:34px; height:32px; margin-left:-17px; border-radius:8px; background:#d9dde2; box-shadow:0 1px 3px #0008; }
-  .slider.pan { height:26px; margin-top:2px; }
-  .slider.pan .track { top:10px; height:6px; }
-  .slider.pan .thumb { top:2px; width:22px; height:22px; margin-left:-11px; border-radius:11px; background:#aeb4bb; }
-  .slider.pan .unity { top:6px; height:14px; left:50%; }
-  .dragging .thumb { background:#fff; }
-  .locked .slider { opacity:.45; }
-  .muted .fill { background:var(--warn); }
-  #banner { display:none; background:var(--warn); color:#000; text-align:center; padding:6px; font-size:13px; }
-  #banner.show { display:block; }
-  footer { padding:10px 12px 24px; color:var(--dim); font-size:12px; text-align:center; }
-  #empty { color:var(--dim); text-align:center; padding:30px 20px; display:none; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#1d1e21; overscroll-behavior:none; }
+  body { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:none; }
+  canvas { display:block; touch-action:none; }
+  #safe { position:fixed; visibility:hidden; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 </style>
 </head>
 <body>
-<div id="banner">Not connected to RKMix: trying again…</div>
-<header>
-  <div class="top">
-    <span class="dot" id="busDot"></span>
-    <h1 id="busName">{{TITLE}}</h1>
-    <button id="lock" title="Lock the screen against pocket touches">Lock</button>
-  </div>
-  <div class="row master" id="master">
-    <div class="line"><span class="name">My mix</span><button id="mute">Mute</button><span class="db" id="masterDb"></span></div>
-    <div class="slider" id="masterSlider"><div class="track"><div class="fill"></div><div class="meter"></div></div><div class="unity"></div><div class="thumb"></div></div>
-  </div>
-</header>
-<div id="rows"></div>
-<div id="empty">Nothing in this mix yet.</div>
-<footer>
-  <button id="all">Show all channels</button>
-  <p>Drag sideways to set a level; double-tap a pan for the centre.<br>Safari: Share &rarr; Add to Home Screen for an app icon.</p>
-</footer>
+<canvas id="screen"></canvas>
+<div id="safe"></div>
+<script src="/c/rk.js"></script>
 <script>
+// RKMix's monitor remote: one musician's in-ear mix on a phone, drawn with the
+// suite's own controls (rk.js: the palette, the console fader's cap and track,
+// the meters, the pans, the switches). Slide a row sideways for its level;
+// slide up and down to scroll. Double-tap a pan for the centre.
 "use strict";
+(() => {
 const KEY = "{{KEY}}";
-// The fader law (RKMix's): position 0..1 <-> dB, the bottom is silence.
-const LAW = [[0,-100],[0.1,-60],[0.25,-40],[0.45,-20],[0.6,-10],[0.75,0],[1,10]];
-function dbAt(p) { p = Math.min(1, Math.max(0, p)); for (let i = 1; i < LAW.length; i++) { const a = LAW[i-1], b = LAW[i]; if (p <= b[0]) return a[1] + (b[1]-a[1]) * (p-a[0]) / (b[0]-a[0]); } return 10; }
-function posOf(db) { db = Math.min(10, Math.max(-100, db)); for (let i = 1; i < LAW.length; i++) { const a = LAW[i-1], b = LAW[i]; if (db <= b[1]) return a[0] + (b[0]-a[0]) * (db-a[1]) / (b[1]-a[1]); } return 1; }
-function dbText(db) { return db <= -99.9 ? "-inf" : (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? 0 : db).toFixed(1); }
-function panText(v) { const w = Math.round(v); return w === 0 ? "C" : (w < 0 ? "L" : "R") + Math.abs(w); }
+const { Colour, Palette, J, Component, TextButton, ToggleSwitch, LinearSlider, ParamComponent, app, store, drawPanel, faderDbAt, faderPositionOf } = RK;
 
-let ws = null, mix = null, showAll = false, locked = false;
-const rowsEl = document.getElementById("rows");
-const sliders = {};   // by key: { el, kind, value, dragging, set(v) }
+const dbText = db => db <= -99.9 ? "-inf" : (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? 0 : db).toFixed(1);
+const panOf = n => Math.round(n * 200 - 100);
+const panText = n => { const w = panOf(n); return w === 0 ? "C" : (w < 0 ? "L" : "R") + Math.abs(w); };
+const linToDb = v => v > 0.00001 ? 20 * Math.log10(v) : -100;
 
+let ws = null, mix = null, showAll = false, locked = false, connected = false, gone = "";
+const isLocked = () => locked;
 function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 
-// A slider moved by dragging sideways (relative, so a touch never jumps it);
-// vertical moves scroll the page instead.
-function makeSlider(el, kind, onChange) {
-  const s = { el, kind, value: 0, dragging: false };
-  const thumb = el.querySelector(".thumb"), fill = el.querySelector(".fill");
-  s.position = () => kind === "pan" ? (s.value + 100) / 200 : posOf(s.value);
-  s.show = () => { const p = s.position(); thumb.style.left = (p * 100) + "%"; if (fill) fill.style.width = kind === "pan" ? "0" : (p * 100) + "%"; };
-  s.set = v => { if (!s.dragging) { s.value = v; s.show(); } };
-  let startX = 0, startPos = 0, active = false, id = null, lastTap = 0;
-  el.addEventListener("pointerdown", e => {
-    if (locked) return;
-    id = e.pointerId; startX = e.clientX; startPos = s.position(); active = false;
-    if (kind === "pan") { const now = Date.now(); if (now - lastTap < 350) { s.value = 0; s.show(); onChange(0); } lastTap = now; }
-  });
-  el.addEventListener("pointermove", e => {
-    if (e.pointerId !== id || locked) return;
-    const dx = e.clientX - startX;
-    if (!active && Math.abs(dx) > 6) { active = true; s.dragging = true; el.classList.add("dragging"); el.setPointerCapture(id); }
-    if (!active) return;
-    const p = Math.min(1, Math.max(0, startPos + dx / el.clientWidth));
-    s.value = kind === "pan" ? Math.round(p * 200 - 100) : dbAt(p);
-    s.show(); onChange(s.value);
-  });
-  const end = e => { if (e.pointerId !== id) return; id = null; active = false; s.dragging = false; el.classList.remove("dragging"); };
-  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
-  return s;
+// The store's IDs here: "fader", "mute", "send:<row>", "pan:<row>"; a set becomes the monitor message.
+store.send = msg => {
+  if (msg.t !== "set") return;
+  const id = msg.id, n = msg.v;
+  if (id === "fader") send({ t: "fader", v: +faderDbAt(n).toFixed(2) });
+  else if (id === "mute") send({ t: "mute", v: n >= 0.5 ? 1 : 0 });
+  else if (id.startsWith("send:")) send({ t: "send", k: id.slice(5), v: +faderDbAt(n).toFixed(2) });
+  else if (id.startsWith("pan:")) send({ t: "pan", k: id.slice(4), v: panOf(n) });
+};
+
+// A meter's ballistics (MixGui::Meter): falls at 24 dB/s, holds 1.5 s.
+class Ballistics {
+  constructor() { this.peak = -100; this.shown = -100; this.hold = -100; this.holdT = 0; }
+  feed(db) { this.peak = Math.max(this.peak, db); }
+  step(dt) {
+    const db = this.peak; this.peak = -100;
+    const shown = Math.max(db, this.shown - 24 * dt);
+    if (db >= this.hold) { this.hold = db; this.holdT = 0; } else if ((this.holdT += dt) > 1.5) this.hold = shown;
+    const moved = Math.abs(shown - this.shown) > 0.2; this.shown = shown; return moved;
+  }
 }
 
-const master = makeSlider(document.getElementById("masterSlider"), "level", v => { document.getElementById("masterDb").textContent = dbText(v); send({ t: "fader", v }); });
-document.getElementById("mute").onclick = () => { if (!locked && mix) send({ t: "mute", v: mix.bus.mute ? 0 : 1 }); };
-document.getElementById("lock").onclick = e => { locked = !locked; e.target.classList.toggle("on", locked); document.body.classList.toggle("locked", locked); e.target.textContent = locked ? "Locked" : "Lock"; };
-document.getElementById("all").onclick = e => { showAll = !showAll; e.target.textContent = showAll ? "Show only what's in the mix" : "Show all channels"; render(); };
-
-function rowHtml(r) {
-  return `<div class="line"><span class="name"></span><span class="sub"></span><span class="db"></span></div>
-    <div class="slider level"><div class="track"><div class="fill"></div><div class="meter"></div></div><div class="unity"></div><div class="thumb"></div></div>
-    <div class="slider pan"><div class="track"></div><div class="unity"></div><div class="thumb"></div></div>`;
+// MixGui::Fader laid sideways: the track, the cap with its line, the 0 dB
+// mark, the level's meter under it. It moves from where it was (relative),
+// never to the finger.
+class SideFader extends ParamComponent {
+  constructor(id) { super(id); this.capColour = Palette.knobTrack; this.meter = new Ballistics(); this.showScale = false; this.locked = isLocked; }
+  range() { return [16, this.w - 16]; }
+  xFor(n) { const [a, b] = this.range(); return a + n * (b - a); }
+  paint(g) {
+    const cy = this.showScale ? this.h * 0.42 : this.h * 0.45, [l, r] = this.range();
+    if (this.showScale) {
+      g.setFont(9.5);
+      for (const db of [-100, -40, -20, -10, 0, 10]) {
+        const x = this.xFor(faderPositionOf(db));
+        g.setColour(Palette.outline); g.drawVerticalLine(x, cy - 17, cy - 13);
+        g.setColour(db === 0 ? Palette.text : Palette.textDim);
+        g.drawText(db <= -100 ? "-inf" : db > 0 ? "+" + db : String(db), x - 20, cy - 30, 40, 12, J.centred, false);
+      }
+    }
+    g.setColour(Palette.knobTrack); g.fillRoundedRectangle(l, cy - 2, r - l, 4, 2);
+    const unity = this.xFor(faderPositionOf(0));
+    g.setColour(Palette.textDim.withAlpha(0.6)); g.fillRect(unity - 0.5, cy - 8, 1, 16);
+    // the meter: a thin bar, accent to 0 dB, warning above, a hold line
+    const my = this.h - 5, m = this.meter;
+    g.setColour(Palette.knobBody); g.fillRect(l, my, r - l, 4);
+    if (m.shown > -60) {
+      const x = this.xFor(faderPositionOf(m.shown)), zero = unity;
+      g.setColour(Palette.accent); g.fillRect(l, my, Math.min(x, zero) - l, 4);
+      if (x > zero) { g.setColour(Palette.warning); g.fillRect(zero, my, x - zero, 4); }
+    }
+    if (m.hold > -60) { g.setColour(m.hold > 0 ? Palette.warning : Palette.text); g.fillRect(this.xFor(faderPositionOf(m.hold)) - 1, my, 2, 4); }
+    // the cap (sideways: 26 wide, 30 high, its line upright)
+    const capW = 26, capH = 30, cx = this.xFor(this.norm), left = cx - capW / 2, top = cy - capH / 2;
+    const a = locked ? 0.55 : 1;
+    const cap = this.active ? this.capColour.brighter(0.25) : this.capColour;
+    g.setColour(cap.darker(0.2).withMultipliedAlpha(a)); g.fillRoundedRectangle(left, top, capW, capH, 3);
+    g.setColour(cap.brighter(0.3).withMultipliedAlpha(a)); g.drawRoundedRectangle(left + 0.5, top + 0.5, capW - 1, capH - 1, 3, 1);
+    g.setColour(Palette.text.withMultipliedAlpha(a)); g.fillRect(cx - 1, top + 3, 2, capH - 6);
+  }
+  pointerDown(e) {
+    if (locked) return false;
+    this.lastX = e.x; this.dragN = this.norm; this.active = true; store.hold(this.id, true); this.repaint(); return true;
+  }
+  pointerMove(e) {
+    const [a, b] = this.range(), delta = (e.x - this.lastX) / Math.max(150, b - a); this.lastX = e.x;
+    this.dragN = Math.max(0, Math.min(1, this.dragN + delta)); this.setNorm(this.dragN);
+  }
+  pointerUp() { this.active = false; store.hold(this.id, false); this.repaint(); }
 }
 
-let shownKeys = "";
-function render() {
-  if (!mix) return;
-  const b = mix.bus;
-  document.getElementById("busName").textContent = b.name;
-  document.title = b.name;
-  document.getElementById("busDot").style.background = b.colour;
-  document.getElementById("mute").classList.toggle("on", b.mute);
-  document.getElementById("master").classList.toggle("muted", b.mute);
-  master.set(b.fader);
-  if (!master.dragging) document.getElementById("masterDb").textContent = dbText(b.fader);
+// The bus's own fader and Mute, always on top.
+class MasterPanel extends Component {
+  constructor() {
+    super();
+    this.fader = this.add(new SideFader("fader")); this.fader.showScale = true;
+    this.mute = this.add(new ToggleSwitch("mute", Palette.warning, "Mute")); this.mute.locked = isLocked;
+  }
+  resized() { this.mute.setBounds(this.w - 10 - 78, 8, 78, 30); this.fader.setBounds(4, 40, this.w - 8, 58); }
+  paint(g) {
+    drawPanel(g, 0, 0, this.w, this.h, Palette.tintedPanel);
+    g.setColour(Palette.text); g.setFont(15, true); g.drawText("My mix", 12, 8, 120, 30, J.centredLeft);
+    g.setColour(Palette.text); g.setFont(14);
+    g.drawText(dbText(faderDbAt(this.fader.norm)) + " dB", this.w - 100 - 110, 8, 104, 30, J.centredRight);
+  }
+}
 
-  const rows = mix.rows.filter(r => showAll || r.used);
-  const keys = rows.map(r => r.k).join(",") + "|" + b.own;
-  document.getElementById("empty").style.display = rows.length ? "none" : "block";
-  if (keys !== shownKeys) {
-    shownKeys = keys;
-    rowsEl.innerHTML = "";
-    for (const k in sliders) delete sliders[k];
-    for (const r of rows) {
-      const el = document.createElement("div");
-      el.className = "row"; el.dataset.k = r.k; el.innerHTML = rowHtml(r);
-      rowsEl.appendChild(el);
-      const level = makeSlider(el.querySelector(".slider.level"), "level", v => { el.querySelector(".db").textContent = dbText(v); send({ t: "send", k: r.k, v }); });
-      const pan = makeSlider(el.querySelector(".slider.pan"), "pan", v => { el.querySelector(".sub").textContent = panText(v); send({ t: "pan", k: r.k, v }); });
-      sliders[r.k] = { el, level, pan };
+// One channel (or return) in the mix: its colour, name, level, meter and pan.
+class Row extends Component {
+  constructor(r) {
+    super(); this.key = r.k;
+    this.fader = this.add(new SideFader("send:" + r.k));
+    this.pan = this.add(new LinearSlider("pan:" + r.k)); this.pan.locked = isLocked;
+    this.pan.popupText = () => panText(this.pan.norm);
+  }
+  update(r, own) { this.r = r; this.hasPan = own && !r.ret; this.pan.setVisible(this.hasPan); this.colour = Colour.hex(r.colour); }
+  height() { return this.hasPan ? 112 : 86; }
+  resized() { this.fader.setBounds(6, 28, this.w - 12, 50); this.pan.setBounds(54, 82, this.w - 54 - 22, 22); }
+  paint(g) {
+    drawPanel(g, 0, 0, this.w, this.h, Palette.tintedPanel);
+    g.setColour(this.colour); g.fillRoundedRectangle(0, 0, 5, this.h, 2.5);
+    g.setColour(Palette.text); g.setFont(14.5, true); g.drawText(this.r.name, 14, 6, this.w - 120, 22, J.centredLeft);
+    g.setColour(Palette.textDim); g.setFont(12.5);
+    if (this.r.ret) g.drawText("return", this.w - 160, 6, 70, 22, J.centredRight);
+    g.setColour(Palette.text); g.setFont(14);
+    g.drawText(dbText(faderDbAt(this.fader.norm)), this.w - 86, 6, 74, 22, J.centredRight);
+    if (this.hasPan) {
+      g.setColour(Palette.textDim); g.setFont(12.5);
+      g.drawText("Pan " + panText(this.pan.norm), 14, 82, 60, 22, J.centredLeft);
     }
   }
-  for (const r of rows) {
-    const s = sliders[r.k]; if (!s) continue;
-    s.el.style.borderLeftColor = r.colour;
-    s.el.querySelector(".name").textContent = r.name;
-    const hasPan = b.own && !r.ret;
-    s.el.querySelector(".slider.pan").style.display = hasPan ? "block" : "none";
-    if (!s.level.dragging) s.el.querySelector(".db").textContent = dbText(r.send);
-    if (!s.pan.dragging) s.el.querySelector(".sub").textContent = hasPan ? panText(r.pan) : (r.ret ? "return" : "");
-    s.level.set(r.send);
-    s.pan.set(r.pan);
+}
+
+// The scrolling list: a sideways slide moves the row's level (or pan), an
+// upright one scrolls (with momentum); a tap presses a button.
+class List extends Component {
+  constructor() {
+    super(); this.takesTouches = true; this.scroll = 0; this.velocity = 0; this.content = this.add(new Component());
+    this.rows = new Map(); this.order = [];
+    this.allButton = this.content.add(new TextButton("Show all channels", () => { showAll = !showAll; render(); }));
+    this.lastTap = { target: null, time: 0 };
+    app.frameHooks.add(dt => this.coast(dt));
+  }
+  find(x, y) { return this.visible && this.hitTest(x, y) ? this : null; }
+  setRows(rows, own) {
+    const keep = new Map();
+    for (const r of rows) {
+      let row = this.rows.get(r.k);
+      if (!row) row = this.content.add(new Row(r));
+      row.update(r, own); keep.set(r.k, row);
+    }
+    for (const [k, row] of this.rows) if (!keep.has(k)) this.content.remove(row);
+    this.rows = keep; this.order = rows.map(r => keep.get(r.k));
+    this.allButton.text = showAll ? "Show only what's in the mix" : "Show all channels";
+    this.layout();
+  }
+  layout() {
+    let y = 0;
+    for (const row of this.order) { row.setBounds(0, y, this.w, row.height()); y += row.height() + 6; }
+    this.emptyY = y;
+    if (!this.order.length) y += 60;
+    this.allButton.setBounds(Math.max(0, (this.w - 260) / 2), y + 8, Math.min(260, this.w), 36);
+    this.contentHeight = y + 8 + 36 + 70;
+    this.content.setBounds(0, -this.scroll, this.w, this.contentHeight);
+    this.clamp();
+  }
+  resized() { this.layout(); }
+  maxScroll() { return Math.max(0, (this.contentHeight || 0) - this.h); }
+  clamp() { this.scroll = Math.max(0, Math.min(this.maxScroll(), this.scroll)); this.content.y = -this.scroll; this.repaint(); }
+  coast(dt) {
+    if (this.touch || Math.abs(this.velocity) < 5) { this.velocity = this.touch ? this.velocity : 0; return; }
+    this.scroll += this.velocity * dt; this.velocity *= Math.pow(0.04, dt);
+    const before = this.scroll; this.clamp(); if (this.scroll !== before) this.velocity = 0;
+  }
+  draw(g) {
+    if (!this.visible) return;
+    const c = g.ctx; c.save(); c.beginPath(); c.rect(this.x, this.y, this.w, this.h); c.clip();
+    super.draw(g); c.restore();
+  }
+  paint(g) {
+    if (!this.order.length) {
+      g.setColour(Palette.textDim); g.setFont(14);
+      g.drawText(mix ? "Nothing in this mix yet." : "", 0, this.emptyY - this.scroll, this.w, 60, J.centred);
+    }
+    g.setColour(Palette.textDim); g.setFont(12);
+    const y = this.contentHeight - 64 - this.scroll;
+    g.drawFittedText("Slide a row sideways for its level; double-tap a pan for the centre.", 0, y, this.w, 20, J.centred, 1);
+    g.drawFittedText("Safari: Share, then Add to Home Screen, for an app icon.", 0, y + 20, this.w, 20, J.centred, 1);
+  }
+  childAt(e) {   // the control under the finger, and the event in its own coordinates
+    const hit = this.content.find(e.x, e.y + this.scroll);
+    return hit && hit !== this.content ? hit : null;
+  }
+  localTo(child, e) {
+    const p = child.screenPos(), q = this.screenPos();
+    return Object.assign({}, e, { x: e.x + q.x - p.x, y: e.y + q.y - p.y });
+  }
+  pointerDown(e) {
+    if (this.touch) return false;   // one finger at a time in the list
+    const child = this.childAt(e);
+    this.touch = { id: e.id, x0: e.x, y0: e.y, lastY: e.y, lastT: e.time, child, mode: "pending" };
+    this.velocity = 0;
+    if (child && child.pointerDown && child instanceof LinearSlider) {   // double-tap a pan: the centre
+      const now = e.time, again = this.lastTap.target === child && now - this.lastTap.time < 350;
+      this.lastTap = { target: child, time: now };
+      if (again && !locked) { child.setNorm(0.5); this.touch.mode = "done"; }
+    }
+    return true;
+  }
+  pointerMove(e) {
+    const t = this.touch; if (!t || t.id !== e.id) return;
+    const dx = e.x - t.x0, dy = e.y - t.y0;
+    if (t.mode === "pending") {
+      const slider = t.child instanceof SideFader || t.child instanceof LinearSlider;
+      if (Math.abs(dx) > 7 && Math.abs(dx) > Math.abs(dy) * 1.2 && slider) {
+        if (t.child.pointerDown(this.localTo(t.child, Object.assign({}, e, { taps: 1 })))) t.mode = "drag";
+        else t.mode = "done";
+      } else if (Math.abs(dy) > 7) t.mode = "scroll";
+    }
+    if (t.mode === "drag") t.child.pointerMove(this.localTo(t.child, e));
+    else if (t.mode === "scroll") {
+      const step = e.y - t.lastY, dtm = Math.max(1, e.time - t.lastT) / 1000;
+      this.scroll -= step; this.clamp();
+      this.velocity = this.velocity * 0.6 + (-step / dtm) * 0.4;
+      t.lastY = e.y; t.lastT = e.time;
+    }
+  }
+  pointerUp(e) {
+    const t = this.touch; if (!t || t.id !== e.id) return;
+    this.touch = null;
+    if (t.mode === "drag") t.child.pointerUp(this.localTo(t.child, e));
+    else if (t.mode === "pending" && t.child && !e.cancelled && (t.child instanceof TextButton)) {
+      const ev = this.localTo(t.child, Object.assign({}, e, { taps: 1 }));
+      if (t.child.pointerDown(ev)) t.child.pointerUp(ev);
+    }
+    if (t.mode !== "scroll" || performance.now() - t.lastT > 80) this.velocity = 0;
   }
 }
 
-function meters(m) {
-  const level = v => (Math.min(1, Math.max(0, posOf(v <= 0 ? -100 : 20 * Math.log10(v)) )) * 100) + "%";
-  document.querySelector("#masterSlider .meter").style.width = level(m.bus || 0);
-  for (const k in sliders) { const v = m.rows[k] || 0; sliders[k].el.querySelector(".meter").style.width = level(v); }
+class Root extends Component {
+  constructor() {
+    super();
+    this.lock = this.add(new TextButton("Lock", () => { locked = !locked; this.lock.toggle = locked; this.lock.text = locked ? "Locked" : "Lock"; this.repaint(); }));
+    this.master = this.add(new MasterPanel());
+    this.list = this.add(new List());
+    this.safe = { top: 0, bottom: 0 };
+  }
+  column() { const w = Math.min(this.w - 16, 620); return { x: (this.w - w) / 2, w }; }
+  resized() {
+    const probe = getComputedStyle(document.getElementById("safe"));
+    this.safe = { top: parseFloat(probe.paddingTop) / app.scale || 0, bottom: parseFloat(probe.paddingBottom) / app.scale || 0 };
+    const c = this.column(), top = this.safe.top;
+    this.lock.setBounds(c.x + c.w - 84, top + 8, 84, 32);
+    this.bannerY = top + 48;
+    const y = this.bannerY + (connected ? 0 : 30);
+    this.master.setBounds(c.x, y, c.w, 102);
+    this.list.setBounds(c.x, y + 102 + 8, c.w, this.h - (y + 110));
+  }
+  paint(g) {
+    const c = this.column(), top = this.safe.top;
+    g.setColour(Palette.tintedPanel); g.fillRect(0, 0, this.w, top + 48);
+    g.setColour(Palette.accent); g.fillRect(0, top + 46, this.w, 2);
+    const name = gone || (mix ? mix.bus.name : document.title);
+    if (mix && !gone) { g.setColour(Colour.hex(mix.bus.colour)); g.fillRoundedRectangle(c.x + 2, top + 12, 6, 24, 2); }
+    g.setColour(Palette.text); g.setFont(17, true);
+    g.drawText(name, c.x + 16, top, c.w - 16 - 96, 46, J.centredLeft);
+    if (!connected) {
+      g.setColour(Palette.warning); g.fillRect(0, this.bannerY, this.w, 26);
+      g.setColour(Colour.hex(0xff15161a)); g.setFont(13);
+      g.drawText("Not connected to RKMix: trying again…", 0, this.bannerY, this.w, 26, J.centred);
+    }
+  }
 }
 
+const root = new Root();
+
+function render() {
+  if (!mix) return;
+  const b = mix.bus, p = {};
+  document.title = b.name;
+  p.fader = [faderPositionOf(b.fader), dbText(b.fader), faderPositionOf(0), 0];
+  p.mute = [b.mute ? 1 : 0, b.mute ? "On" : "Off", 0, 2];
+  const rows = mix.rows.filter(r => showAll || r.used);
+  for (const r of mix.rows) {
+    p["send:" + r.k] = [faderPositionOf(r.send), dbText(r.send), faderPositionOf(0), 0];
+    p["pan:" + r.k] = [(r.pan + 100) / 200, "", 0.5, 201];
+  }
+  store.receive(p);
+  root.list.setRows(rows, b.own);
+}
+
+let lastMeters = 0;
+function meters(m) {
+  root.master.fader.meter.feed(linToDb(m.bus || 0));
+  for (const [k, row] of root.list.rows) row.fader.meter.feed(linToDb(m.rows[k] || 0));
+  lastMeters = performance.now();
+}
+app.frameHooks.add(dt => {
+  let moved = root.master.fader.meter.step(dt);
+  for (const row of root.list.rows.values()) moved = row.fader.meter.step(dt) || moved;
+  if (moved) app.dirty = true;
+});
+
+function setConnected(on) { if (connected !== on) { connected = on; root.resized(); root.repaint(); } }
 function connect() {
   ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/" + KEY);
-  ws.onopen = () => document.getElementById("banner").classList.remove("show");
+  ws.onopen = () => setConnected(true);
   ws.onmessage = e => {
     const msg = JSON.parse(e.data);
-    if (msg.type === "mix") { mix = msg; render(); }
+    if (msg.type === "mix") { gone = ""; mix = msg; render(); }
     else if (msg.type === "meters") meters(msg);
-    else if (msg.type === "gone") { document.getElementById("busName").textContent = msg.text; }
+    else if (msg.type === "gone") { gone = msg.text; app.dirty = true; }
   };
-  ws.onclose = () => { document.getElementById("banner").classList.add("show"); setTimeout(connect, 2000); };
+  ws.onclose = () => { setConnected(false); setTimeout(connect, 2000); };
 }
+
+app.start(root, 0, { fitWidth: 390 });
 connect();
+})();
 </script>
 </body>
 </html>

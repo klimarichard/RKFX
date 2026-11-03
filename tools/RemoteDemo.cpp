@@ -82,6 +82,9 @@ int main (int argc, char** argv)
     remote.begin();
     std::printf ("%s\nconsole: http://localhost:%d/console  PIN %s\n", remote.getStatus().toRawUTF8(), remote.getPort(),
                  remote.getConsole().getPin().toRawUTF8());
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        if (mixer->getBusType (bus) == mix::BusType::aux)
+            std::printf ("monitor %d: http://localhost:%d/m/%s\n", bus + 1, remote.getPort(), remote.getKey (bus).toRawUTF8());
     std::fflush (stdout);
 
     Player player (*mixer);

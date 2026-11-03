@@ -195,6 +195,21 @@ RKMixProcessor::RKMixProcessor()
     sceneParam = findParam ("scene");
     sceneParam->addListener (&sceneSync);
 
+    // Undo: every mix setting and the host's faders and mutes (not the
+    // assignables, which follow their controls, nor scene, talk, bypass).
+    std::vector<juce::RangedAudioParameter*> tracked;
+    for (auto* p : settings.getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+            tracked.push_back (r);
+    for (auto* p : getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
+            if (const auto id = r->getParameterID(); ! id.startsWith ("assign") && id != "scene" && id != "talk" && id != "bypass")
+                tracked.push_back (r);
+    undo = std::make_unique<MixUndo> (std::move (tracked), *scenes, [this] (int scene)
+    {
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scene + 1)));
+    });
+
     // The standalone app: MIDI learn and its rig settings in Application Support/RKFX/RKMix.
     standalone = wrapperType == wrapperType_Standalone;
     if (standalone)
@@ -219,6 +234,7 @@ RKMixProcessor::RKMixProcessor()
 RKMixProcessor::~RKMixProcessor()
 {
     sceneParam->removeListener (&sceneSync);
+    undo.reset();
     assigns.reset();
     rack.aboutToRemove = nullptr;
     settings.onChange = nullptr;
@@ -776,6 +792,10 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     for (int dca = 0; dca < mix::kDcas; ++dca)
         dcaColours[(size_t) dca] = colour (extra["dcaColours"], dca);
     ++namesVersion;
+
+    // A mix loaded: nothing to undo into.
+    if (undo != nullptr)
+        undo->clear();
 }
 
 //==============================================================================

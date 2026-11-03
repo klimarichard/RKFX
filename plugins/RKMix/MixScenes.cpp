@@ -287,6 +287,23 @@ void MixScenes::apply (const Scene& s, const Scope& scope)
     }
 }
 
+void MixScenes::restoreCurrent (int scene)
+{
+    cancelGlides();
+    scene = juce::jlimit (0, kNumScenes - 1, scene);
+    if (scene != current)
+    {
+        current = scene;
+        ++version;
+    }
+}
+
+void MixScenes::cancelGlides()
+{
+    stopTimer();
+    glides.clear();
+}
+
 void MixScenes::finishGlides()
 {
     stopTimer();

@@ -65,6 +65,11 @@ public:
 
     int getCurrent() const noexcept { return current; }
     void recall (int scene);
+
+    /** Undo: makes @p scene the current one again, storing and applying
+        nothing (the values come back by themselves), and stops any glide. */
+    void restoreCurrent (int scene);
+    void cancelGlides();
     void copy (int from, int to);
 
     /** Insert knobs that change with the scenes (every scene starts at the knob's value). */

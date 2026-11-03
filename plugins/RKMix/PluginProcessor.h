@@ -6,6 +6,7 @@
 #include "MixAssigns.h"
 #include "MixInserts.h"
 #include "MixScenes.h"
+#include "MixUndo.h"
 #include "host/MidiMap.h"
 #include "host/Tempo.h"
 #include "MixParams.h"
@@ -127,6 +128,13 @@ public:
 
     /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
     MixScenes& getScenes() noexcept { return *scenes; }
+    /** The console's undo history (message thread). */
+    MixUndo& getUndo() noexcept { return *undo; }
+
+    /** Show lock (the window): Off, faders and mutes only, or everything. Not saved. */
+    enum class Lock { off = 0, faders, everything };
+    Lock getLock() const noexcept { return (Lock) lock.load(); }
+    void setLock (Lock l) noexcept { lock = (int) l; }
     MixAssigns& getAssigns() noexcept { return *assigns; }
     void recallScene (int scene);
     /** "Vocal: Fader", "Bus 2, insert 1: Time": an assignment's control. */
@@ -304,6 +312,8 @@ private:
 
     std::unique_ptr<MixScenes> scenes;
     std::unique_ptr<MixAssigns> assigns;
+    std::unique_ptr<MixUndo> undo;
+    std::atomic<int> lock { 0 };
     juce::RangedAudioParameter* sceneParam = nullptr;
     std::atomic<int> pendingScene { -1 };
 

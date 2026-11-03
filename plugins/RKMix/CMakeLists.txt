@@ -27,6 +27,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixPanels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixGroups.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixUndo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixComponents.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixEngine.cpp

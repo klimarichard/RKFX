@@ -861,6 +861,79 @@ public:
             expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::dcaFaderId (0))), 3.0f, 0.01f);
         }
 
+        beginTest ("Undo: a step at a time, back and forward; a new change drops the redo; a load clears the history");
+        {
+            RKMixProcessor p;
+            auto& undo = p.getUndo();
+            auto& fader = *p.findParam (mix::channelFaderId (2));
+            auto& trim = p.getSettings().param (mix::channelId (2, "trim"));
+            const auto value = [] (juce::RangedAudioParameter& r) { return rkfx::ProcessorBase::valueOf (&r); };
+            expect (! undo.canUndo());
+
+            // A drag: several values, one step.
+            setParam (fader, -3.0f); undo.poll();
+            setParam (fader, -8.0f); undo.poll();
+            undo.closeStep();
+            setParam (trim, 6.0f); undo.poll();
+            undo.closeStep();
+            expect (undo.canUndo());
+            expectEquals (undo.undoDescription(), juce::String ("Ch 3 Trim"));
+
+            undo.undo();
+            expectWithinAbsoluteError (value (trim), 0.0f, 0.01f, "the trim back");
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f, "the fader not yet");
+            undo.undo();
+            expectWithinAbsoluteError (value (fader), 0.0f, 0.01f, "the whole drag back to where it started");
+            expect (! undo.canUndo() && undo.canRedo());
+
+            undo.redo();
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f, "redo");
+            undo.poll();
+            expect (undo.canRedo(), "an undo or redo is not itself a change");
+
+            setParam (fader, -1.0f); undo.poll();
+            expect (! undo.canRedo(), "a new change drops what was undone");
+            undo.undo();
+            expectWithinAbsoluteError (value (fader), -8.0f, 0.01f);
+
+            // A load clears it.
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            p.setStateInformation (state.getData(), (int) state.getSize());
+            expect (! undo.canUndo() && ! undo.canRedo());
+        }
+
+        beginTest ("Undo a scene recall: the values and the scene before it; neither scene changes");
+        {
+            RKMixProcessor p;
+            auto& undo = p.getUndo();
+            setParam (p.getSettings().param ("scene_glide"), 0.0f);
+            auto& fader = *p.findParam (mix::channelFaderId (0));
+            const auto value = [] (juce::RangedAudioParameter& r) { return rkfx::ProcessorBase::valueOf (&r); };
+
+            setParam (fader, -10.0f);
+            p.recallScene (1);              // scene 2 starts as the mix is
+            setParam (fader, -20.0f);       // scene 2's own fader
+            p.recallScene (0);              // back to scene 1: -10
+            undo.poll();
+            undo.closeStep();
+            p.recallScene (1);              // scene 2: -20
+            undo.poll();
+            undo.closeStep();
+            expectWithinAbsoluteError (value (fader), -20.0f, 0.01f);
+            expectEquals (undo.undoDescription(), juce::String ("Scene 2 recall"));
+
+            undo.undo();
+            expectEquals (p.getScenes().getCurrent(), 0, "scene 1 current again");
+            expectEquals (juce::roundToInt (value (*p.findParam ("scene"))), 1, "the Scene parameter too");
+            expectWithinAbsoluteError (value (fader), -10.0f, 0.01f, "scene 1's fader");
+
+            p.recallScene (1);
+            expectWithinAbsoluteError (value (fader), -20.0f, 0.01f, "scene 2 kept its values");
+            p.recallScene (0);
+            expectWithinAbsoluteError (value (fader), -10.0f, 0.01f, "and scene 1 its own");
+        }
+
         beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
         {
             RKMixProcessor p;

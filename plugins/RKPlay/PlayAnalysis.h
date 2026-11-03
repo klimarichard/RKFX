@@ -53,7 +53,10 @@ struct PlayLevel
     double gainDb = 0.0;                 // applied to the song
     double limitDb = 0.0;                // > 0: the song is lifted past its ceiling and limited by up to this
 
-    static PlayLevel plan (const PlayAnalysis&, const Settings&, double songGainDb);
+    /** @param asMastered  a playlist played as mastered: no loudness matching, only the
+                           gain that puts the song's true peak at the Peak ceiling (up or
+                           down); @p songGainDb can only turn it down from there. */
+    static PlayLevel plan (const PlayAnalysis&, const Settings&, double songGainDb, bool asMastered = false);
 };
 
 /** The analysis cache: Application Support/RKFX/RKPlay/analysis.json, keyed

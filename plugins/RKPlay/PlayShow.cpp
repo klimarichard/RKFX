@@ -369,6 +369,7 @@ juce::var PlayShow::toVar() const
         o->setProperty ("stopAfterEach", p.stopAfterEach);
         o->setProperty ("crossfade", p.crossfadeSeconds);
         o->setProperty ("gain", p.gainDb);
+        o->setProperty ("loudness", p.asMastered ? "asMastered" : "match");
         o->setProperty ("link", linkKey (p.link));
         if (p.isLinked())
         {
@@ -544,6 +545,7 @@ void PlayShow::fromVar (const juce::var& v, juce::AudioFormatManager& formats)
             p.stopAfterEach = item.getProperty ("stopAfterEach", false);
             p.crossfadeSeconds = juce::jlimit (0.0, kMaxCrossfade, (double) item.getProperty ("crossfade", 6.0));
             p.gainDb = juce::jlimit (-12.0, 12.0, (double) item.getProperty ("gain", 0.0));
+            p.asMastered = item["loudness"].toString() == "asMastered";
             const auto link = item["link"].toString();
             p.link = link == "folder" ? PlayPlaylist::Link::folder : link == "m3u" ? PlayPlaylist::Link::m3u : PlayPlaylist::Link::none;
             p.linkSubfolders = item.getProperty ("subfolders", true);

@@ -66,6 +66,7 @@ public:
     void setStopAfterEach (int, bool);
     void setPlaylistCrossfade (int, double seconds);
     void setPlaylistGain (int, double db);
+    void setPlaylistAsMastered (int, bool);   // not loudness matched: peaks at the ceiling
     bool linkPlaylist (int, const juce::File& folderOrM3u);   // the list becomes the folder's or file's songs
     void unlinkPlaylist (int);                                // keeps the songs as its own
     void rescan (int);

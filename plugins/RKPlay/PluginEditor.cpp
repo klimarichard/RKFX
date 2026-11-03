@@ -91,13 +91,18 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     };
     stopAfterEach.setTooltip ("Wait for Play after every song (a ceremony, songs started by hand)");
     stopAfterEach.onClick = [this] { player.setStopAfterEach (viewed, stopAfterEach.getToggleState()); };
+    loudnessMode.addItem ("Loudness matched", 1);
+    loudnessMode.addItem ("As mastered", 2);
+    loudnessMode.setTooltip ("Loudness matched: every song as loud as the Target. As mastered: each song as the artist made it, "
+                             "only its peaks brought to the Peak ceiling (an artist's own mastered tracks)");
+    loudnessMode.onChange = [this] { player.setPlaylistAsMastered (viewed, loudnessMode.getSelectedId() == 2); };
     setUpSlider (crossfade, 0.0, PlayShow::kMaxCrossfade, 0.5, " s", 50);
     crossfade.setTooltip ("How long songs overlap; 0 plays them back to back, with no gap");
     crossfade.onValueChange = [this] { player.setPlaylistCrossfade (viewed, crossfade.getValue()); };
     setUpSlider (listGain, -12.0, 12.0, 0.5, " dB", 60);
     listGain.setTooltip ("The whole list louder or quieter, on top of loudness matching (a quieter Dinner list)");
     listGain.onValueChange = [this] { player.setPlaylistGain (viewed, listGain.getValue()); };
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &crossfade, &listGain })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &loudnessMode, &crossfade, &listGain })
         addToCanvas (*c);
 
     list.setRowHeight (kRowHeight);
@@ -306,6 +311,8 @@ void RKPlayEditor::layoutContent()
     atEnd.setBounds (bar.removeFromLeft (170));
     bar.removeFromLeft (12);
     stopAfterEach.setBounds (bar.removeFromLeft (140));
+    bar.removeFromLeft (12);
+    loudnessMode.setBounds (bar.removeFromLeft (180));
     // The info line: the list's size and link on the left, its crossfade and gain on the right.
     infoArea = r.removeFromTop (kInfoHeight);
     auto sliders = infoArea.reduced (0, 4);
@@ -368,6 +375,8 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
     if (p.isLinked())
         info << "   ·   linked to " << (p.link == PlayPlaylist::Link::folder ? "the folder " : "") << p.linkFile.getFileName()
              << " (right-click the tab to rescan)";
+    if (p.asMastered)
+        info << "   ·   as mastered: peaks at " << juce::String (player.getShow().level.peakCeilingDb, 1) << " dBTP";
     if (player.getPendingSwitch() >= 0 && player.getPendingSwitch() < (int) player.getShow().playlists.size())
         info << "   ·   then " << player.getShow().playlists[(size_t) player.getPendingSwitch()].name;
     g.setColour (rkfx::Palette::textDim);
@@ -803,7 +812,7 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
     if (song.isPlayable())
     {
         const auto plan = player.levelOf (song, viewed);
-        if (! song.analysis.valid && player.getShow().level.match)
+        if (! song.analysis.valid && (player.getShow().level.match || viewedList().asMastered))
         {
             g.setColour (rkfx::Palette::textDim.withAlpha (0.6f));
             g.drawText ("measuring", levelArea, juce::Justification::centredRight);
@@ -1816,6 +1825,11 @@ void RKPlayEditor::refresh()
     atEnd.setSelectedId (p.atEnd == PlayPlaylist::AtEnd::stop ? 1 : p.atEnd == PlayPlaylist::AtEnd::repeat ? 2 : 10 + p.goTo,
                          juce::dontSendNotification);
     stopAfterEach.setToggleState (p.stopAfterEach, juce::dontSendNotification);
+    loudnessMode.setSelectedId (p.asMastered ? 2 : 1, juce::dontSendNotification);
+    // As mastered: its gain only turns it down (the peaks are at the ceiling already).
+    listGain.setRange (-12.0, p.asMastered ? 0.0 : 12.0, 0.5);
+    listGain.setTooltip (p.asMastered ? "The whole list quieter (as mastered, its peaks are at the ceiling already)"
+                                      : "The whole list louder or quieter, on top of loudness matching (a quieter Dinner list)");
     crossfade.setValue (p.crossfadeSeconds, juce::dontSendNotification);
     listGain.setValue (p.gainDb, juce::dontSendNotification);
     for (auto* b : { &addFilesButton, &addFolderButton, &clearButton })

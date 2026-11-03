@@ -166,6 +166,7 @@ private:
     juce::TextButton inOrderButton { "In order" }, shuffleButton { "Shuffle" };
     juce::ComboBox atEnd;
     juce::ToggleButton stopAfterEach { "Stop after each" };
+    juce::ComboBox loudnessMode;
     juce::Slider crossfade, listGain;
     juce::ListBox list { "Playlist", this };
     juce::TextButton addFilesButton { "Add files..." }, addFolderButton { "Add folder..." }, clearButton { "Clear" };

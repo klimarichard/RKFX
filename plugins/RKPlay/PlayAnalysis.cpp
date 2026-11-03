@@ -130,9 +130,17 @@ PlayAnalysis PlayAnalysis::fromVar (const juce::var& v)
 }
 
 //==============================================================================
-PlayLevel PlayLevel::plan (const PlayAnalysis& a, const Settings& s, double songGainDb)
+PlayLevel PlayLevel::plan (const PlayAnalysis& a, const Settings& s, double songGainDb, bool asMastered)
 {
     PlayLevel level;
+    if (asMastered)
+    {
+        // As the artist made it: its peaks at the ceiling, never limited; gains only turn it down.
+        const auto down = juce::jmin (0.0, songGainDb);
+        const auto gain = a.valid && a.truePeakDb > -100.0f ? s.peakCeilingDb - a.truePeakDb + down : down;
+        level.gainDb = std::abs (gain) < kOnTargetDb ? 0.0 : gain;
+        return level;
+    }
     if (! s.match || ! a.valid || a.loudness < -70.0)
     {
         level.gainDb = songGainDb;

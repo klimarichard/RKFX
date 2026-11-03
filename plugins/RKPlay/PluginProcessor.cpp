@@ -210,8 +210,9 @@ int RKPlayProcessor::load (const Item& item, double startSeconds, bool wholeFile
 
 PlayLevel RKPlayProcessor::levelOf (const PlaySong& song, int playlist) const
 {
-    const auto listGain = playlist >= 0 && playlist < (int) show.playlists.size() ? show.playlists[(size_t) playlist].gainDb : 0.0;
-    return PlayLevel::plan (song.analysis, show.level, song.gainDb + listGain);
+    const auto* list = playlist >= 0 && playlist < (int) show.playlists.size() ? &show.playlists[(size_t) playlist] : nullptr;
+    return PlayLevel::plan (song.analysis, show.level, song.gainDb + (list != nullptr ? list->gainDb : 0.0),
+                            list != nullptr && list->asMastered);
 }
 
 PlayStream::Options RKPlayProcessor::optionsFor (const Item& item, double startSeconds, bool wholeFile) const
@@ -1127,6 +1128,14 @@ void RKPlayProcessor::setPlaylistGain (int index, double db)
 {
     show.playlists[(size_t) index].gainDb = juce::jlimit (-12.0, 12.0, db);
     edited();
+}
+
+void RKPlayProcessor::setPlaylistAsMastered (int index, bool on)
+{
+    if (index < 0 || index >= (int) show.playlists.size())
+        return;
+    show.playlists[(size_t) index].asMastered = on;
+    edited();   // the next song is lined up again at its new level
 }
 
 bool RKPlayProcessor::linkPlaylist (int index, const juce::File& source)

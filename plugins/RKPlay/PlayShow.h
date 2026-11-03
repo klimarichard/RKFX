@@ -63,6 +63,7 @@ struct PlayPlaylist
     bool stopAfterEach = false;      // wait for Play after every song
     double crossfadeSeconds = 6.0;   // 0 = back to back, gapless
     double gainDb = 0.0;             // the whole list, on top of loudness matching (a quieter Dinner list)
+    bool asMastered = false;         // not loudness matched: each song's peaks at the Peak ceiling (an artist's own masters)
     Link link = Link::none;
     juce::File linkFile;             // the folder or the .m3u8
     bool linkSubfolders = true;

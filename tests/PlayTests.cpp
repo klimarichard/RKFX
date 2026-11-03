@@ -510,6 +510,60 @@ public:
             expectEquals (l.gainDb, -2.0, "match off: the song's own gain only");
         }
 
+        beginTest ("As mastered: no loudness matching, the peaks brought to the ceiling; gains only turn it down");
+        {
+            PlayAnalysis a;
+            a.valid = true;
+            PlayLevel::Settings s;   // -18 LUFS, -0.5 dBTP
+
+            a.loudness = -8.0; a.truePeakDb = 0.4;               // a loud master over 0 dBTP
+            auto l = PlayLevel::plan (a, s, 0.0, true);
+            expectWithinAbsoluteError (l.gainDb, -0.9, 1.0e-6, "down to the ceiling, not to -18 LUFS");
+            expectEquals (l.limitDb, 0.0, "never limited");
+
+            a.loudness = -14.0; a.truePeakDb = -3.0;             // a quiet master
+            l = PlayLevel::plan (a, s, 0.0, true);
+            expectWithinAbsoluteError (l.gainDb, 2.5, 1.0e-6, "up to the ceiling");
+            l = PlayLevel::plan (a, s, 4.0, true);
+            expectWithinAbsoluteError (l.gainDb, 2.5, 1.0e-6, "a positive gain can't push past the ceiling");
+            l = PlayLevel::plan (a, s, -6.0, true);
+            expectWithinAbsoluteError (l.gainDb, -3.5, 1.0e-6, "a negative one turns it down");
+
+            a.truePeakDb = -0.55f;
+            expectEquals (PlayLevel::plan (a, s, 0.0, true).gainDb, 0.0, "already there: bit-exact");
+            s.match = false;
+            a.truePeakDb = -3.0f;
+            expectWithinAbsoluteError (PlayLevel::plan (a, s, 0.0, true).gainDb, 2.5, 1.0e-6, "whatever Level match says");
+            a.valid = false;
+            expectEquals (PlayLevel::plan (a, s, -2.0, true).gainDb, -2.0, "not measured yet: as it is (gains down only)");
+
+            const auto files = songsIn ("mastered", 2, 2.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setPlaylistAsMastered (0, true);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getShow().playlists[0].asMastered, "kept by the show");
+
+            // Measured: song 1 plays 0.01 (peak -40 dBFS), as mastered brought up to -0.5 dBTP.
+            q.analyseNow();
+            q.play();
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::MidiBuffer midi;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                q.processBlock (buffer, midi);
+                q.update();
+            }
+            // (A steady level starting from silence: its true peak is the step's overshoot, a little over 0.01.)
+            const auto truePeak = q.getShow().playlists[0].songs[0].analysis.truePeakDb;
+            expectWithinAbsoluteError (buffer.getSample (0, kBlock - 1), 0.01f * juce::Decibels::decibelsToGain (-0.5f - truePeak), 1.0e-4f,
+                                       "the song's true peak at the ceiling");
+        }
+
         beginTest ("The lift limiter holds the true peak at the ceiling, smoothly, and lines up");
         {
             PlayLimiter limiter;

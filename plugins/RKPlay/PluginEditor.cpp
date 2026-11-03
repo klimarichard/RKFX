@@ -1911,7 +1911,8 @@ void RKPlayEditor::tick()
     }
     juce::StringArray parts;
     if (const auto pending = player.analysisPending(); pending > 0)
-        parts.add ("Measuring " + juce::String (pending) + (pending == 1 ? " song" : " songs") + "...");
+        parts.add ("Measuring " + juce::String (pending) + (pending == 1 ? " song" : " songs")
+                   + (player.isAnalysisHeld() ? " (waiting: the music needs the disk)" : "..."));
     if (now - limiterTime < 2.0)
         parts.add ("Safety limiter " + juce::String (limiterDb, 1) + " dB");
     status.setText (parts.joinIntoString ("    "), juce::dontSendNotification);

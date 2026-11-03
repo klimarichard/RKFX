@@ -170,6 +170,10 @@ public:
     // Loudness
     PlayLevel levelOf (const PlaySong&, int playlist) const;
     int analysisPending() const { return analyser != nullptr ? analyser->pending() : 0; }
+    /** Measuring is waiting: a song's read-ahead is low (the disk is busy with the music). */
+    bool isAnalysisHeld() const { return analysisHeld; }
+    int getAnalysisPace() const { return analyser != nullptr ? analyser->getPace() : PlayAnalysis::fullSpeed; }
+    static constexpr double kLowReadAhead = 6.0, kReadAheadAgain = 10.0;   // seconds: measuring holds, and goes on
     float takeLimiterReductionDb() { return engine.takeLimiterReductionDb(); }
 
     //==============================================================================
@@ -303,6 +307,8 @@ private:
     void findEndAtDeadline();
     void attachAnalyses();
     void takeAnalyses();
+    void paceAnalysis();
+    bool analysisHeld = false;
     void playlistEdited (int playlist, const std::function<int (int)>& moveIndex);
     void forCopiesOf (const juce::File&, const std::function<void (PlaySong&)>&);   // playing, armed, queued, pre-listened
     void setNote (const juce::String&);

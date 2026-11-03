@@ -711,6 +711,39 @@ public:
             expect (! again.find (file, found), "a changed file is measured again");
         }
 
+        beginTest ("Measuring waits while the music needs the disk, and goes gently while it plays");
+        {
+            const auto file = writeWav ("paced", kRate, 4 * 48000, [] (int i, int ch) { return noise (i, ch, 10); });
+            PlayAnalyser analyser;
+            analyser.setPace (PlayAnalysis::hold);
+            analyser.add (file);
+            juce::Thread::sleep (400);
+            expect (analyser.takeResults().empty(), "held: nothing measured");
+            expectEquals (analyser.pending(), 1);
+            analyser.setPace (PlayAnalysis::gentle);
+            std::vector<PlayAnalyser::Result> results;
+            for (int i = 0; i < 100 && results.empty(); ++i)
+            {
+                juce::Thread::sleep (30);
+                results = analyser.takeResults();
+            }
+            expect (results.size() == 1 && results[0].analysis.valid, "measured once let go");
+
+            // The player: full speed when nothing plays, gently while a song does.
+            const auto files = songsIn ("paced-list", 2, 20.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.update();
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::fullSpeed);
+            p.play();
+            p.runFor (0.1);
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::gentle, "the read-ahead is full (disk filled at once in tests)");
+            expect (! p.isAnalysisHeld());
+            p.stop();
+            p.update();
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::fullSpeed);
+        }
+
         //==============================================================================
         // Phase 3: playlists, the queue, End at, links
 

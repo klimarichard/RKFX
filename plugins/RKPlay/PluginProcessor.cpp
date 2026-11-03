@@ -882,6 +882,7 @@ void RKPlayProcessor::update()
     }
     handleEvents();
     takeAnalyses();
+    paceAnalysis();
     checkEndAt();
     keepArmed();
     engine.setSafetyLimiter (show.safetyLimiter);
@@ -1423,6 +1424,27 @@ void RKPlayProcessor::takeAnalyses()
     if (cache != nullptr && analyser->pending() == 0)
         cache->save();
     showChanged();
+}
+
+void RKPlayProcessor::paceAnalysis()
+{
+    if (analyser == nullptr || sampleRate <= 0.0)
+        return;
+
+    // The least read-ahead of what is heard (or about to be): still reading, and less than it should have.
+    auto lowest = PlayStream::kBufferSeconds;
+    for (const auto slot : { currentSlot, armedSlot, cueSlot })
+        if (slot >= 0 && streams[(size_t) slot].isOpen() && ! streams[(size_t) slot].isSourceDone())
+            lowest = juce::jmin (lowest, streams[(size_t) slot].available() / sampleRate);
+
+    const auto heard = state == State::playing || cueSlot >= 0;
+    if (! heard)
+        analysisHeld = false;
+    else if (lowest < kLowReadAhead)
+        analysisHeld = true;
+    else if (lowest > kReadAheadAgain)
+        analysisHeld = false;
+    analyser->setPace (analysisHeld ? PlayAnalysis::hold : heard ? PlayAnalysis::gentle : PlayAnalysis::fullSpeed);
 }
 
 void RKPlayProcessor::analyseNow()

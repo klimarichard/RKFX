@@ -5,7 +5,7 @@
 #include <cmath>
 
 //==============================================================================
-PlayAnalysis PlayAnalysis::analyse (juce::AudioFormatReader& reader, const std::atomic<bool>* cancel)
+PlayAnalysis PlayAnalysis::analyse (juce::AudioFormatReader& reader, const std::atomic<bool>* cancel, const std::atomic<int>* pace)
 {
     PlayAnalysis a;
     const auto rate = reader.sampleRate;
@@ -26,6 +26,18 @@ PlayAnalysis PlayAnalysis::analyse (juce::AudioFormatReader& reader, const std::
     {
         if (cancel != nullptr && cancel->load())
             return {};
+        if (pace != nullptr)
+        {
+            // The music comes first: wait while a song's read-ahead is low, go gently while it plays.
+            while (pace->load() >= hold)
+            {
+                if (cancel != nullptr && cancel->load())
+                    return {};
+                juce::Thread::sleep (50);
+            }
+            if (pace->load() == gentle)
+                juce::Thread::sleep (kGentlePauseMs);
+        }
         const auto n = (int) juce::jmin<juce::int64> (chunk, length - pos);
         reader.read (&buffer, 0, n, pos, true, true);
         meter.process (buffer.getArrayOfReadPointers(), n);
@@ -244,7 +256,7 @@ void PlayAnalyser::run()
         juce::File next;
         {
             const juce::ScopedLock sl (lock);
-            if (! queue.empty())
+            if (! queue.empty() && pace.load() < PlayAnalysis::hold)   // held: not even a new file opened
             {
                 next = queue.front();
                 queue.pop_front();
@@ -253,13 +265,13 @@ void PlayAnalyser::run()
         }
         if (next == juce::File())
         {
-            wake.wait (500);
+            wake.wait (pace.load() >= PlayAnalysis::hold ? 100 : 500);
             continue;
         }
 
         Result result { next, {} };
         if (std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (next)); reader != nullptr)
-            result.analysis = PlayAnalysis::analyse (*reader, &cancelFlag);
+            result.analysis = PlayAnalysis::analyse (*reader, &cancelFlag, &pace);
 
         const juce::ScopedLock sl (lock);
         working = juce::File();

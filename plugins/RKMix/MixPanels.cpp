@@ -1098,7 +1098,7 @@ RKMixEditor::ScenesPanel::ScenesPanel (RKMixEditor& o) : Panel (o)
         "Trim, polarity, delay, high-pass, gate, EQ and compressor of every channel",
         "The EQ, compressor and limiter of the buses, the main and the mono sum",
         "Inserts on or off, and the scene-controlled insert knobs",
-        "Group assigns and Main switches",
+        "Group assigns, Main switches, and who is in each DCA and mute group",
     };
     for (int c = 0; c < Scope::numCategories; ++c)
     {

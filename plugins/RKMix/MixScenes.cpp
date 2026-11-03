@@ -93,7 +93,7 @@ juce::String MixScenes::Scope::name (Category c)
         case channelProcessing: return "Channel processing";
         case busProcessing:     return "Bus & main processing";
         case inserts:           return "Inserts";
-        case routing:           return "Assigns (group, main, DCA)";
+        case routing:           return "Assigns & DCAs";
         case numCategories:     break;
     }
     return {};

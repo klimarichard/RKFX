@@ -41,8 +41,9 @@ public:
 private:
     enum class Page { strip, sends, routing, monitor, scenes, assign };
     static constexpr int kBusLayer = 2;
-    static constexpr int kUserLayer = 3;      // and 4: the user pages
-    static constexpr int kNumLayers = 5;
+    static constexpr int kDcaLayer = 3;       // the DCAs and mute groups (or a DCA's members, spilled)
+    static constexpr int kUserLayer = 4;      // and 5: the user pages
+    static constexpr int kNumLayers = 6;
 
     /** A channel's or bus's Solo button (solo isn't a parameter: never saved). */
     struct SoloButton : public juce::Component,
@@ -140,6 +141,7 @@ private:
         juce::TextButton sendsButton { "Sends" };   // Aux and FX buses
         std::vector<std::unique_ptr<InsertButton>> insertButtons;
         bool stereo = false;
+        bool groupMuted = false;             // a DCA or a mute group silences it
         int sendBus = -1;
         std::array<bool, 4> sectionsOn {};     // HPF, gate, EQ, comp
         std::array<bool, 2> reducing {};       // gate, comp
@@ -147,6 +149,27 @@ private:
 
         bool isBus() const noexcept { return bus >= 0; }
         juce::String label() const;
+    };
+
+    /** A DCA (name, Spill, mute, fader) or a mute group (name, its big Mute,
+        its members). Click the name: its members page. */
+    struct GroupStrip : public juce::Component
+    {
+        GroupStrip (RKMixEditor&, int index, bool muteGroup);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void refresh();
+
+        RKMixEditor& owner;
+        const int index;
+        const bool muteGroup;
+        juce::Label name;
+        std::unique_ptr<rkfx::ToggleSwitch> mute;
+        std::unique_ptr<MixGui::Fader> fader;       // a DCA
+        juce::TextButton spill { "Spill" };          // a DCA
+        juce::StringArray members;                   // their names
+        juce::Rectangle<int> membersArea;
     };
 
     /** The main or the mono sum: name, fader, meter, mute. Click: its page. */
@@ -385,6 +408,25 @@ private:
         void applyRange (int assign);
     };
 
+    /** A DCA's or a mute group's members: every channel and bus, on or off. */
+    struct GroupPanel : public Panel
+    {
+        GroupPanel (RKMixEditor&, int index, bool muteGroup);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void refresh() override;
+
+        const int index;
+        const bool muteGroup;
+        juce::Label name;
+        std::array<juce::Rectangle<int>, 8> swatches;
+        std::array<rkfx::ToggleSwitch*, mix::kChannels> channels {};
+        std::array<rkfx::ToggleSwitch*, mix::kBuses> buses {};
+        juce::TextButton spill { "Spill" }, clear { "Clear" };
+        juce::Rectangle<int> infoArea, membersArea;
+    };
+
     /** Where the main and mono go, and what each output carries. */
     struct RoutingPanel : public Panel
     {
@@ -407,6 +449,7 @@ private:
     rkfx::ParameterWatcher watcher;
 
     std::vector<std::unique_ptr<Strip>> strips, busStrips;
+    std::vector<std::unique_ptr<GroupStrip>> dcaStrips, muteGroupStrips;
     MasterStrip mainStrip, monoStrip;
     std::unique_ptr<Panel> stripPanel, sendsPanel;
     RoutingPanel routingPanel;
@@ -432,7 +475,7 @@ private:
     std::unique_ptr<rkfx::ToggleSwitch> oscButton;
     int lastSoloVersion = -1;
     juce::TextButton layerButtons[kNumLayers] { juce::TextButton ("Inputs 1-16"), juce::TextButton ("Inputs 17-32"), juce::TextButton ("Buses"),
-                                                juce::TextButton ("User 1"), juce::TextButton ("User 2") };
+                                                juce::TextButton ("DCA"), juce::TextButton ("User 1"), juce::TextButton ("User 2") };
     juce::TextButton sendsBack { "Back to faders" };
     std::unique_ptr<juce::FileChooser> chooser;
     std::unique_ptr<InsertView> insertView;
@@ -443,6 +486,8 @@ private:
     int selected = 0;          // a channel, or -1 while a bus is selected
     int selectedBus = -1;
     int selectedChain = -1;    // the main or the mono sum's page (mix::kMainChain, kMonoChain), or -1
+    int selectedDca = -1, selectedMuteGroup = -1;   // a DCA's or a mute group's members page, or -1
+    int spillDca = -1;         // the DCA whose members the DCA page shows, or -1
     int sendsOnFader = -1;     // the bus whose sends the channel faders show, or -1
     int lastNamesVersion = -1;
     double lastMeterTime = 0.0;
@@ -467,6 +512,12 @@ private:
     void select (int channel);
     void selectBus (int bus);
     void selectMain (int chain);
+    void selectGroup (int index, bool muteGroup);
+    bool isChannelSelected() const noexcept { return selectedBus < 0 && selectedChain < 0 && selectedDca < 0 && selectedMuteGroup < 0; }
+    void setSpill (int dca);
+    juce::String dcaDisplayName (int dca) const;        // the name, or "DCA 1"
+    juce::String muteGroupDisplayName (int group) const; // the name, or "Mute 1"
+    juce::String stripDisplayName (int strip) const;    // a channel, or kUserPageBus + a bus
     ProcessingPanel* shownProcessing() const;
     void rebuildPanels();
     void setPage (Page);

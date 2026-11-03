@@ -210,6 +210,11 @@ RKMixProcessor::RKMixProcessor()
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scene + 1)));
     });
 
+    // The monitor remote: only in the plugin and the app (never in tests and tools).
+    remote = std::make_unique<MixRemote> (*this);
+    if (wrapperType != wrapperType_Undefined)
+        remote->begin();
+
     // The standalone app: MIDI learn and its rig settings in Application Support/RKFX/RKMix.
     standalone = wrapperType == wrapperType_Standalone;
     if (standalone)
@@ -234,6 +239,7 @@ RKMixProcessor::RKMixProcessor()
 RKMixProcessor::~RKMixProcessor()
 {
     sceneParam->removeListener (&sceneSync);
+    remote.reset();
     undo.reset();
     assigns.reset();
     rack.aboutToRemove = nullptr;
@@ -482,6 +488,16 @@ juce::String RKMixProcessor::describeTarget (const MixAssigns::Target& t) const
             text = getChannelName (ch) + ": " + text.fromFirstOccurrenceOf (" ", false, false).fromFirstOccurrenceOf (" ", false, false);
     }
     return text;
+}
+
+void RKMixProcessor::takeRemotePeaks (std::array<float, mix::kChannels>& channels,
+                                      std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        channels[(size_t) ch] = remoteChannelPeaks[(size_t) ch].exchange (0.0f);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        for (int side = 0; side < 2; ++side)
+            buses[(size_t) bus][(size_t) side] = remoteBusPeaks[(size_t) bus][(size_t) side].exchange (0.0f);
 }
 
 void RKMixProcessor::setChannelSolo (int ch, bool on)
@@ -1389,14 +1405,20 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     };
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        raise (channelPeaks[(size_t) ch], engine.takeChannelPeak (ch));
+        const auto peak = engine.takeChannelPeak (ch);
+        raise (channelPeaks[(size_t) ch], peak);
+        raise (remoteChannelPeaks[(size_t) ch], peak);
         lower (gateReduction[(size_t) ch], engine.takeGateReductionDb (ch));
         lower (compReduction[(size_t) ch], engine.takeCompReductionDb (ch));
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
         for (int side = 0; side < 2; ++side)
-            raise (busPeaks[(size_t) bus][(size_t) side], engine.takeBusPeak (bus, side));
+        {
+            const auto peak = engine.takeBusPeak (bus, side);
+            raise (busPeaks[(size_t) bus][(size_t) side], peak);
+            raise (remoteBusPeaks[(size_t) bus][(size_t) side], peak);
+        }
         lower (chainCompReduction[(size_t) bus], engine.takeBusCompReductionDb (bus));
         lower (chainLimitReduction[(size_t) bus], engine.takeBusLimitReductionDb (bus));
     }

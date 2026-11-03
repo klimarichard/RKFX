@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="{{TITLE}}">
+<meta name="theme-color" content="#1b1e22">
+<link rel="manifest" href="/manifest/{{KEY}}.json">
+<link rel="apple-touch-icon" href="/icon.png">
+<title>{{TITLE}}</title>
+<style>
+  :root { --bg:#1b1e22; --panel:#262a30; --panel2:#2e333a; --text:#e8eaed; --dim:#8b929b; --accent:#6b8ca6; --warn:#e3a33b; --meter:#5cb85c; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--text); font:15px -apple-system, system-ui, sans-serif; }
+  body { padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom); -webkit-user-select:none; user-select:none; }
+  header { position:sticky; top:0; z-index:2; background:var(--bg); padding:10px 12px 8px; border-bottom:1px solid #000; }
+  .top { display:flex; align-items:center; gap:10px; }
+  .dot { width:12px; height:12px; border-radius:50%; flex:none; }
+  h1 { font-size:19px; margin:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  button { font:inherit; color:var(--text); background:var(--panel2); border:0; border-radius:8px; padding:8px 12px; }
+  button.on { background:var(--warn); color:#000; }
+  #lock.on { background:var(--accent); color:#000; }
+  .row { background:var(--panel); margin:6px 8px; border-radius:10px; padding:8px 10px 10px; border-left:5px solid #6e737b; }
+  .row.master { margin:8px 0 0; }
+  .line { display:flex; align-items:baseline; gap:8px; }
+  .name { font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub { color:var(--dim); font-size:12px; }
+  .db { font-variant-numeric:tabular-nums; color:var(--dim); min-width:56px; text-align:right; }
+  .slider { position:relative; height:38px; margin-top:6px; touch-action:pan-y; }
+  .track { position:absolute; left:0; right:0; top:15px; height:8px; border-radius:4px; background:#14171a; overflow:hidden; }
+  .fill { position:absolute; left:0; top:0; bottom:0; background:var(--accent); opacity:.55; }
+  .meter { position:absolute; left:0; bottom:0; height:3px; background:var(--meter); transition:width 60ms linear; }
+  .unity { position:absolute; top:11px; width:2px; height:16px; background:var(--dim); opacity:.6; }
+  .thumb { position:absolute; top:3px; width:34px; height:32px; margin-left:-17px; border-radius:8px; background:#d9dde2; box-shadow:0 1px 3px #0008; }
+  .slider.pan { height:26px; margin-top:2px; }
+  .slider.pan .track { top:10px; height:6px; }
+  .slider.pan .thumb { top:2px; width:22px; height:22px; margin-left:-11px; border-radius:11px; background:#aeb4bb; }
+  .slider.pan .unity { top:6px; height:14px; left:50%; }
+  .dragging .thumb { background:#fff; }
+  .locked .slider { opacity:.45; }
+  .muted .fill { background:var(--warn); }
+  #banner { display:none; background:var(--warn); color:#000; text-align:center; padding:6px; font-size:13px; }
+  #banner.show { display:block; }
+  footer { padding:10px 12px 24px; color:var(--dim); font-size:12px; text-align:center; }
+  #empty { color:var(--dim); text-align:center; padding:30px 20px; display:none; }
+</style>
+</head>
+<body>
+<div id="banner">Not connected to RKMix: trying again…</div>
+<header>
+  <div class="top">
+    <span class="dot" id="busDot"></span>
+    <h1 id="busName">{{TITLE}}</h1>
+    <button id="lock" title="Lock the screen against pocket touches">Lock</button>
+  </div>
+  <div class="row master" id="master">
+    <div class="line"><span class="name">My mix</span><button id="mute">Mute</button><span class="db" id="masterDb"></span></div>
+    <div class="slider" id="masterSlider"><div class="track"><div class="fill"></div><div class="meter"></div></div><div class="unity"></div><div class="thumb"></div></div>
+  </div>
+</header>
+<div id="rows"></div>
+<div id="empty">Nothing in this mix yet.</div>
+<footer>
+  <button id="all">Show all channels</button>
+  <p>Drag sideways to set a level; double-tap a pan for the centre.<br>Safari: Share &rarr; Add to Home Screen for an app icon.</p>
+</footer>
+<script>
+"use strict";
+const KEY = "{{KEY}}";
+// The fader law (RKMix's): position 0..1 <-> dB, the bottom is silence.
+const LAW = [[0,-100],[0.1,-60],[0.25,-40],[0.45,-20],[0.6,-10],[0.75,0],[1,10]];
+function dbAt(p) { p = Math.min(1, Math.max(0, p)); for (let i = 1; i < LAW.length; i++) { const a = LAW[i-1], b = LAW[i]; if (p <= b[0]) return a[1] + (b[1]-a[1]) * (p-a[0]) / (b[0]-a[0]); } return 10; }
+function posOf(db) { db = Math.min(10, Math.max(-100, db)); for (let i = 1; i < LAW.length; i++) { const a = LAW[i-1], b = LAW[i]; if (db <= b[1]) return a[0] + (b[0]-a[0]) * (db-a[1]) / (b[1]-a[1]); } return 1; }
+function dbText(db) { return db <= -99.9 ? "-inf" : (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? 0 : db).toFixed(1); }
+function panText(v) { const w = Math.round(v); return w === 0 ? "C" : (w < 0 ? "L" : "R") + Math.abs(w); }
+
+let ws = null, mix = null, showAll = false, locked = false;
+const rowsEl = document.getElementById("rows");
+const sliders = {};   // by key: { el, kind, value, dragging, set(v) }
+
+function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+
+// A slider moved by dragging sideways (relative, so a touch never jumps it);
+// vertical moves scroll the page instead.
+function makeSlider(el, kind, onChange) {
+  const s = { el, kind, value: 0, dragging: false };
+  const thumb = el.querySelector(".thumb"), fill = el.querySelector(".fill");
+  s.position = () => kind === "pan" ? (s.value + 100) / 200 : posOf(s.value);
+  s.show = () => { const p = s.position(); thumb.style.left = (p * 100) + "%"; if (fill) fill.style.width = kind === "pan" ? "0" : (p * 100) + "%"; };
+  s.set = v => { if (!s.dragging) { s.value = v; s.show(); } };
+  let startX = 0, startPos = 0, active = false, id = null, lastTap = 0;
+  el.addEventListener("pointerdown", e => {
+    if (locked) return;
+    id = e.pointerId; startX = e.clientX; startPos = s.position(); active = false;
+    if (kind === "pan") { const now = Date.now(); if (now - lastTap < 350) { s.value = 0; s.show(); onChange(0); } lastTap = now; }
+  });
+  el.addEventListener("pointermove", e => {
+    if (e.pointerId !== id || locked) return;
+    const dx = e.clientX - startX;
+    if (!active && Math.abs(dx) > 6) { active = true; s.dragging = true; el.classList.add("dragging"); el.setPointerCapture(id); }
+    if (!active) return;
+    const p = Math.min(1, Math.max(0, startPos + dx / el.clientWidth));
+    s.value = kind === "pan" ? Math.round(p * 200 - 100) : dbAt(p);
+    s.show(); onChange(s.value);
+  });
+  const end = e => { if (e.pointerId !== id) return; id = null; active = false; s.dragging = false; el.classList.remove("dragging"); };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  return s;
+}
+
+const master = makeSlider(document.getElementById("masterSlider"), "level", v => { document.getElementById("masterDb").textContent = dbText(v); send({ t: "fader", v }); });
+document.getElementById("mute").onclick = () => { if (!locked && mix) send({ t: "mute", v: mix.bus.mute ? 0 : 1 }); };
+document.getElementById("lock").onclick = e => { locked = !locked; e.target.classList.toggle("on", locked); document.body.classList.toggle("locked", locked); e.target.textContent = locked ? "Locked" : "Lock"; };
+document.getElementById("all").onclick = e => { showAll = !showAll; e.target.textContent = showAll ? "Show only what's in the mix" : "Show all channels"; render(); };
+
+function rowHtml(r) {
+  return `<div class="line"><span class="name"></span><span class="sub"></span><span class="db"></span></div>
+    <div class="slider level"><div class="track"><div class="fill"></div><div class="meter"></div></div><div class="unity"></div><div class="thumb"></div></div>
+    <div class="slider pan"><div class="track"></div><div class="unity"></div><div class="thumb"></div></div>`;
+}
+
+let shownKeys = "";
+function render() {
+  if (!mix) return;
+  const b = mix.bus;
+  document.getElementById("busName").textContent = b.name;
+  document.title = b.name;
+  document.getElementById("busDot").style.background = b.colour;
+  document.getElementById("mute").classList.toggle("on", b.mute);
+  document.getElementById("master").classList.toggle("muted", b.mute);
+  master.set(b.fader);
+  if (!master.dragging) document.getElementById("masterDb").textContent = dbText(b.fader);
+
+  const rows = mix.rows.filter(r => showAll || r.used);
+  const keys = rows.map(r => r.k).join(",") + "|" + b.own;
+  document.getElementById("empty").style.display = rows.length ? "none" : "block";
+  if (keys !== shownKeys) {
+    shownKeys = keys;
+    rowsEl.innerHTML = "";
+    for (const k in sliders) delete sliders[k];
+    for (const r of rows) {
+      const el = document.createElement("div");
+      el.className = "row"; el.dataset.k = r.k; el.innerHTML = rowHtml(r);
+      rowsEl.appendChild(el);
+      const level = makeSlider(el.querySelector(".slider.level"), "level", v => { el.querySelector(".db").textContent = dbText(v); send({ t: "send", k: r.k, v }); });
+      const pan = makeSlider(el.querySelector(".slider.pan"), "pan", v => { el.querySelector(".sub").textContent = panText(v); send({ t: "pan", k: r.k, v }); });
+      sliders[r.k] = { el, level, pan };
+    }
+  }
+  for (const r of rows) {
+    const s = sliders[r.k]; if (!s) continue;
+    s.el.style.borderLeftColor = r.colour;
+    s.el.querySelector(".name").textContent = r.name;
+    const hasPan = b.own && !r.ret;
+    s.el.querySelector(".slider.pan").style.display = hasPan ? "block" : "none";
+    if (!s.level.dragging) s.el.querySelector(".db").textContent = dbText(r.send);
+    if (!s.pan.dragging) s.el.querySelector(".sub").textContent = hasPan ? panText(r.pan) : (r.ret ? "return" : "");
+    s.level.set(r.send);
+    s.pan.set(r.pan);
+  }
+}
+
+function meters(m) {
+  const level = v => (Math.min(1, Math.max(0, posOf(v <= 0 ? -100 : 20 * Math.log10(v)) )) * 100) + "%";
+  document.querySelector("#masterSlider .meter").style.width = level(m.bus || 0);
+  for (const k in sliders) { const v = m.rows[k] || 0; sliders[k].el.querySelector(".meter").style.width = level(v); }
+}
+
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws/" + KEY);
+  ws.onopen = () => document.getElementById("banner").classList.remove("show");
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "mix") { mix = msg; render(); }
+    else if (msg.type === "meters") meters(msg);
+    else if (msg.type === "gone") { document.getElementById("busName").textContent = msg.text; }
+  };
+  ws.onclose = () => { document.getElementById("banner").classList.add("show"); setTimeout(connect, 2000); };
+}
+connect();
+</script>
+</body>
+</html>

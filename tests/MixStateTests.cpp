@@ -1,6 +1,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "../plugins/RKMix/PluginProcessor.h"
+#include "../plugins/RKMix/MixQr.h"
 
 /** RKMix as a plugin: 32 channels each way, the default console, bypass to
     silence, and the mix (settings, names, colours) kept in the session and
@@ -974,6 +975,138 @@ public:
             expect (! s.flag (mix::chainId (mix::kMainChain, "eq_on")));
             p.pasteChain (3, gate);
             expect (! s.flag (mix::chainId (3, "comp_on")), "a channel's gate is not for a bus");
+        }
+
+        beginTest ("Remote: SHA-1 and the WebSocket handshake key; a QR code for a link");
+        {
+            const juce::String abc ("abc");
+            const auto digest = MixWebServer::sha1 (abc.toRawUTF8(), 3);
+            expectEquals (juce::String::toHexString (digest.getData(), 20, 0), juce::String ("a9993e364706816aba3e25717850c26c9cd0d89d"));
+            const juce::String key ("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11");   // RFC 6455's example
+            const auto accept = MixWebServer::sha1 (key.toRawUTF8(), key.getNumBytesAsUTF8());
+            expectEquals (juce::Base64::toBase64 (accept.getData(), accept.getSize()), juce::String ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+
+            MixQr qr ("http://Richards-MacBook-Pro.local:8080/m/3f9a2c71b0aa");
+            expect (qr.isValid());
+            expectEquals (qr.getSize(), 33, "version 4");
+            expect (qr.isDark (0, 0) && qr.isDark (6, 6) && ! qr.isDark (1, 1), "a finder pattern in the corner");
+            expect (! MixQr (juce::String::repeatedString ("x", 300)).isValid(), "too long for version 10");
+        }
+
+        beginTest ("Remote: a bus's page and manifest; a phone changes only its own bus");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-remote");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& s = p.getSettings();
+            p.setBusName (2, "IEM <Vocals>");
+            p.setChannelName (0, "Lead Vocal");
+            setParam (s.param (mix::busId (3, "type")), (float) (int) mix::BusType::fx);
+
+            const auto key = remote.getKey (2);
+            expectEquals (key.length(), 12);
+            expect (remote.getKey (2) != remote.getKey (3), "one link per bus");
+            const auto page = remote.answer ("/m/" + key);
+            expectEquals (page.status, 200);
+            expect (page.body.toString().contains ("IEM &lt;Vocals&gt;"), "the bus name, escaped");
+            expect (page.body.toString().contains ("const KEY = \"" + key + "\""), "the page knows its key");
+            expectEquals (remote.answer ("/m/000000000000").status, 404, "a wrong key");
+            const auto manifest = juce::JSON::parse (remote.answer ("/manifest/" + key + ".json").body.toString());
+            expectEquals (manifest["start_url"].toString(), "/m/" + key);
+            expectEquals (manifest["display"].toString(), juce::String ("standalone"));
+            expectEquals (remote.answer ("/icon.png").contentType, juce::String ("image/png"));
+
+            const auto mixJson = juce::JSON::parse (remote.mixFor (2));
+            expectEquals (mixJson["type"].toString(), juce::String ("mix"));
+            expectEquals (mixJson["bus"]["name"].toString(), juce::String ("IEM <Vocals>"));
+            const auto* rows = mixJson["rows"].getArray();
+            expect (rows != nullptr && rows->size() == 32 + 1, "32 channels and the FX return");
+            expect ((bool) (*rows)[0]["used"], "a named channel is in use");
+            expect (! (bool) (*rows)[1]["used"], "an unnamed silent one isn't");
+
+            remote.receive (2, R"({"t":"send","k":"ch1","v":-6})", true);
+            expectWithinAbsoluteError (s.value (mix::channelSendId (0, 2)), -6.0f, 0.01f, "its send");
+            remote.receive (2, R"({"t":"pan","k":"ch1","v":-40})", true);
+            expectWithinAbsoluteError (s.value (mix::channelSendPanId (0, 2)), -40.0f, 0.01f, "its send pan");
+            remote.receive (2, R"({"t":"send","k":"bus4","v":-10})", true);
+            expectWithinAbsoluteError (s.value (mix::busSendId (3, 2)), -10.0f, 0.01f, "the reverb return");
+            remote.receive (2, R"({"t":"fader","v":-3})", true);
+            remote.receive (2, R"({"t":"mute","v":1})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::busFaderId (2))), -3.0f, 0.01f);
+            expect (p.findParam (mix::busMuteId (2))->getValue() > 0.5f);
+
+            // Nothing else: another bus, the channel's own fader, a group bus's page.
+            remote.receive (2, R"({"t":"send","k":"ch1","v":-6,"bus":5})", true);
+            expectEquals (s.value (mix::channelSendId (0, 4)), mix::kFaderMinDb, "never another bus's send");
+            remote.receive (2, R"({"t":"fader","k":"ch1","v":-20})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelFaderId (0))), 0.0f, 0.01f);
+            remote.receive (2, R"({"t":"set","id":"ch1_trim","v":12})", true);
+            expectWithinAbsoluteError (s.value (mix::channelId (0, "trim")), 0.0f, 0.01f);
+            remote.receive (3, R"({"t":"fader","v":-30})", true);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::busFaderId (3))), 0.0f, 0.01f, "an FX bus has no remote");
+            dir.deleteRecursively();
+        }
+
+        beginTest ("Remote: a WebSocket on the local network sets the send and gets the mix");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-remote-ws");
+            dir.createDirectory();
+            const auto port = 18000 + juce::Random::getSystemRandom().nextInt (2000);
+            dir.getChildFile ("remote.json").replaceWithText (R"({"enabled":true,"port":)" + juce::String (port) + R"(,"secret":"0123456789abcdef0123"})");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            expect (remote.isListening(), remote.getStatus());
+
+            juce::StreamingSocket socket;
+            expect (socket.connect ("127.0.0.1", port, 2000));
+            const auto request = "GET /ws/" + remote.getKey (0) + " HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+            socket.write (request.toRawUTF8(), (int) request.getNumBytesAsUTF8());
+            juce::MemoryOutputStream reply;
+            for (int i = 0; i < 2000 && ! reply.toString().contains ("\r\n\r\n"); ++i)
+                if (socket.waitUntilReady (true, 50) > 0)
+                {
+                    char c;
+                    if (socket.read (&c, 1, false) == 1)
+                        reply.writeByte (c);
+                }
+            expect (reply.toString().startsWith ("HTTP/1.1 101"), reply.toString());
+            expect (reply.toString().contains ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), reply.toString());
+
+            // A masked text frame, as a browser sends it.
+            const juce::String msg (R"({"t":"send","k":"ch2","v":-12})");
+            juce::MemoryOutputStream frame;
+            frame.writeByte ((char) 0x81);
+            frame.writeByte ((char) (0x80 | msg.length()));
+            const std::uint8_t mask[4] { 0x12, 0x34, 0x56, 0x78 };
+            frame.write (mask, 4);
+            for (int i = 0; i < msg.length(); ++i)
+                frame.writeByte ((char) (msg.toRawUTF8()[i] ^ mask[i % 4]));
+            socket.write (frame.getData(), (int) frame.getDataSize());
+
+            // The pusher sends the mix (a text frame starting {"type":"mix").
+            juce::MemoryOutputStream in;
+            for (int i = 0; i < 60 && ! in.toString().contains ("\"type\":\"mix\""); ++i)
+                if (socket.waitUntilReady (true, 50) > 0)
+                {
+                    char buf[4096];
+                    if (const auto n = socket.read (buf, sizeof (buf), false); n > 0)
+                        in.write (buf, (size_t) n);
+                }
+            expect (in.toString().contains ("\"type\":\"mix\""), "the mix arrives");
+
+            for (int i = 0; i < 40 && juce::exactlyEqual (p.getSettings().value (mix::channelSendId (1, 0)), mix::kFaderMinDb); ++i)
+            {
+                juce::Thread::sleep (25);
+                remote.flush();
+            }
+            expectWithinAbsoluteError (p.getSettings().value (mix::channelSendId (1, 0)), -12.0f, 0.01f, "the phone's send");
+            socket.close();
+            remote.setEnabled (false);
+            expect (! remote.isListening());
+            dir.deleteRecursively();
         }
 
         beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");

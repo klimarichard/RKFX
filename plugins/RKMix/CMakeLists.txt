@@ -22,7 +22,16 @@ juce_add_plugin(RKMix
 )
 
 # RKMix's own sources (also used by RKBoardTests and the snapshot tool).
+# The remote's web page, embedded (configure runs again when it changes).
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/remote/monitor.html" rkmixMonitorHex HEX)
+string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," rkmixMonitorBytes "${rkmixMonitorHex}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/MixRemotePageData.cpp"
+     "#include \"MixRemotePage.h\"\nnamespace MixRemotePage\n{\n    static const unsigned char data[] = { ${rkmixMonitorBytes} 0 };\n"
+     "    const char* const monitorHtml = (const char*) data;\n    const int monitorHtmlSize = (int) sizeof (data) - 1;\n}\n")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/remote/monitor.html")
+
 set(RKMIX_SOURCES
+    ${CMAKE_CURRENT_BINARY_DIR}/MixRemotePageData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PluginEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixPanels.cpp
@@ -30,6 +39,9 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixUndo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixLock.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixGang.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixQr.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixWebServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixRemote.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixComponents.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixEngine.cpp

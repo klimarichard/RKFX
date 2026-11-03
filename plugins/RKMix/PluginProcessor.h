@@ -7,6 +7,7 @@
 #include "MixInserts.h"
 #include "MixScenes.h"
 #include "MixUndo.h"
+#include "MixRemote.h"
 #include "host/MidiMap.h"
 #include "host/Tempo.h"
 #include "MixParams.h"
@@ -128,6 +129,11 @@ public:
 
     /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
     MixScenes& getScenes() noexcept { return *scenes; }
+    /** The monitor remote (message thread). */
+    MixRemote& getRemote() noexcept { return *remote; }
+    /** The remote's meters: the loudest since the last call (resets), apart from the window's. */
+    void takeRemotePeaks (std::array<float, mix::kChannels>& channels, std::array<std::array<float, 2>, mix::kBuses>& buses) noexcept;
+
     /** The console's undo history (message thread). */
     MixUndo& getUndo() noexcept { return *undo; }
 
@@ -330,6 +336,9 @@ private:
     std::unique_ptr<MixScenes> scenes;
     std::unique_ptr<MixAssigns> assigns;
     std::unique_ptr<MixUndo> undo;
+    std::unique_ptr<MixRemote> remote;
+    std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
+    std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
     std::atomic<int> lock { 0 };
     juce::RangedAudioParameter* sceneParam = nullptr;
     std::atomic<int> pendingScene { -1 };

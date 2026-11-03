@@ -11,7 +11,7 @@ For the preset menu and Bypass, see [Common Controls](Common%20Controls.md).
 - **Now playing (top):** the song's title and artist in large type, elapsed and remaining time, the song's waveform with the playhead (click it to jump), and **Next:** what plays after it.
 - **Transport:** **|<** (previous), **Play/Pause**, **>|** (next), **Fade out**, **Stop**, **Duck** and **Settings**. While some songs' files are missing, a red button says how many (see Show check).
 - **Left:** the playlists as tabs, the shown playlist's settings, and its songs.
-- **Right:** the **Queue**, **Pre-listen** and **End at**.
+- **Right:** the **Queue**, **Pre-listen** and **Times** (End at and Switch at).
 - **Bottom:** the **Level** knob and the **8 pads**.
 
 A show is everything RKPlay holds: the playlists, the pads and every setting. A show is RKPlay's preset, and in Gig Performer it is saved with the gig.
@@ -45,6 +45,7 @@ Each playlist has its own settings, above its songs:
 | **At the end** | Stop, Repeat, or **Then:** another playlist | Repeat |
 | **Stop after each** | Waits for Play after every song (a ceremony, songs started by hand) | Off |
 | **Loudness matched / As mastered** | Loudness matched: every song as loud as the others (see Loudness). **As mastered:** every song as the artist made it, for an artist's own mastered tracks they want to hear the way they know them (see Loudness) | Loudness matched |
+| **Fade in** | When Play starts the music from stopped, its first song fades in slowly (2 to 30 s): an ambient list that drifts in. Songs after it crossfade as usual; Resume after Pause uses the Pause fade | No fade-in |
 | **Crossfade** | How long songs overlap, 0 to 15 s (0: back to back, no gap) | 6 s |
 | **Gain** | The whole list louder or quieter, ±12 dB (a quieter Dinner list). As mastered: quieter only | 0 dB |
 
@@ -85,9 +86,19 @@ A playlist can be **linked to a folder** or to an **.m3u8 playlist** (right-clic
 
 Right-click another tab and choose **Play this playlist now** (a crossfade) or **after the current song**. The host parameter **Playlist** and program changes do the same (see the Standalone app).
 
-## End at
+## Times: End at and Switch at
 
-The **End at** panel (right) stops the music at a time of day, for "music until the band comes back": turn it on, type the time (for example 21:30) and choose **Fade out exactly then** or **After the song playing then**. A countdown shows under it. It acts once, then turns itself off.
+The **Times** panel (right) does two things at a time of day. Each shows a countdown while it is on, acts once, then turns itself off (turn it on again for the next show).
+
+**End at** stops the music, for "music until the band comes back": turn it on, type the time (for example 21:30) and choose **Fade out exactly then** or **After the song playing then**.
+
+**Switch at** goes on to another playlist, for "the pre-show music fades out and the Intro starts at 19:10": turn it on, type the time, choose the playlist (**To ...**) and how:
+
+- **Fade out, start:** the music fades out (over the Fade out time, in Settings), then the playlist starts from its next song. With its own **Fade in** set, it drifts in. Pressing Stop or Play during the fade calls the start off.
+- **Crossfade:** into the playlist at once, with its crossfade.
+- **After the song:** the playlist goes on when the song playing at that time ends.
+
+If the music is stopped at that time, the playlist just becomes the one Play starts; if it is paused, it goes on after the paused song.
 
 ## Loudness
 
@@ -185,9 +196,15 @@ The remote controls playback only, not the show's setup. The commands:
 | `/rkplay/playlist/1` ... `/rkplay/playlist/8`; `/rkplay/playlist/after` n | Switch playlist now; after this song |
 | `/rkplay/level` 0 to 1 (a fader), `/rkplay/level/db` dB | The Level |
 | `/rkplay/endat` "21:30", `/rkplay/endat/off` | End at |
+| `/rkplay/song/1` ... `/rkplay/song/n` | Select that row of the song list (it doesn't play yet) |
+| `/rkplay/selected/next`, `/rkplay/selected/now`, `/rkplay/selected/jump` | The selected song: Play next (the queue), Play now (a one-off), or go on from it |
+| `/rkplay/songs/up`, `/rkplay/songs/down`, `/rkplay/songs/playing` | The song list: a page up or down; the page with the playing song |
+| `/rkplay/songs/rows` n | How many rows the layout has (10 by default; a tablet's might have 20) |
 | `/rkplay/hello` | Send all the feedback again (also **Send everything again** in Settings) |
 
-RKPlay sends back, whenever something changes: `/rkplay/play`, `/pause`, `/duck`, `/pad/n` and `/playlist/n` light their buttons; `/title`, `/artist`, `/elapsed`, `/remaining`, `/progress` (0 to 1), `/next`, `/state`, `/playlist/name`, `/playlist/n/name`, `/pad/n/name`, `/duck/db`, `/endat` and `/level` fill labels and faders.
+RKPlay sends back, whenever something changes: `/rkplay/play`, `/pause`, `/duck`, `/pad/n` and `/playlist/n` light their buttons; `/title`, `/artist`, `/elapsed`, `/remaining`, `/progress` (0 to 1), `/next`, `/state`, `/playlist/name`, `/playlist/n/name`, `/pad/n/name`, `/duck/db`, `/endat`, `/level` and `/level/db` ("-6.0 dB") fill labels and faders. The remaining time and progress count to a song's end set by hand, as in the window.
+
+**The song list** on the remote is the playing playlist, a page at a time: `/song/n/name` (the playing song marked ▶, a missing one "(missing)"), `/song/n/time`, `/song/n` lights the selected row, `/songs/page` ("11-20 of 64") and `/selected` (the selected song's name). The page follows the playing song, except for 30 s after you scroll by hand. Tapping a song only selects it; **Play next** or **Play now** plays it, so a stray tap never changes the music. **The queue:** `/queue/1` ... `/queue/5` (the requests waiting) and `/queue/count`.
 
 ### MIDI
 

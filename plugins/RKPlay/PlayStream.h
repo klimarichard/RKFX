@@ -37,6 +37,8 @@ public:
         double endSeconds = -1.0;          // < 0: the file's end
         double gainDb = 0.0;
         double limitCeilingDb = 1.0;       // <= 0: the lookahead limiter at this ceiling (a lifted song)
+        double fadeInSeconds = 0.0;        // > 0: faded in over this from the start (a start set by hand)
+        double fadeOutSeconds = 0.0;       // > 0: faded out over this, silent by the end (an end set by hand)
     };
 
     PlayStream() = default;
@@ -108,9 +110,11 @@ private:
     std::atomic<bool> sourceDone { false };
     std::atomic<juce::int64> framesPlayed { 0 };
     juce::int64 totalFrames = 0;
+    juce::int64 framesWritten = 0;                   // into the ring (disk thread): where the fades are
+    int fadeInFrames = 0, fadeOutFrames = 0;
     double lengthSeconds = 0.0;
 
-    /** Gain and limiter on @p numFrames (in place), then into the ring (after the lead-in is dropped). */
+    /** Gain and limiter on @p numFrames (in place), then into the ring (after the lead-in is dropped, with the fades). */
     void deliver (float* l, float* r, int numFrames);
     void writeRing (const float* const* data, int numFrames);
     bool readSomething();

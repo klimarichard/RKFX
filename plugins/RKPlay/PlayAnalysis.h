@@ -24,8 +24,14 @@ struct PlayAnalysis
     double fadeOutPoint = 0.0;           // <= musicEnd
     std::vector<juce::uint8> overview;   // peak per point, 0..255 linear
 
-    /** Measures the whole file (stops early, invalid, if @p cancel turns true). */
-    static PlayAnalysis analyse (juce::AudioFormatReader&, const std::atomic<bool>* cancel = nullptr);
+    /** How fast measuring may go, so it never competes with the music for the disk. */
+    enum Pace { fullSpeed = 0, gentle = 1, hold = 2 };
+    static constexpr int kGentlePauseMs = 10;   // between chunks (about 1.4 s of audio each) while music plays
+
+    /** Measures the whole file (stops early, invalid, if @p cancel turns true;
+        waits between chunks as @p pace says). */
+    static PlayAnalysis analyse (juce::AudioFormatReader&, const std::atomic<bool>* cancel = nullptr,
+                                 const std::atomic<int>* pace = nullptr);
 
     juce::var toVar() const;
     static PlayAnalysis fromVar (const juce::var&);
@@ -47,7 +53,10 @@ struct PlayLevel
     double gainDb = 0.0;                 // applied to the song
     double limitDb = 0.0;                // > 0: the song is lifted past its ceiling and limited by up to this
 
-    static PlayLevel plan (const PlayAnalysis&, const Settings&, double songGainDb);
+    /** @param asMastered  a playlist played as mastered: no loudness matching, only the
+                           gain that puts the song's true peak at the Peak ceiling (up or
+                           down); @p songGainDb can only turn it down from there. */
+    static PlayLevel plan (const PlayAnalysis&, const Settings&, double songGainDb, bool asMastered = false);
 };
 
 /** The analysis cache: Application Support/RKFX/RKPlay/analysis.json, keyed
@@ -83,6 +92,10 @@ public:
     void add (const juce::File&);
     int pending() const;
 
+    /** PlayAnalysis::Pace: full speed, gentle (music plays), or hold (a song's read-ahead is low). */
+    void setPace (int p) noexcept { pace = p; }
+    int getPace() const noexcept { return pace.load(); }
+
     struct Result
     {
         juce::File file;
@@ -97,6 +110,7 @@ private:
     std::vector<Result> results;
     juce::File working;
     std::atomic<bool> cancelFlag { false };
+    std::atomic<int> pace { PlayAnalysis::fullSpeed };
     juce::WaitableEvent wake;
 
     void run() override;

@@ -510,6 +510,60 @@ public:
             expectEquals (l.gainDb, -2.0, "match off: the song's own gain only");
         }
 
+        beginTest ("As mastered: no loudness matching, the peaks brought to the ceiling; gains only turn it down");
+        {
+            PlayAnalysis a;
+            a.valid = true;
+            PlayLevel::Settings s;   // -18 LUFS, -0.5 dBTP
+
+            a.loudness = -8.0; a.truePeakDb = 0.4;               // a loud master over 0 dBTP
+            auto l = PlayLevel::plan (a, s, 0.0, true);
+            expectWithinAbsoluteError (l.gainDb, -0.9, 1.0e-6, "down to the ceiling, not to -18 LUFS");
+            expectEquals (l.limitDb, 0.0, "never limited");
+
+            a.loudness = -14.0; a.truePeakDb = -3.0;             // a quiet master
+            l = PlayLevel::plan (a, s, 0.0, true);
+            expectWithinAbsoluteError (l.gainDb, 2.5, 1.0e-6, "up to the ceiling");
+            l = PlayLevel::plan (a, s, 4.0, true);
+            expectWithinAbsoluteError (l.gainDb, 2.5, 1.0e-6, "a positive gain can't push past the ceiling");
+            l = PlayLevel::plan (a, s, -6.0, true);
+            expectWithinAbsoluteError (l.gainDb, -3.5, 1.0e-6, "a negative one turns it down");
+
+            a.truePeakDb = -0.55f;
+            expectEquals (PlayLevel::plan (a, s, 0.0, true).gainDb, 0.0, "already there: bit-exact");
+            s.match = false;
+            a.truePeakDb = -3.0f;
+            expectWithinAbsoluteError (PlayLevel::plan (a, s, 0.0, true).gainDb, 2.5, 1.0e-6, "whatever Level match says");
+            a.valid = false;
+            expectEquals (PlayLevel::plan (a, s, -2.0, true).gainDb, -2.0, "not measured yet: as it is (gains down only)");
+
+            const auto files = songsIn ("mastered", 2, 2.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setPlaylistAsMastered (0, true);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getShow().playlists[0].asMastered, "kept by the show");
+
+            // Measured: song 1 plays 0.01 (peak -40 dBFS), as mastered brought up to -0.5 dBTP.
+            q.analyseNow();
+            q.play();
+            juce::AudioBuffer<float> buffer (2, kBlock);
+            juce::MidiBuffer midi;
+            for (int b = 0; b < 20; ++b)
+            {
+                buffer.clear();
+                q.processBlock (buffer, midi);
+                q.update();
+            }
+            // (A steady level starting from silence: its true peak is the step's overshoot, a little over 0.01.)
+            const auto truePeak = q.getShow().playlists[0].songs[0].analysis.truePeakDb;
+            expectWithinAbsoluteError (buffer.getSample (0, kBlock - 1), 0.01f * juce::Decibels::decibelsToGain (-0.5f - truePeak), 1.0e-4f,
+                                       "the song's true peak at the ceiling");
+        }
+
         beginTest ("The lift limiter holds the true peak at the ceiling, smoothly, and lines up");
         {
             PlayLimiter limiter;
@@ -583,6 +637,116 @@ public:
             }
         }
 
+        beginTest ("A start and end set by hand: faded in and out there, never a click");
+        {
+            const auto file = writeWav ("trim-stream", kRate, 3 * 48000, [] (int, int) { return 0.5f; });
+            PlayStream stream;
+            stream.prepare (kRate);
+            PlayStream::Options o;
+            o.startSeconds = 0.5;
+            o.endSeconds = 2.5;
+            o.fadeInSeconds = PlayShow::kTrimFadeIn;
+            o.fadeOutSeconds = PlayShow::kTrimFadeOut;
+            stream.open (readerFor (file), o);
+            stream.fillNow();
+            expectEquals (stream.available(), 96000, "two seconds");
+            juce::AudioBuffer<float> got (2, 96000);
+            stream.read (got.getArrayOfWritePointers(), 0, 96000);
+            expectLessThan (std::abs (got.getSample (0, 0)), 0.01f, "fades in from silence");
+            expectWithinAbsoluteError (got.getSample (0, 960), 0.5f, 1.0e-6f, "in after 10 ms");
+            expectWithinAbsoluteError (got.getSample (0, 48000 - 1), 0.5f, 1.0e-3f, "untouched until a second before the end");
+            expectWithinAbsoluteError (got.getSample (0, 96000 - 24000), 0.25f, 1.0e-3f, "half way down half a second before");
+            expectLessThan (std::abs (got.getSample (1, 96000 - 1)), 1.0e-4f, "silent by the end");
+            float step = 0.0f;
+            for (int i = 1; i < 96000; ++i)
+                step = juce::jmax (step, std::abs (got.getSample (0, i) - got.getSample (0, i - 1)));
+            expectLessThan (step, 0.01f, "no step anywhere");
+        }
+
+        beginTest ("A trim wins over the analysis, stays within the song, and is kept by the show");
+        {
+            PlayShow show;
+            PlaySong song;
+            song.lengthSeconds = 200.0;
+            song.analysis.valid = true;
+            song.analysis.lengthSeconds = 200.0;
+            song.analysis.musicStart = 0.3;
+            song.analysis.musicEnd = 199.0;
+            song.analysis.fadeOutPoint = 190.0;
+            auto span = show.spanOf (song);
+            expectEquals (span.start, 0.3);
+            expectEquals (span.endPoint, 190.0);
+            expect (! span.handStart && ! span.handEnd);
+
+            song.startSeconds = 12.0;
+            song.endSeconds = 150.0;
+            span = show.spanOf (song);
+            expectEquals (span.start, 12.0);
+            expectEquals (span.end, 150.0);
+            expectEquals (span.endPoint, 150.0, "a hand end: over there, no lead");
+            expect (span.handStart && span.handEnd);
+            show.smartCrossfade = false;
+            expectEquals (show.spanOf (song).start, 12.0, "with Smart crossfade off too");
+
+            double start = 199.5, end = 50.0;
+            PlayShow::clampTrim (song, start, end);
+            expectEquals (start, 200.0 - PlayShow::kMinTrimmedLength, "a start leaves room for the song");
+            expectEquals (end, -1.0, "an end at the file's end is none");
+            start = 10.0; end = 11.0;
+            PlayShow::clampTrim (song, start, end);
+            expectEquals (end, 10.0 + PlayShow::kMinTrimmedLength, "at least this long");
+            start = 0.0; end = 300.0;
+            PlayShow::clampTrim (song, start, end);
+            expect (start < 0.0 && end < 0.0, "the whole file is no trim");
+
+            const auto files = songsIn ("trim-show", 2, 4.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setSongTrim (0, 1, 1.0, 3.0);
+            p.setSongGain (0, 1, -2.0);
+            TestPlayer q;
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            const auto& kept = q.getShow().playlists[0].songs[1];
+            expectEquals (kept.startSeconds, 1.0);
+            expectEquals (kept.endSeconds, 3.0);
+            expectEquals (kept.gainDb, -2.0);
+            expect (! q.getShow().playlists[0].songs[0].isTrimmed());
+
+            // A linked folder keeps a song's trim through Rescan.
+            TestPlayer r;
+            r.linkPlaylist (0, files[0].getParentDirectory());
+            r.setSongTrim (0, 0, 0.5, 2.5);
+            r.rescan (0);
+            expectEquals (r.getShow().playlists[0].songs[0].endSeconds, 2.5, "kept by its path");
+        }
+
+        beginTest ("A trimmed song plays from its start to its end, then the next comes in");
+        {
+            const auto files = songsIn ("trim-play", 2, 4.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setCrossfade (0.0);
+            p.setSongTrim (0, 0, -1.0, 2.0);   // song 1 over at 2 s
+            p.setSongTrim (0, 1, 1.5, -1.0);   // song 2 from 1.5 s
+            p.play();
+            p.runFor (2.3);
+            expectEquals (p.getCurrentIndex(), 1, "the second song by 2.3 s");
+            expectGreaterThan (p.getPositionSeconds(), 1.5, "from its start");
+            expectLessThan (p.getPositionSeconds(), 2.0);
+
+            // The playing song takes a new end at once.
+            TestPlayer q;
+            q.addFiles (0, files);
+            q.setCrossfade (0.0);
+            q.play();
+            q.runFor (0.5);
+            q.setSongTrim (0, 0, -1.0, 2.0);
+            q.runFor (1.8);
+            expectEquals (q.getCurrentIndex(), 1, "the new end, not the file's");
+        }
+
         beginTest ("The analysis cache: found again, and missed when the file changes");
         {
             const auto cacheFile = tempCache().getSiblingFile ("cache-test.json");
@@ -599,6 +763,39 @@ public:
 
             writeWav ("cached", kRate, 24000, [] (int i, int ch) { return noise (i, ch, 9); });
             expect (! again.find (file, found), "a changed file is measured again");
+        }
+
+        beginTest ("Measuring waits while the music needs the disk, and goes gently while it plays");
+        {
+            const auto file = writeWav ("paced", kRate, 4 * 48000, [] (int i, int ch) { return noise (i, ch, 10); });
+            PlayAnalyser analyser;
+            analyser.setPace (PlayAnalysis::hold);
+            analyser.add (file);
+            juce::Thread::sleep (400);
+            expect (analyser.takeResults().empty(), "held: nothing measured");
+            expectEquals (analyser.pending(), 1);
+            analyser.setPace (PlayAnalysis::gentle);
+            std::vector<PlayAnalyser::Result> results;
+            for (int i = 0; i < 100 && results.empty(); ++i)
+            {
+                juce::Thread::sleep (30);
+                results = analyser.takeResults();
+            }
+            expect (results.size() == 1 && results[0].analysis.valid, "measured once let go");
+
+            // The player: full speed when nothing plays, gently while a song does.
+            const auto files = songsIn ("paced-list", 2, 20.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.update();
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::fullSpeed);
+            p.play();
+            p.runFor (0.1);
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::gentle, "the read-ahead is full (disk filled at once in tests)");
+            expect (! p.isAnalysisHeld());
+            p.stop();
+            p.update();
+            expectEquals (p.getAnalysisPace(), (int) PlayAnalysis::fullSpeed);
         }
 
         //==============================================================================
@@ -919,6 +1116,36 @@ public:
             expect (q.getShow().playlists[0].songs[1].status == PlaySong::Status::missing);
             expectEquals (q.relink (moved), 1);
             expect (q.getShow().playlists[0].songs[1].isPlayable());
+        }
+
+        beginTest ("Show check: a file back again is found by Check again; Remove takes the missing out");
+        {
+            const auto files = songsIn ("check", 3, 1.0);
+            TestPlayer p;
+            p.addFiles (0, files);
+            p.setSongTrim (0, 1, -1.0, 0.0);   // (too short to trim: none)
+            p.setSongGain (0, 1, -3.0);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+
+            const auto moved = files[1].getSiblingFile ("away.wav");
+            files[1].moveFileTo (moved);
+            TestPlayer q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (q.getShow().numProblems(), 1);
+            expectEquals (q.recheck(), 0, "still gone");
+            moved.moveFileTo (files[1]);
+            expectEquals (q.recheck(), 1, "plugged in again");
+            expectEquals (q.getShow().numProblems(), 0);
+            expectEquals (q.getShow().playlists[0].songs[1].gainDb, -3.0, "its gain kept");
+
+            files[1].moveFileTo (moved);
+            TestPlayer r;
+            r.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (r.removeProblemSongs(), 1);
+            expectEquals ((int) r.getShow().playlists[0].songs.size(), 2);
+            expectEquals (r.getShow().numProblems(), 0);
+            moved.moveFileTo (files[1]);
         }
 
         beginTest ("The Playlist host parameter crossfades into that list; a show keeps its playlists");

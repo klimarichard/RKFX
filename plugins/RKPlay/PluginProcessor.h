@@ -66,6 +66,7 @@ public:
     void setStopAfterEach (int, bool);
     void setPlaylistCrossfade (int, double seconds);
     void setPlaylistGain (int, double db);
+    void setPlaylistAsMastered (int, bool);   // not loudness matched: peaks at the ceiling
     bool linkPlaylist (int, const juce::File& folderOrM3u);   // the list becomes the folder's or file's songs
     void unlinkPlaylist (int);                                // keeps the songs as its own
     void rescan (int);
@@ -79,6 +80,9 @@ public:
     void moveSong (int playlist, int from, int to);
     void clearSongs (int playlist);
     void setSongGain (int playlist, int index, double db);
+    /** A start and end set by hand (seconds, < 0: found by the analysis). The
+        playing song takes a new end at once (the next song is lined up again). */
+    void setSongTrim (int playlist, int index, double startSeconds, double endSeconds);
 
     // Pads
     static constexpr double kMaxPadSeconds = 60.0;
@@ -115,6 +119,11 @@ public:
     void setSafetyLimiter (bool);
     void setMusicFolder (const juce::File&);
     int relink (const juce::File& folder);
+    /** Show check: looks at every missing or unreadable file again (a drive plugged in since); returns how many are fine now. */
+    int recheck();
+    /** Show check: removes the missing and unreadable songs from their playlists (not linked ones,
+        not the playing one); returns how many. */
+    int removeProblemSongs();
     void setEndAt (bool on, int minutes, bool atSongEnd);
 
     /** Bumped when the show changes (the editor polls it). */
@@ -162,6 +171,10 @@ public:
     // Loudness
     PlayLevel levelOf (const PlaySong&, int playlist) const;
     int analysisPending() const { return analyser != nullptr ? analyser->pending() : 0; }
+    /** Measuring is waiting: a song's read-ahead is low (the disk is busy with the music). */
+    bool isAnalysisHeld() const { return analysisHeld; }
+    int getAnalysisPace() const { return analyser != nullptr ? analyser->getPace() : PlayAnalysis::fullSpeed; }
+    static constexpr double kLowReadAhead = 6.0, kReadAheadAgain = 10.0;   // seconds: measuring holds, and goes on
     float takeLimiterReductionDb() { return engine.takeLimiterReductionDb(); }
 
     //==============================================================================
@@ -269,8 +282,8 @@ private:
     void timerCallback() override { update(); }
 
     // Slots
-    int load (const Item&, double startSeconds);    // < 0: where its music starts
-    PlayStream::Options optionsFor (const Item&, double startSeconds) const;
+    int load (const Item&, double startSeconds, bool wholeFile = false);   // < 0: where its music starts
+    PlayStream::Options optionsFor (const Item&, double startSeconds, bool wholeFile = false) const;   // whole: pre-listen, no trim
     double leadOf (int slot) const;
     void drop (int& slot);
     void markSent (int slot) { if (slot >= 0) slots[(size_t) slot].lastCommand = engine.commandsSent(); }
@@ -295,7 +308,10 @@ private:
     void findEndAtDeadline();
     void attachAnalyses();
     void takeAnalyses();
+    void paceAnalysis();
+    bool analysisHeld = false;
     void playlistEdited (int playlist, const std::function<int (int)>& moveIndex);
+    void forCopiesOf (const juce::File&, const std::function<void (PlaySong&)>&);   // playing, armed, queued, pre-listened
     void setNote (const juce::String&);
     void showChanged() { ++showVersion; }
     void edited() { markPresetModified(); showChanged(); }

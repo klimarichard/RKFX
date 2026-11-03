@@ -59,6 +59,10 @@ void PlayStream::open (std::unique_ptr<juce::AudioFormatReader> newReader, const
         dropFrames += limiter.getLatency();
     }
 
+    framesWritten = 0;
+    fadeInFrames = (int) std::lround (juce::jmax (0.0, o.fadeInSeconds) * deviceRate);
+    fadeOutFrames = (int) std::lround (juce::jmax (0.0, o.fadeOutSeconds) * deviceRate);
+
     fifo->reset();
     framesPlayed = 0;
     sourceDone = false;
@@ -124,8 +128,29 @@ void PlayStream::deliver (float* l, float* r, int numFrames)
     dropFrames -= drop;
     if (numFrames > drop)
     {
-        const float* data[2] = { l + drop, r + drop };
-        writeRing (data, juce::jmin (numFrames - drop, fifo->getFreeSpace()));
+        float* data[2] = { l + drop, r + drop };
+        const auto n = juce::jmin (numFrames - drop, fifo->getFreeSpace());
+
+        // A start or end set by hand is in the middle of the music: raised-cosine fades there.
+        if (fadeInFrames > 0 || fadeOutFrames > 0)
+            for (int i = 0; i < n; ++i)
+            {
+                const auto pos = framesWritten + i;
+                double g = 1.0;
+                if (pos < fadeInFrames)
+                    g *= 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * (double) pos / fadeInFrames);
+                if (const auto left = totalFrames - pos; fadeOutFrames > 0 && left < fadeOutFrames)
+                    g *= left <= 0 ? 0.0 : 0.5 - 0.5 * std::cos (juce::MathConstants<double>::pi * (double) left / fadeOutFrames);
+                if (g < 1.0)
+                {
+                    data[0][i] *= (float) g;
+                    data[1][i] *= (float) g;
+                }
+            }
+
+        const float* written[2] = { data[0], data[1] };
+        writeRing (written, n);
+        framesWritten += n;
     }
 }
 

@@ -91,13 +91,18 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     };
     stopAfterEach.setTooltip ("Wait for Play after every song (a ceremony, songs started by hand)");
     stopAfterEach.onClick = [this] { player.setStopAfterEach (viewed, stopAfterEach.getToggleState()); };
+    loudnessMode.addItem ("Loudness matched", 1);
+    loudnessMode.addItem ("As mastered", 2);
+    loudnessMode.setTooltip ("Loudness matched: every song as loud as the Target. As mastered: each song as the artist made it, "
+                             "only its peaks brought to the Peak ceiling (an artist's own mastered tracks)");
+    loudnessMode.onChange = [this] { player.setPlaylistAsMastered (viewed, loudnessMode.getSelectedId() == 2); };
     setUpSlider (crossfade, 0.0, PlayShow::kMaxCrossfade, 0.5, " s", 50);
     crossfade.setTooltip ("How long songs overlap; 0 plays them back to back, with no gap");
     crossfade.onValueChange = [this] { player.setPlaylistCrossfade (viewed, crossfade.getValue()); };
     setUpSlider (listGain, -12.0, 12.0, 0.5, " dB", 60);
     listGain.setTooltip ("The whole list louder or quieter, on top of loudness matching (a quieter Dinner list)");
     listGain.onValueChange = [this] { player.setPlaylistGain (viewed, listGain.getValue()); };
-    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &crossfade, &listGain })
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &inOrderButton, &shuffleButton, &atEnd, &stopAfterEach, &loudnessMode, &crossfade, &listGain })
         addToCanvas (*c);
 
     list.setRowHeight (kRowHeight);
@@ -106,6 +111,8 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     list.setColour (juce::ListBox::outlineColourId, rkfx::Palette::outline);
     list.setOutlineThickness (1);
     addToCanvas (list);
+    addToCanvas (dropLine);
+    dropLine.setVisible (false);
 
     addFilesButton.onClick = [this] { chooseFiles (false); };
     addFolderButton.onClick = [this] { chooseFiles (true); };
@@ -157,6 +164,17 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
 
     addToCanvas (settings);
     settings.setVisible (false);
+
+    // Show check: a red button while files are missing, opening the list of them.
+    problemsButton.setColour (juce::TextButton::buttonColourId, kProblem.withAlpha (0.85f));
+    problemsButton.setColour (juce::TextButton::buttonOnColourId, kProblem);
+    problemsButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+    problemsButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+    problemsButton.setTooltip ("Songs whose files are missing or unreadable: the list, and what to do");
+    problemsButton.onClick = [this] { showShowCheck (! showCheck.isVisible()); };
+    addToCanvas (problemsButton);
+    addToCanvas (showCheck);
+    showCheck.setVisible (false);
 
     addMouseListener (this, true);
     setWantsKeyboardFocus (true);
@@ -255,6 +273,8 @@ void RKPlayEditor::layoutContent()
         buttons[i]->setBounds (transport.removeFromLeft (widths[i]));
         transport.removeFromLeft (kGap);
     }
+    problemsButton.setBounds (transport.removeFromRight (170).withSizeKeepingCentre (170, 40));
+    transport.removeFromRight (kGap);
     messageArea = transport;
     r.removeFromTop (kGap);
     const auto lower = r;
@@ -291,6 +311,8 @@ void RKPlayEditor::layoutContent()
     atEnd.setBounds (bar.removeFromLeft (170));
     bar.removeFromLeft (12);
     stopAfterEach.setBounds (bar.removeFromLeft (140));
+    bar.removeFromLeft (12);
+    loudnessMode.setBounds (bar.removeFromLeft (180));
     // The info line: the list's size and link on the left, its crossfade and gain on the right.
     infoArea = r.removeFromTop (kInfoHeight);
     auto sliders = infoArea.reduced (0, 4);
@@ -311,6 +333,7 @@ void RKPlayEditor::layoutContent()
     clearButton.setBounds (listButtons.removeFromRight (90));
 
     settings.setBounds (lower);
+    showCheck.setBounds (lower);
 
     auto g = globalArea();
     level->setBounds (g.removeFromLeft (90));
@@ -344,11 +367,16 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
     const auto& p = viewedList();
     double total = 0.0;
     for (const auto& s : p.songs)
-        total += s.lengthSeconds;
+    {
+        const auto span = player.getShow().spanOf (s);
+        total += s.isTrimmed() ? span.end - span.start : s.lengthSeconds;
+    }
     juce::String info = juce::String ((int) p.songs.size()) + ((int) p.songs.size() == 1 ? " song, " : " songs, ") + timeText (total);
     if (p.isLinked())
         info << "   ·   linked to " << (p.link == PlayPlaylist::Link::folder ? "the folder " : "") << p.linkFile.getFileName()
              << " (right-click the tab to rescan)";
+    if (p.asMastered)
+        info << "   ·   as mastered: peaks at " << juce::String (player.getShow().level.peakCeilingDb, 1) << " dBTP";
     if (player.getPendingSwitch() >= 0 && player.getPendingSwitch() < (int) player.getShow().playlists.size())
         info << "   ·   then " << player.getShow().playlists[(size_t) player.getPendingSwitch()].name;
     g.setColour (rkfx::Palette::textDim);
@@ -376,6 +404,102 @@ void RKPlayEditor::paintContent (juce::Graphics& g)
         g.setColour (accent());
         g.drawRoundedRectangle (listArea.toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
     }
+    if (queueHighlight)
+    {
+        g.setColour (accent());
+        g.drawRoundedRectangle (queueArea.toFloat().reduced (1.0f), rkfx::Style::kPanelRadius, 2.0f);
+    }
+}
+
+//==============================================================================
+// Dragging songs: a new place in the list, or onto the queue
+
+juce::var RKPlayEditor::getDragSourceDescription (const juce::SparseSet<int>& rows)
+{
+    if (rows.isEmpty())
+        return {};
+    return "rkplay-song:" + juce::String (viewed) + ":" + juce::String (rows[0]);
+}
+
+bool RKPlayEditor::isInterestedInDragSource (const SourceDetails& details)
+{
+    return details.description.toString().startsWith ("rkplay-song:");
+}
+
+bool RKPlayEditor::overQueue (juce::Point<int> pos) const
+{
+    const auto* canvas = queueList.getParentComponent();   // the areas are in the canvas's coordinates
+    return canvas != nullptr && queueArea.contains (canvas->getLocalPoint (this, pos));
+}
+
+int RKPlayEditor::dropIndexAt (juce::Point<int> pos) const
+{
+    const auto inList = list.getLocalPoint (this, pos);
+    if (! list.getLocalBounds().contains (inList))
+        return -1;
+    const auto n = (int) viewedList().songs.size();
+    const auto row = list.getRowContainingPosition (inList.x, inList.y);
+    if (row < 0)
+        return n;
+    return inList.y > list.getRowPosition (row, true).getCentreY() ? row + 1 : row;
+}
+
+void RKPlayEditor::itemDragMove (const SourceDetails& details)
+{
+    const auto pos = details.localPosition;
+    const auto queueWas = queueHighlight;
+    queueHighlight = overQueue (pos);
+    if (queueHighlight != queueWas)
+        repaint();
+
+    // Within the list (not a linked one): a line where it goes; near the top or bottom, the list scrolls.
+    const auto index = viewedList().isLinked() ? -1 : dropIndexAt (pos);
+    dropLine.setVisible (index >= 0);
+    if (index < 0)
+        return;
+    if (auto* viewport = list.getViewport())
+    {
+        const auto inViewport = viewport->getLocalPoint (this, pos);
+        viewport->autoScroll (inViewport.x, inViewport.y, kRowHeight, 12);
+    }
+    const auto n = getNumRows();
+    const auto y = index < n ? list.getRowPosition (index, true).getY()
+                             : (n > 0 ? list.getRowPosition (n - 1, true).getBottom() : 0);
+    dropLine.colour = accent();
+    dropLine.setBounds (list.getX() + 4, list.getY() + juce::jlimit (0, list.getHeight() - 2, y - 1), list.getWidth() - 8, 3);
+    dropLine.toFront (false);
+}
+
+void RKPlayEditor::itemDragExit (const SourceDetails&)
+{
+    dropLine.setVisible (false);
+    queueHighlight = false;
+    repaint();
+}
+
+void RKPlayEditor::itemDropped (const SourceDetails& details)
+{
+    dropLine.setVisible (false);
+    queueHighlight = false;
+    const auto parts = juce::StringArray::fromTokens (details.description.toString().fromFirstOccurrenceOf (":", false, false), ":", {});
+    const auto playlist = parts[0].getIntValue(), row = parts[1].getIntValue();
+    const auto pos = details.localPosition;
+    if (overQueue (pos))
+    {
+        player.queueNext (playlist, row);
+    }
+    else if (playlist == viewed && ! viewedList().isLinked())
+    {
+        // Before the row it was dropped on: one less below the row it came from.
+        const auto index = dropIndexAt (pos);
+        if (index >= 0)
+        {
+            const auto to = index > row ? index - 1 : index;
+            player.moveSong (playlist, row, to);
+            list.selectRow (to);
+        }
+    }
+    refresh();
 }
 
 //==============================================================================
@@ -413,7 +537,9 @@ void RKPlayEditor::NowPlaying::paint (juce::Graphics& g)
     g.setFont (rkfx::Fonts::bold (40.0f));
     g.drawText (shown ? timeText (position) : "--:--", times.withWidth (130).withTrimmedTop (20), juce::Justification::centredRight);
     g.setColour (shown ? owner.accent() : rkfx::Palette::textDim);
-    g.drawText (shown ? "-" + timeText (juce::jmax (0.0, length - position)) : timeText (length),
+    const auto span = p.getShow().spanOf (song);
+    const auto endsAt = song.hasEnd() ? span.end : length;   // an end set by hand: the time left to it
+    g.drawText (shown ? "-" + timeText (juce::jmax (0.0, endsAt - position)) : timeText (song.isTrimmed() ? span.end - span.start : length),
                 times.withTrimmedLeft (150).withTrimmedTop (20), juce::Justification::centredRight);
 
     // Names (left), large.
@@ -466,6 +592,8 @@ void RKPlayEditor::NowPlaying::paint (juce::Graphics& g)
         g.setColour (playedColour);
         g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * played), 4.0f);
     }
+    if (has)
+        drawTrim (g, bar, song, p.getShow(), owner.accent());
     if (shown)
     {
         g.setColour (rkfx::Palette::text);
@@ -673,8 +801,8 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
     g.setColour (rkfx::Palette::textDim);
     g.drawText (playing ? juce::String::fromUTF8 ("\xe2\x96\xb6") : juce::String (row + 1), r.removeFromLeft (34), juce::Justification::centredLeft);
 
-    const auto right = r.removeFromRight (100);
-    const auto levelArea = r.removeFromRight (110);
+    const auto right = r.removeFromRight (150);
+    const auto levelArea = r.removeFromRight (100);
     g.setFont (rkfx::Fonts::regular (15.0f));
     g.setColour (colour);
     g.drawFittedText (song.displayName(), r, juce::Justification::centredLeft, 1);
@@ -684,7 +812,7 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
     if (song.isPlayable())
     {
         const auto plan = player.levelOf (song, viewed);
-        if (! song.analysis.valid && player.getShow().level.match)
+        if (! song.analysis.valid && (player.getShow().level.match || viewedList().asMastered))
         {
             g.setColour (rkfx::Palette::textDim.withAlpha (0.6f));
             g.drawText ("measuring", levelArea, juce::Justification::centredRight);
@@ -701,11 +829,20 @@ void RKPlayEditor::paintListBoxItem (int row, juce::Graphics& g, int width, int 
         }
     }
 
+    // Its length (trimmed: what plays, and a mark), or its problem.
+    const auto span = player.getShow().spanOf (song);
+    const auto length = song.isTrimmed() ? span.end - span.start : song.lengthSeconds;
     g.setColour (song.isPlayable() ? rkfx::Palette::textDim : colour);
     const auto statusText = song.status == PlaySong::Status::missing ? juce::String ("missing")
                           : song.status == PlaySong::Status::unreadable ? juce::String ("unreadable")
-                          : next ? juce::String ("next   ") + timeText (song.lengthSeconds) : timeText (song.lengthSeconds);
+                          : next ? juce::String ("next   ") + timeText (length) : timeText (length);
     g.drawText (statusText, right, juce::Justification::centredRight);
+    if (song.isTrimmed() && song.isPlayable())
+    {
+        g.setColour (accent());
+        g.drawText (song.hasStart() && song.hasEnd() ? "start, end" : song.hasStart() ? "start" : "end",
+                    right.withTrimmedRight (next ? 86 : 44), juce::Justification::centredRight);
+    }
 }
 
 void RKPlayEditor::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
@@ -751,12 +888,35 @@ void RKPlayEditor::showSongMenu (int row)
     for (int db = 6; db >= -12; --db)
         gainMenu.addItem (100 + db + 12, (db > 0 ? "+" : "") + juce::String (db) + " dB", true, std::abs (gainNow - db) < 0.01);
     menu.addSubMenu ("Song gain", gainMenu);
+
+    // Start and end: typed, or here (where it's pre-listened, or playing).
+    const auto& song = songs[(size_t) row];
+    juce::PopupMenu trimMenu;
+    trimMenu.addItem (20, "Set the start and end...", song.lengthSeconds > 0.0);
+    const auto cueHere = player.isPreListening() && preListen.playlist == viewed && preListen.index == row
+                      && player.getPreListenSong().file == song.file;
+    const auto cueAt = player.getPreListenPosition();
+    const auto playAt = player.getPositionSeconds();
+    if (cueHere)
+    {
+        trimMenu.addItem (21, "Start here (pre-listen, " + preciseTime (cueAt) + ")");
+        trimMenu.addItem (22, "End here (pre-listen, " + preciseTime (cueAt) + ")");
+    }
+    if (playingThis)
+    {
+        trimMenu.addItem (23, "Start here (playing, " + preciseTime (playAt) + ")");
+        trimMenu.addItem (24, "End here (playing, " + preciseTime (playAt) + ")");
+    }
+    trimMenu.addSeparator();
+    trimMenu.addItem (25, "No start set (from the music start)", song.hasStart());
+    trimMenu.addItem (26, "No end set (to the music end)", song.hasEnd());
+    menu.addSubMenu (song.isTrimmed() ? "Start and end (set)" : "Start and end", trimMenu, playable);
     menu.addSeparator();
     menu.addItem (7, "Show in Finder", songs[(size_t) row].file.exists());
 
     const auto playlist = viewed;
     juce::Component::SafePointer<RKPlayEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, row, playlist] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe, row, playlist, cueAt, playAt] (int result)
     {
         if (safe == nullptr)
             return;
@@ -775,6 +935,19 @@ void RKPlayEditor::showSongMenu (int row)
                 safe->preListen.playlist = playlist;
                 safe->preListen.index = row;
                 break;
+            case 20: safe->editTrim (playlist, row); return;
+            case 21: case 22: case 23: case 24:
+            {
+                const auto& s = pl.getShow().playlists[(size_t) playlist].songs[(size_t) row];
+                const auto at = result <= 22 ? cueAt : playAt;
+                if (result == 21 || result == 23)
+                    pl.setSongTrim (playlist, row, at, s.endSeconds);
+                else
+                    pl.setSongTrim (playlist, row, s.startSeconds, at);
+                break;
+            }
+            case 25: pl.setSongTrim (playlist, row, -1.0, pl.getShow().playlists[(size_t) playlist].songs[(size_t) row].endSeconds); break;
+            case 26: pl.setSongTrim (playlist, row, pl.getShow().playlists[(size_t) playlist].songs[(size_t) row].startSeconds, -1.0); break;
             default:
                 if (result >= 100)
                     pl.setSongGain (playlist, row, result - 100 - 12);
@@ -1035,6 +1208,7 @@ void RKPlayEditor::PreListen::paint (juce::Graphics& g)
     const auto played = song.lengthSeconds > 0.0 ? (float) juce::jlimit (0.0, 1.0, p.getPreListenPosition() / song.lengthSeconds) : 0.0f;
     g.setColour (owner.accent().withAlpha (0.7f));
     g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * played), 3.0f);
+    drawTrim (g, bar, song, p.getShow(), rkfx::Palette::text);
 }
 
 void RKPlayEditor::PreListen::mouseDown (const juce::MouseEvent& e)
@@ -1127,20 +1301,7 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     };
     clearFolder.onClick = [this] { owner.player.setMusicFolder ({}); owner.refresh(); };
     relink.setTooltip ("Find missing songs in a folder (by file name, checked by size)");
-    relink.onClick = [this]
-    {
-        owner.chooser = std::make_unique<juce::FileChooser> ("Where the missing songs are now", owner.player.getShow().musicFolder);
-        juce::Component::SafePointer<RKPlayEditor> safe (&owner);
-        owner.chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                                    [safe] (const juce::FileChooser& fc)
-        {
-            if (safe != nullptr && fc.getResult() != juce::File())
-            {
-                safe->player.relink (fc.getResult());
-                safe->refresh();
-            }
-        });
-    };
+    relink.onClick = [this] { owner.chooseRelink(); };
     close.onClick = [this] { owner.showSettings (false); };
 
     showPage.onClick = [this] { setPage (false); };
@@ -1404,8 +1565,154 @@ void RKPlayEditor::Settings::refresh()
     repaint();
 }
 
+void RKPlayEditor::chooseRelink()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Where the missing songs are now", player.getShow().musicFolder);
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe] (const juce::FileChooser& fc)
+    {
+        if (safe != nullptr && fc.getResult() != juce::File())
+        {
+            safe->player.relink (fc.getResult());
+            safe->refresh();
+        }
+    });
+}
+
+void RKPlayEditor::showShowCheck (bool shown)
+{
+    if (shown)
+        showSettings (false);
+    showCheck.setVisible (shown);
+    if (shown)
+    {
+        showCheck.refresh();
+        showCheck.toFront (false);
+    }
+    refresh();
+}
+
+//==============================================================================
+// Show check
+
+RKPlayEditor::ShowCheck::ShowCheck (RKPlayEditor& o) : owner (o)
+{
+    list.setRowHeight (28);
+    list.setColour (juce::ListBox::backgroundColourId, rkfx::Palette::background);
+    list.setColour (juce::ListBox::outlineColourId, rkfx::Palette::outline);
+    list.setOutlineThickness (1);
+    addAndMakeVisible (list);
+    recheck.setTooltip ("Look at the files again (a drive plugged in since the show was opened)");
+    recheck.onClick = [this] { owner.player.recheck(); owner.refresh(); };
+    relink.setTooltip ("Find the missing songs in a folder (by file name, checked by size)");
+    relink.onClick = [this] { owner.chooseRelink(); };
+    remove.setTooltip ("Take them out of their playlists (linked playlists follow their folder or file)");
+    remove.onClick = [this] { owner.player.removeProblemSongs(); owner.refresh(); };
+    close.onClick = [this] { owner.showShowCheck (false); };
+    for (auto* b : { &recheck, &relink, &remove, &close })
+        addAndMakeVisible (*b);
+}
+
+void RKPlayEditor::ShowCheck::refresh()
+{
+    problems.clear();
+    const auto& lists = owner.player.getShow().playlists;
+    for (int p = 0; p < (int) lists.size(); ++p)
+        for (int i = 0; i < (int) lists[(size_t) p].songs.size(); ++i)
+            if (! lists[(size_t) p].songs[(size_t) i].isPlayable())
+                problems.emplace_back (p, i);
+    list.updateContent();
+    list.repaint();
+    list.setVisible (! problems.empty());
+    remove.setEnabled (! problems.empty());
+    recheck.setEnabled (! problems.empty());
+    relink.setEnabled (! problems.empty());
+    repaint();
+}
+
+void RKPlayEditor::ShowCheck::resized()
+{
+    auto r = getLocalBounds().reduced (16, 12).withTrimmedTop (34);
+    auto buttons = r.removeFromBottom (32);
+    close.setBounds (buttons.removeFromRight (100));
+    recheck.setBounds (buttons.removeFromLeft (130));
+    buttons.removeFromLeft (8);
+    relink.setBounds (buttons.removeFromLeft (200));
+    buttons.removeFromLeft (8);
+    remove.setBounds (buttons.removeFromLeft (240));
+    r.removeFromBottom (10);
+    list.setBounds (r);
+}
+
+void RKPlayEditor::ShowCheck::paint (juce::Graphics& g)
+{
+    g.setColour (owner.panelColour());
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
+    g.setColour (rkfx::Palette::outline);
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), rkfx::Style::kPanelRadius, 1.0f);
+    auto title = getLocalBounds().reduced (16, 10).removeFromTop (24);
+    g.setColour (rkfx::Palette::text);
+    g.setFont (rkfx::Fonts::bold (16.0f));
+    g.drawText ("Show check", title, juce::Justification::centredLeft);
+    g.setColour (rkfx::Palette::textDim);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    g.drawText (problems.empty() ? juce::String ("Every song's file is there and readable.")
+                                 : juce::String ((int) problems.size()) + ((int) problems.size() == 1 ? " song is" : " songs are")
+                                       + " skipped when their turn comes. Double-click one to show its folder.",
+                title.withTrimmedLeft (120), juce::Justification::centredLeft);
+    if (problems.empty())
+    {
+        g.setFont (rkfx::Fonts::regular (16.0f));
+        g.drawText ("Nothing to fix", list.getBounds(), juce::Justification::centred);
+    }
+}
+
+void RKPlayEditor::ShowCheck::paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected)
+{
+    if (row < 0 || row >= (int) problems.size())
+        return;
+    const auto& lists = owner.player.getShow().playlists;
+    const auto [p, i] = problems[(size_t) row];
+    if (p >= (int) lists.size() || i >= (int) lists[(size_t) p].songs.size())
+        return;
+    const auto& song = lists[(size_t) p].songs[(size_t) i];
+    if (selected)
+        g.fillAll (rkfx::Palette::knobBody);
+    auto r = juce::Rectangle<int> (0, 0, width, height).reduced (8, 0);
+    g.setFont (rkfx::Fonts::regular (13.0f));
+    g.setColour (rkfx::Palette::textDim);
+    g.drawFittedText (lists[(size_t) p].name + "  " + juce::String (i + 1), r.removeFromLeft (130), juce::Justification::centredLeft, 1);
+    g.setColour (kProblem);
+    g.drawText (song.status == PlaySong::Status::missing ? "missing" : "unreadable", r.removeFromRight (90), juce::Justification::centredRight);
+    g.setFont (rkfx::Fonts::regular (14.0f));
+    g.setColour (rkfx::Palette::text);
+    g.drawFittedText (song.displayName(), r.removeFromLeft (r.getWidth() / 2), juce::Justification::centredLeft, 1);
+    g.setFont (rkfx::Fonts::regular (12.0f));
+    g.setColour (rkfx::Palette::textDim);
+    g.drawFittedText (song.file.getFullPathName(), r.withTrimmedLeft (10), juce::Justification::centredLeft, 1, 0.8f);
+}
+
+void RKPlayEditor::ShowCheck::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
+{
+    if (row < 0 || row >= (int) problems.size())
+        return;
+    const auto [p, i] = problems[(size_t) row];
+    const auto& lists = owner.player.getShow().playlists;
+    if (p < (int) lists.size() && i < (int) lists[(size_t) p].songs.size())
+    {
+        // The nearest folder that is still there.
+        auto folder = lists[(size_t) p].songs[(size_t) i].file.getParentDirectory();
+        while (! folder.isDirectory() && folder != folder.getParentDirectory())
+            folder = folder.getParentDirectory();
+        folder.revealToUser();
+    }
+}
+
 void RKPlayEditor::showSettings (bool shown)
 {
+    if (shown)
+        showCheck.setVisible (false);
     if (shown && ! settings.isVisible())
         settings.setPage (settings.remote);
     settings.setVisible (shown);
@@ -1518,6 +1825,11 @@ void RKPlayEditor::refresh()
     atEnd.setSelectedId (p.atEnd == PlayPlaylist::AtEnd::stop ? 1 : p.atEnd == PlayPlaylist::AtEnd::repeat ? 2 : 10 + p.goTo,
                          juce::dontSendNotification);
     stopAfterEach.setToggleState (p.stopAfterEach, juce::dontSendNotification);
+    loudnessMode.setSelectedId (p.asMastered ? 2 : 1, juce::dontSendNotification);
+    // As mastered: its gain only turns it down (the peaks are at the ceiling already).
+    listGain.setRange (-12.0, p.asMastered ? 0.0 : 12.0, 0.5);
+    listGain.setTooltip (p.asMastered ? "The whole list quieter (as mastered, its peaks are at the ceiling already)"
+                                      : "The whole list louder or quieter, on top of loudness matching (a quieter Dinner list)");
     crossfade.setValue (p.crossfadeSeconds, juce::dontSendNotification);
     listGain.setValue (p.gainDb, juce::dontSendNotification);
     for (auto* b : { &addFilesButton, &addFolderButton, &clearButton })
@@ -1545,6 +1857,12 @@ void RKPlayEditor::refresh()
     for (auto& b : padButtons)
         b->repaint();
     settings.refresh();
+    const auto problems = show.numProblems();
+    problemsButton.setVisible (problems > 0);
+    problemsButton.setButtonText (juce::String (problems) + (problems == 1 ? " file missing" : " files missing"));
+    problemsButton.setToggleState (showCheck.isVisible(), juce::dontSendNotification);
+    if (showCheck.isVisible())
+        showCheck.refresh();
     tabs.repaint();
     nowPlaying.repaint();
     repaint();
@@ -1607,10 +1925,82 @@ void RKPlayEditor::tick()
     }
     juce::StringArray parts;
     if (const auto pending = player.analysisPending(); pending > 0)
-        parts.add ("Measuring " + juce::String (pending) + (pending == 1 ? " song" : " songs") + "...");
+        parts.add ("Measuring " + juce::String (pending) + (pending == 1 ? " song" : " songs")
+                   + (player.isAnalysisHeld() ? " (waiting: the music needs the disk)" : "..."));
     if (now - limiterTime < 2.0)
         parts.add ("Safety limiter " + juce::String (limiterDb, 1) + " dB");
     status.setText (parts.joinIntoString ("    "), juce::dontSendNotification);
+}
+
+void RKPlayEditor::drawTrim (juce::Graphics& g, juce::Rectangle<float> bar, const PlaySong& song, const PlayShow& show, juce::Colour colour)
+{
+    if (! song.isTrimmed() || song.lengthSeconds <= 0.0)
+        return;
+    const auto span = show.spanOf (song);
+    const auto xOf = [&] (double s) { return bar.getX() + bar.getWidth() * (float) juce::jlimit (0.0, 1.0, s / song.lengthSeconds); };
+    // What doesn't play is shaded; the start and end are lines.
+    g.setColour (rkfx::Palette::background.withAlpha (0.65f));
+    if (song.hasStart())
+        g.fillRect (bar.withRight (xOf (span.start)));
+    if (song.hasEnd())
+        g.fillRect (bar.withLeft (xOf (span.end)));
+    g.setColour (colour);
+    if (song.hasStart())
+        g.fillRect (xOf (span.start) - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+    if (song.hasEnd())
+        g.fillRect (xOf (span.end) - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+}
+
+void RKPlayEditor::editTrim (int playlist, int index)
+{
+    const auto& song = player.getShow().playlists[(size_t) playlist].songs[(size_t) index];
+    PlaySong found = song;
+    found.startSeconds = found.endSeconds = -1.0;
+    const auto detected = player.getShow().spanOf (found);   // where it plays without a trim
+    juce::String hint ("Minutes:seconds (3:44.5) or seconds. Empty: found by RKPlay");
+    if (song.analysis.valid)
+        hint << "\n(the music starts at " << preciseTime (detected.start) << ", the next song is heard alone from "
+             << preciseTime (detected.endPoint) << ")";
+    hint << ".\nThe song is faded out by its end; the crossfade into the next one ends there.";
+
+    auto* window = new juce::AlertWindow ("Start and end: " + song.displayName(), hint, juce::MessageBoxIconType::NoIcon);
+    window->addTextEditor ("start", song.hasStart() ? preciseTime (song.startSeconds) : juce::String(), "Start");
+    window->addTextEditor ("end", song.hasEnd() ? preciseTime (song.endSeconds) : juce::String(), "End");
+    window->addButton ("Set", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    const auto file = song.file;
+    juce::Component::SafePointer<RKPlayEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, playlist, index, file] (int result)
+    {
+        if (safe != nullptr && result == 1)
+        {
+            const auto& songs = safe->player.getShow().playlists[(size_t) playlist].songs;
+            if (index < (int) songs.size() && songs[(size_t) index].file == file)   // still that song
+            {
+                safe->player.setSongTrim (playlist, index, parseTime (window->getTextEditorContents ("start")),
+                                          parseTime (window->getTextEditorContents ("end")));
+                safe->refresh();
+            }
+        }
+    }), true);
+}
+
+juce::String RKPlayEditor::preciseTime (double seconds)
+{
+    const auto tenths = (int) std::lround (juce::jmax (0.0, seconds) * 10.0);
+    return juce::String (tenths / 600) + ":" + juce::String ((tenths / 10) % 60).paddedLeft ('0', 2) + "." + juce::String (tenths % 10);
+}
+
+double RKPlayEditor::parseTime (const juce::String& text)
+{
+    const auto t = rkfx::Units::withDecimalPoint (text).trim();
+    if (t.isEmpty() || ! t.containsOnly ("0123456789:."))
+        return -1.0;
+    const auto parts = juce::StringArray::fromTokens (t, ":", {});
+    double seconds = 0.0;
+    for (const auto& part : parts)
+        seconds = seconds * 60.0 + part.getDoubleValue();
+    return seconds;
 }
 
 juce::String RKPlayEditor::timeText (double seconds)

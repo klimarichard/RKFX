@@ -87,7 +87,7 @@ Choosing another playlist while music plays offers **Crossfade now** (default) o
 - **Music start and end:** the analysis finds where the music really starts (the first moment above -50 dBFS, after any silence) and ends (the last moment above -50 dBFS). Playback starts at the music start; the crossfade is timed to the music end, so there is no gap even when a file ends with 10 s of silence.
 - **Fade-out ends:** many songs fade out slowly. The **fade-out point** is where the level falls 20 dB below the song's loudness for good. With **Smart crossfade** on (default), the next song starts from the fade-out point, so a long fade doesn't leave the room quiet.
 - **The curve** is equal-power (sine/cosine), so the loudness stays even through the crossfade. A crossfade never runs longer than half of either song.
-- **Per-song trim** (optional, in the song's info): a start and end point set by hand overrides the detected ones.
+- **Per-song trim** (optional, from the song's menu): a start and end point set by hand overrides the detected ones (built: see As built, song edits).
 
 ## Loudness
 
@@ -233,6 +233,14 @@ Fixed, in this order (IDs permanent, append only):
 - **History**: a song that played a second or more is a line in that night's file (time, playlist or Request, title, artist, seconds, file); Settings > Remote > Show the history.
 - **The app icon**: "PLAY" in sage, from `tools/icons`.
 - **Settings** has two pages: Show (as before) and Remote (OSC, MIDI, keyboard, history).
+
+### As built (feat/rkplay-song-edits, 2026-11-03)
+
+- **Per-song trim** (`PlaySong::startSeconds`, `endSeconds`; the show's `start`, `end` per song, omitted when not set): wins over the analysis with or without Smart crossfade. `spanOf` gives `handStart` / `handEnd`; a hand end is both the stream's end and the end point (no lead), so the crossfade ends exactly there. The stream fades in over 10 ms from a hand start and out over 1 s by a hand end (raised cosine, disk thread, `Options::fadeInSeconds` / `fadeOutSeconds`). At least 2 s apart; an end at the file's end is none. Kept through Rescan, Relink and a moved Music folder (`PlaySong::keepEditsOf`). A new end on the playing song is taken at once (opened again where it is, a 50 ms crossfade) unless it is under 0.5 s ahead. Pre-listen plays the whole file (`wholeFile`). Window: right-click a song, Start and end (typed, or Start/End here at the pre-listen or playing position, or none); trimmed songs marked in the list with their trimmed length; waveforms shade what doesn't play.
+- **Drag to reorder** within a list (a drop line, auto-scroll), or onto the queue (Play next). Linked lists keep their file's order.
+- **Show check**: a red "N files missing" button in the transport row while any song is missing or unreadable, opening a panel over the lower half: the list (playlist, place, name, path; double-click shows the nearest existing folder), Check again (`recheck()`: a drive plugged in since), Relink, Remove them (`removeProblemSongs()`: not linked lists, not the playing song).
+- **Measuring gives way**: `PlayAnalysis::Pace` full speed (nothing heard), gentle (music or pre-listen heard: 10 ms pause per 64k-frame chunk), hold (a heard or armed stream still reading has under 6 s read-ahead; until all are over 10 s): no chunk read and no new file opened. A plugin can't see the host's CPU load, so the read-ahead (what actually protects the music) is the signal; the status line says when it waits.
+- **As mastered** (a playlist's `loudness`: `match` | `asMastered`): no loudness matching, no lift; gain = Peak ceiling - true peak (up or down), within 0.1 dB none (bit-exact), plus the list's and song's gains only where negative. Not measured yet: as it is. Independent of the show's Level match.
 
 ## Identity
 

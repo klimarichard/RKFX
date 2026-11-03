@@ -26,6 +26,8 @@
     over the lower half. */
 class RKPlayEditor : public rkfx::EditorBase,
                      public juce::FileDragAndDropTarget,
+                     public juce::DragAndDropContainer,
+                     public juce::DragAndDropTarget,
                      private juce::ListBoxModel
 {
 public:
@@ -40,6 +42,12 @@ public:
     void filesDropped (const juce::StringArray&, int x, int y) override;
     void fileDragEnter (const juce::StringArray&, int, int) override { dropHighlight = true; repaint(); }
     void fileDragExit (const juce::StringArray&) override { dropHighlight = false; repaint(); }
+
+    // Songs dragged within the list (a new place) or onto the queue (Play next)
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragMove (const SourceDetails&) override;
+    void itemDragExit (const SourceDetails&) override;
+    void itemDropped (const SourceDetails&) override;
 
     void mouseDown (const juce::MouseEvent&) override;   // right-click a button: its MIDI learn (and Stop: Panic)
     bool keyPressed (const juce::KeyPress&) override;    // the keyboard shortcuts
@@ -130,6 +138,25 @@ private:
         void applyOsc();
     };
 
+    /** Show check, over the lower half: every missing or unreadable song, and what to do about them. */
+    struct ShowCheck : public juce::Component, private juce::ListBoxModel
+    {
+        explicit ShowCheck (RKPlayEditor&);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+        void refresh();
+
+        int getNumRows() override { return (int) problems.size(); }
+        void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
+        void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
+
+        RKPlayEditor& owner;
+        std::vector<std::pair<int, int>> problems;   // playlist, song
+        juce::ListBox list { "Problems", this };
+        juce::TextButton recheck { "Check again" }, relink { "Relink missing songs..." },
+                         remove { "Remove them from the playlists" }, close { "Close" };
+    };
+
     RKPlayProcessor& player;
     int viewed = 0;                       // the playlist the list shows
     NowPlaying nowPlaying { *this };
@@ -139,6 +166,7 @@ private:
     juce::TextButton inOrderButton { "In order" }, shuffleButton { "Shuffle" };
     juce::ComboBox atEnd;
     juce::ToggleButton stopAfterEach { "Stop after each" };
+    juce::ComboBox loudnessMode;
     juce::Slider crossfade, listGain;
     juce::ListBox list { "Playlist", this };
     juce::TextButton addFilesButton { "Add files..." }, addFolderButton { "Add folder..." }, clearButton { "Clear" };
@@ -153,6 +181,8 @@ private:
     std::unique_ptr<rkfx::Knob> level;
     juce::Label note, status;
     Settings settings { *this };
+    ShowCheck showCheck { *this };
+    juce::TextButton problemsButton;
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;
@@ -172,6 +202,19 @@ private:
     void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
     void listBoxItemClicked (int row, const juce::MouseEvent&) override;
     void deleteKeyPressed (int lastRowSelected) override;
+    juce::var getDragSourceDescription (const juce::SparseSet<int>& rows) override;
+
+    /** Where a song dragged to @p pos (editor coordinates) goes: before this row (n: the end), -1: not the list. */
+    int dropIndexAt (juce::Point<int> pos) const;
+    bool overQueue (juce::Point<int> pos) const;
+    struct DropLine : public juce::Component
+    {
+        DropLine() { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics& g) override { g.fillAll (colour); }
+        juce::Colour colour;
+    };
+    DropLine dropLine;
+    bool queueHighlight = false;
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;
@@ -180,6 +223,8 @@ private:
     void showSongMenu (int row);
     void showTabMenu (int playlist);
     void showSettings (bool);
+    void showShowCheck (bool);
+    void chooseRelink();
     void renamePlaylist (int playlist);
     void chooseFiles (bool folders);
     void chooseLink (int playlist, bool folder);
@@ -190,6 +235,12 @@ private:
     int lastRigVersion = -1;
     void choosePadFile (int pad);
     void renamePad (int pad);
+    void editTrim (int playlist, int index);
 
     static juce::String timeText (double seconds);
+    static juce::String preciseTime (double seconds);       // 3:44.5
+    static double parseTime (const juce::String&);          // "3:44.5" or "224.5"; empty or bad: -1
+
+    /** Where a song starts and ends (set by hand, else found) on a bar of its length. */
+    static void drawTrim (juce::Graphics&, juce::Rectangle<float> bar, const PlaySong&, const PlayShow&, juce::Colour);
 };

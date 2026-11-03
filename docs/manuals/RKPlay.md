@@ -9,7 +9,7 @@ For the preset menu and Bypass, see [Common Controls](Common%20Controls.md).
 ## The window
 
 - **Now playing (top):** the song's title and artist in large type, elapsed and remaining time, the song's waveform with the playhead (click it to jump), and **Next:** what plays after it.
-- **Transport:** **|<** (previous), **Play/Pause**, **>|** (next), **Fade out**, **Stop**, **Duck** and **Settings**.
+- **Transport:** **|<** (previous), **Play/Pause**, **>|** (next), **Fade out**, **Stop**, **Duck** and **Settings**. While some songs' files are missing, a red button says how many (see Show check).
 - **Left:** the playlists as tabs, the shown playlist's settings, and its songs.
 - **Right:** the **Queue**, **Pre-listen** and **End at**.
 - **Bottom:** the **Level** knob and the **8 pads**.
@@ -44,8 +44,9 @@ Each playlist has its own settings, above its songs:
 | **In order / Shuffle** | Shuffle plays every song once, in a random order, before any plays again (and never the same song twice in a row between rounds). Two songs by the same artist never play one after the other, between rounds too, unless one artist has more than about half the playlist; then they come together as rarely as possible. The artist is the song's tag, or the part before " - " in its file name | In order |
 | **At the end** | Stop, Repeat, or **Then:** another playlist | Repeat |
 | **Stop after each** | Waits for Play after every song (a ceremony, songs started by hand) | Off |
+| **Loudness matched / As mastered** | Loudness matched: every song as loud as the others (see Loudness). **As mastered:** every song as the artist made it, for an artist's own mastered tracks they want to hear the way they know them (see Loudness) | Loudness matched |
 | **Crossfade** | How long songs overlap, 0 to 15 s (0: back to back, no gap) | 6 s |
-| **Gain** | The whole list louder or quieter, ±12 dB (a quieter Dinner list) | 0 dB |
+| **Gain** | The whole list louder or quieter, ±12 dB (a quieter Dinner list). As mastered: quieter only | 0 dB |
 
 A playlist remembers its place (and its shuffle order) while another plays, so going back to it continues after the song it was on.
 
@@ -57,13 +58,28 @@ A playlist remembers its place (and its shuffle order) while another plays, so g
 - **Play next:** adds it to the **Queue**. Queued songs play after the current song, before the playlist goes on (requests).
 - **Go on from here:** the playlist continues from this song.
 - **Pre-listen:** plays it on the cue output only (see Pre-listen).
+- **Start and end:** where this song starts and ends (see below).
 - Move up or down, remove, its **gain** (±12 dB, for a backing track a singer performs over), show in Finder.
+
+**Drag** a song to a new place in its list (a line shows where it goes), or onto the **Queue** to play it next.
 
 The playing song is in the accent colour. A song RKPlay can't find or read is shown in red and skipped when its turn comes; the music never stops for it. The Queue (right) shows the requests in order; right-click one to move or remove it. The queue is not saved with the show.
 
+### A song's start and end
+
+RKPlay finds where each song's music starts and ends by itself (see Crossfades). To skip a long intro or leave before a long outro, set a song's **start** and **end** by hand: right-click it, **Start and end**:
+
+- **Set the start and end...**: type them, as minutes:seconds (3:44.5) or seconds. Leave one empty to let RKPlay find it.
+- **Start here / End here**: where the song is now, while you **pre-listen** to it (the easiest way: pre-listen, click its waveform near the place, listen, set) or while it **plays**.
+- **No start set / No end set**: back to what RKPlay finds.
+
+The song is **faded out by its end** (over its last second), and the crossfade into the next song ends there, so the next song is heard alone from the end on. With no crossfade, the next song starts right at the end. A start is faded in over 10 ms, never a click. Set while the song plays, a new end counts at once.
+
+Songs with a start or end show **start**, **end** in the list and their shortened length; the waveforms shade what doesn't play, and the remaining time counts to the end. Pre-listen always plays the whole file, so you can find the places. A song's start and end are saved with the show and stay with the song when a linked list is rescanned or a song is relinked.
+
 ### Linked playlists
 
-A playlist can be **linked to a folder** or to an **.m3u8 playlist** (right-click its tab). RKPlay reads it again when the show loads and on **Rescan**, so preparing for a gig is just copying files into a folder, or editing the .m3u8 in one place. A linked list takes no songs by hand, but keeps each song's gain. Any list can be **exported** as an .m3u8 (with paths relative to where you save it).
+A playlist can be **linked to a folder** or to an **.m3u8 playlist** (right-click its tab). RKPlay reads it again when the show loads and on **Rescan**, so preparing for a gig is just copying files into a folder, or editing the .m3u8 in one place. A linked list takes no songs by hand, but keeps each song's gain, start and end. Any list can be **exported** as an .m3u8 (with paths relative to where you save it).
 
 ### Switching playlists
 
@@ -83,8 +99,11 @@ RKPlay measures every song once (its loudness, peaks, where the music really sta
 - **Lift quiet songs** (Off, up to 3 dB, up to 6 dB; default **up to 3 dB**): a very dynamic song that can't reach the target by gain alone is lifted further, and its few highest peaks are limited by at most that much (gently, several seconds ahead of playback). The song list shows the gain each song gets (a lifted song in orange, "lift"), and "measuring" until it is measured.
 - **Level match** can be switched off: every song then plays at its own level (plus its gains).
 - A song added a moment before it plays, before it is measured, plays at its own level.
+- **Measuring gives way to the music:** while music plays, measuring goes gently, and while a playing song's read-ahead runs low (a slow or busy disk) it waits altogether; the status line says so.
 
 RKPlay's output sits a few dB below commercial records on purpose. Set the volume at the desk or the amplifier, or with the **Level** knob (up to +6 dB).
+
+**As mastered** (a playlist's setting): the songs of that list are **not** loudness matched. Each song only gets the gain that brings its loudest peak to the **Peak ceiling** (-0.5 dBTP): turned down if it peaks higher, up if it peaks lower, never limited, never compressed. This is for an artist's own mastered tracks: they hear them exactly the way they made them. A song already at the ceiling plays untouched, bit for bit. The list's and the song's gains can only turn it down from there. RKPlay still reads each song once, to find its peak (and its start and end for the crossfades). Mastered tracks are usually a lot louder than loudness-matched songs (often 8 to 10 dB), so a list played as mastered right after a matched one jumps up in level; turn its Gain down if it needs to sit with the rest.
 
 **Safety limiter** (Settings, on by default): a limiter at -0.3 dBFS on the output, for what the measurements can't foresee (two loud songs crossing, a pad over the music, the Level pushed up). A song alone never reaches it.
 
@@ -93,6 +112,7 @@ RKPlay's output sits a few dB below commercial records on purpose. Set the volum
 - RKPlay skips the silence at the start and end of each file, so there are no gaps.
 - **Smart crossfade** (Settings, on): many songs end with a long fade-out; the next song comes in where the fade-out has gone quiet, so the room doesn't go quiet.
 - The crossfade keeps the loudness even all the way through. It never takes more than half of either song.
+- A song's **start and end set by hand** win over what RKPlay finds, with Smart crossfade on or off (see A song's start and end).
 
 ## Ducking
 
@@ -133,9 +153,17 @@ The cue output is RKPlay's second stereo output: in Gig Performer, the plugin's 
 - **Show:** Fade-out time (0.5 to 30 s), Smart crossfade, the Loudness settings, Ducking, and the **Music folder**.
 - **Remote** (standalone app): OSC, MIDI, the keyboard shortcuts and the history.
 
+### Show check
+
+When a show opens, RKPlay looks at every song's file. While some are missing or unreadable, a **red button** in the transport row says how many; click it for **Show check**: every such song with its playlist, place and file path (double-click one to show its folder). Such songs are skipped when their turn comes; the music never stops for them.
+
+- **Check again:** looks at the files again (a drive you plugged in since the show was opened).
+- **Relink missing songs...:** pick a folder; RKPlay finds them there by file name (see The Music folder).
+- **Remove them from the playlists:** takes them out (not from linked playlists, which follow their folder or file).
+
 ### The Music folder
 
-Choose the folder your music lives in (for example `~/Music/OFFLINE MUSIC ARCHIVE/Library`). Songs inside it are kept **relative to it**, so the show works wherever the folder is: on another Mac, under another user name, on an external drive. If songs are missing after a move, choose the folder again in its new place, or use **Relink missing songs...** and pick a folder: RKPlay finds them by file name (and checks the size). A song's gain and name stay with it.
+Choose the folder your music lives in (for example `~/Music/OFFLINE MUSIC ARCHIVE/Library`). Songs inside it are kept **relative to it**, so the show works wherever the folder is: on another Mac, under another user name, on an external drive. If songs are missing after a move, choose the folder again in its new place, or use **Relink missing songs...** and pick a folder: RKPlay finds them by file name (and checks the size). A song's gain, name, start and end stay with it.
 
 ## Standalone app
 

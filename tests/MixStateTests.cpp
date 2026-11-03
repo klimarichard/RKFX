@@ -359,7 +359,7 @@ public:
         {
             RKMixProcessor a;
             auto& s = a.getSettings();
-            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (2));     // Out 3/4
+            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (4));   // Out 5/6     // Out 3/4
             setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
             setParam (*a.findParam (mix::busFaderId (0)), 10.0f);
             setParam (s.param (mix::chainId (0, "lim_on")), 1.0f);
@@ -613,6 +613,11 @@ public:
             expect (MixScenes::isInScope (only (Scope::routing), mix::channelAssignId (3, 2)));
             expect (MixScenes::isInScope (only (Scope::routing), mix::channelId (3, "main")));
             expect (MixScenes::isInScope (only (Scope::routing), mix::busId (3, "main")));
+            expect (MixScenes::isInScope (only (Scope::faders), mix::dcaFaderId (2)), "a DCA fader");
+            expect (MixScenes::isInScope (only (Scope::faders), mix::dcaMuteId (2)), "a DCA mute");
+            expect (MixScenes::isInScope (only (Scope::faders), mix::muteGroupId (7)), "a mute group");
+            expect (MixScenes::isInScope (only (Scope::routing), mix::channelDcaId (3, 2)), "DCA membership is an assign");
+            expect (MixScenes::isInScope (only (Scope::routing), mix::busMuteGroupId (3, 2)), "mute group membership too");
         }
 
         beginTest ("Recall scope: a scene that recalls only the sends to bus 1 leaves the rest; kept in the session; copied");
@@ -767,10 +772,100 @@ public:
             rig.deleteRecursively();
         }
 
-        beginTest ("The host sees the faders and mutes, assignables, scene and talk (134 + bypass)");
+        beginTest ("DCAs: a member's fader moves by the DCA's level; DCA mutes and mute groups silence their members");
         {
             RKMixProcessor p;
-            expectEquals (p.getParameters().size(), 135);
+            p.prepareToPlay (48000.0, 128);
+            const auto centred = 0.5f * std::sqrt (0.5f);
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelDcaId (0, 2)), 1.0f);
+            setParam (*p.findParam (mix::dcaFaderId (2)), -6.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (-6.0f), 1.0e-5f, "DCA 3 at -6 dB");
+
+            setParam (*p.findParam (mix::channelFaderId (0)), -4.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (-10.0f), 1.0e-5f,
+                                       "the channel's fader and the DCA add up");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::channelFaderId (0))), -4.0f, 0.01f,
+                                       "the channel's own fader stays where it is");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), mix::kFaderMinDb);
+            expectEquals (run (p, 20).getMagnitude (0, 0, 128), 0.0f, "a DCA at the bottom: silence");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), 10.0f);
+            setParam (*p.findParam (mix::channelFaderId (0)), 8.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred * mix::faderGain (10.0f), 1.0e-4f,
+                                       "never past the top of a fader");
+
+            setParam (*p.findParam (mix::dcaFaderId (2)), 0.0f);
+            setParam (*p.findParam (mix::channelFaderId (0)), 0.0f);
+            setParam (*p.findParam (mix::dcaMuteId (2)), 1.0f);
+            expectEquals (run (p, 20).getMagnitude (0, 0, 128), 0.0f, "the DCA's mute");
+            expect (p.isChannelGroupMuted (0));
+            setParam (*p.findParam (mix::dcaMuteId (2)), 0.0f);
+            expect (! p.isChannelGroupMuted (0));
+
+            setParam (s.param (mix::channelDcaId (0, 2)), 0.0f);
+            setParam (*p.findParam (mix::dcaFaderId (2)), -20.0f);
+            expectWithinAbsoluteError (run (p, 20).getSample (0, 64), centred, 1.0e-5f, "not a member: untouched");
+
+            // Mute groups: a channel's pre-fader send to an Aux bus goes silent too.
+            setParam (s.param (mix::busId (0, "out")), (float) mix::pairTarget (4));   // Out 5/6
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
+            setParam (s.param (mix::channelMuteGroupId (0, 4)), 1.0f);
+            auto b = run (p, 20);
+            expect (b.getMagnitude (4, 0, 128) > 0.1f, "the in-ear mix before the mute group");
+            setParam (*p.findParam (mix::muteGroupId (4)), 1.0f);
+            b = run (p, 20);
+            expectEquals (b.getMagnitude (0, 0, 128), 0.0f, "mute group 5: the main");
+            expectEquals (b.getMagnitude (4, 0, 128), 0.0f, "and the pre-fader send");
+
+            // A bus in a mute group.
+            setParam (s.param (mix::channelMuteGroupId (0, 4)), 0.0f);
+            setParam (s.param (mix::busMuteGroupId (0, 4)), 1.0f);
+            b = run (p, 20);
+            expect (b.getMagnitude (0, 0, 128) > 0.1f, "the channel back in the main");
+            expectEquals (b.getMagnitude (4, 0, 128), 0.0f, "the Aux bus muted by the group");
+            expect (p.isBusGroupMuted (0));
+            expectEquals (p.getMuteGroupMembers (4).size(), 1);
+            expectEquals (p.getMuteGroupMembers (4)[0], RKMixProcessor::kUserPageBus);
+
+            // Names, colours and membership are kept with the mix.
+            p.setDcaName (2, "Drums");
+            p.setDcaColour (2, 5);
+            p.setMuteGroupName (4, "Band");
+            setParam (s.param (mix::channelDcaId (6, 2)), 1.0f);
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (q.getDcaName (2), juce::String ("Drums"));
+            expectEquals (q.getDcaColour (2), 5);
+            expectEquals (q.getMuteGroupName (4), juce::String ("Band"));
+            expectEquals (q.getDcaMembers (2).size(), 1);
+            expectEquals (q.getDcaMembers (2)[0], 6);
+            expect (q.isBusGroupMuted (0), "the mute group's state");
+        }
+
+        beginTest ("Scenes recall the DCA faders, mutes and mute groups");
+        {
+            RKMixProcessor p;
+            setParam (p.getSettings().param ("scene_glide"), 0.0f);
+            setParam (*p.findParam (mix::dcaFaderId (0)), -12.0f);
+            p.recallScene (1);
+            setParam (*p.findParam (mix::dcaFaderId (0)), 3.0f);
+            setParam (*p.findParam (mix::muteGroupId (1)), 1.0f);
+            p.recallScene (0);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::dcaFaderId (0))), -12.0f, 0.01f);
+            expect (rkfx::ProcessorBase::valueOf (p.findParam (mix::muteGroupId (1))) < 0.5f);
+            p.recallScene (1);
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::dcaFaderId (0))), 3.0f, 0.01f);
+        }
+
+        beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
+        {
+            RKMixProcessor p;
+            expectEquals (p.getParameters().size(), 159);
+            expect (p.findParam ("dca_fader_8") != nullptr && p.findParam ("dca_mute_8") != nullptr && p.findParam ("mgrp_8") != nullptr);
             expect (p.findParam ("ch_fader_32") != nullptr && p.findParam ("bus_mute_16") != nullptr
                     && p.findParam ("mono_mute") != nullptr && p.findParam ("assign32") != nullptr
                     && p.findParam ("scene") != nullptr && p.findParam ("talk") != nullptr);

@@ -24,7 +24,8 @@ namespace
         using Scope = MixScenes::Scope;
         sendBus = -1;
         if (id.startsWith ("ch_fader_") || id.startsWith ("ch_mute_") || id.startsWith ("bus_fader_") || id.startsWith ("bus_mute_")
-            || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute")
+            || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute"
+            || id.startsWith ("dca_fader_") || id.startsWith ("dca_mute_") || id.startsWith ("mgrp_"))
         {
             category = Scope::faders;
             return;
@@ -43,7 +44,7 @@ namespace
             sendBus = field.substring (4).getIntValue() - 1;
             return;
         }
-        if (numbered ("grp") || field == "main")
+        if (numbered ("grp") || numbered ("dca") || numbered ("mgrp") || field == "main")
             category = Scope::routing;
         else if (field == "pan" || id == "main_bal")
             category = Scope::pans;
@@ -64,7 +65,8 @@ bool MixScenes::isSceneValue (const juce::String& id)
 {
     // The host's faders and mutes.
     if (id.startsWith ("ch_fader_") || id.startsWith ("ch_mute_") || id.startsWith ("bus_fader_") || id.startsWith ("bus_mute_")
-        || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute")
+        || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute"
+        || id.startsWith ("dca_fader_") || id.startsWith ("dca_mute_") || id.startsWith ("mgrp_"))
         return true;
     if (id.startsWith ("assign") || id == "scene" || id == "talk" || id == "bypass")
         return false;
@@ -91,7 +93,7 @@ juce::String MixScenes::Scope::name (Category c)
         case channelProcessing: return "Channel processing";
         case busProcessing:     return "Bus & main processing";
         case inserts:           return "Inserts";
-        case routing:           return "Group & main assigns";
+        case routing:           return "Assigns (group, main, DCA)";
         case numCategories:     break;
     }
     return {};

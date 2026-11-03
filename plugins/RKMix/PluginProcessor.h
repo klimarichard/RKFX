@@ -70,6 +70,24 @@ public:
     juce::Array<int> getUserPage (int page) const;
     void setUserPage (int page, const juce::Array<int>&);
 
+    /** DCA and mute group names, DCA colours (message thread). Saved with the mix. */
+    juce::String getDcaName (int dca) const;
+    void setDcaName (int dca, const juce::String&);
+    int getDcaColour (int dca) const noexcept { return dcaColours[(size_t) dca].load(); }
+    void setDcaColour (int dca, int colour);
+    juce::String getMuteGroupName (int group) const;
+    void setMuteGroupName (int group, const juce::String&);
+
+    /** The members of a DCA or a mute group, as the user pages list strips:
+        a channel (a linked pair's left channel) or kUserPageBus + a bus. */
+    juce::Array<int> getDcaMembers (int dca) const;
+    juce::Array<int> getMuteGroupMembers (int group) const;
+
+    /** True while a DCA's mute or an active mute group silences the strip
+        (its own Mute may be off). A linked pair: its left channel. */
+    bool isChannelGroupMuted (int ch) const;
+    bool isBusGroupMuted (int bus) const;
+
     mix::BusType getBusType (int bus) const { return (mix::BusType) settings.choice (mix::busId (bus, "type")); }
     bool isBusStereo (int bus) const { return settings.choice (mix::busId (bus, "format")) == 1; }
 
@@ -218,6 +236,21 @@ private:
     std::array<std::vector<juce::RangedAudioParameter*>, mix::kProcessingChains> chainParams;   // by MixParams::chainFields()
     juce::RangedAudioParameter *mainFader = nullptr, *mainMute = nullptr, *monoFader = nullptr, *monoMute = nullptr;
 
+    // DCAs and mute groups: their host parameters, and each strip's membership.
+    std::array<juce::RangedAudioParameter*, mix::kDcas> dcaFaders {}, dcaMutes {};
+    std::array<juce::RangedAudioParameter*, mix::kMuteGroups> muteGroups {};
+    struct Membership
+    {
+        std::array<juce::RangedAudioParameter*, mix::kDcas> dcas {};
+        std::array<juce::RangedAudioParameter*, mix::kMuteGroups> muteGroups {};
+    };
+    std::array<Membership, kChannels> channelMembership {};
+    std::array<Membership, mix::kBuses> busMembership {};
+
+    /** A strip's fader with its DCAs (dB), and whether a DCA or a mute group mutes it. */
+    float withDcas (float faderDb, const Membership&, const std::array<float, mix::kDcas>& dcaDb) const;
+    bool groupMuted (const Membership&) const;
+
     InsertRack rack;
     MixEngine engine;
     MixEngine::Settings engineSettings;                 // audio thread
@@ -296,6 +329,9 @@ private:
     mutable juce::CriticalSection namesLock;
     std::array<juce::String, kChannels> channelNames, outputNames;
     std::array<juce::String, mix::kBuses> busNames;
+    std::array<juce::String, mix::kDcas> dcaNames;
+    std::array<juce::String, mix::kMuteGroups> muteGroupNames;
+    std::array<std::atomic<int>, mix::kDcas> dcaColours {};
     std::array<juce::Array<int>, kUserPages> userPages;
     std::array<std::atomic<int>, kChannels> channelColours {};
     std::array<std::atomic<int>, mix::kBuses> busColours {};

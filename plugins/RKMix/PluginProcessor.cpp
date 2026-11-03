@@ -135,6 +135,28 @@ RKMixProcessor::RKMixProcessor()
     for (int bus = 0; bus < kBuses; ++bus)
         busSoloSafeParams[(size_t) bus] = &settings.param (busId (bus, "solosafe"));
 
+    for (int dca = 0; dca < kDcas; ++dca)
+    {
+        dcaFaders[(size_t) dca] = findParam (dcaFaderId (dca));
+        dcaMutes[(size_t) dca] = findParam (dcaMuteId (dca));
+    }
+    for (int group = 0; group < kMuteGroups; ++group)
+        muteGroups[(size_t) group] = findParam (muteGroupId (group));
+    for (int ch = 0; ch < kChannels; ++ch)
+    {
+        for (int dca = 0; dca < kDcas; ++dca)
+            channelMembership[(size_t) ch].dcas[(size_t) dca] = &settings.param (channelDcaId (ch, dca));
+        for (int group = 0; group < kMuteGroups; ++group)
+            channelMembership[(size_t) ch].muteGroups[(size_t) group] = &settings.param (channelMuteGroupId (ch, group));
+    }
+    for (int bus = 0; bus < kBuses; ++bus)
+    {
+        for (int dca = 0; dca < kDcas; ++dca)
+            busMembership[(size_t) bus].dcas[(size_t) dca] = &settings.param (busDcaId (bus, dca));
+        for (int group = 0; group < kMuteGroups; ++group)
+            busMembership[(size_t) bus].muteGroups[(size_t) group] = &settings.param (busMuteGroupId (bus, group));
+    }
+
     mainFader = findParam ("main_fader");
     mainMute = findParam ("main_mute");
     monoFader = findParam ("mono_fader");
@@ -549,6 +571,45 @@ void RKMixProcessor::setBusColour (int bus, int colour)
     markPresetModified();
 }
 
+juce::String RKMixProcessor::getDcaName (int dca) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return dcaNames[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)];
+}
+
+void RKMixProcessor::setDcaName (int dca, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        dcaNames[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
+void RKMixProcessor::setDcaColour (int dca, int colour)
+{
+    dcaColours[(size_t) juce::jlimit (0, mix::kDcas - 1, dca)] = juce::jlimit (0, kNumColours - 1, colour);
+    ++namesVersion;
+    markPresetModified();
+}
+
+juce::String RKMixProcessor::getMuteGroupName (int group) const
+{
+    const juce::ScopedLock sl (namesLock);
+    return muteGroupNames[(size_t) juce::jlimit (0, mix::kMuteGroups - 1, group)];
+}
+
+void RKMixProcessor::setMuteGroupName (int group, const juce::String& name)
+{
+    {
+        const juce::ScopedLock sl (namesLock);
+        muteGroupNames[(size_t) juce::jlimit (0, mix::kMuteGroups - 1, group)] = name.trim();
+    }
+    ++namesVersion;
+    markPresetModified();
+}
+
 juce::String RKMixProcessor::getOutputName (int output) const
 {
     const juce::ScopedLock sl (namesLock);
@@ -598,7 +659,7 @@ juce::var RKMixProcessor::getExtraState() const
     auto* root = new juce::DynamicObject();
     root->setProperty ("settings", settings.toVar());
 
-    juce::Array<juce::var> names, colours, buses, busColourList, outputs;
+    juce::Array<juce::var> names, colours, buses, busColourList, outputs, dcas, dcaColourList, muteGroupList;
     {
         const juce::ScopedLock sl (namesLock);
         for (int ch = 0; ch < kChannels; ++ch)
@@ -612,6 +673,13 @@ juce::var RKMixProcessor::getExtraState() const
             buses.add (busNames[(size_t) bus]);
             busColourList.add (busColours[(size_t) bus].load());
         }
+        for (int dca = 0; dca < mix::kDcas; ++dca)
+        {
+            dcas.add (dcaNames[(size_t) dca]);
+            dcaColourList.add (dcaColours[(size_t) dca].load());
+        }
+        for (int group = 0; group < mix::kMuteGroups; ++group)
+            muteGroupList.add (muteGroupNames[(size_t) group]);
     }
     root->setProperty ("tempo", tempo.load());
     root->setProperty ("inserts", rack.toVar());
@@ -622,6 +690,9 @@ juce::var RKMixProcessor::getExtraState() const
     root->setProperty ("busNames", buses);
     root->setProperty ("busColours", busColourList);
     root->setProperty ("outputNames", outputs);
+    root->setProperty ("dcaNames", dcas);
+    root->setProperty ("dcaColours", dcaColourList);
+    root->setProperty ("muteGroupNames", muteGroupList);
 
     // User pages as "ch3", "bus2" (1-based, readable)
     juce::Array<juce::var> pages;
@@ -674,6 +745,10 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
         }
         for (int bus = 0; bus < mix::kBuses; ++bus)
             busNames[(size_t) bus] = text (extra["busNames"], bus);
+        for (int dca = 0; dca < mix::kDcas; ++dca)
+            dcaNames[(size_t) dca] = text (extra["dcaNames"], dca);
+        for (int group = 0; group < mix::kMuteGroups; ++group)
+            muteGroupNames[(size_t) group] = text (extra["muteGroupNames"], group);
 
         const auto* pages = extra["userPages"].getArray();
         for (int page = 0; page < kUserPages; ++page)
@@ -698,6 +773,8 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
         channelColours[(size_t) ch] = colour (extra["colours"], ch);
     for (int bus = 0; bus < mix::kBuses; ++bus)
         busColours[(size_t) bus] = colour (extra["busColours"], bus);
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        dcaColours[(size_t) dca] = colour (extra["dcaColours"], dca);
     ++namesVersion;
 }
 
@@ -926,18 +1003,88 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
     return c;
 }
 
+float RKMixProcessor::withDcas (float faderDb, const Membership& m, const std::array<float, mix::kDcas>& dcaDb) const
+{
+    // A DCA moves its members' faders by its own level: silence at its bottom,
+    // never past the top of a fader.
+    auto db = faderDb;
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        if (m.dcas[(size_t) dca]->getValue() >= 0.5f)
+        {
+            if (dcaDb[(size_t) dca] <= mix::kFaderMinDb + 0.001f)
+                return mix::kFaderMinDb;
+            db += dcaDb[(size_t) dca];
+        }
+    return db <= mix::kFaderMinDb + 0.001f ? mix::kFaderMinDb : juce::jmin (db, mix::kFaderMaxDb);
+}
+
+bool RKMixProcessor::groupMuted (const Membership& m) const
+{
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        if (dcaMutes[(size_t) dca]->getValue() >= 0.5f && m.dcas[(size_t) dca]->getValue() >= 0.5f)
+            return true;
+    for (int group = 0; group < mix::kMuteGroups; ++group)
+        if (muteGroups[(size_t) group]->getValue() >= 0.5f && m.muteGroups[(size_t) group]->getValue() >= 0.5f)
+            return true;
+    return false;
+}
+
+bool RKMixProcessor::isChannelGroupMuted (int ch) const
+{
+    return groupMuted (channelMembership[(size_t) juce::jlimit (0, kChannels - 1, ch)]);
+}
+
+bool RKMixProcessor::isBusGroupMuted (int bus) const
+{
+    return groupMuted (busMembership[(size_t) juce::jlimit (0, mix::kBuses - 1, bus)]);
+}
+
+juce::Array<int> RKMixProcessor::getDcaMembers (int dca) const
+{
+    juce::Array<int> members;
+    if (! juce::isPositiveAndBelow (dca, mix::kDcas))
+        return members;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if ((ch % 2 == 0 || ! isLinked (ch / 2)) && channelMembership[(size_t) ch].dcas[(size_t) dca]->getValue() >= 0.5f)
+            members.add (ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        if (busMembership[(size_t) bus].dcas[(size_t) dca]->getValue() >= 0.5f)
+            members.add (kUserPageBus + bus);
+    return members;
+}
+
+juce::Array<int> RKMixProcessor::getMuteGroupMembers (int group) const
+{
+    juce::Array<int> members;
+    if (! juce::isPositiveAndBelow (group, mix::kMuteGroups))
+        return members;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if ((ch % 2 == 0 || ! isLinked (ch / 2)) && channelMembership[(size_t) ch].muteGroups[(size_t) group]->getValue() >= 0.5f)
+            members.add (ch);
+    for (int bus = 0; bus < mix::kBuses; ++bus)
+        if (busMembership[(size_t) bus].muteGroups[(size_t) group]->getValue() >= 0.5f)
+            members.add (kUserPageBus + bus);
+    return members;
+}
+
 MixEngine::Levels RKMixProcessor::readLevels() const
 {
     MixEngine::Levels levels;
+    std::array<float, mix::kDcas> dcaDb {};
+    for (int dca = 0; dca < mix::kDcas; ++dca)
+        dcaDb[(size_t) dca] = valueOf (dcaFaders[(size_t) dca]);
+
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        levels.channelDb[(size_t) ch] = valueOf (channelFaders[(size_t) ch]);
-        levels.channelMute[(size_t) ch] = valueOf (channelMutes[(size_t) ch]) >= 0.5f;
+        const auto& m = channelMembership[(size_t) ch];
+        levels.channelDb[(size_t) ch] = withDcas (valueOf (channelFaders[(size_t) ch]), m, dcaDb);
+        levels.channelMute[(size_t) ch] = valueOf (channelMutes[(size_t) ch]) >= 0.5f || groupMuted (m);
     }
     for (int bus = 0; bus < mix::kBuses; ++bus)
     {
-        levels.busDb[(size_t) bus] = valueOf (busFaders[(size_t) bus]);
-        levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f;
+        const auto& m = busMembership[(size_t) bus];
+        levels.busDb[(size_t) bus] = withDcas (valueOf (busFaders[(size_t) bus]), m, dcaDb);
+        levels.busMute[(size_t) bus] = valueOf (busMutes[(size_t) bus]) >= 0.5f || groupMuted (m);
     }
     for (int ch = 0; ch < kChannels; ++ch)
         levels.channelSolo[(size_t) ch] = channelSolo[(size_t) ch].load();

@@ -29,7 +29,7 @@ public:
     bool flag (const juce::String& id) const { return value (id) >= 0.5f; }
     int choice (const juce::String& id) const { return juce::roundToInt (value (id)); }
 
-    /** The parts a setting belongs to: bit n = channel n, 32 + n = bus n, 63 = the main. */
+    /** The parts a setting belongs to: bit n = channel n, 32 + n = bus n, 63 = the main; none for DCA and mute group membership. */
     static std::uint64_t ownerBits (const juce::String& id);
     static constexpr std::uint64_t kMainBit = std::uint64_t (1) << 63;
     static constexpr std::uint64_t busBit (int bus) { return std::uint64_t (1) << (32 + bus); }

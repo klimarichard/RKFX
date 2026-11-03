@@ -3,25 +3,25 @@
 #include "plugin/ProcessorBase.h"
 
 #include "Parameters.h"
-#include "RemapEngine.h"
+#include "PatchEngine.h"
 
 #include <array>
 #include <atomic>
 
-/** RKRemap: a 64 x 64 patch bay. Each output picks a source (an input, or a
+/** RKPatch: a 64 x 64 patch bay. Each output picks a source (an input, or a
     linked input pair), with trim, mute, polarity and a mono sum; inputs and
     outputs have names, and the window shows as many as set. */
-class RKRemapProcessor : public rkfx::ProcessorBase
+class RKPatchProcessor : public rkfx::ProcessorBase
 {
 public:
-    static constexpr int kChannels = RemapEngine::kChannels;
+    static constexpr int kChannels = PatchEngine::kChannels;
 
-    RKRemapProcessor();
-    ~RKRemapProcessor() override;
+    RKPatchProcessor();
+    ~RKPatchProcessor() override;
 
     juce::AudioProcessorEditor* createEditor() override;
 
-    RemapEngine::Settings currentSettings() const;
+    PatchEngine::Settings currentSettings() const;
 
     // Names and views (message thread). Saved with the session and in presets.
     juce::String getInputName (int channel) const;
@@ -56,19 +56,19 @@ protected:
 private:
     struct OutputParams { juce::RangedAudioParameter *source, *trim, *mute, *polarity, *mono; };
     std::array<OutputParams, kChannels> outputParams;
-    std::array<juce::RangedAudioParameter*, RemapEngine::kPairs> inputLinks {}, outputLinks {}, inputMidSide {};
+    std::array<juce::RangedAudioParameter*, PatchEngine::kPairs> inputLinks {}, outputLinks {}, inputMidSide {};
 
-    RemapEngine engine;
+    PatchEngine engine;
 
     // The routing is rebuilt only when a parameter changes (416 of them: reading
     // them every block cost more than the routing itself).
     std::atomic<bool> settingsChanged { true };
     struct ChangeListener : public juce::AudioProcessorParameter::Listener
     {
-        explicit ChangeListener (RKRemapProcessor& p) : owner (p) {}
+        explicit ChangeListener (RKPatchProcessor& p) : owner (p) {}
         void parameterValueChanged (int, float) override { owner.settingsChanged = true; }
         void parameterGestureChanged (int, bool) override {}
-        RKRemapProcessor& owner;
+        RKPatchProcessor& owner;
     };
     ChangeListener changeListener { *this };
 
@@ -78,5 +78,5 @@ private:
 
     std::array<std::atomic<float>, kChannels> inputPeaks {}, outputPeaks {};
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKRemapProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKPatchProcessor)
 };

@@ -5,7 +5,7 @@
 #include <array>
 #include <vector>
 
-/** The RKRemap DSP: a 64 x 64 patch bay.
+/** The RKPatch DSP: a 64 x 64 patch bay.
 
     Each output takes a Source: off, one input, or a linked input pair
     (summed to mono on a single output, or left/right on a linked output
@@ -15,7 +15,7 @@
     settings. Trim, mute and polarity glide (kFadeSeconds); a source change
     crossfades from the old route to the new one. A steady route at unity
     is a bit-exact copy. Allocation-free after prepare(). */
-class RemapEngine
+class PatchEngine
 {
 public:
     static constexpr int kChannels = 64;

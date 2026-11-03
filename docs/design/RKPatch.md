@@ -1,12 +1,12 @@
-# RKRemap: design
+# RKPatch: design
 
 **Patch bay: 64 inputs to 64 outputs** · Utility family · zero latency, no processing by default
 
-RK + a verb, as every RKFX plugin: to *remap* inputs to outputs. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
+RK + a verb, as every RKFX plugin: to *patch* inputs to outputs. This is a design, not a manual: it says what the plugin does and how, so it can be built and reviewed against it.
 
 ## What it does
 
-RKRemap is a patch bay for Gig Performer. Instead of a knot of crossing cables between the audio interface's inputs, the plugins and the outputs, every cable goes straight: **In 1 → RKRemap input 1**, **RKRemap output 1 → Out 1**, and the routing happens inside RKRemap, labelled and visible on one page.
+RKPatch is a patch bay for Gig Performer. Instead of a knot of crossing cables between the audio interface's inputs, the plugins and the outputs, every cable goes straight: **In 1 → RKPatch input 1**, **RKPatch output 1 → Out 1**, and the routing happens inside RKPatch, labelled and visible on one page.
 
 - **Up to 64 inputs and 64 outputs.**
 - **Each output picks its source:** any input, or none. One input can feed as many outputs as you like (a vocal mic to the FOH, the in-ear mixes and the recorder).
@@ -19,7 +19,7 @@ Unless a trim, polarity or mono sum is set, a route is a bit-exact copy: no proc
 
 ## Step 0: confirm Gig Performer's handling of 64 channels
 
-Before the design is built out, a test build of RKRemap with 64 inputs and 64 outputs (identity routing, no window) is loaded in Gig Performer as **AU and VST3**, to confirm:
+Before the design is built out, a test build of RKPatch with 64 inputs and 64 outputs (identity routing, no window) is loaded in Gig Performer as **AU and VST3**, to confirm:
 
 - the plugin block shows 64 input and 64 output pins (Gig Performer allows up to 256 each);
 - audio passes on every pin;
@@ -92,7 +92,7 @@ The RKFX standard Bypass passes each input to the output with the same number (I
 
 ## Identity
 
-- **AU code** `Rmp1`, bundle ID `com.rkmusic.rkremap`, an effect (`aufx`).
+- **AU code** `Rmp1`, bundle ID `com.rkmusic.rkpatch`, an effect (`aufx`).
 - **Utility family**, accent **slate `#A3ADB8`**.
 - **Not an RKBoard pedal**: the board's chain is stereo.
 
@@ -131,11 +131,11 @@ The RKFX standard Bypass passes each input to the output with the same number (I
 ## As built (2026-10-29)
 
 - **Step 0:** the user confirmed in Gig Performer that **one 64-channel bus** each way works; that layout is used (the test plugins are removed from the build by default and from the plugin folders).
-- **Default Source: straight through** (In *n* → Out *n*), not Off, so inserting RKRemap changes nothing until a route is changed. The factory presets turn unused outputs off where they set up a rig.
+- **Default Source: straight through** (In *n* → Out *n*), not Off, so inserting RKPatch changes nothing until a route is changed. The factory presets turn unused outputs off where they set up a rig.
 - **Trim at 0 dB is exactly unity:** 0 dB came back from the host's 0..1 parameter scale a few millionths off, so routes weren't bit-exact (found by the state test). Trims within 0.001 dB of 0 are now treated as 0.
 - **Hidden-routes note** counts only hidden outputs that carry a *shown* input (see Names and views).
-- **Tests:** routing, pairs, mono sums, trim/mute/polarity, every input to every output, and click-free switching in RKFXTests (checked to fail without the crossfade); 64 channels, straight-through bit-exactness, names and views in the session, preset files, factory presets and Reset in RKBoardTests (which links the real processor; RKRemap's factory presets are registered there too, though it isn't a pedal).
-- **CPU:** the engine alone: 0.13% of a core with all 64 outputs routed, half of them mono sums. The whole plugin, measured through the base processor at 64 channels: **0.53% → 0.09%** of a core per instance (128-sample blocks) after three changes (2026-10-29, after the user saw high CPU in Gig Performer): the routing is rebuilt only when a parameter changes (reading 416 parameters every block), the signal lights are measured only while a window is open, and RKRemap reads the base processor's untouched copy of the input (`ProcessorBase::getDryInput()`) instead of copying 64 channels again. The base's NaN check (`allFinite`, run twice per block on every plugin) now sums in eight independent lanes, which the compiler vectorises; it was most of the remaining cost here, and speeds up every RKFX plugin.
+- **Tests:** routing, pairs, mono sums, trim/mute/polarity, every input to every output, and click-free switching in RKFXTests (checked to fail without the crossfade); 64 channels, straight-through bit-exactness, names and views in the session, preset files, factory presets and Reset in RKBoardTests (which links the real processor; RKPatch's factory presets are registered there too, though it isn't a pedal).
+- **CPU:** the engine alone: 0.13% of a core with all 64 outputs routed, half of them mono sums. The whole plugin, measured through the base processor at 64 channels: **0.53% → 0.09%** of a core per instance (128-sample blocks) after three changes (2026-10-29, after the user saw high CPU in Gig Performer): the routing is rebuilt only when a parameter changes (reading 416 parameters every block), the signal lights are measured only while a window is open, and RKPatch reads the base processor's untouched copy of the input (`ProcessorBase::getDryInput()`) instead of copying 64 channels again. The base's NaN check (`allFinite`, run twice per block on every plugin) now sums in eight independent lanes, which the compiler vectorises; it was most of the remaining cost here, and speeds up every RKFX plugin.
 - **A single output fed by a linked pair** (always the mono sum) shows a dimmed **Mono** label where linked pairs have the Mono switch, so the summing is visible (added 2026-10-29, at the user's request).
 - **One name per linked pair, and mid/side pairs** (added 2026-10-29, at the user's request): a linked input pair is named on its first row; its second row shows the pair's **L/R | M/S** switch (`in_ms_1` … `in_ms_32`, appended after the links, default L/R). Single inputs of a pair read "In 1 Keys L / R" or "In 1 Keys Mid / Side" in the menus, the pair "In 1/2 Keys". An M/S pair is decoded as a pair (left = M + S, right = M − S, as RKUtility) and its mono is the mid channel; routes became a weighted sum of up to two inputs (still bit-exact for a plain route). A linked output pair is named on its first row too. Tested: decode, mid on a single output and with Mono, the raw side alone.
 - **Window 1060 × 720.** Rows: number, name (double-click to edit), Source menu (inputs listed with their names; linked pairs only), trim slider, M, Ø, Mono, light, Link.

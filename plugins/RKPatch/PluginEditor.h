@@ -3,17 +3,17 @@
 #include "plugin/EditorBase.h"
 #include "gui/ResponseCurve.h"
 
-#include "RemapEngine.h"
+#include "PatchEngine.h"
 
 #include <array>
 
-class RKRemapProcessor;
+class RKPatchProcessor;
 
-class RKRemapEditor : public rkfx::EditorBase
+class RKPatchEditor : public rkfx::EditorBase
 {
 public:
-    explicit RKRemapEditor (RKRemapProcessor&);
-    ~RKRemapEditor() override;
+    explicit RKPatchEditor (RKPatchProcessor&);
+    ~RKPatchEditor() override;
 
 private:
     /** A signal light: off, present (above -60 dBFS), strong (above -20 dBFS). */
@@ -34,12 +34,12 @@ private:
         one, on its first row) but the pair's L/R | M/S switch. */
     struct InputRow : public juce::Component
     {
-        InputRow (RKRemapEditor&, int channel);
+        InputRow (RKPatchEditor&, int channel);
         void resized() override;
         void paint (juce::Graphics&) override;
         void updateLinked();
 
-        RKRemapEditor& owner;
+        RKPatchEditor& owner;
         const int channel;
         juce::Label name;
         Light light;
@@ -51,13 +51,13 @@ private:
     /** One output: number, name, Source, Trim, Mute, Polarity, Mono, light, Link. */
     struct OutputRow : public juce::Component
     {
-        OutputRow (RKRemapEditor&, int channel);
+        OutputRow (RKPatchEditor&, int channel);
         void resized() override;
         void paint (juce::Graphics&) override;
         void refreshSources();
         void updateLinked();
 
-        RKRemapEditor& owner;
+        RKPatchEditor& owner;
         const int channel;
         juce::Label name;
         juce::ComboBox source;
@@ -78,8 +78,8 @@ private:
         int shown = 16, rowHeight = 30;
     };
 
-    RKRemapProcessor& remap;
-    RemapEngine::Settings settings;
+    RKPatchProcessor& patch;
+    PatchEngine::Settings settings;
     rkfx::ParameterWatcher watcher;
 
     std::vector<std::unique_ptr<InputRow>> inputRows;
@@ -107,5 +107,5 @@ private:
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKRemapEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RKPatchEditor)
 };

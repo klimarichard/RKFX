@@ -7,7 +7,7 @@ namespace
     constexpr int kTitleHeight = 26;
     constexpr int kInputsWidth = 330;
     constexpr int kRowHeight = 30;
-    constexpr int kChannels = RemapEngine::kChannels;
+    constexpr int kChannels = PatchEngine::kChannels;
     constexpr float kPresentDb = -60.0f, kStrongDb = -20.0f;
 
     void styleName (juce::Label& label, const juce::String& placeholder)
@@ -23,7 +23,7 @@ namespace
 }
 
 //==============================================================================
-void RKRemapEditor::Light::setPeak (float peak)
+void RKPatchEditor::Light::setPeak (float peak)
 {
     const auto db = juce::Decibels::gainToDecibels (peak, -120.0f);
     const auto next = db >= kStrongDb ? 2 : db >= kPresentDb ? 1 : 0;
@@ -34,7 +34,7 @@ void RKRemapEditor::Light::setPeak (float peak)
     }
 }
 
-void RKRemapEditor::Light::paint (juce::Graphics& g)
+void RKPatchEditor::Light::paint (juce::Graphics& g)
 {
     const auto r = getLocalBounds().toFloat().withSizeKeepingCentre (10.0f, 10.0f);
     g.setColour (level == 2 ? accent : level == 1 ? accent.withAlpha (0.4f) : rkfx::Palette::knobBody);
@@ -42,27 +42,27 @@ void RKRemapEditor::Light::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-RKRemapEditor::InputRow::InputRow (RKRemapEditor& o, int ch) : owner (o), channel (ch), light (o.accent())
+RKPatchEditor::InputRow::InputRow (RKPatchEditor& o, int ch) : owner (o), channel (ch), light (o.accent())
 {
     styleName (name, "Input " + juce::String (ch + 1));
-    name.setText (o.remap.getInputName (ch), juce::dontSendNotification);
-    name.onTextChange = [this] { owner.remap.setInputName (channel, name.getText()); };
+    name.setText (o.patch.getInputName (ch), juce::dontSendNotification);
+    name.onTextChange = [this] { owner.patch.setInputName (channel, name.getText()); };
     addAndMakeVisible (name);
     addAndMakeVisible (light);
 
     if (ch % 2 == 0)
     {
-        link = std::make_unique<rkfx::ToggleSwitch> (*o.remap.findParam (RemapParams::inputLinkId (ch / 2)), o.accent(), "Link");
+        link = std::make_unique<rkfx::ToggleSwitch> (*o.patch.findParam (PatchParams::inputLinkId (ch / 2)), o.accent(), "Link");
         addAndMakeVisible (*link);
     }
     else
     {
-        pairMode = std::make_unique<rkfx::SegmentedSwitch> (*o.remap.findParam (RemapParams::inputMidSideId (ch / 2)), o.accent());
+        pairMode = std::make_unique<rkfx::SegmentedSwitch> (*o.patch.findParam (PatchParams::inputMidSideId (ch / 2)), o.accent());
         addChildComponent (*pairMode);
     }
 }
 
-void RKRemapEditor::InputRow::updateLinked()
+void RKPatchEditor::InputRow::updateLinked()
 {
     follower = channel % 2 == 1 && owner.settings.inputLinks[(size_t) (channel / 2)];
     name.setVisible (! follower);
@@ -71,7 +71,7 @@ void RKRemapEditor::InputRow::updateLinked()
     repaint();
 }
 
-void RKRemapEditor::InputRow::resized()
+void RKPatchEditor::InputRow::resized()
 {
     auto r = getLocalBounds().reduced (4, 3);
     r.removeFromLeft (30);
@@ -87,7 +87,7 @@ void RKRemapEditor::InputRow::resized()
         pairMode->setBounds (r.withWidth (juce::jmin (r.getWidth(), 120)));
 }
 
-void RKRemapEditor::InputRow::paint (juce::Graphics& g)
+void RKPatchEditor::InputRow::paint (juce::Graphics& g)
 {
     const auto linked = owner.settings.inputLinks[(size_t) (channel / 2)];
     if (linked)
@@ -106,14 +106,14 @@ void RKRemapEditor::InputRow::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-RKRemapEditor::OutputRow::OutputRow (RKRemapEditor& o, int ch) : owner (o), channel (ch), light (o.accent())
+RKPatchEditor::OutputRow::OutputRow (RKPatchEditor& o, int ch) : owner (o), channel (ch), light (o.accent())
 {
-    using RemapParams::outputId;
-    auto& p = o.remap;
+    using PatchParams::outputId;
+    auto& p = o.patch;
 
     styleName (name, "Output " + juce::String (ch + 1));
     name.setText (p.getOutputName (ch), juce::dontSendNotification);
-    name.onTextChange = [this] { owner.remap.setOutputName (channel, name.getText()); };
+    name.onTextChange = [this] { owner.patch.setOutputName (channel, name.getText()); };
 
     // Source: item IDs are the parameter values + 1; only linked pairs are offered.
     auto& sourceParam = *p.findParam (outputId (ch, "source"));
@@ -137,7 +137,7 @@ RKRemapEditor::OutputRow::OutputRow (RKRemapEditor& o, int ch) : owner (o), chan
                                                     juce::String (juce::CharPointer_UTF8 ("\xc3\x98")));
     mono = std::make_unique<rkfx::ToggleSwitch> (*p.findParam (outputId (ch, "mono")), o.accent(), "Mono");
     if (ch % 2 == 0)
-        link = std::make_unique<rkfx::ToggleSwitch> (*p.findParam (RemapParams::outputLinkId (ch / 2)), o.accent(), "Link");
+        link = std::make_unique<rkfx::ToggleSwitch> (*p.findParam (PatchParams::outputLinkId (ch / 2)), o.accent(), "Link");
 
     monoNote.setText ("Mono", juce::dontSendNotification);
     monoNote.setFont (rkfx::Fonts::regular (12.0f));
@@ -155,24 +155,24 @@ RKRemapEditor::OutputRow::OutputRow (RKRemapEditor& o, int ch) : owner (o), chan
     sourceAttachment->sendInitialUpdate();
 }
 
-void RKRemapEditor::OutputRow::refreshSources()
+void RKPatchEditor::OutputRow::refreshSources()
 {
-    const auto selected = juce::roundToInt (rkfx::ProcessorBase::valueOf (owner.remap.findParam (RemapParams::outputId (channel, "source"))));
+    const auto selected = juce::roundToInt (rkfx::ProcessorBase::valueOf (owner.patch.findParam (PatchParams::outputId (channel, "source"))));
     source.clear (juce::dontSendNotification);
     source.addItem ("Off", 1);
     for (int v = 1; v <= kChannels; ++v)
         source.addItem (owner.sourceText (v), v + 1);
     source.addSeparator();
-    for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
+    for (int pair = 0; pair < PatchEngine::kPairs; ++pair)
     {
-        const auto v = RemapEngine::kFirstPairSource + pair;
+        const auto v = PatchEngine::kFirstPairSource + pair;
         if (owner.settings.inputLinks[(size_t) pair] || v == selected)
             source.addItem (owner.sourceText (v), v + 1);
     }
     source.setSelectedId (selected + 1, juce::dontSendNotification);
 }
 
-void RKRemapEditor::OutputRow::updateLinked()
+void RKPatchEditor::OutputRow::updateLinked()
 {
     // The second output of a linked pair: no controls and no name of its own (the pair has one).
     follower = channel % 2 == 1 && owner.settings.outputLinks[(size_t) (channel / 2)];
@@ -181,8 +181,8 @@ void RKRemapEditor::OutputRow::updateLinked()
 
     // Mono: on the left output of a linked pair whose source is a linked input pair.
     const auto& o = owner.settings.outputs[(size_t) channel];
-    const auto pairSource = o.source >= RemapEngine::kFirstPairSource
-                         && owner.settings.inputLinks[(size_t) juce::jlimit (0, RemapEngine::kPairs - 1, o.source - RemapEngine::kFirstPairSource)];
+    const auto pairSource = o.source >= PatchEngine::kFirstPairSource
+                         && owner.settings.inputLinks[(size_t) juce::jlimit (0, PatchEngine::kPairs - 1, o.source - PatchEngine::kFirstPairSource)];
     const auto linkedOutput = owner.settings.outputLinks[(size_t) (channel / 2)];
     mono->setVisible (! follower && channel % 2 == 0 && linkedOutput && pairSource);
 
@@ -191,7 +191,7 @@ void RKRemapEditor::OutputRow::updateLinked()
     repaint();
 }
 
-void RKRemapEditor::OutputRow::resized()
+void RKPatchEditor::OutputRow::resized()
 {
     auto r = getLocalBounds().reduced (4, 3);
     r.removeFromLeft (34);
@@ -216,7 +216,7 @@ void RKRemapEditor::OutputRow::resized()
     name.setBounds (r);
 }
 
-void RKRemapEditor::OutputRow::paint (juce::Graphics& g)
+void RKPatchEditor::OutputRow::paint (juce::Graphics& g)
 {
     const auto linked = owner.settings.outputLinks[(size_t) (channel / 2)];
     if (linked)
@@ -236,7 +236,7 @@ void RKRemapEditor::OutputRow::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-void RKRemapEditor::List::resized()
+void RKPatchEditor::List::resized()
 {
     for (size_t i = 0; i < rows.size(); ++i)
     {
@@ -246,9 +246,9 @@ void RKRemapEditor::List::resized()
 }
 
 //==============================================================================
-RKRemapEditor::RKRemapEditor (RKRemapProcessor& p)
+RKPatchEditor::RKPatchEditor (RKPatchProcessor& p)
     : rkfx::EditorBase (p, 1060, 720),
-      remap (p),
+      patch (p),
       settings (p.currentSettings()),
       watcher (p, [this] { onParameterChange(); })
 {
@@ -277,8 +277,8 @@ RKRemapEditor::RKRemapEditor (RKRemapProcessor& p)
             box->addItem (juce::String (n), n);
         addToCanvas (*box);
     }
-    inputsShown.onChange = [this] { remap.setInputsShown (inputsShown.getSelectedId()); };
-    outputsShown.onChange = [this] { remap.setOutputsShown (outputsShown.getSelectedId()); };
+    inputsShown.onChange = [this] { patch.setInputsShown (inputsShown.getSelectedId()); };
+    outputsShown.onChange = [this] { patch.setOutputsShown (outputsShown.getSelectedId()); };
 
     for (auto* l : { &inputsShownLabel, &outputsShownLabel, &hiddenNote })
     {
@@ -293,27 +293,27 @@ RKRemapEditor::RKRemapEditor (RKRemapProcessor& p)
     onParameterChange();
     refreshNamesAndViews();
     finishSetup();
-    ++remap.windowsOpen;
+    ++patch.windowsOpen;
     lightTimer.startTimerHz (15);
 }
 
-RKRemapEditor::~RKRemapEditor()
+RKPatchEditor::~RKPatchEditor()
 {
-    --remap.windowsOpen;
+    --patch.windowsOpen;
     inputViewport.setViewedComponent (nullptr, false);
     outputViewport.setViewedComponent (nullptr, false);
 }
 
-juce::String RKRemapEditor::sourceText (int value) const
+juce::String RKPatchEditor::sourceText (int value) const
 {
-    auto text = RemapParams::sourceName (value);
-    if (value <= RemapEngine::kSourceOff)
+    auto text = PatchParams::sourceName (value);
+    if (value <= PatchEngine::kSourceOff)
         return text;
 
     if (value > kChannels)
     {
         // A pair: its one name.
-        if (const auto name = remap.getInputName ((value - RemapEngine::kFirstPairSource) * 2); name.isNotEmpty())
+        if (const auto name = patch.getInputName ((value - PatchEngine::kFirstPairSource) * 2); name.isNotEmpty())
             text << "  " << name;
         return text;
     }
@@ -324,20 +324,20 @@ juce::String RKRemapEditor::sourceText (int value) const
     {
         const auto first = input % 2 == 0;
         const auto side = settings.inputMidSide[(size_t) pair] ? (first ? "Mid" : "Side") : (first ? "L" : "R");
-        const auto name = remap.getInputName (pair * 2);
+        const auto name = patch.getInputName (pair * 2);
         text << "  " << (name.isNotEmpty() ? name + " " : juce::String()) << side;
         return text;
     }
 
-    if (const auto name = remap.getInputName (input); name.isNotEmpty())
+    if (const auto name = patch.getInputName (input); name.isNotEmpty())
         text << "  " << name;
     return text;
 }
 
-void RKRemapEditor::onParameterChange()
+void RKPatchEditor::onParameterChange()
 {
     const auto before = settings;
-    settings = remap.currentSettings();
+    settings = patch.currentSettings();
 
     const auto linksChanged = before.inputLinks != settings.inputLinks || before.inputMidSide != settings.inputMidSide;
     for (auto& row : outputRows)
@@ -352,24 +352,24 @@ void RKRemapEditor::onParameterChange()
 }
 
 
-void RKRemapEditor::refreshNamesAndViews()
+void RKPatchEditor::refreshNamesAndViews()
 {
-    lastNamesVersion = remap.getNamesVersion();
+    lastNamesVersion = patch.getNamesVersion();
 
     for (int ch = 0; ch < kChannels; ++ch)
     {
         if (! inputRows[(size_t) ch]->name.isBeingEdited())
-            inputRows[(size_t) ch]->name.setText (remap.getInputName (ch), juce::dontSendNotification);
+            inputRows[(size_t) ch]->name.setText (patch.getInputName (ch), juce::dontSendNotification);
         if (! outputRows[(size_t) ch]->name.isBeingEdited())
-            outputRows[(size_t) ch]->name.setText (remap.getOutputName (ch), juce::dontSendNotification);
+            outputRows[(size_t) ch]->name.setText (patch.getOutputName (ch), juce::dontSendNotification);
     }
     for (auto& row : outputRows)
         row->refreshSources();
 
-    inputsShown.setSelectedId (remap.getInputsShown(), juce::dontSendNotification);
-    outputsShown.setSelectedId (remap.getOutputsShown(), juce::dontSendNotification);
-    inputList.shown = remap.getInputsShown();
-    outputList.shown = remap.getOutputsShown();
+    inputsShown.setSelectedId (patch.getInputsShown(), juce::dontSendNotification);
+    outputsShown.setSelectedId (patch.getOutputsShown(), juce::dontSendNotification);
+    inputList.shown = patch.getInputsShown();
+    outputList.shown = patch.getOutputsShown();
     inputList.setSize (inputViewport.getMaximumVisibleWidth(), inputList.shown * kRowHeight);
     outputList.setSize (outputViewport.getMaximumVisibleWidth(), outputList.shown * kRowHeight);
     inputList.resized();
@@ -378,18 +378,18 @@ void RKRemapEditor::refreshNamesAndViews()
     repaint();
 }
 
-void RKRemapEditor::updateHiddenNote()
+void RKPatchEditor::updateHiddenNote()
 {
     // Hidden outputs carrying an input you can see: never unnoticed. (Hidden
     // outputs fed by hidden inputs, such as the straight-through default
     // beyond the shown channels, aren't counted.)
-    const auto inputs = remap.getInputsShown();
+    const auto inputs = patch.getInputsShown();
     int routed = 0;
-    for (int k = remap.getOutputsShown(); k < kChannels; ++k)
+    for (int k = patch.getOutputsShown(); k < kChannels; ++k)
     {
-        const auto route = RemapEngine::routeOf (settings, k);
+        const auto route = PatchEngine::routeOf (settings, k);
         const auto shownSource = (route.a >= 0 && route.a < inputs) || (route.b >= 0 && route.b < inputs);
-        if (shownSource && ! settings.outputs[(size_t) RemapEngine::leaderOf (settings, k)].mute)
+        if (shownSource && ! settings.outputs[(size_t) PatchEngine::leaderOf (settings, k)].mute)
             ++routed;
     }
     hiddenNote.setText (routed == 0 ? juce::String()
@@ -398,14 +398,14 @@ void RKRemapEditor::updateHiddenNote()
                         juce::dontSendNotification);
 }
 
-void RKRemapEditor::updateLights()
+void RKPatchEditor::updateLights()
 {
-    if (remap.getNamesVersion() != lastNamesVersion)
+    if (patch.getNamesVersion() != lastNamesVersion)
         refreshNamesAndViews();
 
     for (int ch = 0; ch < kChannels; ++ch)
     {
-        const auto in = remap.takeInputPeak (ch), out = remap.takeOutputPeak (ch);
+        const auto in = patch.takeInputPeak (ch), out = patch.takeOutputPeak (ch);
         if (ch < inputList.shown)
             inputRows[(size_t) ch]->light.setPeak (in);
         if (ch < outputList.shown)
@@ -414,10 +414,10 @@ void RKRemapEditor::updateLights()
 }
 
 //==============================================================================
-juce::Rectangle<int> RKRemapEditor::inputsArea() const  { return contentArea().withWidth (kInputsWidth); }
-juce::Rectangle<int> RKRemapEditor::outputsArea() const { return contentArea().withTrimmedLeft (kInputsWidth + kGap); }
+juce::Rectangle<int> RKPatchEditor::inputsArea() const  { return contentArea().withWidth (kInputsWidth); }
+juce::Rectangle<int> RKPatchEditor::outputsArea() const { return contentArea().withTrimmedLeft (kInputsWidth + kGap); }
 
-void RKRemapEditor::layoutContent()
+void RKPatchEditor::layoutContent()
 {
     inputViewport.setBounds (inputsArea().reduced (6, 0).withTrimmedTop (kTitleHeight).withTrimmedBottom (6));
     outputViewport.setBounds (outputsArea().reduced (6, 0).withTrimmedTop (kTitleHeight).withTrimmedBottom (6));
@@ -434,7 +434,7 @@ void RKRemapEditor::layoutContent()
     hiddenNote.setBounds (global);
 }
 
-void RKRemapEditor::paintContent (juce::Graphics& g)
+void RKPatchEditor::paintContent (juce::Graphics& g)
 {
     drawSection (g, inputsArea(), "Inputs");
     drawSection (g, outputsArea(), "Outputs: source, trim, mute, polarity");

@@ -1,6 +1,6 @@
-// RKRemap step 0: 64 inputs, 64 outputs, each input passed to the same-numbered
+// RKPatch step 0: 64 inputs, 64 outputs, each input passed to the same-numbered
 // output, and a light per input. Two layouts: one 64-channel bus each way
-// (REMAP_TEST_ONE_BUS=1), or 32 stereo buses each way.
+// (PATCH_TEST_ONE_BUS=1), or 32 stereo buses each way.
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -14,15 +14,15 @@ namespace
 
 }
 
-class RemapTestProcessor : public juce::AudioProcessor
+class PatchTestProcessor : public juce::AudioProcessor
 {
 public:
-    RemapTestProcessor() : juce::AudioProcessor (makeBuses()) {}
+    PatchTestProcessor() : juce::AudioProcessor (makeBuses()) {}
 
     static BusesProperties makeBuses()
     {
         BusesProperties buses;
-       #if REMAP_TEST_ONE_BUS
+       #if PATCH_TEST_ONE_BUS
         buses = buses.withInput ("Input", juce::AudioChannelSet::discreteChannels (kChannels), true)
                      .withOutput ("Output", juce::AudioChannelSet::discreteChannels (kChannels), true);
        #else
@@ -37,7 +37,7 @@ public:
     }
 
 
-    const juce::String getName() const override { return REMAP_TEST_NAME; }
+    const juce::String getName() const override { return PATCH_TEST_NAME; }
 
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override
     {
@@ -46,7 +46,7 @@ public:
             return false;
         for (int i = 0; i < layouts.inputBuses.size(); ++i)
         {
-           #if REMAP_TEST_ONE_BUS
+           #if PATCH_TEST_ONE_BUS
             const auto wanted = juce::AudioChannelSet::discreteChannels (kChannels);
            #else
             const auto wanted = juce::AudioChannelSet::stereo();
@@ -96,10 +96,10 @@ private:
     std::atomic<int> channelsSeen { 0 };
 };
 
-class RemapTestEditor : public juce::AudioProcessorEditor, private juce::Timer
+class PatchTestEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    explicit RemapTestEditor (RemapTestProcessor& p) : juce::AudioProcessorEditor (p), proc (p)
+    explicit PatchTestEditor (PatchTestProcessor& p) : juce::AudioProcessorEditor (p), proc (p)
     {
         setSize (660, 400);
         startTimerHz (15);
@@ -110,7 +110,7 @@ public:
         g.fillAll (juce::Colour (0xff1c1d20));
         g.setColour (juce::Colours::white);
         g.setFont (16.0f);
-        g.drawText (juce::String (REMAP_TEST_NAME) + ": each input to the same output. Channels in this block: "
+        g.drawText (juce::String (PATCH_TEST_NAME) + ": each input to the same output. Channels in this block: "
                         + juce::String (proc.getChannelsSeen()),
                     12, 8, getWidth() - 24, 24, juce::Justification::centredLeft);
 
@@ -127,7 +127,7 @@ public:
     }
 
 private:
-    RemapTestProcessor& proc;
+    PatchTestProcessor& proc;
     std::array<float, kChannels> held {};
 
     void timerCallback() override
@@ -138,6 +138,6 @@ private:
     }
 };
 
-juce::AudioProcessorEditor* RemapTestProcessor::createEditor() { return new RemapTestEditor (*this); }
+juce::AudioProcessorEditor* PatchTestProcessor::createEditor() { return new PatchTestEditor (*this); }
 
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new RemapTestProcessor(); }
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new PatchTestProcessor(); }

@@ -6,9 +6,10 @@ namespace
     rkfx::PluginConfig makeConfig()
     {
         rkfx::PluginConfig c;
-        c.name = "RKRemap";
+        c.name = "RKPatch";
+        c.formerNames = { "RKRemap" };
         c.stateVersion = 1;
-        c.channels = RemapEngine::kChannels;  // one 64-channel bus each way
+        c.channels = PatchEngine::kChannels;  // one 64-channel bus each way
         c.hasMix = false;
         c.hasOutput = false;                  // trims are per output
         c.extraInPresets = true;              // names and views belong to the patch
@@ -18,14 +19,14 @@ namespace
     }
 }
 
-RKRemapProcessor::RKRemapProcessor()
-    : rkfx::ProcessorBase (makeConfig(), RemapParams::create())
+RKPatchProcessor::RKPatchProcessor()
+    : rkfx::ProcessorBase (makeConfig(), PatchParams::create())
 {
-    using namespace RemapParams;
+    using namespace PatchParams;
     for (int k = 0; k < kChannels; ++k)
         outputParams[(size_t) k] = { findParam (outputId (k, "source")), findParam (outputId (k, "trim")), findParam (outputId (k, "mute")),
                                      findParam (outputId (k, "polarity")), findParam (outputId (k, "mono")) };
-    for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
+    for (int pair = 0; pair < PatchEngine::kPairs; ++pair)
     {
         inputLinks[(size_t) pair] = findParam (inputLinkId (pair));
         outputLinks[(size_t) pair] = findParam (outputLinkId (pair));
@@ -36,15 +37,15 @@ RKRemapProcessor::RKRemapProcessor()
         param->addListener (&changeListener);
 }
 
-RKRemapProcessor::~RKRemapProcessor()
+RKPatchProcessor::~RKPatchProcessor()
 {
     for (auto* param : getParameters())
         param->removeListener (&changeListener);
 }
 
-RemapEngine::Settings RKRemapProcessor::currentSettings() const
+PatchEngine::Settings RKPatchProcessor::currentSettings() const
 {
-    RemapEngine::Settings s;
+    PatchEngine::Settings s;
     for (int k = 0; k < kChannels; ++k)
     {
         const auto& p = outputParams[(size_t) k];
@@ -55,7 +56,7 @@ RemapEngine::Settings RKRemapProcessor::currentSettings() const
         o.polarity = valueOf (p.polarity) >= 0.5f;
         o.mono     = valueOf (p.mono) >= 0.5f;
     }
-    for (int pair = 0; pair < RemapEngine::kPairs; ++pair)
+    for (int pair = 0; pair < PatchEngine::kPairs; ++pair)
     {
         s.inputLinks[(size_t) pair] = valueOf (inputLinks[(size_t) pair]) >= 0.5f;
         s.outputLinks[(size_t) pair] = valueOf (outputLinks[(size_t) pair]) >= 0.5f;
@@ -65,19 +66,19 @@ RemapEngine::Settings RKRemapProcessor::currentSettings() const
 }
 
 //==============================================================================
-juce::String RKRemapProcessor::getInputName (int channel) const
+juce::String RKPatchProcessor::getInputName (int channel) const
 {
     const juce::ScopedLock sl (namesLock);
     return inputNames[(size_t) channel];
 }
 
-juce::String RKRemapProcessor::getOutputName (int channel) const
+juce::String RKPatchProcessor::getOutputName (int channel) const
 {
     const juce::ScopedLock sl (namesLock);
     return outputNames[(size_t) channel];
 }
 
-void RKRemapProcessor::setInputName (int channel, const juce::String& name)
+void RKPatchProcessor::setInputName (int channel, const juce::String& name)
 {
     {
         const juce::ScopedLock sl (namesLock);
@@ -87,7 +88,7 @@ void RKRemapProcessor::setInputName (int channel, const juce::String& name)
     markPresetModified();
 }
 
-void RKRemapProcessor::setOutputName (int channel, const juce::String& name)
+void RKPatchProcessor::setOutputName (int channel, const juce::String& name)
 {
     {
         const juce::ScopedLock sl (namesLock);
@@ -97,21 +98,21 @@ void RKRemapProcessor::setOutputName (int channel, const juce::String& name)
     markPresetModified();
 }
 
-void RKRemapProcessor::setInputsShown (int n)
+void RKPatchProcessor::setInputsShown (int n)
 {
     inputsShown = juce::jlimit (1, kChannels, n);
     ++namesVersion;
     markPresetModified();
 }
 
-void RKRemapProcessor::setOutputsShown (int n)
+void RKPatchProcessor::setOutputsShown (int n)
 {
     outputsShown = juce::jlimit (1, kChannels, n);
     ++namesVersion;
     markPresetModified();
 }
 
-juce::var RKRemapProcessor::getExtraState() const
+juce::var RKPatchProcessor::getExtraState() const
 {
     auto* root = new juce::DynamicObject();
     juce::Array<juce::var> ins, outs;
@@ -130,7 +131,7 @@ juce::var RKRemapProcessor::getExtraState() const
     return juce::var (root);
 }
 
-void RKRemapProcessor::setExtraState (const juce::var& extra)
+void RKPatchProcessor::setExtraState (const juce::var& extra)
 {
     // A missing state (an older preset, Reset) means no names and the default views.
     {
@@ -149,21 +150,21 @@ void RKRemapProcessor::setExtraState (const juce::var& extra)
 }
 
 //==============================================================================
-void RKRemapProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
+void RKPatchProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
     settingsChanged = false;
     engine.setSettings (currentSettings());
     engine.prepare (sampleRate, maxBlockSize);
 }
 
-void RKRemapProcessor::resetDsp()
+void RKPatchProcessor::resetDsp()
 {
     settingsChanged = false;
     engine.setSettings (currentSettings());
     engine.reset();
 }
 
-void RKRemapProcessor::processDsp (juce::AudioBuffer<float>& buffer)
+void RKPatchProcessor::processDsp (juce::AudioBuffer<float>& buffer)
 {
     if (settingsChanged.exchange (false))
         engine.setSettings (currentSettings());
@@ -186,15 +187,15 @@ void RKRemapProcessor::processDsp (juce::AudioBuffer<float>& buffer)
     }
 }
 
-juce::AudioProcessorEditor* RKRemapProcessor::createEditor()
+juce::AudioProcessorEditor* RKPatchProcessor::createEditor()
 {
-    return new RKRemapEditor (*this);
+    return new RKPatchEditor (*this);
 }
 
 // The plugin's entry point; RKBoard holds every plugin and has its own.
 #if ! RKFX_BOARD
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new RKRemapProcessor();
+    return new RKPatchProcessor();
 }
 #endif

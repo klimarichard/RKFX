@@ -63,7 +63,7 @@ set(RKFX_PLUGINS
     RKRide
     RKHold
     RKPolyPitch
-    RKRemap
+    RKPatch
 )
 foreach(plugin IN LISTS RKFX_PLUGINS)
     add_subdirectory(plugins/${plugin})
@@ -102,10 +102,10 @@ add_subdirectory(plugins/RKMix)
 # The music player for intermissions and receptions (a source, not a pedal or an insert).
 add_subdirectory(plugins/RKPlay)
 
-# RKRemap step 0: two throwaway 64-channel test plugins (off by default).
-option(RKFX_BUILD_REMAP_TEST "Build the RKRemap 64-channel test plugins" OFF)
-if(RKFX_BUILD_REMAP_TEST)
-    add_subdirectory(tools/remap-test)
+# RKPatch step 0: two throwaway 64-channel test plugins (off by default).
+option(RKFX_BUILD_PATCH_TEST "Build the RKPatch 64-channel test plugins" OFF)
+if(RKFX_BUILD_PATCH_TEST)
+    add_subdirectory(tools/patch-test)
 endif()
 
 # ---------------------------------------------------------------------------

@@ -133,7 +133,7 @@ juce::String PresetFormat::toJson (const juce::var& preset)
 
 PresetReadResult PresetFormat::read (const juce::String& json, const juce::String& expectedPlugin,
                                      int currentVersion, const std::vector<ParamInfo>& params,
-                                     const PresetMigration& migrate)
+                                     const PresetMigration& migrate, const juce::StringArray& formerNames)
 {
     PresetReadResult result;
     result.values = defaults (params);
@@ -146,7 +146,7 @@ PresetReadResult PresetFormat::read (const juce::String& json, const juce::Strin
     }
 
     const auto plugin = root["plugin"].toString();
-    if (plugin != expectedPlugin)
+    if (plugin != expectedPlugin && ! formerNames.contains (plugin))
     {
         result.error = plugin.isEmpty() ? "Not a preset file (no plugin name)"
                                         : "This preset is for " + plugin + ", not " + expectedPlugin;

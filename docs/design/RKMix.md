@@ -49,9 +49,9 @@ The drawing shows Aux sends at their default, Pre-Fader. Each send can tap the s
 
 ## Inputs and channels
 
-- **Link** (between each pair): a linked pair is one stereo channel with one set of controls, those of its left (odd) input. The right input's own settings are kept but unused while linked, as in RKRemap. A pair has **one name**.
+- **Link** (between each pair): a linked pair is one stereo channel with one set of controls, those of its left (odd) input. The right input's own settings are kept but unused while linked, as in RKPatch. A pair has **one name**.
 - **Per channel:** a name, a colour (one of 8 strip colours), and a **signal light**.
-- **Channels shown** (1 to 32, default 16) only changes the view. A hidden channel that reaches the main or a bus is counted in a note, as RKRemap's hidden-routes note does.
+- **Channels shown** (1 to 32, default 16) only changes the view. A hidden channel that reaches the main or a bus is counted in a note, as RKPatch's hidden-routes note does.
 
 ## The fixed strip
 
@@ -70,7 +70,7 @@ Every section has an **On** switch. An off section is skipped entirely (bit-exac
 - **The DSP is the suite's own:** the HPF from `core/dsp/StateVariableFilter.h` / `FilterCascade.h`, the EQ bands from `MatchedBiquad.h` (as RKParaEQ), the gate and compressor from `core/dsp/Dynamics.h` (the engines RKGate and RKCompress use). It is reused at the level of the DSP classes, not as whole plugins, so a channel strip costs a few filters and two detectors.
 - **Key** feeds the gate's or the compressor's detector from another input (after that input's Trim), for a kick-keyed bass gate or music ducking under a voice. Because the key is taken from the raw trimmed input, it doesn't depend on processing order.
 - **A stereo channel** runs one detector on the louder side, so both sides gate and compress together.
-- **EQ coefficients** are computed only when a value changes (a scene glide recomputes them every 32 samples while it runs), never per block for steady settings. This is RKRemap's lesson.
+- **EQ coefficients** are computed only when a value changes (a scene glide recomputes them every 32 samples while it runs), never per block for steady settings. This is RKPatch's lesson.
 
 ## Fader, pan, routing
 
@@ -142,7 +142,7 @@ Selecting an **Aux or FX bus** in the mixer view switches every channel's fader 
 
 ## Outputs
 
-The 32 outputs are fed by the main pair, the mono sum, the buses' outputs, the channels' direct outs and the cue output. **Several sources on one output add up**, and the routing page marks that output in the accent colour with a note ("Out 3: Bus 1 + Bus 4"). An output nothing feeds is silent. Outputs have names (as in RKRemap) for the routing page.
+The 32 outputs are fed by the main pair, the mono sum, the buses' outputs, the channels' direct outs and the cue output. **Several sources on one output add up**, and the routing page marks that output in the accent colour with a note ("Out 3: Bus 1 + Bus 4"). An output nothing feeds is silent. Outputs have names (as in RKPatch) for the routing page.
 
 ### Direct outs (added 2026-10-30, feat/rkmix-directouts)
 
@@ -302,15 +302,15 @@ About **1280 × 880 px**, scaling as usual, in three areas:
 - **User pages (added 2026-10-30, feat/rkmix-userpages):** two pages of up to 16 strips the user picks, channels (a linked pair once) and buses mixed, in the order picked. Right-click a User button for a three-column chooser (inputs 1–16, 17–32, buses; it reopens after each tick so several go in a row; Clear), or right-click any strip: "On User 1/2". Clicking an empty page opens the chooser. Saved with the mix (`userPages`, as "ch3"/"bus2"), cleared by Reset; scenes leave them alone. A follower channel picked before its pair was linked shows as the pair.
 - **Master section (right, always visible):** main and mono faders with meters, the cue output's level, the Solo mode/PFL-AFL switches with the solo indicator (and Clear solo), and the scene bar.
 
-Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is open** and only for the strips on screen, at about 15 fps. This is RKRemap's other CPU lesson.
+Meters (peak plus a hold, −60 to 0 dBFS) are measured **only while a window is open** and only for the strips on screen, at about 15 fps. This is RKPatch's other CPU lesson.
 
 ## Identity
 
 - **AU code** `Mix1`, bundle ID `com.rkmusic.rkmix`, a music effect (`aumf`) with MIDI in, as RKBoard (inserts with MIDI input, program change for scenes), and MIDI out (`PluginConfig::midiOutput`, see MIDI out). AU, VST3, Standalone.
 - **Utility family**, accent proposal **steel `#6B8CA6`** (not used by another plugin).
-- **One bus of 32 discrete channels** each way (`PluginConfig::channels = 32`). RKRemap's Step 0 confirmed in Gig Performer that one 64-channel bus works as AU and VST3, so no new step 0 is needed.
+- **One bus of 32 discrete channels** each way (`PluginConfig::channels = 32`). RKPatch's Step 0 confirmed in Gig Performer that one 64-channel bus works as AU and VST3, so no new step 0 is needed.
 - **Not an RKBoard pedal**: the board's chain is stereo. RKBoard can't be an insert either.
-- **Host bypass = silence** on every output (unlike RKRemap's straight-through: raw inputs on the PA and in-ears would be worse than nothing). It fades out and in over 10 ms. **Core change:** a `PluginConfig` option for bypass to mute rather than pass the dry signal (e.g. `bypassMutes`).
+- **Host bypass = silence** on every output (unlike RKPatch's straight-through: raw inputs on the PA and in-ears would be worse than nothing). It fades out and in over 10 ms. **Core change:** a `PluginConfig` option for bypass to mute rather than pass the dry signal (e.g. `bypassMutes`).
 
 ## Architecture
 

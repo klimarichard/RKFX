@@ -1,13 +1,13 @@
-#include "RemapEngine.h"
+#include "PatchEngine.h"
 
 #include <cmath>
 
-int RemapEngine::leaderOf (const Settings& s, int output)
+int PatchEngine::leaderOf (const Settings& s, int output)
 {
     return (output % 2 == 1 && s.outputLinks[(size_t) (output / 2)]) ? output - 1 : output;
 }
 
-RemapEngine::Route RemapEngine::routeOf (const Settings& s, int output)
+PatchEngine::Route PatchEngine::routeOf (const Settings& s, int output)
 {
     const auto leader = leaderOf (s, output);
     const auto& o = s.outputs[(size_t) leader];
@@ -41,7 +41,7 @@ RemapEngine::Route RemapEngine::routeOf (const Settings& s, int output)
     return { first, second, 0.5f, 0.5f };       // a single output, or Mono: the average
 }
 
-float RemapEngine::gainFor (int output) const noexcept
+float PatchEngine::gainFor (int output) const noexcept
 {
     const auto& o = settings.outputs[(size_t) leaderOf (settings, output)];
     if (o.mute)
@@ -53,7 +53,7 @@ float RemapEngine::gainFor (int output) const noexcept
     return o.polarity ? -g : g;
 }
 
-void RemapEngine::prepare (double newSampleRate, int maxBlockSize)
+void PatchEngine::prepare (double newSampleRate, int maxBlockSize)
 {
     sampleRate = newSampleRate;
     fadeSamples = juce::jmax (1, (int) std::lround (kFadeSeconds * sampleRate));
@@ -61,7 +61,7 @@ void RemapEngine::prepare (double newSampleRate, int maxBlockSize)
     reset();
 }
 
-void RemapEngine::reset()
+void PatchEngine::reset()
 {
     for (int k = 0; k < kChannels; ++k)
     {
@@ -75,7 +75,7 @@ void RemapEngine::reset()
     outputPeaks.fill (0.0f);
 }
 
-void RemapEngine::setSettings (const Settings& s)
+void PatchEngine::setSettings (const Settings& s)
 {
     settings = s;
 
@@ -101,21 +101,21 @@ void RemapEngine::setSettings (const Settings& s)
     }
 }
 
-float RemapEngine::takeInputPeak (int channel) noexcept
+float PatchEngine::takeInputPeak (int channel) noexcept
 {
     const auto p = inputPeaks[(size_t) channel];
     inputPeaks[(size_t) channel] = 0.0f;
     return p;
 }
 
-float RemapEngine::takeOutputPeak (int channel) noexcept
+float PatchEngine::takeOutputPeak (int channel) noexcept
 {
     const auto p = outputPeaks[(size_t) channel];
     outputPeaks[(size_t) channel] = 0.0f;
     return p;
 }
 
-void RemapEngine::process (float* const* io, int numChannels, int numSamples, bool measure, const float* const* input) noexcept
+void PatchEngine::process (float* const* io, int numChannels, int numSamples, bool measure, const float* const* input) noexcept
 {
     numChannels = juce::jmin (numChannels, kChannels);
     numSamples = juce::jmin (numSamples, inputs.getNumSamples());

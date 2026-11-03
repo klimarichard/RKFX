@@ -51,7 +51,7 @@ A dimmed knob belongs to a section that is currently switched off or has no effe
 | --- | --- | --- |
 | **Dry/Wet** | 0 to 100% | Blends the original signal with the effect. 0% is only the original, 100% is only the effect. Uses an equal-power blend, so the middle doesn't dip in level. Only on plugins where blending makes musical sense (not on EQs, gates, limiters and similar). |
 | **Output** | -24 to +12 dB, default 0 dB | Level after the effect. |
-| **Bypass** | Off, on | Passes the original signal through untouched. Switching crossfades over about 10 ms, so it never clicks. While bypassed, the plugin uses almost no CPU. When switched back on, the effect starts fresh (no old echoes or tails). |
+| **Bypass** | Off, on | Passes the original signal through untouched. Switching crossfades over about 10 ms, so it never clicks. While bypassed, the plugin uses almost no CPU. When switched back on, the effect starts fresh (no old echoes or tails); chorus, flanger, doubler and pitch effects first fill up for a few hundredths of a second, so their voices fade in smoothly instead of starting with a tick. |
 
 All changes glide over a few milliseconds, so turning a knob, moving a Gig Performer widget or switching a snapshot never produces zipper noise or clicks.
 

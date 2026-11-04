@@ -10,7 +10,7 @@
 // Copy each pair into the plugin's resources folder (ICON_BIG / ICON_SMALL
 // in its juce_add_plugin): RKModular/resources, RKSampler/resources,
 // RKTracks/resources, RKFX/plugins/RKBoard/resources, RKFX/plugins/RKMix/resources,
-// RKFX/plugins/RKPlay/resources.
+// RKFX/plugins/RKPlay/resources, RKSketch/resources.
 #include <juce_graphics/juce_graphics.h>
 #include <juce_events/juce_events.h>
 
@@ -24,6 +24,7 @@ namespace
         { "RKBoard",   "BOARD",   0xffe6e2d8 },
         { "RKMix",     "MIX",     0xff6b8ca6 },
         { "RKPlay",    "PLAY",    0xff6fa58a },
+        { "RKSketch",  "SKETCH",  0xffc5568f },
     };
 
     // Text whose ink is centred on (cx, cy). `size` = CSS font-size (em),

@@ -1,0 +1,23 @@
+{
+  "plugin": "RKCue",
+  "version": 1,
+  "name": "16 Pads, Gate",
+  "params": {
+    "s1_mode": "gate",
+    "s2_mode": "gate",
+    "s3_mode": "gate",
+    "s4_mode": "gate",
+    "s5_mode": "gate",
+    "s6_mode": "gate",
+    "s7_mode": "gate",
+    "s8_mode": "gate",
+    "s9_mode": "gate",
+    "s10_mode": "gate",
+    "s11_mode": "gate",
+    "s12_mode": "gate",
+    "s13_mode": "gate",
+    "s14_mode": "gate",
+    "s15_mode": "gate",
+    "s16_mode": "gate"
+  }
+}

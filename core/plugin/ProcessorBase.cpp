@@ -283,6 +283,7 @@ void ProcessorBase::sendMidi (const juce::MidiMessage& message, int sampleInChun
 void ProcessorBase::updateTransport()
 {
     transport.hasPosition = false;
+    transport.hasBpm = false;
     transport.playing = false;
 
     if (auto* playHead = getPlayHead())
@@ -290,7 +291,10 @@ void ProcessorBase::updateTransport()
         if (const auto position = playHead->getPosition())
         {
             if (const auto bpm = position->getBpm(); bpm.hasValue() && *bpm > 0.0)
+            {
                 transport.bpm = *bpm;
+                transport.hasBpm = true;
+            }
 
             if (const auto ppq = position->getPpqPosition(); ppq.hasValue())
             {

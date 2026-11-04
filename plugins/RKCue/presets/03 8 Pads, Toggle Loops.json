@@ -1,0 +1,23 @@
+{
+  "plugin": "RKCue",
+  "version": 1,
+  "name": "8 Pads, Toggle Loops",
+  "params": {
+    "s1_mode": "toggle",
+    "s1_loop": true,
+    "s2_mode": "toggle",
+    "s2_loop": true,
+    "s3_mode": "toggle",
+    "s3_loop": true,
+    "s4_mode": "toggle",
+    "s4_loop": true,
+    "s5_mode": "toggle",
+    "s5_loop": true,
+    "s6_mode": "toggle",
+    "s6_loop": true,
+    "s7_mode": "toggle",
+    "s7_loop": true,
+    "s8_mode": "toggle",
+    "s8_loop": true
+  }
+}

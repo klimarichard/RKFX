@@ -47,6 +47,7 @@
 #include "../plugins/RKStrum/Parameters.h"
 #include "../plugins/RKSustain/Parameters.h"
 #include "../plugins/RKConduct/Parameters.h"
+#include "../plugins/RKCue/Parameters.h"
 
 #include <cstdio>
 #include <functional>
@@ -92,6 +93,7 @@ public:
             { "RKHarmonize", HarmonizeParams::create, 7, 2 },
             { "RKArpeggiate", ArpParams::create, 6 },    { "RKStrum", StrumParams::create, 5 },
             { "RKSustain", SustainParams::create, 5 },   { "RKConduct", ConductParams::create, 7 },
+            { "RKCue", CueParams::create, 5 },
         };
 
         for (const auto& plugin : plugins)

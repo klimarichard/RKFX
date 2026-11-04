@@ -1,0 +1,8 @@
+{
+  "plugin": "RKCue",
+  "version": 1,
+  "name": "16 Pads from C1",
+  "params": {
+    "tempo_source": "file"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "plugin": "RKCue",
+  "version": 1,
+  "name": "Riff on the Keyboard",
+  "params": {
+    "s1_low": 48,
+    "s1_high": 72,
+    "s1_root": 60,
+    "s1_pitch": true,
+    "s1_poly": true
+  }
+}

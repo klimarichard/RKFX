@@ -75,7 +75,7 @@ With Host and Fixed, the file's events are placed in beats (quarter notes, from 
 
 ## Host parameters
 
-The slot settings are not host parameters; they are saved in the plugin's state and in presets (as RKConduct's track settings are). The host parameters are what you'd map to a Gig Performer widget:
+Every slot setting is a host parameter (`s1_low` … `s16_channel`, see As built), so factory presets can hold layouts and a widget can change a slot. The globals and buttons:
 
 | Parameter | ID | Range | Default |
 | --- | --- | --- | --- |
@@ -93,7 +93,7 @@ So a footswitch or a Gig Performer button can fire a slot with no keyboard at al
 
 About 900 × 560, MIDI family background.
 
-- **Top: keyboard map.** An 88-key strip (scrollable to the full 128) with each slot's zone drawn as a coloured bar above the keys, its root key marked. Drag a zone's ends to change Low and High; drag the marker to change the root. Keys light as notes come in.
+- **Top: keyboard map.** The whole 128-key range with each slot's zone drawn as a coloured bar above the keys, its root key marked. Drag a zone's ends to change Low and High; drag the marker to change the root. Keys light as notes come in.
 - **Left: 16 pads**, 4 × 4. Each shows the slot's number and name, and lights while a copy plays (with a thin progress line). Click a pad to select it; a small ▶ on the pad plays it (as Play *n*). Drop a .mid file from Finder onto a pad to load it.
 - **Right: the selected slot.** File name, **Load** and **Clear**, **Learn** (the next key you press sets Low = High = Root to that key; hold Shift and press two keys to learn a range), and the settings from the table above. Below: the file's track list (name, notes) and the file's length in bars and its tempo.
 - **Header:** presets and Bypass (Common Controls), Tempo Source, Tempo, Thru, Trigger Channel and **Stop All**.
@@ -151,7 +151,23 @@ Event-driven only, no audio. Expected well under 0.05 % CPU with 32 copies playi
 - Not in RKBoard (a MIDI effect, as RKConduct).
 - Manual `docs/manuals/RKCue.md` and the factory presets before merge.
 
-## Open questions
+## Decisions (2026-11-04)
+
+1. **No quantized start:** a trigger always starts on its own sample.
+2. **No per-track settings:** the slot's single Channel is enough.
+3. **No choke groups.**
+4. **16 slots.**
+
+## As built (2026-11-04)
+
+- **Slot settings are host parameters**, not extra state: 11 per slot (`s<n>_low`, `_high`, `_root`, `_pitch`, `_transpose`, `_drums`, `_mode`, `_loop`, `_poly`, `_velocity`, `_channel`), after the globals (`tempo_source`, `tempo`, `thru`, `trig_channel`, `stop_all`) and before `play_1..16`, `stop_1..16`: 213 parameters plus Bypass. That lets factory presets hold layouts with no core change, while the files (and the slots' names) are the extra state: base64 in the session, files in folder presets (`NN <name>.mid`).
+- **Keyboard map:** all 128 keys, no scrolling. Zones of slots without a file aren't drawn (except the selected slot's, dimmed). Overlapping zones are spread over up to 4 lanes.
+- **Learn:** click, then a key (Low = High = Root); Shift-click, then two keys (a range, Root = the first).
+- **Engine:** `plugins/RKCue/CueEngine` steps every copy per sample in beats; File tempo reads the tempo map with a per-copy cursor. A copy remembers, per file (channel, note), where its note went (16 × 128 × 2 bytes), and a shared count per (out channel, note) holds back a note-off while another copy sounds the note. Incoming notes are remembered as taken in or passed through, so a key's note-off always goes where its note-on went (Thru or a zone changed while held). A passed key that becomes a trigger while held gets its note-off.
+- **Core:** `core/midi/MidiSong.h` (shared reader, tempo map, header-only); RKConduct uses it. `Transport::hasBpm` says whether the host gave a tempo (Host falls back to the file's).
+- **Tests:** `tests/CueTests.cpp` (engine; mutation-checked: shared note count, Keep Drums, passed note-offs) and `tests/CuePresetTests.cpp` (folder presets, session, factory layouts keep files). auval and pluginval (strictness 10, with editor tests) pass.
+
+## Open questions (answered above)
 
 1. **Quantized start:** with Host tempo, should a trigger optionally wait for the host's next beat or bar (Start: Immediate / 1/4 / Bar)? Only meaningful while Gig Performer's transport/tempo is the band's clock.
 2. **Per-track settings** inside a slot (track on/off and channel, as RKConduct has), or is the slot's single Channel enough for v1?

@@ -62,6 +62,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 | [RKStrum](docs/manuals/RKStrum.md) | Strummer: chords spread out like a guitar strum, down, up or alternating | Available |
 | [RKSustain](docs/manuals/RKSustain.md) | Sustain, sostenuto, hold until the next chord, and latch, from a pedal or a footswitch | Available |
 | [RKConduct](docs/manuals/RKConduct.md) | MIDI file player conducted by taps: tap the beats (or bars, in any time signature), the notes in between follow your tempo | Available |
+| [RKCue](docs/manuals/RKCue.md) | MIDI file sampler: 16 slots of MIDI files played from keys or pads, one key each or a zone that transposes the file (play a riff in any key, or as chords); One-shot, Gate or Toggle, loops, at the file's, the host's or a fixed tempo | Available |
 | [RKEcho](docs/manuals/RKEcho.md) | MIDI echo: repeats in time that can climb (fifths, octaves, thirds in a key) and go to another instrument or bounce between two | Available |
 | [RKFollow](docs/manuals/RKFollow.md) | Pitch and expression to MIDI: a violin, voice or any single line plays a synth, with pitch bend (or MPE) and your dynamics as a controller; the audio passes through untouched | Available |
 | [RKTrigger](docs/manuals/RKTrigger.md) | Drum trigger: hits on a piezo, drum mic or instrument body to MIDI notes, one or two triggers, with crosstalk rejection | Available |
@@ -90,7 +91,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 - Note names use middle C (MIDI note 60) = C3, as Yamaha instruments and Cubase do.
 - RKCompress, RKGate and RKVocode have a second stereo input (Sidechain) for an external key or carrier signal.
 - RKVocode also accepts MIDI (to play its carrier), so it registers as a music effect (AU type `aumf`).
-- Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`. A plugin whose presets need files of their own saves each as a folder (`<name>/preset.json` plus those files): RKConduct's presets hold their MIDI file, so a copied preset still plays its song.
+- Presets are plain JSON files in `~/Music/RKMusic Plugins/RKFX/Presets/<Plugin>/`. A plugin whose presets need files of their own saves each as a folder (`<name>/preset.json` plus those files): RKConduct's presets hold their MIDI file and RKCue's its slots' MIDI files, so a copied preset still plays the same music.
 - Every plugin comes with factory presets (the starting points from its manual), built in and shown under **Factory** in the preset menu. Their source files are in `plugins/<Plugin>/presets/` and are compiled in automatically.
 
 ## Building
@@ -138,6 +139,7 @@ core/              shared code for every plugin
                    2x/4x oversampler,
                    dynamics (level detection, gain computer, gain smoothing),
                    peak limiter, loudness meter (EBU R128, true peak)
+  midi/            MIDI file reader (beats, tempo map) for RKConduct and RKCue
   safety/          smoothing, DC blocker, NaN guard, soft clipper
   gui/             rk_gui, the RKMusic look: palette, look and feel, knob,
                    fader, switches, response curve, gain reduction meter

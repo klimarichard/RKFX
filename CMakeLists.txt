@@ -78,6 +78,7 @@ set(RKFX_MIDI_PLUGINS
     RKStrum
     RKSustain
     RKConduct
+    RKCue
     RKFollow
     RKTrigger
     RKEcho

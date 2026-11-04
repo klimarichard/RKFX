@@ -9,6 +9,7 @@ namespace rkfx
 struct Transport
 {
     double bpm = 120.0;
+    bool hasBpm = false;        // the host gave a tempo this block (bpm keeps the last one otherwise)
     bool hasPosition = false;   // ppq is valid (the host provides a beat position)
     double ppq = 0.0;           // position in quarter notes
     bool playing = false;

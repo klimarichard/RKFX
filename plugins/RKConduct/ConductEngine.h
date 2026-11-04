@@ -2,6 +2,8 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
+#include "midi/MidiSong.h"
+
 #include <array>
 #include <atomic>
 #include <memory>
@@ -36,26 +38,14 @@ class ConductEngine
 public:
     static constexpr int kMaxTracks = 16;
 
-    struct TrackInfo
-    {
-        juce::String name;
-        int notes = 0;
-    };
-
-    /** A MIDI file, ready to play: every track's events in beats. */
-    struct Song
-    {
-        struct Event { double beat; int track; juce::MidiMessage message; };
-        std::vector<Event> events;              // by beat
-        std::vector<TrackInfo> tracks;          // up to kMaxTracks
-        double lengthBeats = 0.0;
-        double tempoBpm = 120.0;                // the file's first tempo
-    };
+    /** A MIDI file, ready to play: every track's events in beats (the shared reader). */
+    using Song = rkfx::MidiSong;
+    using TrackInfo = rkfx::MidiSong::TrackInfo;
 
     /** Reads a Standard MIDI File (nullptr when it isn't one). Tracks
         beyond kMaxTracks are left out. */
-    static std::unique_ptr<Song> makeSong (const juce::MidiFile&);
-    static std::unique_ptr<Song> makeSong (const juce::MemoryBlock& fileData);
+    static std::unique_ptr<Song> makeSong (const juce::MidiFile& f)          { return Song::read (f, kMaxTracks); }
+    static std::unique_ptr<Song> makeSong (const juce::MemoryBlock& data)    { return Song::read (data, kMaxTracks); }
 
     struct Settings
     {

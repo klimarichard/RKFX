@@ -84,7 +84,7 @@ The header shows the current preset name. A `*` after the name means you have ch
 
 - The library sits under Music rather than Documents, so iCloud's "Desktop & Documents" sync can never move your presets to the cloud.
 - **Default.json:** save a preset with this name, and every new instance of that plugin starts with it.
-- **Folder presets:** a plugin whose presets need files of their own (RKConduct's MIDI file) saves each preset as a folder: the folder's name is the preset's name, and it holds `preset.json` and those files. Such a folder shows in the menu as one preset, not a sub-menu, and is copied or shared as a whole. **Save as** asks for the folder's name. A folder named **Default** works like Default.json.
+- **Folder presets:** a plugin whose presets need files of their own (RKConduct's MIDI file, RKCue's slot files) saves each preset as a folder: the folder's name is the preset's name, and it holds `preset.json` and those files. Such a folder shows in the menu as one preset, not a sub-menu, and is copied or shared as a whole. **Save as** asks for the folder's name. A folder named **Default** works like Default.json.
 - Preset files are plain, readable text (JSON) and can be copied, shared and backed up like any file. A preset holds only the settings that differ from the defaults.
 - If a preset contains something the plugin doesn't understand (for example a value edited by hand), that value is skipped, the default is used instead, and a short note appears in the header. A preset never fails to load because of one bad value.
 
@@ -98,6 +98,6 @@ Every control (including Bypass) is exposed as a parameter, so you can map it to
 
 ## MIDI effects
 
-The MIDI family (RKHarmonize, RKArpeggiate, RKStrum, RKSustain, RKConduct, RKEcho) works on MIDI, not audio: notes come in, notes go out, so they go between a MIDI input and an instrument in Gig Performer. They have the same header and presets, but no Dry/Wet and no Output, only **Bypass**: bypassed, MIDI passes through unchanged, and any note the effect was playing ends first, so nothing hangs.
+The MIDI family (RKHarmonize, RKArpeggiate, RKStrum, RKSustain, RKConduct, RKCue, RKEcho) works on MIDI, not audio: notes come in, notes go out, so they go between a MIDI input and an instrument in Gig Performer. They have the same header and presets, but no Dry/Wet and no Output, only **Bypass**: bypassed, MIDI passes through unchanged, and any note the effect was playing ends first, so nothing hangs.
 
 Two members of the family listen to **audio** and send MIDI: **RKFollow** (pitch and expression to MIDI) and **RKTrigger** (hits to MIDI). They sit on an instrument's audio, which they pass through untouched (RKTrigger can also mute it), and their MIDI output is wired to a synth or sampler. They too have only **Bypass**, which ends any note they're sounding.

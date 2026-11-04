@@ -47,6 +47,7 @@ set(RKFX_ENGINE_PLUGINS
     RKStrum/StrumEngine
     RKSustain/SustainEngine
     RKConduct/ConductEngine
+    RKCue/CueEngine
 )
 
 set(RKFX_ENGINE_SOURCES "")
@@ -105,6 +106,7 @@ target_sources(RKFXTests PRIVATE
     StrumTests.cpp
     SustainTests.cpp
     ConductTests.cpp
+    CueTests.cpp
     MultiCompTests.cpp
     RideTests.cpp
     ShimmerTests.cpp
@@ -245,3 +247,26 @@ target_link_libraries(RKConductTests
         juce::juce_recommended_warning_flags
 )
 add_test(NAME RKConductTests COMMAND RKConductTests)
+
+# RKCue: its presets are folders (preset.json and the slots' MIDI files).
+juce_add_console_app(RKCueTests PRODUCT_NAME "RKCueTests")
+target_sources(RKCueTests PRIVATE
+    CuePresetTests.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKCue/PluginProcessor.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKCue/PluginEditor.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKCue/CueEngine.cpp
+    ${CMAKE_BINARY_DIR}/plugins/RKCue/FactoryPresetList.cpp
+)
+target_include_directories(RKCueTests PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKCue)
+target_compile_definitions(RKCueTests PRIVATE RKFX_BOARD=1 JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 RKFX_FACTORY_PRESET_LIST=factoryPresetList_RKCue)
+target_link_libraries(RKCueTests
+    PRIVATE
+        RKCue_FactoryPresets
+        rkfx_core
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags
+)
+add_test(NAME RKCueTests COMMAND RKCueTests)

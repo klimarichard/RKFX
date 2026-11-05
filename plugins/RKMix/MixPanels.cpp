@@ -734,6 +734,12 @@ RKMixEditor::BusPanel::BusPanel (RKMixEditor& o, int b) : Panel (o), bus (b)
     sendsOnFader.onClick = [this] { owner.setSendsOnFader (owner.sendsOnFader == bus ? -1 : bus); };
     addAndMakeVisible (sendsOnFader);
 
+    monitorEqButton.setClickingTogglesState (false);
+    monitorEqButton.setColour (juce::TextButton::buttonOnColourId, accent);
+    monitorEqButton.setTooltip ("Measure this wedge or in-ear mix and suggest an RKGraphEQ curve for it");
+    monitorEqButton.onClick = [this] { showMonitorEq (monitorEq == nullptr); };
+    addChildComponent (monitorEqButton);
+
     type = make<rkfx::SegmentedSwitch> (param ("type"), accent, juce::StringArray { "Group", "Aux", "FX" }, "Type");
     format = make<rkfx::SegmentedSwitch> (param ("format"), accent, juce::StringArray { "Mono", "Stereo" }, "Format");
     output = make<ChoiceBox> (param ("out"), targetName, kFirstPairTarget);
@@ -771,6 +777,9 @@ void RKMixEditor::BusPanel::refresh()
     panMode->setVisible (t == BusType::aux && stereo);
     sendsOnFader.setVisible (t != BusType::group);
     sendsOnFader.setToggleState (owner.sendsOnFader == bus, juce::dontSendNotification);
+    monitorEqButton.setVisible (t == BusType::aux);
+    if (t != BusType::aux && monitorEq != nullptr)
+        showMonitorEq (false);
     processing->refresh();
     resized();
     repaint();
@@ -782,7 +791,13 @@ void RKMixEditor::BusPanel::resized()
     auto header = r.removeFromTop (kPanelHeader).reduced (4, 2);
     header.removeFromLeft (64);
     sendsOnFader.setBounds (header.removeFromRight (130));
-    header.removeFromRight (12);
+    header.removeFromRight (8);
+    if (monitorEqButton.isVisible())
+    {
+        monitorEqButton.setBounds (header.removeFromRight (110));
+        header.removeFromRight (8);
+    }
+    header.removeFromRight (4);
     soloSafe->setBounds (header.removeFromRight (140));
     header.removeFromRight (70);   // the "Solo safe" label
     placeSwatches (header, swatches);
@@ -793,6 +808,8 @@ void RKMixEditor::BusPanel::resized()
     setupArea = r.removeFromTop (70);
     r.removeFromTop (kGap);
     processing->setBounds (r);
+    if (monitorEq != nullptr)
+        monitorEq->setBounds (r);
 
     auto a = setupArea.withTrimmedTop (16).reduced (8, 2);
     type->setBounds (a.removeFromLeft (190).withSizeKeepingCentre (190, 44));
@@ -813,6 +830,26 @@ void RKMixEditor::BusPanel::resized()
         a.removeFromLeft (12);
         panMode->setBounds (a.removeFromLeft (210).withSizeKeepingCentre (210, 44));
     }
+}
+
+void RKMixEditor::BusPanel::showMonitorEq (bool show)
+{
+    if (show)
+    {
+        monitorEq = std::make_unique<MixMonitorEqView> (owner.mixer, bus, owner.accent(), [this] (int ch)
+        {
+            const auto name = owner.mixer.getChannelName (owner.leaderOf (ch));
+            return "In " + juce::String (ch + 1) + (name.isEmpty() ? juce::String() : " - " + name);
+        });
+        addAndMakeVisible (*monitorEq);
+    }
+    else
+    {
+        monitorEq.reset();
+    }
+    processing->setVisible (! show);
+    monitorEqButton.setToggleState (show, juce::dontSendNotification);
+    resized();
 }
 
 void RKMixEditor::BusPanel::paint (juce::Graphics& g)

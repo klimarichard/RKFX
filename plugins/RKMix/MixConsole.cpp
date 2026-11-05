@@ -52,6 +52,8 @@ struct MixConsole::Client
     juce::String structureSent;
     int rackVersion = -1;
     juce::var clipboard;              // a copied insert
+    bool monitorEq = false;           // shows Monitor EQ: gets its state
+    int monitorEqSent = -1;           // the session's version last sent
 };
 
 //==============================================================================
@@ -240,6 +242,8 @@ void MixConsole::tick()
         const auto refreshStructure = ticks++ % 3 == 0 || structure.isEmpty();
         if (refreshStructure && ! clients.empty())
             structure = structureJson();
+        checkMonitorEqOwner();
+        juce::String monitorEqState;      // made once per tick, when some console wants it
 
         for (auto& [c, clientPtr] : clients)
         {
@@ -274,6 +278,13 @@ void MixConsole::tick()
                 }
                 queueValues (client);
                 queueCurves (client);
+                if (const auto v = mixer.getMonitorEq().getVersion(); client.monitorEq && v != client.monitorEqSent)
+                {
+                    if (monitorEqState.isEmpty())
+                        monitorEqState = monitorEqJson();
+                    client.monitorEqSent = v;
+                    post (client, monitorEqState);
+                }
             }
             posted = posted || client.outbox.size() != before;
         }
@@ -697,6 +708,154 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
     }
     else if (type == "ping")
         post (client, R"({"type":"pong"})");
+    else if (type == "meq")
+        monitorEqCommand (client, m);
+}
+
+//==============================================================================
+// Monitor EQ (docs/design/RKMix Monitor EQ.md): any Aux bus, from the iPad.
+
+void MixConsole::monitorEqCommand (Client& client, const juce::var& m)
+{
+    auto& session = mixer.getMonitorEq();
+    const auto a = m["a"].toString();
+    if (a == "sub")
+    {
+        client.monitorEq = (bool) m["on"];
+        client.monitorEqSent = -1;
+        return;
+    }
+    if (a == "start")
+    {
+        const auto bus = (int) m["bus"];
+        if (juce::isPositiveAndBelow (bus, kBuses) && session.start (bus))
+        {
+            session.setOwner (client.token);
+            ownerGoneSince = 0;
+        }
+    }
+    else if (a == "next")   session.next();
+    else if (a == "finish") session.finish();
+    else if (a == "stop")   session.stop();
+    else if (a == "apply")  session.apply();
+    else if (a == "undo")   session.undo();
+    else if (a == "clear")  session.clear();
+    else if (a == "opt" && m["o"].isObject())
+    {
+        // Only what is sent changes; the session clamps the rest.
+        auto o = session.getOptions();
+        const auto& v = m["o"];
+        const auto has = [&v] (const char* key) { return v.hasProperty (key); };
+        const auto in = [] (const juce::var& x, int count) { return juce::jlimit (0, count - 1, (int) x); };
+        if (has ("type"))   o.type = (monitoreq::Type) in (v["type"], 2);
+        if (has ("input"))  o.input = in (v["input"], kChannels);
+        if (has ("mic"))    { o.mic = (monitoreq::Mic) in (v["mic"], 4); o.useCalibration = false; }
+        if (has ("useCal")) o.useCalibration = (bool) v["useCal"];
+        if (has ("target")) (o.type == monitoreq::Type::speaker ? o.speakerTarget : o.inEarTarget) = (monitoreq::Target) in (v["target"], 5);
+        if (has ("bass"))   o.bassDb = (float) (double) v["bass"];
+        if (has ("level"))  (o.type == monitoreq::Type::speaker ? o.speakerLevelDb : o.inEarLevelDb) = (float) (double) v["level"];
+        if (has ("sides"))  o.sides = (MixMonitorEqSession::Sides) in (v["sides"], 4);
+        if (has ("positions")) (o.type == monitoreq::Type::speaker ? o.speakerPositions : o.inEarPositions) = (int) v["positions"];
+        if (has ("strength")) o.strength = (float) (double) v["strength"];
+        if (has ("useFile")) o.useFile = (bool) v["useFile"];
+        for (auto* f : { &o.bassDb, &o.speakerLevelDb, &o.inEarLevelDb, &o.strength })
+            if (! std::isfinite (*f))
+                return;
+        session.setOptions (o);
+    }
+}
+
+void MixConsole::checkMonitorEqOwner()
+{
+    // A run started from an iPad stops when that iPad has been gone for 2 s
+    // (a reconnect with the same token within that keeps it going).
+    auto& session = mixer.getMonitorEq();
+    const auto& owner = session.getOwner();
+    if (! session.isRunning() || owner.isEmpty())
+    {
+        ownerGoneSince = 0;
+        return;
+    }
+    bool present = false;
+    for (auto& [c, client] : clients)
+        present = present || (client->signedIn && client->token == owner);
+    const auto now = juce::jmax (1u, juce::Time::getMillisecondCounter());
+    if (present)
+        ownerGoneSince = 0;
+    else if (ownerGoneSince == 0)
+        ownerGoneSince = now;
+    else if (now - ownerGoneSince > kOwnerGoneMs)
+    {
+        ownerGoneSince = 0;
+        session.stop ("The iPad that started the measurement disconnected; it stopped.");
+    }
+}
+
+juce::String MixConsole::monitorEqJson() const
+{
+    const auto& session = mixer.getMonitorEq();
+    const auto& o = session.getOptions();
+    static const char* steps[] = { "idle", "floor", "settling", "measuring", "waiting", "done" };
+    const auto bands = [] (const monitoreq::Bands& b)
+    {
+        juce::String list = "[";
+        for (size_t i = 0; i < b.size(); ++i)
+            list << (i > 0 ? "," : "") << number (b[i], 2);
+        return list + "]";
+    };
+    const auto flags = [] (const monitoreq::Flags& f)
+    {
+        juce::String bits;
+        for (auto v : f)
+            bits << (v ? "1" : "0");
+        return "\"" + bits + "\"";
+    };
+
+    juce::String json;
+    json << R"({"type":"meq","v":)" << session.getVersion() << R"(,"bus":)" << session.getBus()
+         << R"(,"step":")" << steps[(int) session.getStep()] << "\""
+         << R"(,"pos":)" << session.positionsMeasured() << R"(,"of":)" << session.currentPositions()
+         << R"(,"prog":)" << number (session.getProgress(), 2)
+         << R"(,"msg":)" << jsonString (session.getMessage()) << R"(,"desc":)" << jsonString (session.describeStep())
+         << R"(,"ear":)" << number (session.getEarDifferenceDb(), 1)
+         << R"(,"res":)" << flag (session.hasResult()) << R"(,"apply":)" << flag (session.canApply())
+         << R"(,"why":)" << jsonString (session.applyProblem()) << R"(,"undo":)" << flag (session.canUndo())
+         << R"(,"remote":)" << flag (session.getOwner().isNotEmpty());
+
+    json << R"(,"o":{"type":)" << (int) o.type << R"(,"input":)" << o.input << R"(,"mic":)" << (int) o.mic
+         << R"(,"useCal":)" << flag (o.useCalibration) << R"(,"hasCal":)" << flag (o.hasCalibration)
+         << R"(,"calName":)" << jsonString (o.calibrationName) << R"(,"target":)" << (int) session.currentTarget()
+         << R"(,"bass":)" << number (o.bassDb, 1) << R"(,"level":)" << number (session.currentLevelDb(), 1)
+         << R"(,"maxLevel":)" << number (o.type == monitoreq::Type::speaker ? MixMeasure::kMaxNoiseDb : MixMonitorEqSession::kMaxInEarLevelDb, 1)
+         << R"(,"sides":)" << (int) o.sides << R"(,"positions":)" << session.currentPositions()
+         << R"(,"strength":)" << number (o.strength, 2) << R"(,"useFile":)" << flag (o.useFile)
+         << R"(,"hasFile":)" << flag (o.hasFile) << R"(,"fileName":)" << jsonString (o.fileName) << "}";
+
+    json << R"(,"targets":[)";
+    bool first = true;
+    for (auto t : monitoreq::targetsFor (o.type))
+    {
+        json << (first ? "" : ",") << "[" << (int) t << "," << jsonString (monitoreq::targetName (t)) << "]";
+        first = false;
+    }
+    json << R"(],"mics":[)";
+    for (int i = 0; i < 4; ++i)
+        json << (i > 0 ? "," : "") << jsonString (monitoreq::micName ((monitoreq::Mic) i));
+    json << "]";
+
+    // The bands: as the suggestion has them (live while measuring), or the target alone.
+    const auto& s = session.getSuggestion();
+    auto targetDb = monitoreq::target (session.currentTarget(), o.bassDb);
+    const auto at1k = targetDb[17];
+    for (auto& v : targetDb)
+        v -= at1k;
+    const auto hasData = std::any_of (s.noData.begin(), s.noData.end(), [] (bool v) { return ! v; });
+    json << R"(,"t":)" << bands (hasData ? s.targetDb : targetDb);
+    if (hasData)
+        json << R"(,"n":)" << bands (s.normalised) << R"(,"c":)" << bands (s.correction) << R"(,"g":)" << bands (s.gains)
+             << R"(,"nd":)" << flags (s.noData) << R"(,"lc":)" << flags (s.lowConfidence) << R"(,"nl":)" << flags (s.null)
+             << R"(,"or":)" << flags (s.outOfRange);
+    return json + "}";
 }
 
 //==============================================================================

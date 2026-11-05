@@ -562,6 +562,29 @@ int main (int argc, char** argv)
                   engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
               });
           } },
+        { "RKMix", "Monitor EQ measuring Aux 1 (noise + 62 bands), 32 channels to the main", []
+          {
+              auto engine = std::make_shared<MixEngine>();
+              auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+              MixEngine::Settings s;
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  s.channels[(size_t) ch].sendDb[0] = -6.0f;
+              s.buses[0].output = mix::pairTarget (2);
+              engine->prepare (kRate, kBlock);
+              engine->setSettings (s);
+              engine->reset();
+              engine->getMeasure().start (0, 5, MixMeasure::Sides::both);
+              engine->getMeasure().setNoise (true, -20.0f);
+              juce::Random rng (5);
+              for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
+              {
+                  engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
         { "RKMix", "16 stereo buses and the main: EQ (6 bands, cuts), comp, limit all on", []
           {
               auto engine = std::make_shared<MixEngine>();

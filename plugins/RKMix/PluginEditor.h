@@ -8,6 +8,7 @@
 #include "MixConsole.h"
 #include "MixInserts.h"
 #include "MixLayout.h"
+#include "MixMonitorEqView.h"
 #include "MixScenes.h"
 #include "TransferCurve.h"
 
@@ -355,8 +356,11 @@ private:
         juce::Slider pan;
         std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
         juce::TextButton sendsOnFader { "Sends on fader" };
+        juce::TextButton monitorEqButton { "Monitor EQ" };    // Aux buses: Monitor EQ in place of the processing
         std::unique_ptr<ProcessingPanel> processing;
+        std::unique_ptr<MixMonitorEqView> monitorEq;
         juce::Rectangle<int> setupArea;
+        void showMonitorEq (bool);
     };
 
     /** What the selected bus feeds: later groups (assign), Aux and FX buses (send). */

@@ -73,6 +73,7 @@ function receive(msg) {
         state.signedIn = true; state.authMessage = "";
         store.resend();
         net.send({ t: "curves", k: curves.keys() });
+        if (C.onSignedIn) C.onSignedIn();
       } else {
         state.signedIn = false;
         state.authMessage = msg.off ? "The console remote is off on RKMix's Remote page."
@@ -97,6 +98,7 @@ function receive(msg) {
     case "types": state.types = msg.list; break;
     case "clip": state.clipboard = msg.text; state.clipKind = msg.kind; break;
     case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
+    case "meq": if (C.onMonitorEq) C.onMonitorEq(msg); break;
   }
   app.dirty = true;
 }

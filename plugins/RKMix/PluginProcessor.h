@@ -5,6 +5,7 @@
 #include "MixEngine.h"
 #include "MixAssigns.h"
 #include "MixInserts.h"
+#include "MixMonitorEqSession.h"
 #include "MixScenes.h"
 #include "MixUndo.h"
 #include "MixRemote.h"
@@ -129,6 +130,10 @@ public:
 
     /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
     MixScenes& getScenes() noexcept { return *scenes; }
+    /** Monitor EQ: the measuring (engine) and its flow (message thread). */
+    MixMeasure& getMeasure() noexcept { return engine.getMeasure(); }
+    MixMonitorEqSession& getMonitorEq() noexcept { return *monitorEq; }
+
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
     /** The remote's meters, apart from the window's, since the last call (it resets them). */
@@ -344,6 +349,7 @@ private:
     std::unique_ptr<MixAssigns> assigns;
     std::unique_ptr<MixUndo> undo;
     std::unique_ptr<MixRemote> remote;
+    std::unique_ptr<MixMonitorEqSession> monitorEq;
     std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
     std::array<std::atomic<float>, 2> remoteMainPeaks {};

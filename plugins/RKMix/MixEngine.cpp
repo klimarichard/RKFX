@@ -134,6 +134,9 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
         pinkScale = (float) (std::sqrt (0.5) / std::sqrt (sum / n));
     }
 
+    monitorEq.prepare (sampleRate, maxBlock);
+    measureBus = -1;
+
     // Latency alignment lines (used only while an insert reports latency).
     for (auto& ch : channelPadLines)
         for (auto& line : ch)
@@ -817,6 +820,21 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
         busFed[(size_t) bus] = true;
     }
 
+    // Monitor EQ's measuring: the bus's own signal fades out as the noise path takes over.
+    const auto takenOver = bus == measureBus;
+    if (takenOver)
+    {
+        const auto* take = monitorEq.takeover();
+        const auto* measureNoise = monitorEq.noise();
+        for (int side = 0; side < numSides; ++side)
+        {
+            const auto on = monitorEq.noiseOnSide (side, numSides);
+            for (int i = 0; i < numSamples; ++i)
+                io[side][i] = io[side][i] * (1.0f - take[i]) + (on ? measureNoise[i] : 0.0f);
+        }
+        busFed[(size_t) bus] = true;
+    }
+
     // Nothing fed it, nothing glides, no insert rings on: silent, nothing to do.
     // (While lining up, every bus runs: its history must stay continuous.)
     const auto insertsActive = inserts != nullptr && inserts->isActive (Inserts::Strip::bus, bus);
@@ -841,7 +859,17 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
     const auto fader = curveOf (b.fader, faderRow, numSamples);
     for (int side = 0; side < numSides; ++side)
     {
-        if (mute.steady() && fader.steady())
+        if (takenOver)
+        {
+            // Fader and mute fade to 0 dB with the takeover.
+            const auto* take = monitorEq.takeover();
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto g = mute.at (i) * fader.at (i);
+                io[side][i] *= g + (1.0f - g) * take[i];
+            }
+        }
+        else if (mute.steady() && fader.steady())
         {
             const auto g = mute.value * fader.value;
             if (! juce::exactlyEqual (g, 1.0f))
@@ -1127,6 +1155,7 @@ void MixEngine::process (const float* const* in, float* const* out, int numSampl
     if (plan.active)
         cueChannelBuffer.clear (0, numSamples);
     makeTalkAndOscillator (in, numSamples);
+    measureBus = monitorEq.process (in, kChannels, numSamples);
 
     for (int ch = 0; ch < kChannels; ++ch)
         if (! isFollower (ch))

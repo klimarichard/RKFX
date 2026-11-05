@@ -115,6 +115,67 @@ The **Talk / Osc** page:
 
 Talk and the oscillator are always off when a mix loads.
 
+## Monitor EQ (tuning wedges and in-ears)
+
+Monitor EQ measures a wedge (or an in-ear mix) and suggests a 31-band **RKGraphEQ** curve for its Aux bus, so the monitor sounds even from low to high. RKMix plays **pink noise** out of the bus, listens with a mic on one of its inputs, compares the two band by band, and works out the EQ that brings the result close to a target curve. One click puts it into an RKGraphEQ on the bus.
+
+Open it with **Monitor EQ** at the top of an **Aux** bus's page (select the bus on the Buses layer). It takes the place of the bus's processing; click Monitor EQ again to go back. It's also a tab on the iPad's console remote, which is handy for walking around with the mic (see [The console remote](#the-console-remote-ipad)).
+
+When nothing is being measured, Monitor EQ does nothing at all: no sound, no CPU, no latency.
+
+### Wedges (Speaker)
+
+What you need: a mic on an input. A **measurement mic** (Behringer ECM8000, Superlux ECM999, a miniDSP UMIK, ...) is best. A stage mic works too: choose it as the **Mic** (**Shure SM58**, **Shure SM57**, **sE Electronics V7**) and RKMix takes its own sound out of the measurement. A measurement mic with a **calibration file** (a text file from its maker): **Load calibration file...** in the Mic list.
+
+1. Set **Mic on** to the input the mic is plugged into, and the **Mic**. Set the input's gain on your interface so a loud voice doesn't clip.
+2. Hold the mic **where the performer's head will be**, pointed at the wedge, **50 cm to 1 m** away. (Closer, a stage mic's bass rises by itself, and the EQ would take out bass the wedge doesn't have.)
+3. Click **Start**. RKMix measures the room's own noise for 3 seconds (keep quiet), then plays pink noise into the wedge for about 5 seconds. The bus's own mix is replaced by the noise while it measures, and its fader and mute don't matter (**Level** sets how loud the noise is).
+4. Move the mic a little (another spot around the head) and click **Next**. After the last position (**Positions**, 4 by default) it finishes by itself; **Finish** stops early with what is measured.
+5. Look at the graph, set **Strength**, and click **Apply**.
+
+### In-ears (In-ear)
+
+An in-ear's sound depends on how it seals in the ear, so a mic in front of it says nothing useful. Two ways:
+
+- **With a coupler** (an "ear simulator", an IEC 711-style block that holds the earpiece in a cavity the size of an ear canal, with a measurement mic inside; cheap ones cost around €100-250): plug it into an input, load its **calibration file** as the Mic, push the earpiece in as it sits in an ear, and measure as above. **Sides**: **Each ear** measures the left earpiece, then asks you to move the coupler to the right one (the noise plays on that side only); **Both**, **Left** or **Right** play on those sides.
+- **With a measurement file** (no hardware): if someone has published a measurement of your in-ear model (a text file of frequency and dB), set **Source** to **Load measurement file...** and click **Use file**. No noise is played. A custom mould or a different fit changes the sound, so treat this as a starting point.
+
+**Never wear the in-ears while measuring.** In-ear's Level starts at -40 dBFS and can't go above -20 dBFS.
+
+### The graph and the targets
+
+- **Measured** (the line with dots): the monitor's sound, band by band, set to 0 dB around the middle (250 Hz to 4 kHz). A band with **-** under it didn't hear enough over the room's noise: it gets no correction (raise the Level, or quieten the room).
+- **Target** (dashed): what it should be.
+- **Correction** (the lavender bars): what the EQ will add or take away, at the chosen Strength. A bar drawn faded is a band where the mic itself is weak (a stage mic's top end): it gets only half. A small box at 0 dB is a band left alone on purpose: a narrow, deep dip (a cancellation from a reflection: boosting it would only waste power) or the ends a wedge simply doesn't reach.
+- **With it** (thin line): what the measured line becomes with the correction.
+
+| Target | Type | What it is |
+| --- | --- | --- |
+| **Gentle tilt** (default) | Speaker | Flat up to 1 kHz, then 1 dB down per octave (-4 dB at 16 kHz). A wedge that measures dead flat sounds harsh up close; this sounds natural |
+| **Flat** | Speaker | Flat everywhere |
+| **Vocal wedge** | Speaker | Gentle tilt with the bass rolled off below 150 Hz: less mud and less feedback in a vocal wedge |
+| **Speakers in a room** (default) | In-ear | What good speakers in a room sound like at the eardrum (the ear's natural rise around 3 kHz), with a gentle tilt and **Bass** (0 to +8 dB, default +4) |
+| **Diffuse field** | In-ear | The ear's natural response alone, without the bass and the tilt |
+
+Limits: a wedge's correction cuts down to -12 dB and boosts no more than +4 dB; an in-ear's cuts to -10 dB and boosts up to +6 dB, and above 8 kHz only follows the broad trend (within 3 dB), because the fine detail up there changes with every fit.
+
+### Apply and Undo
+
+- **Apply** writes the curve into the bus's **RKGraphEQ** (switching it to 31 bands and on). If the bus has none, Apply puts one in the first free insert slot; if all four slots are taken, it says so.
+- The measurement is taken **through** the bus's EQ as it is, so the result is a change on top of it. Apply, then **Measure again** to check: the measured line should now sit close to the target.
+- **Undo** puts back what Apply changed (or removes the RKGraphEQ it added). The main Undo button doesn't cover inserts, so use this one.
+
+### Good to know
+
+- Start with a low **Level** and raise it until the noise is clearly louder than the room. If the mic clips, that position is measured again.
+- A measurement stops at once with **Stop**, when you close Monitor EQ (or select another strip), recall a scene, change the bus's type, or when the iPad that started it loses its connection for more than 2 seconds. The bus goes back to its own mix.
+- The bus needs an **Output** set before it can be measured.
+- Other inserts on the bus (a compressor, a limiter) stay in while measuring; they don't change the curve much, but a heavily compressing one is best switched off for the measurement.
+- Monitor EQ tunes the **sound**. It doesn't hunt feedback (ringing out a wedge is a different job).
+- The mic curves (SM58, SM57, V7) are typical curves from the makers' charts; real mics differ by a dB or two, which is fine for a 31-band EQ.
+- It isn't on the musicians' phone pages: those have no PIN, so only the iPad console (with its PIN) and the window can play noise into a monitor.
+- The settings (type, mic, target, level, files) are saved with the mix.
+
 ## MIDI out
 
 RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic triggering a drum sampler) and **RKFollow** (a voice or violin playing a synth). Each uses its own MIDI channel and notes. Wire RKMix's MIDI output to the instrument in Gig Performer.
@@ -154,6 +215,7 @@ Pages (tabs at the top):
 - **Mix:** the strips as in the window: **Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA** (with **Spill**), **User 1**, **User 2**; Main and Mono always on the right, the **scenes** at the bottom, **Clear solo** and **TALK** (held, or tapped on and off when Latch is on). Put a finger anywhere on a fader and slide: it moves from where it was, never jumping to the finger. Several fingers move several faders. Pans slide sideways (double-tap: centre). An Aux or FX bus's **Sends** button (on the Buses layer) turns the channel faders into its sends, and the pans into its send pans in an Own bus; **Back to faders** ends it. Tap a strip's name to select it, double-tap it to rename; tap its H G E C letters to open it on the Channel page. Tap an insert slot to add a plugin or open it.
 - **Channel:** the selected channel in full (input, delay, high-pass, gate, output, EQ, compressor) with its sends, taps and direct out; or a bus's, the main's or the mono's EQ, compressor and limiter, with a bus's setup and sends (or the main's routing). The **EQ curve** has a handle per band (and the high-pass, and the bus low-pass): drag it sideways for the frequency, up and down for the gain; double-tap it for 0 dB. Knobs: drag up and down, double-tap for the default. **Copy...** copies a section (or the whole strip), **Paste** puts it on the strip shown. The row at the bottom picks the strip (the Mix page's layer), the arrows step through every strip.
 - **Setup:** solo and the cue output, talkback, the oscillator, which channels and buses each DCA and mute group holds, and which strips the user pages show (in the order tapped).
+- **Monitor EQ:** measure any Aux bus's wedge or in-ear from where the performer stands, with big Start, Next, Finish, Stop, Apply and Undo buttons (see [Monitor EQ](#monitor-eq-tuning-wedges-and-in-ears)). Calibration and measurement files are loaded in the window; the iPad can then choose them.
 
 An open insert shows its controls as knobs and switches, with **On**, **Copy**, **Paste**, **Replace...**, **Remove** (tap it twice) and **Close**. The plugin's own editor, with its curves and pads, is in RKMix's window.
 

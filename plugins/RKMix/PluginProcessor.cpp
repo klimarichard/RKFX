@@ -210,6 +210,8 @@ RKMixProcessor::RKMixProcessor()
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scene + 1)));
     });
 
+    monitorEq = std::make_unique<MixMonitorEqSession> (*this);
+
     // The monitor remote: only in the plugin and the app (never in tests and tools).
     remote = std::make_unique<MixRemote> (*this);
     if (wrapperType != wrapperType_Undefined)
@@ -240,6 +242,7 @@ RKMixProcessor::~RKMixProcessor()
 {
     sceneParam->removeListener (&sceneSync);
     remote.reset();
+    monitorEq.reset();
     undo.reset();
     assigns.reset();
     rack.aboutToRemove = nullptr;
@@ -728,6 +731,7 @@ juce::var RKMixProcessor::getExtraState() const
     root->setProperty ("inserts", rack.toVar());
     root->setProperty ("scenes", scenes->toVar());
     root->setProperty ("assigns", assigns->toVar());
+    root->setProperty ("monitorEq", monitorEq->toVar());
     root->setProperty ("names", names);
     root->setProperty ("colours", colours);
     root->setProperty ("busNames", buses);
@@ -766,6 +770,7 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     rack.fromVar (extra["inserts"], [this] (InsertRack::Strip strip, int index) { return channelsOf (strip, index); });
     assigns->fromVar (extra["assigns"]);
     scenes->fromVar (extra["scenes"]);
+    monitorEq->fromVar (extra["monitorEq"]);
     sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scenes->getCurrent() + 1)));
     loadingMix = false;
 

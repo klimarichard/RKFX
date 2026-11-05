@@ -169,7 +169,7 @@ An open insert shows its controls as knobs and switches, with **On**, **Copy**, 
 The phones and the iPad can show where the show is: Gig Performer's rackspace and variation (or song and song part), in a strip under a phone's header and in the middle of the iPad's header. Gig Performer sends them to RKMix by OSC, from its gig script.
 
 1. On the **Remote** page, in **Names (Gig Performer, OSC)**, click **Names off** to switch them on. It listens on port **9100** (double-click to change), on this computer only.
-2. In Gig Performer, open **Window → Gig Script Editor**, paste the script from `tools/gigperformer/RKMixNames.gpscript`, check that its port matches, and **Compile**.
+2. In Gig Performer 5, open the **Global Rackspace script** editor, paste the script from `tools/gigperformer/RKMixNames.gpscript`, check that its port matches, and **Compile**. A script defines each callback only once: if yours already has `On Rackspace` (or `On Variation`, `On Song`, `On Songpart`, `GigLoaded`), put the script's `SendNames` line into yours. In the setlist it sends the song and song part; otherwise the rackspace and variation.
 3. Change rackspace: the Remote page shows what came in, and every phone and iPad shows it within a moment.
 
 What RKMix listens for (any sender, not only Gig Performer):

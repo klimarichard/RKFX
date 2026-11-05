@@ -76,7 +76,12 @@ public:
         Returns false (and does nothing) while a run is still busy. */
     bool start (int bus, int input, Sides sides) noexcept;
     void setNoise (bool on, float levelDb) noexcept;
+    /** The sides that carry the noise, from the next block (In-ear: one ear per position). */
+    void setSides (Sides) noexcept;
     void stop() noexcept;
+
+    /** The input's loudest sample since the last call (resets; a clip check per position). */
+    float takeInputPeak() noexcept { return recentPeak.exchange (0.0f); }
 
     /** From start() until the bus has been handed back after stop(). */
     bool isBusy() const noexcept { return requested.load (std::memory_order_acquire) || active.load (std::memory_order_acquire); }
@@ -157,6 +162,6 @@ private:
     Shared<std::uint32_t> sequence { 0 };
     std::array<Shared<double>, kBands> sharedReference {}, sharedInput {};
     Shared<std::int64_t> sharedSamples { 0 }, sharedSteadySamples { 0 };
-    Shared<float> sharedPeak { 0.0f };
+    Shared<float> sharedPeak { 0.0f }, recentPeak { 0.0f };
     Shared<bool> sharedSteady { false }, sharedNoiseOn { false };
 };

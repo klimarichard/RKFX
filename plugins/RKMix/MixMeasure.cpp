@@ -89,6 +89,8 @@ void MixMeasure::prepare (double sampleRate, int maxBlockSize)
     }
     pinkScale = (float) (1.0 / std::sqrt (sum / n));
 
+    recentPeak.store (0.0f);
+
     // Prepared with the audio stopped: any run is over.
     requested.store (false);
     active.store (false);
@@ -114,6 +116,11 @@ void MixMeasure::setNoise (bool on, float levelDb) noexcept
 {
     noiseGainRequested.store (gainOf (std::clamp (levelDb, kMinNoiseDb, kMaxNoiseDb)), std::memory_order_relaxed);
     noiseRequested.store (on, std::memory_order_release);
+}
+
+void MixMeasure::setSides (Sides s) noexcept
+{
+    requestSides.store ((int) s, std::memory_order_relaxed);
 }
 
 void MixMeasure::stop() noexcept
@@ -206,6 +213,7 @@ int MixMeasure::process (const float* const* in, int numInputs, int numSamples) 
     }
 
     numSamples = std::min (numSamples, maxBlock);
+    sides = (Sides) requestSides.load (std::memory_order_relaxed);
     if (! wanted)
         stopping = true;
     const auto noiseOn = ! stopping && noiseRequested.load (std::memory_order_acquire);
@@ -261,8 +269,16 @@ int MixMeasure::process (const float* const* in, int numInputs, int numSamples) 
         inputSums[(size_t) b] += inp;
     }
     if (mic != nullptr)
+    {
+        float blockPeak = 0.0f;
         for (int i = 0; i < numSamples; ++i)
-            inputPeak = std::max (inputPeak, std::abs (mic[i]));
+            blockPeak = std::max (blockPeak, std::abs (mic[i]));
+        inputPeak = std::max (inputPeak, blockPeak);
+        auto recent = recentPeak.load (std::memory_order_relaxed);
+        while (blockPeak > recent && ! recentPeak.compare_exchange_weak (recent, blockPeak, std::memory_order_relaxed))
+        {
+        }
+    }
 
     samples += numSamples;
     if (steadyAtStart && steadyNow)

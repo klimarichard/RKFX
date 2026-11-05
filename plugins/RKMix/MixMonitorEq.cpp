@@ -28,6 +28,7 @@ namespace
     constexpr double kInEarTrendFromHz = 8500.0; // In-ear: above 8 kHz only the trend
     constexpr int kInEarTrendReach = 3;
     constexpr float kInEarTrendLimitDb = 3.0f;
+    constexpr double kMinBandPower = 1.0e-10;    // -100 dBFS in a band
 
     float tiltDb (double hz) { return hz > 1000.0 ? (float) -std::log2 (hz / 1000.0) : 0.0f; }
 
@@ -236,7 +237,8 @@ Response measuredResponse (const Window& floor, const std::vector<Window>& posit
         for (const auto& p : positions)
         {
             const auto in = p.input[(size_t) b], ref = p.reference[(size_t) b], fl = floor.input[(size_t) b];
-            if (ref <= 0.0 || in < fl * overFloor || in <= 0.0)
+            // Over the floor, and over an absolute minimum (a digitally silent floor, a filter's tail).
+            if (ref <= 0.0 || in < fl * overFloor || in < kMinBandPower)
                 continue;
             sum += (in - fl) / ref;
             ++n;

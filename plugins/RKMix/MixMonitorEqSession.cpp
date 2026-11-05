@@ -166,6 +166,14 @@ bool MixMonitorEqSession::start (int busIndex)
         return false;
     }
 
+    if (processor.getSettings().choice (mix::busId (busIndex, "out")) == mix::kTargetOff
+        && ! (options.type == Type::inEar && options.useFile && options.hasFile))
+    {
+        message = "The bus has no output: set its Output first.";
+        changed();
+        return false;
+    }
+
     bus = busIndex;
     positions.clear();
     positionSide.clear();

@@ -97,9 +97,9 @@ public:
 
         int band (double hz) const
         {
-            for (int b = 0; b < monitoreq::kBands; ++b)
-                if (std::abs (MixMeasure::centres()[(size_t) b] - hz) < 1.0)
-                    return b;
+            for (int n = 0; n < monitoreq::kBands; ++n)
+                if (std::abs (MixMeasure::centres()[(size_t) n] - hz) < 1.0)
+                    return n;
             return -1;
         }
     };
@@ -110,6 +110,10 @@ public:
         {
             Rig rig;
             auto& m = rig.p.getMonitorEq();
+            setParam (rig.p.getSettings().param (mix::busId (0, "out")), (float) mix::kTargetOff);
+            expect (! m.start (0), "no output");
+            expect (m.getMessage().contains ("no output"));
+            setParam (rig.p.getSettings().param (mix::busId (0, "out")), (float) mix::pairTarget (2));
             setParam (rig.p.getSettings().param (mix::busId (1, "type")), (float) mix::BusType::group);
             expect (! m.start (1), "bus 2 isn't an Aux bus");
             expect (m.start (0));

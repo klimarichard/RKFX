@@ -130,6 +130,14 @@ The same flow on the remote, following the existing remote patterns (state pushe
 - Tests: tests/MixMonitorEqTests.cpp.
 - Stagg SPM-435 (the user's in-ears): no published measurement found (2026-11-05: AutoEq, about 25 squig.link databases, reviews, retailers). So it needs a coupler, or a generic target.
 
+**Phase 3 (console), 2026-11-05:**
+- `MixMonitorEqSession` (on the processor, `getMonitorEq()`): the steps, the options (saved with the mix as `monitorEq`), Apply and Undo. A Start right after a run waits for the bus to be handed back. Start refuses a bus with no output. Stops: Stop, a scene recall, the bus's type changing, the audio restarting; a clip (0.98) ends the position (or, during the floor, the run).
+- In-ear sides: Both, Left, Right, Each ear (positions alternate left and right; the coupler is moved between earpieces; the noise only on that side).
+- Apply on an existing GraphEQ in 10 or 15 bands: the suggestion starts from its curve read at the 31 centres; a GraphEQ switched off counts as flat and Apply switches it on.
+- `MixMonitorEqView`: the Aux bus page's **Monitor EQ** button swaps the processing for it. Closing it stops a run it started (a remote's run carries on).
+- A band needs at least -100 dBFS as well as 10 dB over the floor (a digitally silent floor and filter tails).
+- Tests: tests/MixMonitorEqSessionTests.cpp (in RKBoardTests): a +6 dB bell found, cut, applied into an inserted GraphEQ, measured again (mostly gone), undone; an existing 10-band GraphEQ; full slots; positions, Next, Finish, a scene recall; Each ear; a file; options saved.
+
 ## Build order
 
 1. **Engine:** `MixMeasure` (pink noise, band analysis, the seqlock sums, the takeover fades), the bus taken over in `MixEngine`. Tests, and the idle benchmark against before.

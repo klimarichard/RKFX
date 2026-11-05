@@ -30,7 +30,7 @@
 "use strict";
 (() => {
 const KEY = "{{KEY}}";
-const { Colour, Palette, J, Component, TextButton, ToggleSwitch, LinearSlider, ParamComponent, app, store, drawPanel, faderDbAt, faderPositionOf } = RK;
+const { Colour, Palette, J, Component, TextButton, ToggleSwitch, LinearSlider, ParamComponent, app, store, drawPanel, faderDbAt, faderPositionOf, fine, FineButton } = RK;
 
 const dbText = db => db <= -99.9 ? "-inf" : (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? 0 : db).toFixed(1);
 const panOf = n => Math.round(n * 200 - 100);
@@ -123,7 +123,7 @@ class SideFader extends ParamComponent {
     this.lastX = e.x; this.dragN = this.norm; this.active = true; store.hold(this.id, true); this.repaint(); return true;
   }
   pointerMove(e) {
-    const [a, b] = this.range(), delta = (e.x - this.lastX) / Math.max(150, b - a); this.lastX = e.x;
+    const [a, b] = this.range(), delta = (e.x - this.lastX) / Math.max(150, b - a) * fine.scale(); this.lastX = e.x;
     this.dragN = Math.max(0, Math.min(1, this.dragN + delta)); this.setNorm(this.dragN);
   }
   pointerUp() { this.active = false; store.hold(this.id, false); this.repaint(); }
@@ -281,6 +281,8 @@ class Root extends Component {
   constructor() {
     super();
     this.lock = this.add(new TextButton("Lock", () => { locked = !locked; this.lock.toggle = locked; this.lock.text = locked ? "Locked" : "Lock"; this.repaint(); }));
+    fine.load("rkmix.monitor.fine");
+    this.fine = this.add(new FineButton());
     this.master = this.add(new MasterPanel());
     this.list = this.add(new List());
     this.safe = { top: 0, bottom: 0 };
@@ -291,6 +293,7 @@ class Root extends Component {
     this.safe = { top: parseFloat(probe.paddingTop) / app.scale || 0, bottom: parseFloat(probe.paddingBottom) / app.scale || 0 };
     const c = this.column(), top = this.safe.top;
     this.lock.setBounds(c.x + c.w - 84, top + 8, 84, 32);
+    this.fine.setBounds(c.x + c.w - 84 - 6 - 64, top + 8, 64, 32);
     this.bannerY = top + 48;
     this.nowY = this.bannerY + (connected ? 0 : 30);
     const y = this.nowY + (nowOf(mix) ? kNowH + 8 : 0);
@@ -304,7 +307,7 @@ class Root extends Component {
     const name = gone || (mix ? mix.bus.name : document.title);
     if (mix && !gone) { g.setColour(Colour.hex(mix.bus.colour)); g.fillRoundedRectangle(c.x + 2, top + 12, 6, 24, 2); }
     g.setColour(Palette.text); g.setFont(17, true);
-    g.drawText(name, c.x + 16, top, c.w - 16 - 96, 46, J.centredLeft);
+    g.drawText(name, c.x + 16, top, c.w - 16 - 96 - 70, 46, J.centredLeft);
     if (!connected) {
       g.setColour(Palette.warning); g.fillRect(0, this.bannerY, this.w, 26);
       g.setColour(Colour.hex(0xff15161a)); g.setFont(13);

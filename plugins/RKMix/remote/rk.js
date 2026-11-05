@@ -383,6 +383,16 @@ class ParamComponent extends Component {
   setNorm(n) { store.set(this.id, n); if (this.onUserChange) this.onUserChange(store.value(this.id)); }
 }
 
+// Fine: faders, knobs, sliders and the EQ handles move a quarter as far for
+// the same finger travel, for small changes. A button on each remote; each
+// phone or iPad remembers its own (load() with the page's key).
+const fine = {
+  on: false, key: "",
+  scale() { return this.on ? 0.25 : 1; },
+  load(key) { this.key = key; try { this.on = localStorage.getItem(key) === "1"; } catch (_) {} },
+  set(on) { this.on = on; try { if (this.key) localStorage.setItem(this.key, on ? "1" : "0"); } catch (_) {} app.dirty = true; },
+};
+
 // juce::TextButton with rkfx::LookAndFeel
 class TextButton extends Component {
   constructor(text, onClick) { super(); this.text = text; this.onClick = onClick; this.toggle = false; this.takesTouches = true; this.down = false; this.colour = Palette.knobBody; this.onColour = Palette.accent; }
@@ -404,6 +414,12 @@ class TextButton extends Component {
     if (this.onRelease) this.onRelease(e);
     if (!e.cancelled && this.hitTest(e.x, e.y) && this.onClick) this.onClick(e);
   }
+}
+
+// The Fine button (lit while Fine is on).
+class FineButton extends TextButton {
+  constructor() { super("Fine", () => fine.set(!fine.on)); this.width = 64; }
+  paint(g) { this.toggle = fine.on; super.paint(g); }
 }
 
 // rkfx::ToggleSwitch
@@ -475,7 +491,7 @@ class Knob extends ParamComponent {
     this.lastY = e.y; this.dragN = this.norm; store.hold(this.id, true); return true;
   }
   pointerMove(e) {
-    const delta = (this.lastY - e.y) / 200; this.lastY = e.y;
+    const delta = (this.lastY - e.y) / 200 * fine.scale(); this.lastY = e.y;
     this.dragN = Math.max(0, Math.min(1, this.dragN + delta));
     this.setNorm(this.dragN);
   }
@@ -530,7 +546,7 @@ class MixFader extends ParamComponent {
     return true;
   }
   pointerMove(e) {
-    const delta = (this.lastY - e.y) / Math.max(150, this.trackBottom - this.trackTop); this.lastY = e.y;
+    const delta = (this.lastY - e.y) / Math.max(150, this.trackBottom - this.trackTop) * fine.scale(); this.lastY = e.y;
     this.dragN = Math.max(0, Math.min(1, this.dragN + delta));
     this.setNorm(this.dragN);
     if (this.onUserMove) this.onUserMove(this.norm - this.gestureStart);
@@ -595,7 +611,7 @@ class LinearSlider extends ParamComponent {
     this.lastX = e.x; this.dragN = this.norm; this.dragging = true; store.hold(this.id, true); return true;
   }
   pointerMove(e) {
-    const delta = (e.x - this.lastX) / Math.max(60, this.w - 2 * this.indent()); this.lastX = e.x;
+    const delta = (e.x - this.lastX) / Math.max(60, this.w - 2 * this.indent()) * fine.scale(); this.lastX = e.x;
     this.dragN = Math.max(0, Math.min(1, this.dragN + delta)); this.setNorm(this.dragN);
   }
   pointerUp() { this.dragging = false; store.hold(this.id, false); this.repaint(); }
@@ -809,5 +825,5 @@ function editText(target, value, onDone, opts = {}) {
 
 return { Colour, Palette, StripColours, StripColourNames, stripColour, Style, J, cssFont, Graphics, drawPanel, Component, app, store,
          ParamComponent, TextButton, ToggleSwitch, SegmentedSwitch, Knob, MixFader, Meter, LinearSlider, GainReductionMeter,
-         ResponseCurve, TransferCurve, PopupMenu, ChoiceBox, editText, faderDbAt, faderPositionOf };
+         ResponseCurve, TransferCurve, PopupMenu, ChoiceBox, editText, faderDbAt, faderPositionOf, fine, FineButton };
 })();

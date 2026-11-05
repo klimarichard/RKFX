@@ -209,7 +209,6 @@ class List extends Component {
     super(); this.takesTouches = true; this.scroll = 0; this.velocity = 0; this.content = this.add(new Component());
     this.rows = new Map(); this.order = [];
     this.allButton = this.content.add(new TextButton("Show all channels", () => { showAll = !showAll; render(); }));
-    this.pansButton = this.content.add(new TextButton("Hide pans", () => { layout.hidePans = !layout.hidePans; saveLayout(); render(); }));
     this.lastTap = { target: null, time: 0 };
     app.frameHooks.add(dt => this.coast(dt));
   }
@@ -226,8 +225,6 @@ class List extends Component {
     for (const [k, row] of this.rows) if (!keep.has(k)) this.content.remove(row);
     this.rows = keep; this.order = rows.map(r => keep.get(r.k));
     this.allButton.text = showAll ? "Show only what's in the mix" : "Show all channels";
-    this.pansButton.text = layout.hidePans ? "Show pans" : "Hide pans";
-    this.pansButton.setVisible(own);
     this.layout();
   }
   layout() {
@@ -242,9 +239,8 @@ class List extends Component {
     this.emptyY = y;
     if (!this.order.length) y += 60;
     const bw = Math.min(260, this.w), bx = Math.max(0, (this.w - 260) / 2);
-    this.allButton.setBounds(bx, y + 8, bw, 36); y += 8 + 36;
-    if (this.pansButton.visible) { this.pansButton.setBounds(bx, y + 8, bw, 36); y += 8 + 36; }
-    this.contentHeight = y + 70;
+    this.allButton.setBounds(bx, y + 8, bw, 36);
+    this.contentHeight = y + 8 + 36 + 70;
     this.content.setBounds(0, -this.scroll, this.w, this.contentHeight);
     this.clamp();
   }
@@ -329,6 +325,9 @@ class Root extends Component {
     this.lock = this.add(new TextButton("Lock", () => { locked = !locked; this.lock.toggle = locked; this.lock.text = locked ? "Locked" : "Lock"; this.repaint(); }));
     fine.load("rkmix.monitor.fine");
     this.fine = this.add(new FineButton());
+    // Hide pans (lit while they're hidden): only in a mix with its own pans.
+    this.pans = this.add(new TextButton("Hide pans", () => { layout.hidePans = !layout.hidePans; saveLayout(); render(); }));
+    this.pans.setVisible(false);
     this.master = this.add(new MasterPanel());
     this.list = this.add(new List());
     this.safe = { top: 0, bottom: 0 };
@@ -340,6 +339,7 @@ class Root extends Component {
     const c = this.column(), top = this.safe.top;
     this.lock.setBounds(c.x + c.w - 84, top + 8, 84, 32);
     this.fine.setBounds(c.x + c.w - 84 - 6 - 64, top + 8, 64, 32);
+    this.pans.setBounds(c.x + c.w - 84 - 6 - 64 - 6 - 84, top + 8, 84, 32);
     this.bannerY = top + 48;
     this.nowY = this.bannerY + (connected ? 0 : 30);
     const y = this.nowY + (nowOf(mix) ? kNowH + 8 : 0);
@@ -353,7 +353,7 @@ class Root extends Component {
     const name = gone || (mix ? mix.bus.name : document.title);
     if (mix && !gone) { g.setColour(Colour.hex(mix.bus.colour)); g.fillRoundedRectangle(c.x + 2, top + 12, 6, 24, 2); }
     g.setColour(Palette.text); g.setFont(17, true);
-    g.drawText(name, c.x + 16, top, c.w - 16 - 96 - 70, 46, J.centredLeft);
+    g.drawText(name, c.x + 16, top, c.w - 16 - 96 - 70 - (this.pans.visible ? 90 : 0), 46, J.centredLeft);
     if (!connected) {
       g.setColour(Palette.warning); g.fillRect(0, this.bannerY, this.w, 26);
       g.setColour(Colour.hex(0xff15161a)); g.setFont(13);
@@ -380,6 +380,7 @@ function render() {
   }
   store.receive(p);
   root.list.setRows(me, others, b.own);
+  root.pans.setVisible(!!b.own); root.pans.toggle = layout.hidePans; root.repaint();
   const now = JSON.stringify(nowOf(mix));
   if (now !== lastNow) { lastNow = now; root.resized(); root.repaint(); }
 }

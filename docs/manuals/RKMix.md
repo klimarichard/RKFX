@@ -164,6 +164,28 @@ An open insert shows its controls as knobs and switches, with **On**, **Copy**, 
 - **Console on / off** switches the console remote off without stopping the phones' monitor mixes.
 - Set the iPad's Auto-Lock to Never for the show.
 
+## Names from Gig Performer
+
+The phones and the iPad can show where the show is: Gig Performer's rackspace and variation (or song and song part), in a strip under a phone's header and in the middle of the iPad's header. Gig Performer sends them to RKMix by OSC, from its gig script.
+
+1. On the **Remote** page, in **Names (Gig Performer, OSC)**, click **Names off** to switch them on. It listens on port **9100** (double-click to change), on this computer only.
+2. In Gig Performer, open **Window → Gig Script Editor**, paste the script from `tools/gigperformer/RKMixNames.gpscript`, check that its port matches, and **Compile**.
+3. Change rackspace: the Remote page shows what came in, and every phone and iPad shows it within a moment.
+
+What RKMix listens for (any sender, not only Gig Performer):
+
+| Address | Arguments | |
+|---|---|---|
+| `/rkmix/title` | text | The first line (the rackspace, or the song). Empty text clears it. |
+| `/rkmix/subtitle` | text | The second line (the variation, or the song part). |
+| `/rkmix/now` | text, text | Both at once (the second optional). |
+| `/rkmix/clear` | | Both gone. |
+| `/rkmix/scene` | 1 to 16 | Recalls that scene (an integer, a float or text). |
+
+- The names are only shown: they aren't saved with the mix, aren't in the scenes or the undo history, and are gone when the names are switched off. A phone that connects later gets the names at once.
+- **From other computers** lets another computer on the network send (Gig Performer on another Mac); off, only this computer can.
+- Like the web server, the settings belong to the computer (`remote.json`), and the first RKMix to start takes the port: put RKMix in Gig Performer's **global rackspace**.
+
 ## Ganging, copy and paste
 
 **Gang strips** to move them together: **Cmd-click** (or Shift-click) strip names. The first Cmd-click gangs the selected strip with the one you click; click again to take a strip out. Ganged strips have a bright frame. Moving one ganged fader by hand moves the others by the same travel, each from where it was, so their balance stays (one that reaches the bottom picks up again on the way back within the same move). Muting one mutes them all. Channels and buses can be ganged together; with **Sends on fader** the ganged faders move their sends. Press **Esc**, or right-click a strip and choose **Ungang all**, to end it. A gang belongs to the window: it isn't saved.

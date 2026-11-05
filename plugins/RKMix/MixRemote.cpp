@@ -2,6 +2,7 @@
 
 #include "PluginProcessor.h"
 #include "MixComponents.h"
+#include "MixOsc.h"
 #include "MixRemotePage.h"
 #include "RKMixRemoteFiles.h"
 
@@ -155,8 +156,15 @@ private:
 };
 
 //==============================================================================
-MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p)
+MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p), osc (std::make_unique<MixOsc> (p))
 {
+    osc->onSettingsChanged = [this] { saveSettings(); ++version; };
+    osc->onNowChanged = [this]
+    {
+        ++version;   // the Remote page shows it too
+        if (pusher != nullptr)
+            pusher->notify();
+    };
     console.onSettingsChanged = [this] { saveSettings(); ++version; };
     console.onOutbox = [this]
     {
@@ -223,6 +231,7 @@ MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p)
 void MixRemote::begin()
 {
     restart();
+    osc->begin();
     startTimerHz (30);
 }
 
@@ -231,6 +240,7 @@ MixRemote::~MixRemote()
     stopTimer();
     pusher.reset();
     server.stop();
+    osc.reset();
 }
 
 void MixRemote::setSettingsFileForTesting (const juce::File& f)
@@ -251,6 +261,7 @@ void MixRemote::loadSettings()
     useIp = (bool) root.getProperty ("useIp", false);
     secret = root.getProperty ("secret", {}).toString();
     console.settingsFromVar (root.getProperty ("console", {}));
+    osc->settingsFromVar (root.getProperty ("osc", {}));
     const auto hadPin = root.getProperty ("console", {}).getProperty ("pin", {}).toString() == console.getPin();
     if (secret.length() < 16)
         secret = juce::Uuid().toString();
@@ -266,6 +277,7 @@ void MixRemote::saveSettings() const
     root->setProperty ("useIp", useIp);
     root->setProperty ("secret", secret);
     root->setProperty ("console", console.settingsToVar());
+    root->setProperty ("osc", osc->settingsToVar());
     settingsFile.getParentDirectory().createDirectory();
     rkfx::PresetLibrary::writeAtomically (settingsFile, juce::JSON::toString (juce::var (root)));
 }
@@ -499,7 +511,8 @@ juce::String MixRemote::mixFor (int bus) const
          << R"(,"own":)" << (own ? "true" : "false")
          << R"(,"fader":)" << juce::String (rkfx::ProcessorBase::valueOf (mixer.findParam (mix::busFaderId (bus))), 2)
          << R"(,"mute":)" << (mixer.findParam (mix::busMuteId (bus))->getValue() >= 0.5f ? "true" : "false")
-         << R"(},"rows":[)";
+         << R"(},"now":)" << osc->nowJson()
+         << R"(,"rows":[)";
 
     bool first = true;
     const auto row = [&] (const juce::String& key, const juce::String& name, int colour, float sendDb, float pan, bool used, bool isReturn)

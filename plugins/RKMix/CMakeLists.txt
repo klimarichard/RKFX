@@ -34,6 +34,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixWebServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemote.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixConsole.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixOsc.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemotePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixComponents.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSettings.cpp
@@ -69,6 +70,8 @@ else()
 endif()
 target_sources(rkmix_factory_presets INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/RKMixFactoryPresetList.cpp")
 target_link_libraries(rkmix_factory_presets INTERFACE rkfx_pedal_host)
+# Names by OSC (MixOsc): every target with RKMix's sources (the tests, the tools) gets it too.
+target_link_libraries(rkmix_factory_presets INTERFACE juce::juce_osc)
 
 # The remote's web pages (remote/: the monitor page, the console app), served
 # by MixRemote; looked up by file name (MixRemotePage::find).

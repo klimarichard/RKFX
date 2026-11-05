@@ -1,0 +1,34 @@
+// RKMix names: sends Gig Performer's rackspace and variation names to RKMix,
+// whose phone and iPad remotes show them at the top (docs/manuals/RKMix.md,
+// "Names from Gig Performer").
+//
+// Paste into Window > Gig Script Editor, then Compile. On RKMix's Remote
+// page, click "Names off" to switch the names on; the port there must match
+// RKMIX_PORT below.
+//
+// Check the function names against your Gig Performer version's GPScript
+// function list (Help > GPScript): this was written from memory.
+
+Var
+   RKMIX_IP   : String  = "127.0.0.1"   // RKMix on this Mac
+   RKMIX_PORT : Integer = 9100          // the port on RKMix's Remote page
+   curRack    : Integer = 0
+
+Function SendNames(rack : Integer, variation : Integer)
+   OSC_SendStringSpecific("/rkmix/title",    GetRackspaceNameAtIndex(rack), RKMIX_IP, RKMIX_PORT)
+   OSC_SendStringSpecific("/rkmix/subtitle", GetVariationNameForRackspaceAtIndex(rack, variation), RKMIX_IP, RKMIX_PORT)
+End
+
+On Rackspace(oldRackspaceIndex : Integer, newRackspaceIndex : Integer)
+   curRack = newRackspaceIndex
+   SendNames(curRack, 0)
+End
+
+// A rackspace that opens on another variation: this follows straight after and corrects it.
+On Variation(oldVariationIndex : Integer, newVariationIndex : Integer)
+   SendNames(curRack, newVariationIndex)
+End
+
+// Optional: recall an RKMix scene (1 to 16) as well, e.g. one per rackspace, in
+// On Rackspace (RKMix takes the number as text, an integer or a float):
+//    OSC_SendStringSpecific("/rkmix/scene", IntToString(curRack + 1), RKMIX_IP, RKMIX_PORT)

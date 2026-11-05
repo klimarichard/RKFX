@@ -190,7 +190,7 @@ Each musician sets their own in-ear mix on their phone, with nothing to install:
 
 1. On the **Remote** page, click **Remote off** to switch it on. It shows the address it listens at (`http://<this computer's name>.local:8080`).
 2. Every Aux bus in use (with a name or an output) gets a **QR code**. The musician points the phone's camera at their code and opens the link.
-3. On the phone (drawn with the same faders, pans, meters and switches as RKMix's window): **My mix** (the bus's level and Mute) and a row per channel. **Drag a row sideways** to set that channel's level in the mix (the list scrolls when you drag up and down). In an **Own** bus each row also has its pan (double-tap it for the centre). FX and Group buses that feed the mix (the reverb) are rows too, marked "return". The thin bar under each fader is the channel's signal (orange above 0 dB). **Lock** (top right) stops pocket touches. **Show all channels** also shows the unnamed channels that aren't in the mix yet.
+3. On the phone (drawn with the same faders, pans, meters and switches as RKMix's window): **My mix** (the bus's level and Mute) and a row per channel. **Drag a row sideways** to set that channel's level in the mix (the list scrolls when you drag up and down). In an **Own** bus each row also has its pan (double-tap it for the centre). FX and Group buses that feed the mix (the reverb) are rows too, marked "return". The thin bar under each fader is the channel's signal (orange above 0 dB). **Lock** (top right) stops pocket touches. **Fine** (next to Lock) is for small changes: while it's lit, the faders and pans move a quarter as far for the same finger travel. The phone remembers it. **Show all channels** also shows the unnamed channels that aren't in the mix yet.
 4. **iPhone and iPad:** Share → **Add to Home Screen**. The mix gets its own icon and opens full screen, like an app. Android: the browser's menu → Add to Home screen (or Install app).
 
 A phone can only change its own mix: its sends, its returns, its level and mute. Nothing else in the console, and no other musician's mix. Each mix's link has its own key. The links stay the same from mix to mix and gig to gig, so a home-screen icon keeps working. **New links** makes new ones (the old links stop working: everyone scans again).
@@ -220,6 +220,8 @@ Pages (tabs at the top):
 An open insert shows its controls as knobs and switches, with **On**, **Copy**, **Paste**, **Replace...**, **Remove** (tap it twice) and **Close**. The plugin's own editor, with its curves and pads, is in RKMix's window.
 
 **Lock** (top right) locks the iPad: the faders and mutes only, or everything. Hold it a second to unlock. It's the iPad's own lock, apart from the window's.
+
+**Fine** (next to Lock) is for small changes: while it's lit, the faders, knobs, pans, the EQ curve's handles and the Monitor EQ sliders move a quarter as far for the same finger travel. The iPad remembers it.
 
 - Everything the iPad changes is the same as a change in the window: it goes into the undo history (Undo and Redo are on the iPad too) and the active scene.
 - **Disconnect** (beside each iPad on the Remote page) lets an iPad go: it must type the PIN again. **New PIN** does that for every iPad. After five wrong PINs an iPad waits 30 seconds.

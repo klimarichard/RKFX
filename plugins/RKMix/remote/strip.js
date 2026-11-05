@@ -76,7 +76,7 @@ class EqEditor extends ResponseCurve {
     if (!best || (C.isLocked && C.isLocked("everything"))) return false;
     if (e.taps >= 2 && best.gain) { store.set(best.gain, 0.5); return false; }
     store.hold(best.freq, true); if (best.gain) store.hold(best.gain, true);
-    this.drag.set(e.id, { h: best, x: e.x, y: e.y, f: store.value(best.freq), gn: best.gain ? store.value(best.gain) : 0 });
+    this.drag.set(e.id, { h: best, x: e.x, y: e.y, f: store.value(best.freq), gn: best.gain ? store.value(best.gain) : 0, k: RK.fine.scale() });
     this.repaint();
     return true;
   }
@@ -85,9 +85,9 @@ class EqEditor extends ResponseCurve {
     const h = d.h;
     // frequency: the curve's x is log(hz / 20) / log(1000)
     const startHz = h.minHz * Math.pow(h.maxHz / h.minHz, d.f);
-    const hz = 20 * Math.pow(1000, Math.log(startHz / 20) / Math.log(1000) + (e.x - d.x) / this.w);
+    const hz = 20 * Math.pow(1000, Math.log(startHz / 20) / Math.log(1000) + (e.x - d.x) * d.k / this.w);
     store.set(h.freq, Math.log(Math.max(h.minHz, Math.min(h.maxHz, hz)) / h.minHz) / Math.log(h.maxHz / h.minHz));
-    if (h.gain) store.set(h.gain, d.gn - (e.y - d.y) * (2 * this.range / this.h) / 30);
+    if (h.gain) store.set(h.gain, d.gn - (e.y - d.y) * d.k * (2 * this.range / this.h) / 30);
   }
   pointerUp(e) {
     const d = this.drag.get(e.id); if (!d) return;

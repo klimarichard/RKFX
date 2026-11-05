@@ -61,7 +61,7 @@ class ValueSlider extends Component {
   pointerDown(e) { if (!this.enabled) return false; this.dragging = true; this.lastX = e.x; this.drag = this.value; return true; }
   pointerMove(e) {
     const w = this.w - 84 - 24;
-    this.drag += (e.x - this.lastX) / Math.max(60, w) * (this.max - this.min); this.lastX = e.x;
+    this.drag += (e.x - this.lastX) / Math.max(60, w) * (this.max - this.min) * RK.fine.scale(); this.lastX = e.x;
     this.set(this.drag);
   }
   pointerUp() { this.dragging = false; this.repaint(); }

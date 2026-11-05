@@ -248,6 +248,10 @@ class UserToggle extends Component {
 C.addPage("setup", "Setup", () => new SetupPage());
 
 // The lock in the header
-const install = () => { const h = C.root.header; const l = new LockButton(); h.extra.push(l); h.add(l); h.resized(); };
+const install = () => {
+  const h = C.root.header, l = new LockButton(), f = new RK.FineButton();
+  RK.fine.load("rkmix.console.fine");
+  h.extra.push(l, f); h.add(l); h.add(f); h.resized();
+};
 C.afterStart = install;
 })();

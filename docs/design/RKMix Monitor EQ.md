@@ -67,7 +67,7 @@ What is different from Speaker:
 
 - **Targets:** flat in a coupler sounds dull and thin, so the in-ear targets are what a speaker in a room gives at the eardrum:
   - **Diffuse field:** the ISO 11904-2 diffuse-field response (a broad rise of about 10 dB at 2.5–3 kHz).
-  - **Speakers in a room:** diffuse field with a gentle downward tilt above 1 kHz (−1 dB per octave) and a bass shelf below 150 Hz, **Bass** 0 to +8 dB (default +4).
+  - **Speakers in a room:** diffuse field with a gentle downward tilt above 1 kHz (−1 dB per octave) and a bass shelf below 150 Hz (4th order, gone by 1 kHz), **Bass** 0 to +8 dB (default +4).
 - **Leave the top alone.** Peaks above about 8 kHz move with how deep the earpiece sits, so correcting them exactly fits the coupler, not the ear. Above 8 kHz the correction is the response's broad trend only (the average over the three bands either side) and limited to ±3 dB.
 - **No wedge range:** an in-ear covers the whole range, so no bands are dropped at the ends (only no-data bands).
 - **Limits:** cuts to −10 dB, boosts to +6 dB (a sealed in-ear has headroom in the bass that a wedge doesn't).
@@ -77,7 +77,7 @@ What is different from Speaker:
 ## From response to EQ
 
 1. **Targets:** Speaker: **Flat**, **Gentle tilt** (0 dB up to 1 kHz, then −1 dB per octave: −1 at 2 kHz, −4 at 16 kHz), **Vocal wedge** (Gentle tilt plus a 2nd-order roll-off below 150 Hz). In-ear: see above.
-2. The response is **normalised** to its mean between 250 Hz and 4 kHz (0 dB there), and the target the same way.
+2. The response is **normalised** to its median between 250 Hz and 4 kHz (0 dB there), and the target the same way. The median, not the mean, so a bump or dip inside that range doesn't shift everything else.
 3. **Correction** per band = target − response.
 4. **Smoothing:** each band is averaged with its neighbours (1-2-1), so single-band spikes from reflections are tamed.
 5. **Wedge range (Speaker):** the bands at the bottom or top where the response is more than 12 dB below the normalised level (the wedge doesn't go there) get 0. The wedge's real range is found, not assumed.
@@ -121,6 +121,14 @@ The same flow on the remote, following the existing remote patterns (state pushe
 - Engine: the taken-over bus's input becomes `own × (1 − takeover) + noise` (per side), its mute × fader `g` becomes `g + (1 − g) × takeover`; everything else in the bus (EQ, compressor, inserts, limiter, routing) is as usual.
 - Idle cost, measured A/B against the build before (old and new binaries alternated 5 times, 48 kHz / 64 samples): 0.308 / 0.310 %, 1.936 / 1.938 %, 2.080 / 2.090 %, i.e. no difference. Measuring adds about 0.2 % (benchmark case "Monitor EQ measuring Aux 1").
 - Tests: tests/MixMeasureTests.cpp (takeover level, a known −18 dB path measured within 0.5 dB in every band, floor, sides, stop and hand-back).
+
+**Phase 2 (maths), 2026-11-05:** `plugins/RKMix/MixMonitorEq.h/.cpp`, namespace `monitoreq`.
+- `readResponseFile`, `micCurve`, `target`, `windowBetween` (two reads of the sums), `measuredResponse` (floor, positions, mic), `fileResponse`, `maxDifferenceDb` (left against right), `suggest` (response, options, current gains).
+- Speaker targets: Gentle tilt (default), Flat, Vocal wedge. In-ear: Speakers in a room (default), Diffuse field.
+- The SM58, SM57 and V7 curves and the diffuse-field values are approximate, read from published charts; still to be reviewed by the user before release.
+- The floor's power is taken off each position's input before the ratio.
+- Tests: tests/MixMonitorEqTests.cpp.
+- Stagg SPM-435 (the user's in-ears): no published measurement found (2026-11-05: AutoEq, about 25 squig.link databases, reviews, retailers). So it needs a coupler, or a generic target.
 
 ## Build order
 

@@ -40,6 +40,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSettings.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixMeasure.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixMonitorEq.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixStrip.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixBusDsp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixInserts.cpp

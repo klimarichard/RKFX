@@ -5,6 +5,7 @@
 #include "MixBusDsp.h"
 #include "MixDelay.h"
 #include "MixLayout.h"
+#include "MixMeasure.h"
 #include "MixStrip.h"
 #include "safety/Smoothing.h"
 
@@ -180,6 +181,11 @@ public:
     void setLevels (const Levels&);
     const Settings& getSettings() const noexcept { return settings; }
 
+    /** Monitor EQ's measuring: while it runs, it takes over one Aux bus
+        (its input replaced by pink noise, its fader and mute at 0 dB). Idle
+        it costs one atomic read per block. */
+    MixMeasure& getMeasure() noexcept { return monitorEq; }
+
     /** The inserts to run (nullptr: none). Set before processing. */
     void setInserts (Inserts* i) noexcept { inserts = i; }
 
@@ -289,6 +295,9 @@ private:
     juce::AudioBuffer<float> busChannelBuffers;       // the channels' part, lined up separately while a plan is active
     juce::AudioBuffer<float> mainChannelBuffer, delayScratch;
     juce::AudioBuffer<float> directBuffer;            // a direct output, gained and lined up
+
+    MixMeasure monitorEq;
+    int measureBus = -1;                              // this block's bus taken over by the measuring, or -1
 
     Inserts* inserts = nullptr;
     Latencies latencies;

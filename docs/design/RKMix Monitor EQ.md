@@ -112,6 +112,16 @@ The same flow on the remote, following the existing remote patterns (state pushe
 - Commands: start, next, finish, stop, apply, undo, and the panel's settings.
 - **Safety:** if the remote that started a measurement disconnects for more than 2 s, the noise stops.
 
+## As built
+
+**Phase 1 (engine), 2026-11-05:** `plugins/RKMix/MixMeasure.h/.cpp`, owned by `MixEngine` (`getMeasure()`).
+- Level is the noise's **RMS**, −60 to −12 dBFS (pink noise peaks about 12 dB above its RMS, so −12 keeps the peaks below 0 dBFS). Speaker default −20, In-ear default −40, at most −20 (set by the panel).
+- `start (bus, input, sides)` takes the bus over (the floor: silent, steady); `setNoise (on, dB)`; `stop()`; `isBusy()` until the bus is handed back. One run at a time.
+- `read()` returns running sums since start (samples, steady samples, 31 reference and 31 input sums of squares, the input's peak, steady, noise on); the panel windows them by the difference of two reads.
+- Engine: the taken-over bus's input becomes `own × (1 − takeover) + noise` (per side), its mute × fader `g` becomes `g + (1 − g) × takeover`; everything else in the bus (EQ, compressor, inserts, limiter, routing) is as usual.
+- Idle cost, measured A/B against the build before (old and new binaries alternated 5 times, 48 kHz / 64 samples): 0.308 / 0.310 %, 1.936 / 1.938 %, 2.080 / 2.090 %, i.e. no difference. Measuring adds about 0.2 % (benchmark case "Monitor EQ measuring Aux 1").
+- Tests: tests/MixMeasureTests.cpp (takeover level, a known −18 dB path measured within 0.5 dB in every band, floor, sides, stop and hand-back).
+
 ## Build order
 
 1. **Engine:** `MixMeasure` (pink noise, band analysis, the seqlock sums, the takeover fades), the bus taken over in `MixEngine`. Tests, and the idle benchmark against before.

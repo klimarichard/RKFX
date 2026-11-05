@@ -42,6 +42,7 @@ set(RKFX_ENGINE_PLUGINS
     RKMix/MixEngine
     RKMix/MixStrip
     RKMix/MixBusDsp
+    RKMix/MixMeasure
     RKHarmonize/HarmonizeEngine
     RKArpeggiate/ArpEngine
     RKStrum/StrumEngine
@@ -117,6 +118,7 @@ target_sources(RKFXTests PRIVATE
     PolyPitchTests.cpp
     PatchTests.cpp
     MixTests.cpp
+    MixMeasureTests.cpp
     ${RKFX_ENGINE_SOURCES}
 )
 

@@ -2,6 +2,7 @@
 
 #include "../plugins/RKMix/PluginProcessor.h"
 #include "../plugins/RKMix/MixQr.h"
+#include "../plugins/RKMix/MixOsc.h"
 
 /** RKMix as a plugin: 32 channels each way, the default console, bypass to
     silence, and the mix (settings, names, colours) kept in the session and
@@ -1049,6 +1050,100 @@ public:
             expectWithinAbsoluteError (s.value (mix::channelId (0, "trim")), 0.0f, 0.01f);
             remote.receive (3, R"({"t":"fader","v":-30})", true);
             expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (p.findParam (mix::busFaderId (3))), 0.0f, 0.01f, "an FX bus has no remote");
+            dir.deleteRecursively();
+        }
+
+        beginTest ("Names by OSC: Gig Performer's names on every remote page; scenes; the settings");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-osc");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& osc = remote.getOsc();
+            expect (! osc.isEnabled(), "off at first");
+            expectEquals (osc.getPort(), MixOsc::kDefaultPort);
+            expectEquals (osc.getStatus(), juce::String ("Off"));
+
+            const auto send = [&osc] (const char* address, auto... args)
+            {
+                osc.handle (juce::OSCMessage (juce::OSCAddressPattern (address), args...));
+            };
+            osc.setEnabled (true);
+            send ("/rkmix/title", juce::String ("Song 3"));
+            send ("/rkmix/subtitle", juce::String ("Chorus"));
+            const auto mixJson = juce::JSON::parse (remote.mixFor (2));
+            expectEquals (mixJson["now"]["t"].toString(), juce::String ("Song 3"), "a phone's page");
+            expectEquals (mixJson["now"]["s"].toString(), juce::String ("Chorus"));
+            const auto structure = juce::JSON::parse (remote.getConsole().structureJson());
+            expectEquals (structure["now"]["t"].toString(), juce::String ("Song 3"), "the iPad's");
+            expectEquals (structure["now"]["s"].toString(), juce::String ("Chorus"));
+
+            send ("/rkmix/now", juce::String ("Song 4"));
+            expectEquals (osc.getNow().title, juce::String ("Song 4"), "both at once");
+            expect (osc.getNow().subtitle.isEmpty(), "the second is optional");
+            send ("/rkmix/now", juce::String ("Song 5"), juce::String ("Verse \"2\""));
+            expectEquals (osc.getNow().subtitle, juce::String ("Verse \"2\""));
+            expectEquals (juce::JSON::parse (remote.mixFor (2))["now"]["s"].toString(), juce::String ("Verse \"2\""), "escaped in the JSON");
+            send ("/rkmix/title", juce::String ("Line one\nline two"));
+            expectEquals (osc.getNow().title, juce::String ("Line one line two"), "one line");
+            send ("/rkmix/title", juce::String::repeatedString ("x", 500));
+            expectEquals (osc.getNow().title.length(), MixOsc::kMaxLength, "not too long");
+            send ("/rkmix/title", 7);
+            expectEquals (osc.getNow().title, juce::String ("7"), "a number is a name too");
+            send ("/other/title", juce::String ("Nope"));
+            send ("/rkmix/volume", 1.0f);
+            expectEquals (osc.getNow().title, juce::String ("7"), "other addresses are ignored");
+            send ("/rkmix/clear");
+            expect (osc.getNow().isEmpty(), "cleared");
+
+            // Scenes 1 to 16, as the window numbers them (an int, a float or text).
+            send ("/rkmix/scene", 3);
+            expectEquals (p.getScenes().getCurrent(), 2);
+            send ("/rkmix/scene", 5.0f);
+            expectEquals (p.getScenes().getCurrent(), 4);
+            send ("/rkmix/scene", juce::String ("2"));
+            expectEquals (p.getScenes().getCurrent(), 1);
+            send ("/rkmix/scene", 17);
+            send ("/rkmix/scene", 0);
+            expectEquals (p.getScenes().getCurrent(), 1, "out of range: nothing");
+
+            // Off: the names go (none left over from an earlier show).
+            send ("/rkmix/title", juce::String ("Song 6"));
+            osc.setEnabled (false);
+            expect (osc.getNow().isEmpty());
+            expectEquals (juce::JSON::parse (remote.mixFor (2))["now"]["t"].toString(), juce::String());
+
+            // The settings are the computer's (remote.json); the names never are.
+            osc.setEnabled (true);
+            osc.setPort (9200);
+            osc.setAcceptsFromNetwork (true);
+            send ("/rkmix/title", juce::String ("Song 7"));
+            {
+                RKMixProcessor q;
+                q.getRemote().setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+                auto& o = q.getRemote().getOsc();
+                expect (o.isEnabled() && o.acceptsFromNetwork());
+                expectEquals (o.getPort(), 9200);
+                expect (o.getNow().isEmpty(), "the names aren't saved");
+            }
+
+            // The socket: bound to this computer only by default; the first RKMix takes the port.
+            {
+                const auto port = 20000 + juce::Random::getSystemRandom().nextInt (2000);
+                MixOsc first (p), second (p);
+                juce::DynamicObject::Ptr settings (new juce::DynamicObject());
+                settings->setProperty ("on", true);
+                settings->setProperty ("port", port);
+                first.settingsFromVar (juce::var (settings.get()));
+                second.settingsFromVar (juce::var (settings.get()));
+                expect (! first.isListening(), "not until begun");
+                first.begin();
+                expect (first.isListening(), first.getStatus());
+                expect (first.getStatus().contains ("127.0.0.1"), first.getStatus());
+                second.begin();
+                expect (! second.isListening(), "the port is taken");
+                expect (second.getStatus().contains ("in use"), second.getStatus());
+            }
             dir.deleteRecursively();
         }
 

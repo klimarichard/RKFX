@@ -11,6 +11,7 @@
 #include <memory>
 
 class RKMixProcessor;
+class MixOsc;
 
 /** The monitor remote: each musician's phone (or tablet) sets their own Aux
     mix in a web page RKMix serves on the local network, over a WebSocket.
@@ -31,7 +32,10 @@ class RKMixProcessor;
 
     Settings (on, port, links by IP address) are the computer's, shared by
     the plugin and the standalone app. In Gig Performer the first RKMix to
-    start takes the port; another says the port is in use. */
+    start takes the port; another says the port is in use.
+
+    Names by OSC (MixOsc): what the show is at (Gig Performer's rackspace and
+    variation, or song and part), shown at the top of every page. */
 class MixRemote : private juce::Timer
 {
 public:
@@ -61,6 +65,10 @@ public:
 
     /** The console remote: its PIN, the iPads connected. */
     MixConsole& getConsole() noexcept { return console; }
+
+    /** Names by OSC: its settings, and what's showing. */
+    MixOsc& getOsc() noexcept { return *osc; }
+    const MixOsc& getOsc() const noexcept { return *osc; }
     juce::String getHostName() const;
 
     /** The phones connected, by bus. */
@@ -87,6 +95,7 @@ private:
     RKMixProcessor& mixer;
     MixWebServer server;
     MixConsole console;
+    std::unique_ptr<MixOsc> osc;
     juce::File settingsFile;
     bool enabled = false, useIp = false;
     int port = 8080;

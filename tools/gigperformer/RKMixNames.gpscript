@@ -1,0 +1,50 @@
+// RKMix names (Gig Performer 5): sends where the show is to RKMix, whose
+// phone and iPad remotes show it at the top (docs/manuals/RKMix.md, "Names
+// from Gig Performer"): the rackspace and variation, or in the setlist the
+// song and song part.
+//
+// For the Global Rackspace script (Window > Global Rackspace Script Editor).
+// A script can define each callback only once: if yours already has
+// On Rackspace, On Variation, On Song, On Songpart or the GigLoaded event,
+// put the SendNames line into the one you have.
+//
+// On RKMix's Remote page, click "Names off" to switch the names on; its
+// port must match RKMIX_PORT.
+
+Const
+   RKMIX_IP   : String  = "127.0.0.1"   // RKMix on this Mac
+   RKMIX_PORT : Integer = 9100          // the port on RKMix's Remote page
+
+// One message with both lines: /rkmix/now "<first line>" "<second line>"
+Function SendNames(rack : Integer, variation : Integer)
+   If InSetlistView() Then
+      SendOSCMessage { '/rkmix/now', GetCurrentSongName(), GetCurrentSongPartName() } to RKMIX_IP : RKMIX_PORT
+   Else
+      SendOSCMessage { '/rkmix/now', GetRackspaceNameAtIndex(rack), GetVariationNameForRackspaceAtIndex(rack, variation) } to RKMIX_IP : RKMIX_PORT
+   End
+End
+
+On Rackspace(oldRackspaceIndex : Integer, newRackspaceIndex : Integer)
+   SendNames(newRackspaceIndex, GetCurrentVariation())
+End
+
+On Variation(oldVariation : Integer, newVariation : Integer)
+   SendNames(GetCurrentRackspaceIndex(), newVariation)
+End
+
+On Song(oldSongIndex : Integer, newSongIndex : Integer)
+   SendNames(GetCurrentRackspaceIndex(), GetCurrentVariation())
+End
+
+On Songpart(oldSongpartIndex : Integer, newSongpartIndex : Integer)
+   SendNames(GetCurrentRackspaceIndex(), GetCurrentVariation())
+End
+
+// The names as the gig opens (RKMix may have started first).
+On SystemEvent Matching GigLoaded
+   SendNames(GetCurrentRackspaceIndex(), GetCurrentVariation())
+End
+
+// Optional: recall an RKMix scene (1 to 16) too, e.g. one per rackspace,
+// inside On Rackspace:
+//    SendOSCMessage { '/rkmix/scene', newRackspaceIndex + 1 } to RKMIX_IP : RKMIX_PORT

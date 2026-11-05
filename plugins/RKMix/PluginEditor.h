@@ -491,6 +491,11 @@ private:
         std::vector<std::unique_ptr<juce::TextButton>> disconnects;
         int lastConsoleVersion = -1;
         void updateDevices();
+
+        // Names by OSC (Gig Performer's rackspace and variation): on, port, who may send; what's showing.
+        juce::TextButton oscOn { "Names off" }, oscNetwork { "From other computers" };
+        juce::Label oscPort;
+        juce::Rectangle<int> oscArea;
         struct Link { int bus; juce::String url; juce::Rectangle<int> area; };
         std::vector<Link> links;
         std::array<int, mix::kBuses> connected {};

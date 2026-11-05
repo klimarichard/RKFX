@@ -37,8 +37,25 @@ const panOf = n => Math.round(n * 200 - 100);
 const panText = n => { const w = panOf(n); return w === 0 ? "C" : (w < 0 ? "L" : "R") + Math.abs(w); };
 const linToDb = v => v > 0.00001 ? 20 * Math.log10(v) : -100;
 
-let ws = null, mix = null, showAll = false, locked = false, connected = false, gone = "";
+let ws = null, mix = null, showAll = false, locked = false, connected = false, gone = "", lastNow = "null";
 const isLocked = () => locked;
+
+// What the show is at (Gig Performer's rackspace and variation, sent to RKMix
+// by OSC): a strip under the header, there only while there's a name.
+const nowOf = m => m && m.now && (m.now.t || m.now.s) ? m.now : null;
+const kNowH = 40;
+function drawNow(g, now, x, y, w, h) {
+  drawPanel(g, x, y, w, h, Palette.tintedPanel);
+  g.setColour(Palette.accent); g.fillRoundedRectangle(x, y, 4, h, 2);
+  const pad = 12, room = w - 2 * pad;
+  g.setFont(16, true);
+  const tw = now.t ? Math.min(g.textWidth(now.t), now.s ? room * 0.65 : room) : 0;
+  if (now.t) { g.setColour(Palette.text); g.drawText(now.t, x + pad, y, tw, h, J.centredLeft); }
+  if (now.s) {
+    const sx = x + pad + (tw ? tw + 10 : 0);
+    g.setFont(14); g.setColour(Palette.textDim); g.drawText(now.s, sx, y, x + w - pad - sx, h, J.centredLeft);
+  }
+}
 function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 
 // The store's IDs here: "fader", "mute", "send:<row>", "pan:<row>"; a set becomes the monitor message.
@@ -275,7 +292,8 @@ class Root extends Component {
     const c = this.column(), top = this.safe.top;
     this.lock.setBounds(c.x + c.w - 84, top + 8, 84, 32);
     this.bannerY = top + 48;
-    const y = this.bannerY + (connected ? 0 : 30);
+    this.nowY = this.bannerY + (connected ? 0 : 30);
+    const y = this.nowY + (nowOf(mix) ? kNowH + 8 : 0);
     this.master.setBounds(c.x, y, c.w, 102);
     this.list.setBounds(c.x, y + 102 + 8, c.w, this.h - (y + 110));
   }
@@ -292,6 +310,8 @@ class Root extends Component {
       g.setColour(Colour.hex(0xff15161a)); g.setFont(13);
       g.drawText("Not connected to RKMix: trying again…", 0, this.bannerY, this.w, 26, J.centred);
     }
+    const now = nowOf(mix);
+    if (now) drawNow(g, now, c.x, this.nowY + 6, c.w, kNowH);
   }
 }
 
@@ -310,6 +330,8 @@ function render() {
   }
   store.receive(p);
   root.list.setRows(rows, b.own);
+  const now = JSON.stringify(nowOf(mix));
+  if (now !== lastNow) { lastNow = now; root.resized(); root.repaint(); }
 }
 
 let lastMeters = 0;

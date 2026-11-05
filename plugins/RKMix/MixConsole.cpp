@@ -1,4 +1,5 @@
 #include "MixConsole.h"
+#include "MixOsc.h"
 
 #include "PluginProcessor.h"
 #include "host/PedalRegistry.h"
@@ -565,6 +566,7 @@ juce::String MixConsole::structureJson() const
 
     auto& undo = mixer.getUndo();
     json << R"(,"scene":)" << mixer.getScenes().getCurrent()
+         << R"(,"now":)" << mixer.getRemote().getOsc().nowJson()
          << R"(,"undo":)" << jsonString (undo.canUndo() ? undo.undoDescription() : juce::String())
          << R"(,"redo":)" << jsonString (undo.canRedo() ? undo.redoDescription() : juce::String())
          << R"(,"anySolo":)" << flag (mixer.isAnythingSoloed())

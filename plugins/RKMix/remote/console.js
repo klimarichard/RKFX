@@ -142,6 +142,20 @@ class Header extends Component {
     g.setColour(Palette.accent); g.fillRect(0, kHeader - 2, this.w, 2);
     g.setColour(Palette.text); g.setFont(18, true); g.drawText("RKMix", 14, 0, 200, kHeader, J.centredLeft);
     const s = S();
+    // What the show is at (Gig Performer's names, by OSC): between the tabs and Undo.
+    const now = s && s.now && (s.now.t || s.now.s) ? s.now : null;
+    if (now) {
+      const last = this.tabs[this.tabs.length - 1], left = (last ? last.x + last.w : 120) + 16, right = this.undo.x - 16;
+      if (right - left > 60) {
+        g.setFont(15, true);
+        const tw = now.t ? Math.min(g.textWidth(now.t), now.s ? (right - left) * 0.65 : right - left) : 0;
+        if (now.t) { g.setColour(Palette.text); g.drawText(now.t, left, 0, tw, kHeader, J.centredLeft); }
+        if (now.s) {
+          const sx = left + (tw ? tw + 10 : 0);
+          g.setFont(13); g.setColour(Palette.textDim); g.drawText(now.s, sx, 0, right - sx, kHeader, J.centredLeft);
+        }
+      }
+    }
     this.undo.enabled = !!(s && s.undo); this.redo.enabled = !!(s && s.redo);
     this.tabs.forEach((t, i) => { t.toggle = pages[i].key === state.page; });
     // The connection

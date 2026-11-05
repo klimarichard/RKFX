@@ -2,6 +2,7 @@
 #include "PluginProcessor.h"
 #include "MixEditorStyle.h"
 #include "MixQr.h"
+#include "MixOsc.h"
 
 using namespace MixGui::Layout;
 using namespace mix;
@@ -72,6 +73,18 @@ RKMixEditor::RemotePanel::RemotePanel (RKMixEditor& o) : Panel (o)
     port.onTextChange = [this] { owner.mixer.getRemote().setPort (port.getText().getIntValue()); refresh(); };
     port.setText (juce::String (remote.getPort()), juce::dontSendNotification);
     addAndMakeVisible (port);
+
+    // Names by OSC
+    toggle (oscOn, "Show the names Gig Performer sends (its rackspace and variation) on the phones and the iPad");
+    oscOn.onClick = [this] { auto& osc = owner.mixer.getRemote().getOsc(); osc.setEnabled (! osc.isEnabled()); refresh(); };
+    toggle (oscNetwork, "Let other computers send names too (off: only this computer)");
+    oscNetwork.onClick = [this] { auto& osc = owner.mixer.getRemote().getOsc(); osc.setAcceptsFromNetwork (! osc.acceptsFromNetwork()); refresh(); };
+    oscPort.setEditable (false, true, false);
+    oscPort.setJustificationType (juce::Justification::centred);
+    oscPort.setColour (juce::Label::outlineColourId, rkfx::Palette::knobTrack);
+    oscPort.setTooltip ("The OSC port names come to (double-click to change; " + juce::String (MixOsc::kDefaultPort) + " unless another app uses it)");
+    oscPort.onTextChange = [this] { owner.mixer.getRemote().getOsc().setPort (oscPort.getText().getIntValue()); refresh(); };
+    addAndMakeVisible (oscPort);
     refresh();
 }
 
@@ -89,6 +102,12 @@ void RKMixEditor::RemotePanel::refresh()
     consoleOn.setButtonText (console.isEnabled() ? "Console on" : "Console off");
     if (! pin.isBeingEdited())
         pin.setText (console.getPin(), juce::dontSendNotification);
+    auto& osc = remote.getOsc();
+    oscOn.setToggleState (osc.isEnabled(), juce::dontSendNotification);
+    oscOn.setButtonText (osc.isEnabled() ? "Names on" : "Names off");
+    oscNetwork.setToggleState (osc.acceptsFromNetwork(), juce::dontSendNotification);
+    if (! oscPort.isBeingEdited())
+        oscPort.setText (juce::String (osc.getPort()), juce::dontSendNotification);
 
     // A link for each Aux bus in use (named, or going to an output), in a grid.
     links.clear();
@@ -145,7 +164,18 @@ void RKMixEditor::RemotePanel::resized()
     r.removeFromLeft (kGap);
     consoleArea = r.removeFromLeft (250);
     r.removeFromLeft (kGap);
+    oscArea = r.removeFromLeft (220);
+    r.removeFromLeft (kGap);
     linksArea = r;
+
+    auto o = inner (oscArea);
+    oscOn.setBounds (o.removeFromTop (kSwitchH + 4));
+    o.removeFromTop (8);
+    auto oscRow = o.removeFromTop (kSwitchH);
+    oscRow.removeFromLeft (40);   // "Port"
+    oscPort.setBounds (oscRow.removeFromLeft (70));
+    o.removeFromTop (8);
+    oscNetwork.setBounds (o.removeFromTop (kSwitchH));
 
     auto c = inner (consoleArea);
     auto top = c.removeFromTop (kSwitchH + 4);
@@ -240,6 +270,50 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
             g.drawFittedText ((d.name.isNotEmpty() ? d.name : juce::String ("Device")) + " " + d.address
                               + (d.signedIn ? "" : " (PIN)"), row, juce::Justification::centredLeft, 1, 0.7f);
         }
+    }
+
+    // Names by OSC
+    {
+        auto& osc = remote.getOsc();
+        rkfx::drawPanel (g, oscArea, owner.panelColour(), "Names (Gig Performer, OSC)");
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        g.drawText ("Port", oscPort.getBounds().withX (oscPort.getX() - 40).withWidth (36), juce::Justification::centredLeft);
+
+        auto t = inner (oscArea).withTop (oscNetwork.getBottom() + 10);
+        g.setColour (osc.isListening() ? owner.accent().brighter (0.4f) : osc.isEnabled() ? rkfx::Palette::warning : rkfx::Palette::textDim);
+        g.drawFittedText (osc.getStatus(), t.removeFromTop (34), juce::Justification::topLeft, 2);
+
+        // What the phones show now
+        t.removeFromTop (4);
+        auto showing = t.removeFromTop (54);
+        g.setColour (rkfx::Palette::knobTrack);
+        g.drawRoundedRectangle (showing.toFloat().reduced (0.5f), 4.0f, 1.0f);
+        showing = showing.reduced (8, 4);
+        const auto now = osc.getNow();
+        if (now.isEmpty())
+        {
+            g.setColour (rkfx::Palette::textDim);
+            g.setFont (rkfx::Fonts::regular (12.0f));
+            g.drawFittedText (osc.isEnabled() ? "No names yet" : "Switch the names on", showing, juce::Justification::centred, 2);
+        }
+        else
+        {
+            g.setColour (rkfx::Palette::text);
+            g.setFont (rkfx::Fonts::bold (14.0f));
+            g.drawFittedText (now.title, showing.removeFromTop (24), juce::Justification::centredLeft, 1, 0.7f);
+            g.setColour (rkfx::Palette::textDim);
+            g.setFont (rkfx::Fonts::regular (12.5f));
+            g.drawFittedText (now.subtitle, showing, juce::Justification::centredLeft, 1, 0.7f);
+        }
+
+        t.removeFromTop (8);
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        g.drawFittedText ("Gig Performer's gig script sends the rackspace and variation (/rkmix/title, /rkmix/subtitle) "
+                          "to this port; the phones and the iPad show them at the top. /rkmix/scene 1 to 16 recalls a "
+                          "scene. The names aren't saved with the mix. See the manual for the script.",
+                          t, juce::Justification::topLeft, 10);
     }
 
     rkfx::drawPanel (g, linksArea, owner.panelColour(), "In-ear mixes: one code per Aux bus (click a code to copy its link)");

@@ -40,10 +40,24 @@ const linToDb = v => v > 0.00001 ? 20 * Math.log10(v) : -100;
 let ws = null, mix = null, showAll = false, locked = false, connected = false, gone = "", lastNow = "null";
 const isLocked = () => locked;
 
+// This phone's own layout of this mix, kept on the phone (per mix link):
+// the channels starred to the top ("Me") and whether the pans are hidden.
+const layout = { me: new Set(), hidePans: false };
+const layoutKey = "rkmix.monitor.layout." + KEY;
+try {
+  const v = JSON.parse(localStorage.getItem(layoutKey) || "{}");
+  if (Array.isArray(v.me)) layout.me = new Set(v.me.map(String));
+  layout.hidePans = !!v.hidePans;
+} catch (_) {}
+function saveLayout() {
+  try { localStorage.setItem(layoutKey, JSON.stringify({ me: [...layout.me], hidePans: layout.hidePans })); } catch (_) {}
+}
+
 // What the show is at (Gig Performer's rackspace and variation, sent to RKMix
 // by OSC): a strip under the header, there only while there's a name.
 const nowOf = m => m && m.now && (m.now.t || m.now.s) ? m.now : null;
 const kNowH = 40;
+const kHeadingH = 26;   // the list's "Me" and "Others" headings
 function drawNow(g, now, x, y, w, h) {
   drawPanel(g, x, y, w, h, Palette.tintedPanel);
   g.setColour(Palette.accent); g.fillRoundedRectangle(x, y, 4, h, 2);
@@ -145,21 +159,38 @@ class MasterPanel extends Component {
   }
 }
 
+// A row's star: tap it to keep the channel on top (in "Me"), again to put it back.
+class Star extends TextButton {
+  constructor(key) {
+    super("", () => {
+      if (locked) return;
+      if (layout.me.has(key)) layout.me.delete(key); else layout.me.add(key);
+      saveLayout(); render();
+    });
+  }
+  paint(g) {
+    const on = layout.me.has(this.parent.key), a = locked ? 0.45 : 1;
+    g.setColour((on ? Palette.accent : Palette.textDim).withMultipliedAlpha(this.down ? 0.7 * a : a));
+    g.setFont(19); g.drawText(on ? "\u2605" : "\u2606", 0, 0, this.w, this.h, J.centred);
+  }
+}
+
 // One channel (or return) in the mix: its colour, name, level, meter and pan.
 class Row extends Component {
   constructor(r) {
     super(); this.key = r.k;
+    this.star = this.add(new Star(r.k));
     this.fader = this.add(new SideFader("send:" + r.k));
     this.pan = this.add(new LinearSlider("pan:" + r.k)); this.pan.locked = isLocked;
     this.pan.popupText = () => panText(this.pan.norm);
   }
-  update(r, own) { this.r = r; this.hasPan = own && !r.ret; this.pan.setVisible(this.hasPan); this.colour = Colour.hex(r.colour); }
+  update(r, own) { this.r = r; this.hasPan = own && !r.ret && !layout.hidePans; this.pan.setVisible(this.hasPan); this.colour = Colour.hex(r.colour); }
   height() { return this.hasPan ? 112 : 86; }
-  resized() { this.fader.setBounds(6, 28, this.w - 12, 50); this.pan.setBounds(54, 82, this.w - 54 - 22, 22); }
+  resized() { this.star.setBounds(8, 2, 30, 30); this.fader.setBounds(6, 28, this.w - 12, 50); this.pan.setBounds(54, 82, this.w - 54 - 22, 22); }
   paint(g) {
     drawPanel(g, 0, 0, this.w, this.h, Palette.tintedPanel);
     g.setColour(this.colour); g.fillRoundedRectangle(0, 0, 5, this.h, 2.5);
-    g.setColour(Palette.text); g.setFont(14.5, true); g.drawText(this.r.name, 14, 6, this.w - 120, 22, J.centredLeft);
+    g.setColour(Palette.text); g.setFont(14.5, true); g.drawText(this.r.name, 40, 6, this.w - 146, 22, J.centredLeft);
     g.setColour(Palette.textDim); g.setFont(12.5);
     if (this.r.ret) g.drawText("return", this.w - 160, 6, 70, 22, J.centredRight);
     g.setColour(Palette.text); g.setFont(14);
@@ -182,8 +213,10 @@ class List extends Component {
     app.frameHooks.add(dt => this.coast(dt));
   }
   find(x, y) { return this.visible && this.hitTest(x, y) ? this : null; }
-  setRows(rows, own) {
-    const keep = new Map();
+  // me: the starred rows (on top), others: the rest; own: the mix has its own pans.
+  setRows(me, others, own) {
+    const rows = me.concat(others), keep = new Map();
+    this.meCount = me.length; this.othersCount = others.length;
     for (const r of rows) {
       let row = this.rows.get(r.k);
       if (!row) row = this.content.add(new Row(r));
@@ -195,11 +228,18 @@ class List extends Component {
     this.layout();
   }
   layout() {
-    let y = 0;
-    for (const row of this.order) { row.setBounds(0, y, this.w, row.height()); y += row.height() + 6; }
+    // With starred rows: a "Me" heading over them, "Others" over the rest.
+    let y = 0; this.headings = [];
+    const heading = text => { this.headings.push({ text, y }); y += kHeadingH; };
+    this.order.forEach((row, i) => {
+      if (this.meCount && i === 0) heading("Me");
+      if (this.meCount && i === this.meCount) heading("Others");
+      row.setBounds(0, y, this.w, row.height()); y += row.height() + 6;
+    });
     this.emptyY = y;
     if (!this.order.length) y += 60;
-    this.allButton.setBounds(Math.max(0, (this.w - 260) / 2), y + 8, Math.min(260, this.w), 36);
+    const bw = Math.min(260, this.w), bx = Math.max(0, (this.w - 260) / 2);
+    this.allButton.setBounds(bx, y + 8, bw, 36);
     this.contentHeight = y + 8 + 36 + 70;
     this.content.setBounds(0, -this.scroll, this.w, this.contentHeight);
     this.clamp();
@@ -218,13 +258,15 @@ class List extends Component {
     super.draw(g); c.restore();
   }
   paint(g) {
+    g.setColour(Palette.textDim); g.setFont(13, true);
+    for (const h of this.headings || []) g.drawText(h.text.toUpperCase(), 6, h.y - this.scroll + 2, this.w - 12, kHeadingH - 4, J.centredLeft);
     if (!this.order.length) {
       g.setColour(Palette.textDim); g.setFont(14);
       g.drawText(mix ? "Nothing in this mix yet." : "", 0, this.emptyY - this.scroll, this.w, 60, J.centred);
     }
     g.setColour(Palette.textDim); g.setFont(12);
     const y = this.contentHeight - 64 - this.scroll;
-    g.drawFittedText("Slide a row sideways for its level; double-tap a pan for the centre.", 0, y, this.w, 20, J.centred, 1);
+    g.drawFittedText("Slide a row sideways for its level; tap \u2606 to keep it on top.", 0, y, this.w, 20, J.centred, 1);
     g.drawFittedText("Safari: Share, then Add to Home Screen, for an app icon.", 0, y + 20, this.w, 20, J.centred, 1);
   }
   childAt(e) {   // the control under the finger, and the event in its own coordinates
@@ -283,6 +325,9 @@ class Root extends Component {
     this.lock = this.add(new TextButton("Lock", () => { locked = !locked; this.lock.toggle = locked; this.lock.text = locked ? "Locked" : "Lock"; this.repaint(); }));
     fine.load("rkmix.monitor.fine");
     this.fine = this.add(new FineButton());
+    // Hide pans (lit while they're hidden): only in a mix with its own pans.
+    this.pans = this.add(new TextButton("Hide pans", () => { layout.hidePans = !layout.hidePans; saveLayout(); render(); }));
+    this.pans.setVisible(false);
     this.master = this.add(new MasterPanel());
     this.list = this.add(new List());
     this.safe = { top: 0, bottom: 0 };
@@ -294,6 +339,7 @@ class Root extends Component {
     const c = this.column(), top = this.safe.top;
     this.lock.setBounds(c.x + c.w - 84, top + 8, 84, 32);
     this.fine.setBounds(c.x + c.w - 84 - 6 - 64, top + 8, 64, 32);
+    this.pans.setBounds(c.x + c.w - 84 - 6 - 64 - 6 - 84, top + 8, 84, 32);
     this.bannerY = top + 48;
     this.nowY = this.bannerY + (connected ? 0 : 30);
     const y = this.nowY + (nowOf(mix) ? kNowH + 8 : 0);
@@ -307,7 +353,7 @@ class Root extends Component {
     const name = gone || (mix ? mix.bus.name : document.title);
     if (mix && !gone) { g.setColour(Colour.hex(mix.bus.colour)); g.fillRoundedRectangle(c.x + 2, top + 12, 6, 24, 2); }
     g.setColour(Palette.text); g.setFont(17, true);
-    g.drawText(name, c.x + 16, top, c.w - 16 - 96 - 70, 46, J.centredLeft);
+    g.drawText(name, c.x + 16, top, c.w - 16 - 96 - 70 - (this.pans.visible ? 90 : 0), 46, J.centredLeft);
     if (!connected) {
       g.setColour(Palette.warning); g.fillRect(0, this.bannerY, this.w, 26);
       g.setColour(Colour.hex(0xff15161a)); g.setFont(13);
@@ -326,13 +372,15 @@ function render() {
   document.title = b.name;
   p.fader = [faderPositionOf(b.fader), dbText(b.fader), faderPositionOf(0), 0];
   p.mute = [b.mute ? 1 : 0, b.mute ? "On" : "Off", 0, 2];
-  const rows = mix.rows.filter(r => showAll || r.used);
+  // Starred rows always show, on top; the rest as before.
+  const me = mix.rows.filter(r => layout.me.has(r.k)), others = mix.rows.filter(r => !layout.me.has(r.k) && (showAll || r.used));
   for (const r of mix.rows) {
     p["send:" + r.k] = [faderPositionOf(r.send), dbText(r.send), faderPositionOf(0), 0];
     p["pan:" + r.k] = [(r.pan + 100) / 200, "", 0.5, 201];
   }
   store.receive(p);
-  root.list.setRows(rows, b.own);
+  root.list.setRows(me, others, b.own);
+  root.pans.setVisible(!!b.own); root.pans.toggle = layout.hidePans; root.repaint();
   const now = JSON.stringify(nowOf(mix));
   if (now !== lastNow) { lastNow = now; root.resized(); root.repaint(); }
 }

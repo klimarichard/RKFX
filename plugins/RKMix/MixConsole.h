@@ -107,6 +107,11 @@ public:
     /** The meters message for every console (push thread). */
     static juce::String metersJson (const MixRemoteMeters&);
 
+    /** Tests: Monitor EQ's state message as it would be sent now. */
+    juce::String monitorEqJson() const;
+    /** How long the iPad that started a Monitor EQ run may be gone before the run stops. */
+    static constexpr juce::uint32 kOwnerGoneMs = 2000;
+
     /** Tests: the structure message as it would be sent now. */
     juce::String structureJson() const;
     /** Tests: the value message for @p id: [normalised, text, default, steps, (choices)]. */
@@ -151,6 +156,9 @@ private:
         ("ins:<slot number>:<its parameter ID>"). */
     juce::RangedAudioParameter* resolve (const juce::String& id) const;
     void insertCommand (Client&, const juce::String& type, const juce::var& message);
+    void monitorEqCommand (Client&, const juce::var& message);
+    void checkMonitorEqOwner();
+    juce::uint32 ownerGoneSince = 0;     // Time::getMillisecondCounter, 0 = present
     juce::String typesJson() const;
     void handle (Client&, const juce::var& message);
     void signIn (Client&, const juce::var& message);

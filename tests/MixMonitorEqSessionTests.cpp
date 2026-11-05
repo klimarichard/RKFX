@@ -251,6 +251,76 @@ public:
             expect (! rig.p.getMeasure().isBusy(), "no noise played");
         }
 
+        beginTest ("The console remote: state to subscribers, commands, options; a run stops when its iPad is gone 2 s");
+        {
+            Rig rig;
+            auto& remote = rig.p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-meq");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& console = remote.getConsole();
+            expect (console.setPin ("2468"));
+
+            struct Fake : MixWebServer::Connection
+            {
+                juce::StringArray sent;
+                bool send (const juce::String& t) override { sent.add (t); return true; }
+                void close() override {}
+                juce::var last (const juce::String& type)
+                {
+                    for (int i = sent.size(); --i >= 0;)
+                        if (const auto v = juce::JSON::parse (sent[i]); v["type"].toString() == type)
+                            return v;
+                    return {};
+                }
+            };
+            const auto exchange = [&] (Fake& c, const juce::String& message)
+            {
+                if (message.isNotEmpty())
+                    console.received (c, message);
+                console.tick();
+                console.send (c, {});
+            };
+
+            auto a = std::make_unique<Fake>();
+            a->address = "10.0.0.5";
+            console.opened (*a);
+            exchange (*a, R"({"t":"hello","pin":"2468","name":"iPad"})");
+            exchange (*a, R"({"t":"meq","a":"sub","on":true})");
+            auto state = a->last ("meq");
+            expectEquals (state["step"].toString(), juce::String ("idle"), "the state, once subscribed");
+            expectEquals (state["t"].size(), 31);
+            expect (! state.hasProperty ("n"), "no bands measured yet");
+
+            exchange (*a, R"({"t":"meq","a":"opt","o":{"strength":0.5,"level":-30,"positions":2}})");
+            const auto& o = rig.p.getMonitorEq().getOptions();
+            expectEquals (o.strength, 0.5f);
+            expectEquals (o.speakerLevelDb, -30.0f);
+            expectEquals (o.speakerPositions, 2);
+            exchange (*a, R"({"t":"meq","a":"opt","o":{"level":"nonsense","type":7}})");
+            expect (o.type == monitoreq::Type::inEar, "out of range: clamped");
+            exchange (*a, R"({"t":"meq","a":"opt","o":{"type":0}})");
+
+            exchange (*a, R"({"t":"meq","a":"start","bus":0})");
+            expect (rig.p.getMonitorEq().isRunning(), "started from the iPad");
+            expect (rig.p.getMonitorEq().getOwner().isNotEmpty());
+            rig.runUntil ([&] { return rig.p.getMonitorEq().getStep() == MixMonitorEqSession::Step::measuring; });
+            rig.runUntil ([] { return false; }, 0.5);   // the live bands come from the next ticks
+            exchange (*a, {});
+            expectEquals (a->last ("meq")["step"].toString(), juce::String ("measuring"));
+            expect (a->last ("meq").hasProperty ("n"), "live bands while measuring");
+
+            // The iPad goes: after 2 s the run stops.
+            console.closed (*a);
+            a.reset();
+            exchange (*std::make_unique<Fake>(), {});
+            expect (rig.p.getMonitorEq().isRunning(), "not at once");
+            juce::Thread::sleep ((int) MixConsole::kOwnerGoneMs + 200);
+            console.tick();
+            expect (! rig.p.getMonitorEq().isRunning(), "stopped");
+            expect (rig.p.getMonitorEq().getMessage().contains ("iPad"));
+            dir.deleteRecursively();
+        }
+
         beginTest ("Options are saved with the mix");
         {
             Rig rig;

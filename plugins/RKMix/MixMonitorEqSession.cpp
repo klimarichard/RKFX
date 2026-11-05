@@ -39,6 +39,14 @@ namespace
         return i >= 0 && i < count ? (E) i : fallback;
     }
 
+    /** Nothing measured: every band without data. */
+    monitoreq::Suggestion emptySuggestion()
+    {
+        monitoreq::Suggestion s;
+        s.noData.fill (true);
+        return s;
+    }
+
     void setParam (rkfx::ProcessorBase& p, const juce::String& id, float value)
     {
         if (auto* param = p.findParam (id))
@@ -46,7 +54,10 @@ namespace
     }
 }
 
-MixMonitorEqSession::MixMonitorEqSession (RKMixProcessor& p) : processor (p) {}
+MixMonitorEqSession::MixMonitorEqSession (RKMixProcessor& p) : processor (p)
+{
+    suggestion = emptySuggestion();
+}
 
 MixMonitorEqSession::~MixMonitorEqSession()
 {
@@ -175,13 +186,14 @@ bool MixMonitorEqSession::start (int busIndex)
     }
 
     bus = busIndex;
+    owner.clear();
     positions.clear();
     positionSide.clear();
     hasResponse = false;
     earDifference = 0.0f;
     progress = 0.0f;
     message.clear();
-    suggestion = {};
+    suggestion = emptySuggestion();
 
     const auto slot = findGraphEq (bus);
     measuredGains = slot >= 0 ? graphEqGains (bus, slot) : Bands {};
@@ -244,11 +256,11 @@ void MixMonitorEqSession::finish()
     computeResult();
 }
 
-void MixMonitorEqSession::stop()
+void MixMonitorEqSession::stop (const juce::String& why)
 {
     if (! isRunning())
         return;
-    endRun ({});
+    endRun (why);
 }
 
 void MixMonitorEqSession::clear()
@@ -257,7 +269,7 @@ void MixMonitorEqSession::clear()
         endRun ({});
     step = Step::idle;
     hasResponse = false;
-    suggestion = {};
+    suggestion = emptySuggestion();
     message.clear();
     changed();
 }

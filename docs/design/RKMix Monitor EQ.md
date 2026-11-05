@@ -107,7 +107,7 @@ Under an Aux bus's insert area, a **Monitor EQ…** button opens the panel for t
 
 The same flow on the remote, following the existing remote patterns (state pushed to the page, commands back):
 
-- A **Monitor EQ** view for the remote's bus (and from the full console remote, for any Aux bus).
+- A **Monitor EQ** tab on the console remote, for any Aux bus (not on the musicians' monitor pages: see As built, phase 4).
 - State: step (idle, floor, position *n* of *N*, done), the 31 band values, the suggested correction.
 - Commands: start, next, finish, stop, apply, undo, and the panel's settings.
 - **Safety:** if the remote that started a measurement disconnects for more than 2 s, the noise stops.
@@ -137,6 +137,14 @@ The same flow on the remote, following the existing remote patterns (state pushe
 - `MixMonitorEqView`: the Aux bus page's **Monitor EQ** button swaps the processing for it. Closing it stops a run it started (a remote's run carries on).
 - A band needs at least -100 dBFS as well as 10 dB over the floor (a digitally silent floor and filter tails).
 - Tests: tests/MixMonitorEqSessionTests.cpp (in RKBoardTests): a +6 dB bell found, cut, applied into an inserted GraphEQ, measured again (mostly gone), undone; an existing 10-band GraphEQ; full slots; positions, Next, Finish, a scene recall; Each ear; a file; options saved.
+
+**Phase 4 (iPad), 2026-11-05:**
+- The console remote (the iPad, behind its PIN) has a **Monitor EQ** tab (remote/monitoreq.js): any Aux bus, the same options, the bands, and big Start / Next / Finish / Stop / Apply / Undo buttons. Files (calibration, measurement) are loaded on the computer; the iPad picks them once loaded. The iPad's Lock everything makes the tab look-only.
+- Protocol: `{t:"meq", a:"sub"|"start"|"next"|"finish"|"stop"|"apply"|"undo"|"clear"|"opt", ...}`; the state `{type:"meq", ...}` (step, bus, positions, progress, message, options, targets, mics, the 31 target values, and while there's data the response, correction, gains and the no-data / low-confidence / null / out-of-range flags as bit strings) goes to subscribed consoles when the session's version changes.
+- A run started from an iPad belongs to its token: when no console with that token has been connected for 2 s, the run stops (a reconnect in time keeps it going). A run started in the window has no owner.
+- **Not on the musicians' monitor pages** (decided while building): their links have no PIN, so anyone with one could play noise into that wedge; Monitor EQ stays on the PIN-protected console remote.
+- An empty suggestion has every band marked no data (it had all marked as data: zeros drawn as a measurement).
+- Tests: the console protocol in tests/MixMonitorEqSessionTests.cpp (state to subscribers, options, clamping, start, live bands, the owner gone 2 s); the page smoke-tested in Node with stubbed canvas and WebSocket (not in the repo).
 
 ## Build order
 

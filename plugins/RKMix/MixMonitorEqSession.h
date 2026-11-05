@@ -90,8 +90,15 @@ public:
     void next();
     /** Waiting: done with the positions measured so far (at least one). */
     void finish();
-    /** Ends a run (the bus handed back); a finished result stays. */
-    void stop();
+    /** Ends a run (the bus handed back), with @p why as the message; a finished result stays. */
+    void stop (const juce::String& why = {});
+
+    /** Who started the run from a remote (a console's token; empty: the window). Cleared by start(). */
+    void setOwner (const juce::String& token) { owner = token; }
+    const juce::String& getOwner() const noexcept { return owner; }
+
+    /** Bumped on every change (the remote polls it). */
+    int getVersion() const noexcept { return version; }
     /** Back to idle, forgetting the result. */
     void clear();
 
@@ -176,5 +183,7 @@ private:
     void updateSuggestion();
     void live (const monitoreq::Window&);
     bool readFile (const juce::File&, Bands&, juce::String& name);
-    void changed() { sendChangeMessage(); }
+    juce::String owner;
+    int version = 0;
+    void changed() { ++version; sendChangeMessage(); }
 };

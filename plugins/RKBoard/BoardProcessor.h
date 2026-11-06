@@ -125,6 +125,14 @@ public:
         can cheaply poll for updates. */
     int getBoardCounter() const noexcept { return boardCounter.load(); }
 
+    /** The window's lock for the show (not saved; host parameters, MIDI and
+        the remote still work). Footswitches: scenes, the pedals' footswitches,
+        Tap, Tuner and Morph still work. Everything: nothing changes (a pedal
+        can still be selected to look at its controls). */
+    enum class Lock { off, footswitches, everything };
+    Lock getLock() const noexcept { return (Lock) lock.load(); }
+    void setLock (Lock l) { lock = (int) l; ++boardCounter; }
+
     /** Undo and redo (message thread): see BoardUndo. Loading a board starts a new history. */
     rkfx::UndoHistory& getUndo() noexcept { return undo->getHistory(); }
 
@@ -472,7 +480,8 @@ private:
     std::atomic<bool> presetModified { false };
     std::atomic<int> presetStateCounter { 0 };
     std::atomic<int> boardCounter { 0 };
-    std::atomic<int> settingsCounter { 0 };      // assignments, scene knobs, trails, names, scene copies (undo)
+    std::atomic<int> settingsCounter { 0 };
+    std::atomic<int> lock { 0 };      // assignments, scene knobs, trails, names, scene copies (undo)
     std::atomic<bool> loadingBoard { false };
     std::unique_ptr<BoardUndo> undo;
 

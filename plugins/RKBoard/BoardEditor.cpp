@@ -224,6 +224,13 @@ const BoardStrip::Item* BoardStrip::find (Item::Kind kind, int id) const
     return nullptr;
 }
 
+juce::Rectangle<int> BoardStrip::tileBounds (int id)
+{
+    layoutItems();
+    const auto* item = find (Item::Kind::pedal, id);
+    return item != nullptr ? item->bounds : juce::Rectangle<int>();
+}
+
 juce::Rectangle<int> BoardStrip::footswitchBounds (juce::Rectangle<int> tile) const
 {
     return tile.removeFromBottom (40).withSizeKeepingCentre (28, 28);
@@ -482,6 +489,18 @@ void BoardStrip::mouseDown (const juce::MouseEvent& e)
     if (item == nullptr)
         return;
 
+    // Locked: a click selects (and with footswitches, switches); nothing else.
+    if (lock != BoardProcessor::Lock::off)
+    {
+        if (e.mods.isPopupMenu() || item->kind == Item::Kind::add)
+            return;
+        if (item->kind == Item::Kind::pedal)
+            pressedId = item->id;
+        else if (onSelect)
+            onSelect (keyOf (*item));
+        return;
+    }
+
     switch (item->kind)
     {
         case Item::Kind::add:
@@ -507,7 +526,7 @@ void BoardStrip::mouseDown (const juce::MouseEvent& e)
 
 void BoardStrip::mouseDrag (const juce::MouseEvent& e)
 {
-    if (pressedId <= 0)
+    if (pressedId <= 0 || lock != BoardProcessor::Lock::off)
         return;
 
     if (! dragging && e.getDistanceFromDragStart() > 5)
@@ -541,7 +560,10 @@ void BoardStrip::mouseUp (const juce::MouseEvent& e)
     if (const auto* item = find (Item::Kind::pedal, id))
     {
         if (footswitchBounds (item->bounds).contains (e.getPosition()))
-            board.setPedalBypassed (id, ! board.isPedalBypassed (id));
+        {
+            if (lock != BoardProcessor::Lock::everything)
+                board.setPedalBypassed (id, ! board.isPedalBypassed (id));
+        }
         else if (onSelect)
             onSelect (id);
     }
@@ -738,7 +760,7 @@ void SceneButton::paintButton (juce::Graphics& g, bool isMouseOver, bool isButto
 
 void SceneButton::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    if (onDoubleClick && ! e.mods.isPopupMenu())
+    if (onDoubleClick && ! e.mods.isPopupMenu() && ! locked)
         onDoubleClick();
 }
 
@@ -760,14 +782,23 @@ BoardEditor::BoardEditor (BoardProcessor& p)
 
     undoButton.onClick = [this] { undoOrRedo (false); };
     redoButton.onClick = [this] { undoOrRedo (true); };
+    undoButton.setComponentID ("undo");
+    lockButton.setComponentID ("lock");
+    tempoField.setComponentID ("tempo");
+    tapButton.setComponentID ("tap");
+    presetButton.setComponentID ("preset");
     addAndMakeVisible (undoButton);
     addAndMakeVisible (redoButton);
+    addAndMakeVisible (lockButton);
+    for (auto& shield : shields)
+        addChildComponent (shield);
     setWantsKeyboardFocus (true);
 
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
     {
         auto& button = sceneButtons[(size_t) i];
         button.onDoubleClick = [this, i] { renameScene (i); };
+        button.setComponentID ("scene" + juce::String (i + 1));
         button.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0)
                                   | (i < BoardProcessor::kNumScenes - 1 ? juce::Button::ConnectedOnRight : 0));
         button.onClick = [this, i] { board.setScene (i); refreshSceneButtons(); };
@@ -935,6 +966,8 @@ void BoardEditor::resized()
     undoButton.setBounds (header.removeFromLeft (52));
     header.removeFromLeft (4);
     redoButton.setBounds (header.removeFromLeft (52));
+    header.removeFromLeft (8);
+    lockButton.setBounds (header.removeFromLeft (100));
 
     outputSlider.setBounds (header.removeFromRight (124));
     outputLabel.setBounds (header.removeFromRight (30));
@@ -958,6 +991,7 @@ void BoardEditor::resized()
 
     strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (stripHeight()));
     layoutPedalEditor();
+    applyLock();
 }
 
 void BoardEditor::showPedal (int id)
@@ -1012,12 +1046,13 @@ void BoardEditor::showPedal (int id)
     }
 
     strip.setSelected (shownPedal);
+    applyLock();   // the shields stay on top of a new panel
     repaint();
 }
 
 void BoardEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu() || e.originalComponent == nullptr)
+    if (! e.mods.isPopupMenu() || e.originalComponent == nullptr || isLocked())
         return;
 
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
@@ -1373,6 +1408,9 @@ void BoardEditor::timerCallback()
     // being recorded makes Undo possible before its step closes).
     refreshUndo();
 
+    if (board.getLock() != shownLock)
+        applyLock();
+
     if (board.getBoardCounter() != lastBoardCounter)
     {
         lastBoardCounter = board.getBoardCounter();
@@ -1408,7 +1446,7 @@ void BoardEditor::timerCallback()
 void BoardEditor::refreshUndo()
 {
     auto& undo = board.getUndo();
-    const auto canUndo = undo.canUndo(), canRedo = undo.canRedo();
+    const auto canUndo = ! isLocked() && undo.canUndo(), canRedo = ! isLocked() && undo.canRedo();
     if (undo.getVersion() == lastUndoVersion && canUndo == undoButton.isEnabled() && canRedo == redoButton.isEnabled())
         return;
     lastUndoVersion = undo.getVersion();
@@ -1420,6 +1458,8 @@ void BoardEditor::refreshUndo()
 
 void BoardEditor::undoOrRedo (bool redo)
 {
+    if (isLocked())
+        return;
     auto& undo = board.getUndo();
     const auto what = redo ? undo.redoDescription() : undo.undoDescription();
     if (redo)
@@ -1436,7 +1476,8 @@ bool BoardEditor::keyPressed (const juce::KeyPress& key)
 {
     if (key.getModifiers().isCommandDown() && (key.getKeyCode() == 'Z' || key.getKeyCode() == 'z'))
     {
-        undoOrRedo (key.getModifiers().isShiftDown());
+        if (! isLocked())
+            undoOrRedo (key.getModifiers().isShiftDown());
         return true;
     }
     return juce::AudioProcessorEditor::keyPressed (key);

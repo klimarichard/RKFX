@@ -49,6 +49,11 @@ public:
     static constexpr int kTunerView = -5;       // not on the strip: the tuner (standalone)
 
     int getSelected() const noexcept { return selected; }
+
+    /** The window's lock: with footswitches, a click selects a pedal or
+        switches it; with everything, it only selects. No dragging, adding or
+        menus either way. */
+    void setLock (BoardProcessor::Lock l) { lock = l; dragging = false; pressedId = 0; repaint(); }
     void setSelected (int item);
     std::function<void (int item)> onSelect;
 
@@ -66,6 +71,10 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+
+    /** Where pedal @p id's tile is, and its footswitch (empty when it isn't on the board). */
+    juce::Rectangle<int> tileBounds (int id);
+    juce::Rectangle<int> footswitchOf (int id) { return tileBounds (id).isEmpty() ? juce::Rectangle<int>() : footswitchBounds (tileBounds (id)); }
 
     /** The height the board needs at @p width (it grows a row at a time). */
     int getPreferredHeight (int width) const;
@@ -99,6 +108,7 @@ private:
     };
 
     BoardProcessor& board;
+    BoardProcessor::Lock lock = BoardProcessor::Lock::off;
     int selected = 0;
     int hoverKey = 0;                     // keyOf() the item under the mouse
     Layout layout;                        // rebuilt by layoutItems()
@@ -137,6 +147,8 @@ class SceneButton : public juce::TextButton
 public:
     void setScene (int number, const juce::String& name);
     std::function<void()> onDoubleClick;
+    /** Locked: it recalls its scene, but isn't renamed. */
+    void setLocked (bool l) { locked = l; }
 
     void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
@@ -144,6 +156,7 @@ public:
 private:
     int scene = 0;
     juce::String sceneName;
+    bool locked = false;
 };
 
 /** The RKBoard window: a slim header (board preset, input and output level),
@@ -169,6 +182,11 @@ public:
     void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
+    /** The pedal row (tests). */
+    BoardStrip& getStrip() noexcept { return strip; }
+    /** Follows the board now, as the window's timer does (tests). */
+    void update() { timerCallback(); }
+
     static constexpr int kWidth = 1180;
     static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
@@ -185,6 +203,35 @@ private:
     juce::TextButton assignButton { "Assign" };
     juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
     int lastUndoVersion = -1;
+
+    /** Lies over what the lock protects: takes the clicks, does nothing. */
+    struct LockShield : public juce::Component,
+                        public juce::SettableTooltipClient
+    {
+        LockShield() { setTooltip ("Locked: hold Lock to unlock"); }
+        void paint (juce::Graphics&) override;
+    };
+
+    /** Lock: click for the lock's menu; while locked, hold it a second to unlock. */
+    struct LockButton : public juce::Component,
+                        public juce::SettableTooltipClient,
+                        private juce::Timer
+    {
+        explicit LockButton (BoardEditor& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void timerCallback() override;
+
+        BoardEditor& owner;
+        double holdStart = 0.0;
+        bool holding = false;
+    };
+    LockButton lockButton { *this };
+    std::array<LockShield, 4> shields;   // the header's left and right, the scene bar (or its tempo field), the panel
+    BoardProcessor::Lock shownLock = BoardProcessor::Lock::off;
+    bool isLocked() const noexcept { return board.getLock() != BoardProcessor::Lock::off; }
+    void applyLock();
     std::array<SceneButton, BoardProcessor::kNumScenes> sceneButtons;
 
     // Standalone: tempo and tuner

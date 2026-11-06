@@ -27,6 +27,7 @@ set(RKBOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardUndo.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/BoardLock.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RoutingPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/AssignPanel.cpp

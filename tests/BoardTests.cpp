@@ -343,6 +343,88 @@ public:
             expectEquals (reopened.getShownPedal(), b);
         }
 
+        beginTest ("Lock: footswitches and scenes only, or everything; hold to unlock");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setStandaloneForTesting (juce::File::createTempFile ("rig").getParentDirectory().getChildFile ("rkboard-lock-test"));
+            const auto a = addOn (board, "RKChorus");
+            const auto b = addOn (board, "RKDelay");
+            rkboard::BoardEditor editor (board);
+            editor.setBounds (0, 0, rkboard::BoardEditor::kWidth, 900);
+            editor.setVisible (true);   // hit-tested (not on the screen)
+            auto& strip = editor.getStrip();
+
+            const auto mouse = [&] (juce::Component& c, juce::Point<int> at, juce::Point<int> to, bool popup = false)
+            {
+                auto source = juce::Desktop::getInstance().getMainMouseSource();
+                const auto now = juce::Time::getCurrentTime();
+                const auto mods = popup ? juce::ModifierKeys (juce::ModifierKeys::rightButtonModifier) : juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+                const auto event = [&] (juce::Point<int> p, bool dragged)
+                {
+                    return juce::MouseEvent (source, p.toFloat(), mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, at.toFloat(), now, 1, dragged);
+                };
+                c.mouseDown (event (at, false));
+                if (to != at)
+                    c.mouseDrag (event (to, true));
+                c.mouseUp (event (to, to != at));
+            };
+            const auto blocked = [&] (const juce::String& id)
+            {
+                auto* c = editor.findChildWithID (id);
+                if (c == nullptr)
+                    return false;
+                auto* top = editor.getComponentAt (c->getBounds().getCentre());
+                auto* tip = dynamic_cast<juce::SettableTooltipClient*> (top);
+                return top != c && tip != nullptr && tip->getTooltip().startsWith ("Locked");
+            };
+            const auto panelBlocked = [&]
+            {
+                auto* top = editor.getComponentAt (editor.getLocalBounds().getCentre().withY (editor.getHeight() - 100));
+                auto* tip = dynamic_cast<juce::SettableTooltipClient*> (top);
+                return tip != nullptr && tip->getTooltip().startsWith ("Locked");
+            };
+
+            // Unlocked: nothing in the way; a footswitch switches; a drag moves.
+            expect (! blocked ("scene2") && ! blocked ("preset") && ! blocked ("tempo") && ! panelBlocked());
+            mouse (strip, strip.footswitchOf (a).getCentre(), strip.footswitchOf (a).getCentre());
+            expect (board.isPedalBypassed (a));
+            mouse (strip, strip.footswitchOf (a).getCentre(), strip.footswitchOf (a).getCentre());
+            expect (! board.isPedalBypassed (a));
+
+            board.setLock (BoardProcessor::Lock::footswitches);
+            editor.update();   // as the window's timer does
+            expect (! blocked ("scene2"), "scenes work");
+            expect (! blocked ("tap"), "Tap works");
+            expect (! blocked ("lock"));
+            expect (blocked ("preset") && blocked ("undo") && blocked ("tempo"), "presets, undo, the tempo field don't");
+            expect (panelBlocked(), "the knobs don't");
+            mouse (strip, strip.footswitchOf (b).getCentre(), strip.footswitchOf (b).getCentre());
+            expect (board.isPedalBypassed (b), "a footswitch works");
+            mouse (strip, strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12),
+                   strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12));
+            expectEquals (editor.getShownPedal(), b, "a click still selects");
+            mouse (strip, strip.tileBounds (b).getCentre(), strip.tileBounds (a).getCentre().translated (-40, 0));
+            expect (board.getSection (Section::pre) == std::vector<int> { a, b }, "no dragging");
+
+            board.setLock (BoardProcessor::Lock::everything);
+            editor.update();
+            expect (blocked ("scene2") && blocked ("tap") && ! blocked ("lock"), "everything: the scene bar too");
+            mouse (strip, strip.footswitchOf (b).getCentre(), strip.footswitchOf (b).getCentre());
+            expect (board.isPedalBypassed (b), "no footswitch");
+            mouse (strip, strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12),
+                   strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12));
+            expectEquals (editor.getShownPedal(), b, "selecting still works");
+
+            // Host parameters and MIDI aren't locked.
+            board.setScene (3);
+            expectEquals (board.getScene(), 3);
+
+            board.setLock (BoardProcessor::Lock::off);
+            editor.update();
+            expect (! blocked ("scene2") && ! blocked ("preset") && ! panelBlocked());
+        }
+
         beginTest ("Pedals move between sections; the split takes part only with a pedal on A or B");
         {
             BoardProcessor board;

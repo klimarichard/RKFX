@@ -5,8 +5,9 @@
 /** RKLoop parameter IDs and ranges. IDs are permanent: never rename, reuse
     or reorder; only append.
 
-    record, stop, undo, clear, next and previous are footswitches: each
-    press (off to on) acts once. Map them to momentary buttons. */
+    record, stop, undo, clear, next, previous and save_loops are
+    footswitches: each press (off to on) acts once. Map them to momentary
+    buttons. */
 namespace LoopParams
 {
     inline constexpr int kLoops = 8;
@@ -33,6 +34,9 @@ namespace LoopParams
         p.addBool    ("previous", "Previous Loop", false);
         for (int i = 0; i < kLoops; ++i)
             p.addChoice (roleId (i), "Loop " + juce::String (i + 1) + " Role", { "Part", "Layer" }, { "part", "layer" }, 0);
+
+        // Export (added later, appended): every loop to the Loops folder.
+        p.addBool    ("save_loops", "Save Loops", false);
 
         return p;
     }

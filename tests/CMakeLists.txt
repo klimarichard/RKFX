@@ -187,6 +187,7 @@ add_test(NAME RKFXPresetTests COMMAND RKFXPresetTests)
 juce_add_console_app(RKBoardTests PRODUCT_NAME "RKBoardTests")
 target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
+    LoopExportTests.cpp
     PatchStateTests.cpp
     MixStateTests.cpp
     MixMonitorEqSessionTests.cpp

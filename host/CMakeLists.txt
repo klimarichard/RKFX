@@ -46,4 +46,5 @@ endforeach()
 target_sources(rkfx_pedal_host INTERFACE ${hostSources})
 target_include_directories(rkfx_pedal_host INTERFACE ${PROJECT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(rkfx_pedal_host INTERFACE RKFX_BOARD=1)
-target_link_libraries(rkfx_pedal_host INTERFACE rkfx_core)
+# RKLoop's export writes WAV files.
+target_link_libraries(rkfx_pedal_host INTERFACE rkfx_core juce::juce_audio_formats)

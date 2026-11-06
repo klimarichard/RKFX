@@ -147,6 +147,8 @@ juce_add_console_app(RKFXBench PRODUCT_NAME "RKFXBench")
 target_sources(RKFXBench PRIVATE
     Benchmark.cpp
     ${RKFX_ENGINE_SOURCES}
+    ${PROJECT_SOURCE_DIR}/plugins/RKMix/MixRecorder.cpp
+    ${PROJECT_SOURCE_DIR}/plugins/RKMix/MixPlayback.cpp
 )
 target_include_directories(RKFXBench PRIVATE ${RKFX_ENGINE_DIRS})
 target_compile_definitions(RKFXBench PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0)
@@ -155,6 +157,7 @@ target_link_libraries(RKFXBench
         rkfx_core_dsp
         juce::juce_core
         juce::juce_audio_basics
+        juce::juce_audio_formats        # RKMix's recorder and playback
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
@@ -190,6 +193,7 @@ target_sources(RKBoardTests PRIVATE
     BoardTests.cpp
     LoopExportTests.cpp
     MixRecorderTests.cpp
+    MixPlaybackTests.cpp
     PatchStateTests.cpp
     MixStateTests.cpp
     MixMonitorEqSessionTests.cpp

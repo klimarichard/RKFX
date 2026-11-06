@@ -381,6 +381,13 @@ void MixRecorder::pushBus (int bus, const float* left, const float* right) noexc
     copyInto (blockTake->buses[(size_t) bus][1], blockTake->files, right != nullptr ? right : left);
 }
 
+void MixRecorder::discardForBenchmark() noexcept
+{
+    if (live != nullptr)
+        for (auto& f : live->files)
+            f->fifo->finishedRead (f->fifo->getNumReady());
+}
+
 void MixRecorder::endBlock() noexcept
 {
     if (blockOk)

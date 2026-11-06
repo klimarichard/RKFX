@@ -467,6 +467,36 @@ void RKMixProcessor::RecordSync::parameterValueChanged (int index, float value)
     }
 }
 
+void RKMixProcessor::setInputOnPlayback (int input, bool on)
+{
+    if (! juce::isPositiveAndBelow (input, kChannels))
+        return;
+    const auto first = isLinked (input / 2) ? input - input % 2 : input;
+    const auto count = isLinked (input / 2) ? 2 : 1;
+    for (int ch = first; ch < first + count; ++ch)
+        inputOnPlayback[(size_t) ch] = on;
+}
+
+void RKMixProcessor::setAllInputsLive()
+{
+    for (auto& on : inputOnPlayback)
+        on = false;
+}
+
+void RKMixProcessor::setAllInputsOnPlayback()
+{
+    for (auto& on : inputOnPlayback)
+        on = true;
+}
+
+bool RKMixProcessor::anyInputOnPlayback() const noexcept
+{
+    for (const auto& on : inputOnPlayback)
+        if (on.load())
+            return true;
+    return false;
+}
+
 void RKMixProcessor::recallScene (int scene)
 {
     scenes->recall (scene);
@@ -789,8 +819,10 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     tempo = juce::jlimit (20.0, 300.0, (double) extra.getProperty ("tempo", 120.0));
     standalonePlayHead.bpm = tempo.load();
 
-    // Solo is never saved; talkback and the oscillator are never on when a mix loads.
+    // Solo is never saved; talkback and the oscillator are never on when a mix loads;
+    // every input is Live (a show never starts on Playback by mistake).
     clearSolo();
+    setAllInputsLive();
     talkParam->setValueNotifyingHost (0.0f);
 
     loadingMix = true;
@@ -1463,6 +1495,8 @@ void RKMixProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
     if (preparedRate > 0.0 && ! juce::exactlyEqual (sampleRate, preparedRate))
         recorder->sampleRateChanged();
     preparedRate = sampleRate;
+    playbackInputs.setSize (kChannels, maxBlockSize);
+    playback.prepare (maxBlockSize);
     insertMidi.ensureSize (8192);
     rack.prepare (sampleRate, maxBlockSize);
     updateLatencies();
@@ -1525,10 +1559,24 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         // The inserts stay put while they run (a removed one is deleted after this).
         const juce::SpinLock::ScopedLockType sl (rack.getLock());
         rack.setBlockContext (standalone ? &standalonePlayHead : getPlayHead(), getMidi(), getChunkStart());
-        // The recorder: the inputs as they arrive, the main and Aux buses as they leave.
-        recorder->beginBlock (getDryInput().getArrayOfReadPointers(), buffer.getNumSamples());
+        // Virtual soundcheck: the recording in place of the inputs set to Playback, before anything else.
+        const float* const* inputs = getDryInput().getArrayOfReadPointers();
+        if (playback.isLoaded() && buffer.getNumSamples() <= playbackInputs.getNumSamples())
+        {
+            std::array<bool, kChannels> onPlayback {};
+            for (int ch = 0; ch < kChannels; ++ch)
+            {
+                onPlayback[(size_t) ch] = inputOnPlayback[(size_t) ch].load (std::memory_order_relaxed);
+                playbackInputs.copyFrom (ch, 0, getDryInput(), ch, 0, buffer.getNumSamples());
+            }
+            playback.process (playbackInputs.getArrayOfWritePointers(), onPlayback, buffer.getNumSamples());
+            inputs = playbackInputs.getArrayOfReadPointers();
+        }
+
+        // The recorder: the inputs as they arrive (live or played back), the main and Aux buses as they leave.
+        recorder->beginBlock (inputs, buffer.getNumSamples());
         engine.setOutputTaps (recorder->isActive() ? recorder.get() : nullptr);
-        engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
+        engine.process (inputs, buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
         recorder->endBlock();
         insertMidi.clear();
         rack.takeMidi (insertMidi);

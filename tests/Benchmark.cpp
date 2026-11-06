@@ -38,6 +38,8 @@
 #include "PolyPitchEngine.h"
 #include "PatchEngine.h"
 #include "MixEngine.h"
+#include "MixPlayback.h"
+#include "MixRecorder.h"
 
 #include <cstdio>
 #include <functional>
@@ -613,6 +615,70 @@ int main (int argc, char** argv)
               return Processor ([engine, in, out] (juce::AudioBuffer<float>&)
               {
                   engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+              });
+          } },
+        { "RKMix", "recording 33 tracks (32 inputs, the main): the audio thread's copies", []
+          {
+              // The files go to a temporary folder; the disk thread writes them in the background.
+              static juce::TemporaryFile folder;
+              auto recorder = std::make_shared<MixRecorder>();
+              MixRecorder::Take t;
+              t.folder = folder.getFile();
+              t.sampleRate = kRate;
+              for (int ch = 0; ch < 32; ++ch)
+                  t.tracks.push_back ({ juce::String (ch + 1) + ".wav", { { MixRecorder::Source::input, ch, 0 } } });
+              t.tracks.push_back ({ "Main.wav", { { MixRecorder::Source::main, 0, 0 }, { MixRecorder::Source::main, 0, 1 } } });
+              recorder->start (t);
+              recorder->stallDiskForTesting (true);   // the disk's work is the disk thread's: time the audio thread's copies
+              auto in = std::make_shared<juce::AudioBuffer<float>> (32, kBlock);
+              juce::Random rng (5);
+              for (int ch = 0; ch < 32; ++ch)
+                  for (int i = 0; i < kBlock; ++i)
+                      in->setSample (ch, i, rng.nextFloat() - 0.5f);
+              return Processor ([recorder, in] (juce::AudioBuffer<float>&)
+              {
+                  recorder->beginBlock (kBlock);
+                  for (int ch = 0; ch < 32; ++ch)
+                      recorder->pushInput (ch, in->getReadPointer (ch));
+                  recorder->pushMain (in->getReadPointer (0), in->getReadPointer (1));
+                  recorder->endBlock();
+                  recorder->discardForBenchmark();
+              });
+          } },
+        { "RKMix", "playing back 32 inputs (virtual soundcheck): the audio thread's part", []
+          {
+              static juce::TemporaryFile folder;
+              folder.getFile().createDirectory();
+              juce::AudioBuffer<float> data (2, (int) kRate * 10);
+              juce::Random rng (7);
+              for (int ch = 0; ch < 2; ++ch)
+                  for (int i = 0; i < data.getNumSamples(); ++i)
+                      data.setSample (ch, i, rng.nextFloat() - 0.5f);
+              for (int pair = 0; pair < 16; ++pair)
+              {
+                  const auto f = folder.getFile().getChildFile (juce::String (pair * 2 + 1).paddedLeft ('0', 2) + "-"
+                                                                + juce::String (pair * 2 + 2).paddedLeft ('0', 2) + ".wav");
+                  std::unique_ptr<juce::OutputStream> out = f.createOutputStream();
+                  juce::WavAudioFormat wav;
+                  auto w = wav.createWriterFor (out, juce::AudioFormatWriterOptions{}.withSampleRate (kRate).withNumChannels (2).withBitsPerSample (24));
+                  w->writeFromAudioSampleBuffer (data, 0, data.getNumSamples());
+              }
+              auto playback = std::make_shared<MixPlayback>();
+              playback->prepare (kBlock);
+              playback->load (MixPlayback::scan (folder.getFile()), kRate);
+              playback->setLoop (true, 0, (juce::int64) kRate * 10);
+              auto io = std::make_shared<juce::AudioBuffer<float>> (32, kBlock);
+              std::array<bool, 32> all {};
+              all.fill (true);
+              for (int n = 0; n < 50 && playback->needsAudio(); ++n)
+                  playback->process (io->getArrayOfWritePointers(), all, kBlock);
+              playback->waitUntilReady (3000);
+              playback->play();
+              playback->stallDiskForTesting (true);
+              return Processor ([playback, io, all] (juce::AudioBuffer<float>&)
+              {
+                  playback->process (io->getArrayOfWritePointers(), all, kBlock);
+                  playback->refillForBenchmark();
               });
           } },
         { "RKMix", "512 sends (32 ch x 16 stereo Aux), no send EQ", []

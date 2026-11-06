@@ -106,6 +106,8 @@ public:
 
     // Tests ------------------------------------------------------------------
     void stallDiskForTesting (bool stall) noexcept { stalled = stall; }
+    /** Benchmarks: as if the disk had written everything at once (stall the disk first). */
+    void discardForBenchmark() noexcept;
 
 private:
     struct Live;

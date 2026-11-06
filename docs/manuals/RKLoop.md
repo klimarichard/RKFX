@@ -2,13 +2,14 @@
 
 **Live looper, eight loops** · Delay family (mint green) · zero latency
 
-RKLoop records phrases and plays them back as loops while you keep playing over them. It has **eight loops**: use them as **parts** of a song (verse, chorus, solo; one plays at a time and you switch between them) or as **layers** that play together on top of each other. With **Sync** on, every loop stays in step with Loop 1. Add overdubs, take the last one back (undo), play loops backwards or an octave down. A few footswitches run it all, like a looper pedal.
+RKLoop records phrases and plays them back as loops while you keep playing over them. It has **eight loops**: use them as **parts** of a song (verse, chorus, solo; one plays at a time and you switch between them) or as **layers** that play together on top of each other. With **Sync** on, every loop stays in step with Loop 1. Add overdubs, take the last one back (undo), play loops backwards or an octave down. A few footswitches run it all, like a looper pedal. A good take can be saved as a WAV file, even from a footswitch in the middle of a song.
 
 For the header, presets, Output and Bypass, see [Common Controls](Common%20Controls.md). RKLoop has no Dry/Wet: your playing always passes through, and **Loop Level** sets the loops.
 
 ## The window
 
 - **Loops:** one tile per loop, with its number, its role (Part or Layer), its length and how far it has played. A playing loop is lit, a recording one shows in orange, and a loop waiting to start (see Sync and switching) blinks. Click a tile to select that loop.
+- **Quick save** and **Export** (top right of the Loops section): save loops as WAV files (see Saving loops). A short message next to them says what was saved, or what went wrong.
 - **Selected loop:** the state of the selected loop, the footswitches, which act on it, and its role.
 
 ## Playing a loop
@@ -61,12 +62,33 @@ With Sync off, or before Loop 1 exists, loops are free: they start at once and a
 
 Each loop can be up to **30 seconds** (stereo); reaching that while recording closes the loop.
 
+## Saving loops
+
+The loops live only in memory: they are gone when the session closes (see Notes). To keep a take, save it as a WAV file. **Export** opens a menu:
+
+| Item | What it does |
+| --- | --- |
+| **Export Loop n...** | Saves the selected loop to a file you choose. |
+| **Export all loops...** | Saves every loop that isn't empty into a new folder, inside a folder you choose. |
+| **Quick save all** | Saves every loop that isn't empty, with no dialog, into a new folder in `Music/RKMusic Plugins/RKFX/Loops`. |
+| **Show the Loops folder** | Opens that folder in the Finder. |
+| **24-bit** / **32-bit float** | The file format (remembered on this computer). |
+
+Right-click a loop's tile for **Export this loop...**. The **Quick save** button does the same as Quick save all, and is also a host parameter (**Save Loops**), so a footswitch can save everything in one press, in the middle of a song, without opening the window.
+
+- **What is saved:** the loop exactly as it is stored: forward and at normal speed (Reverse and Half Speed are ignored), with the overdubs you hear now (an undone overdub is left out), and not affected by Loop Level. The files are at the session's sample rate, stereo (mono when RKLoop runs in mono), and the loop's start and end are smoothed, so the file loops cleanly.
+- **Loop points:** each file carries a loop marker over the whole file, so samplers (and Logic) loop it straight away.
+- **Names:** a single loop is called e.g. `RKLoop 2026-11-06 21-14 Loop 3 Layer 120 BPM.wav` (the BPM is the host's tempo when you saved, if it gives one). Export all and Quick save make a folder `RKLoop 2026-11-06 21-14` with `Loop 1 Part.wav`, `Loop 3 Layer.wav` and so on.
+- **While a loop is recording or overdubbing** it can't be exported (its menu item says why). Quick save waits for it to finish, up to 5 seconds, then saves the others and says which one it skipped.
+- **24-bit or float:** 24-bit is the usual choice. A loop with many overdubs can go above full scale; 32-bit float keeps that without clipping.
+- Saving never interrupts the sound: the loops keep playing, and a problem (a full disk, a folder that's gone) only shows a message.
+
 ## Footswitches in Gig Performer and RKBoard
 
-Record, Stop, Undo, Clear, Next and Previous are host parameters, so footswitches can press them; Loop selects a loop directly.
+Record, Stop, Undo, Clear, Next, Previous and Save Loops are host parameters, so footswitches can press them; Loop selects a loop directly.
 
 - **Gig Performer:** map a **momentary** button (on while held) to each. Every press acts once; a latching button would act only on every second press.
-- **RKBoard:** right-click a footswitch (or the Sync, Reverse, Half Speed or role switch) in RKLoop's controls and assign it to an Assign slot, then map a momentary Gig Performer button to that slot (or, in the standalone app, MIDI learn the slot for a footswitch).
+- **RKBoard:** right-click a footswitch (or Quick save, or the Sync, Reverse, Half Speed or role switch) in RKLoop's controls and assign it to an Assign slot, then map a momentary Gig Performer button to that slot (or, in the standalone app, MIDI learn the slot for a footswitch).
 
 A typical footswitch set: **Record**, **Stop**, **Next**, **Undo**. Next both selects the next part and, while a part plays, switches to it at the end of the loop.
 
@@ -87,7 +109,7 @@ These starting points are built into the plugin as **factory presets**: open the
 
 ## Notes
 
-- The loops themselves are not saved with the song or preset: a new session starts empty. Changing the sample rate also clears them.
+- The loops themselves are not saved with the song or preset: a new session starts empty. Changing the sample rate also clears them. To keep a loop, save it as a WAV file (see Saving loops).
 - Memory: all eight loops (and their undo copies) are reserved when RKLoop loads, about 180 MB at 48 kHz.
 - Put RKLoop late on the board (after drive and modulation, before or after delay and reverb as you like): what you loop is what RKLoop hears.
 - In a host that bypasses the plugin, the loops are kept; Bypass mutes them.

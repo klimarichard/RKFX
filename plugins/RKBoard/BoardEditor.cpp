@@ -824,6 +824,8 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     morphToButton.setTooltip ("Morph to this scene");
     morphArrow.setText (juce::String::fromUTF8 ("\xe2\x86\x92"), juce::dontSendNotification);
     morphArrow.setJustificationType (juce::Justification::centred);
+    morphArrow.setBorderSize ({});
+    morphArrow.setFont (Fonts::regular (15.0f));
     morphArrow.setColour (juce::Label::textColourId, Palette::textDim);
     addAndMakeVisible (morphArrow);
     morphSlider.setSliderStyle (juce::Slider::LinearHorizontal);

@@ -359,10 +359,14 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (monitorPanel);
     addToCanvas (scenesPanel);
     addToCanvas (assignPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
         addToCanvas (*tab);
     remotePanel = std::make_unique<RemotePanel> (*this);
     addToCanvas (*remotePanel);
+    recorderPanel = std::make_unique<RecorderPanel> (*this);
+    addToCanvas (*recorderPanel);
+    recorderPage.onClick = [this] { setPage (Page::recorder); };
+    recorderPage.setTooltip ("Record every input to its own file, for listening back or mixing again");
     remotePage.onClick = [this] { setPage (Page::remote); };
     remotePage.setTooltip ("The musicians' phones set their own in-ear mixes");
     scenesPage.onClick = [this] { setPage (Page::scenes); };
@@ -520,10 +524,10 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
     {
-        tab->setBounds (tabs.removeFromLeft (100));
-        tabs.removeFromLeft (6);
+        tab->setBounds (tabs.removeFromLeft (90));
+        tabs.removeFromLeft (5);
     }
 
     lockButton.setBounds (tabs.removeFromRight (120));
@@ -537,6 +541,7 @@ void RKMixEditor::layoutContent()
     scenesPanel.setBounds (panelArea());
     assignPanel.setBounds (panelArea());
     remotePanel->setBounds (panelArea());
+    recorderPanel->setBounds (panelArea());
 
     // The Master section
     auto m = masterArea().removeFromTop (kTopHeight).reduced (10, 0).withTrimmedTop (28);
@@ -706,6 +711,19 @@ void RKMixEditor::paintContent (juce::Graphics& g)
     // Master section: solo and the cue output, talk, the oscillator (and sends on fader, when on).
     auto master = masterArea().removeFromTop (kTopHeight);
     rkfx::drawPanel (g, master, panelColour(), "Solo and talk");
+
+    // REC, blinking, from every page while the recorder runs.
+    if (wasRecording)
+    {
+        const auto on = (juce::Time::getMillisecondCounter() / 500) % 2 == 0;
+        const auto seconds = (int) mixer.getRecorder().getElapsedSeconds();
+        const auto badge = master.removeFromTop (28).reduced (8, 5).removeFromRight (110);
+        g.setColour (rkfx::Palette::warning.withAlpha (on ? 0.95f : 0.45f));
+        g.fillRoundedRectangle (badge.toFloat(), 4.0f);
+        g.setColour (juce::Colours::black);
+        g.setFont (rkfx::Fonts::bold (12.0f));
+        g.drawText (juce::String::formatted ("REC %d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60), badge, juce::Justification::centred);
+    }
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (11.5f));
     const auto label = [&] (juce::Component& c, const juce::String& text)
@@ -823,6 +841,10 @@ void RKMixEditor::setPage (Page p)
     scenesPanel.setVisible (page == Page::scenes);
     assignPanel.setVisible (page == Page::assign);
     remotePanel->setVisible (page == Page::remote);
+    recorderPanel->setVisible (page == Page::recorder);
+    recorderPage.setToggleState (page == Page::recorder, juce::dontSendNotification);
+    if (page == Page::recorder)
+        recorderPanel->refresh();
     if (page == Page::remote)
         remotePanel->refresh();
     remotePage.setToggleState (page == Page::remote, juce::dontSendNotification);
@@ -889,6 +911,8 @@ void RKMixEditor::refreshAll()
         scenesPanel.refresh();
     if (remotePanel != nullptr && remotePanel->isVisible())
         remotePanel->refresh();
+    if (recorderPanel != nullptr && recorderPanel->isVisible())
+        recorderPanel->refresh();
     refreshScenes();
 
     const auto target = [this] (const char* id) { return targetName (mixer.getSettings().choice (id)); };
@@ -929,6 +953,14 @@ void RKMixEditor::updateMeters()
     refreshUndo();
     if (remotePanel->isVisible())
         remotePanel->updateConnections();
+
+    // The recorder: its page's time and disk, the REC light (blinking), what recording locks.
+    if (const auto recording = mixer.getRecorder().isRecording(); recording != wasRecording)
+        recordingChanged();
+    if (recorderPanel->isVisible())
+        recorderPanel->tick();
+    if (wasRecording)
+        repaint (masterArea().removeFromTop (28));
 
     // Standalone: a controller learned (or learning ended), the tempo moving with the clock.
     if (mixer.isStandalone())

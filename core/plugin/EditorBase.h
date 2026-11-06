@@ -50,6 +50,14 @@ public:
     static constexpr int kMargin = 12;
 
 protected:
+    /** Lets a plugin refuse preset loading for a while (RKMix while recording):
+        the preset menu is dimmed with @p reason as its tooltip. Saving stays. */
+    void setPresetLoadingEnabled (bool enabled, const juce::String& reason = {})
+    {
+        presetButton.setEnabled (enabled);
+        presetButton.setTooltip (enabled ? juce::String() : reason);
+    }
+
     void addToCanvas (juce::Component& c) { canvas.addAndMakeVisible (c); }
 
     juce::Rectangle<int> contentArea() const;

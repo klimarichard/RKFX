@@ -172,6 +172,10 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
 
 void RKMixEditor::ChannelPanel::refresh()
 {
+    // The files match the channels as they were when Record was pressed.
+    const auto recording = owner.mixer.getRecorder().isRecording();
+    link->setEnabled (! recording);
+
     if (! name.isBeingEdited())
         name.setText (owner.mixer.getChannelName (channel), juce::dontSendNotification);
 

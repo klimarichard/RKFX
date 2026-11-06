@@ -19,6 +19,11 @@ public:
 
     const LoopEngine& getEngine() const noexcept { return engine; }
     LoopExporter& getExporter() noexcept { return exporter; }
+    std::optional<double> getHostBpm() const noexcept
+    {
+        const auto b = hostBpm.load();
+        return b > 0.0 ? std::optional<double> (b) : std::nullopt;
+    }
 
 protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;

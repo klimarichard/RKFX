@@ -21,7 +21,7 @@ RKLoopProcessor::RKLoopProcessor()
       loop (findParam ("loop")), sync (findParam ("sync")),
       exporter (engine, { [this] { return channels.load(); },
                           [this] { return getSampleRate(); },
-                          [this]() -> std::optional<double> { const auto b = hostBpm.load(); return b > 0.0 ? std::optional<double> (b) : std::nullopt; },
+                          [this] { return getHostBpm(); },
                           [this] (int i) { return roles[(size_t) i]->getValue() >= 0.5f; } }),
       saveLoops (findParam ("save_loops"))
 {

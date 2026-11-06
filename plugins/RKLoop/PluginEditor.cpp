@@ -112,7 +112,12 @@ void RKLoopEditor::Tile::paint (juce::Graphics& g)
 void RKLoopEditor::Tile::mouseDown (const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu())
+    {
+        juce::PopupMenu menu;
+        owner.addExportLoopItem (menu, index, "Export this loop...");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this));
         return;
+    }
     auto& loop = *owner.loopProcessor.findParam ("loop");
     loop.beginChangeGesture();
     loop.setValueNotifyingHost (loop.convertTo0to1 ((float) (index + 1)));
@@ -141,6 +146,13 @@ RKLoopEditor::RKLoopEditor (RKLoopProcessor& p)
         addToCanvas (*tiles[(size_t) i]);
     }
 
+    saveLoops = std::make_unique<Footswitch> (param ("save_loops"), "Quick save");
+    saveLoops->setTooltip ("Saves every loop to the Loops folder, with no dialog (the Save Loops parameter)");
+    addToCanvas (*saveLoops);
+    exportButton.setTooltip ("Save loops as WAV files");
+    exportButton.onClick = [this] { showExportMenu(); };
+    addToCanvas (exportButton);
+
     sync      = std::make_unique<rkfx::ToggleSwitch> (param ("sync"), accent(), "Sync");
     reverse   = std::make_unique<rkfx::ToggleSwitch> (param ("reverse"), accent(), "Reverse");
     halfSpeed = std::make_unique<rkfx::ToggleSwitch> (param ("half_speed"), accent(), "Half Speed");
@@ -167,6 +179,12 @@ void RKLoopEditor::showRoleSwitch (int loop)
 juce::Rectangle<int> RKLoopEditor::loopsArea() const   { return contentArea().removeFromTop (kTitleHeight + kTileHeight + 12); }
 juce::Rectangle<int> RKLoopEditor::controlArea() const { return contentArea().withTrimmedTop (kTitleHeight + kTileHeight + 12 + 10); }
 
+juce::Rectangle<int> RKLoopEditor::exportStatusArea() const
+{
+    // The Loops title row, between the title and the buttons.
+    return loopsArea().reduced (8, 0).removeFromTop (kTitleHeight).withTrimmedLeft (90).withTrimmedRight (2 * 96 + 12);
+}
+
 juce::Rectangle<int> RKLoopEditor::statusArea() const
 {
     return controlArea().reduced (8, 0).withTrimmedTop (kTitleHeight).removeFromTop (kStatusHeight);
@@ -179,6 +197,14 @@ void RKLoopEditor::layoutContent()
     {
         auto area = loopsArea().reduced (8, 0);
         area.removeFromTop (kTitleHeight);
+        // Export, at the right of the title row.
+        {
+            auto title = loopsArea().reduced (8, 0).removeFromTop (kTitleHeight).reduced (0, 2);
+            exportButton.setBounds (title.removeFromRight (96));
+            title.removeFromRight (6);
+            saveLoops->setBounds (title.removeFromRight (96));
+        }
+
         auto row = area.removeFromTop (kTileHeight);
         const auto width = (row.getWidth() - 7 * 6) / 8;
         for (auto& t : tiles)
@@ -221,6 +247,15 @@ void RKLoopEditor::paintContent (juce::Graphics& g)
 {
     drawSection (g, loopsArea(), "Loops");
     drawSection (g, controlArea(), "Selected loop");
+
+    // Export's status line: "Saved 4 loops", or what went wrong, for a few seconds.
+    auto& exporter = loopProcessor.getExporter();
+    if (const auto text = exporter.getStatus(); text.isNotEmpty())
+    {
+        g.setColour (exporter.statusIsError() ? rkfx::Palette::warning : rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::regular (13.0f));
+        g.drawFittedText (text, exportStatusArea(), juce::Justification::centredRight, 1);
+    }
 
     // The selected loop's state and time.
     const auto& engine = loopProcessor.getEngine();
@@ -280,6 +315,95 @@ void RKLoopEditor::refresh()
     }
 
     repaint (statusArea());
+    repaint (exportStatusArea());
     for (auto& t : tiles)
         t->repaint();
+}
+
+//==============================================================================
+void RKLoopEditor::addExportLoopItem (juce::PopupMenu& menu, int loop, const juce::String& text)
+{
+    // Dimmed, with the reason, when it can't be exported now.
+    const auto& engine = loopProcessor.getEngine();
+    const auto state = engine.getState (loop);
+    auto label = text;
+    auto enabled = false;
+    if (state == LoopEngine::State::empty)
+        label << "   (empty)";
+    else if (state == LoopEngine::State::recording)
+        label << "   (still recording)";
+    else if (engine.isBusy (loop))
+        label << "   (finish the overdub first)";
+    else
+        enabled = ! loopProcessor.getExporter().isRunning();
+
+    juce::Component::SafePointer<RKLoopEditor> safe (this);
+    menu.addItem (label, enabled, false, [safe, loop] { if (safe != nullptr) safe->chooseLoopFile (loop); });
+}
+
+void RKLoopEditor::showExportMenu()
+{
+    auto& exporter = loopProcessor.getExporter();
+    const auto anything = ! exporter.loopsWithAudio().empty();
+    const auto idle = ! exporter.isRunning();
+    const auto selected = loopProcessor.getEngine().getSelected();
+    juce::Component::SafePointer<RKLoopEditor> safe (this);
+
+    juce::PopupMenu menu;
+    addExportLoopItem (menu, selected, "Export Loop " + juce::String (selected + 1) + "...");
+    menu.addItem (anything ? juce::String ("Export all loops...") : juce::String ("Export all loops...   (every loop is empty)"),
+                  anything && idle, false, [safe] { if (safe != nullptr) safe->chooseExportFolder(); });
+    menu.addItem (anything ? juce::String ("Quick save all") : juce::String ("Quick save all   (every loop is empty)"),
+                  anything && idle, false, [safe] { if (safe != nullptr) safe->loopProcessor.getExporter().quickSave(); });
+    menu.addItem ("Show the Loops folder", [] {
+        const auto folder = LoopExport::loopsFolder();
+        folder.createDirectory();
+        folder.startAsProcess();
+    });
+    menu.addSeparator();
+    const auto isFloat = exporter.getFormat() == LoopExport::Format::float32;
+    menu.addItem ("24-bit", true, ! isFloat, [safe] { if (safe != nullptr) safe->loopProcessor.getExporter().setFormat (LoopExport::Format::int24); });
+    menu.addItem ("32-bit float", true, isFloat, [safe] { if (safe != nullptr) safe->loopProcessor.getExporter().setFormat (LoopExport::Format::float32); });
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton));
+}
+
+void RKLoopEditor::chooseLoopFile (int loop)
+{
+    auto& exporter = loopProcessor.getExporter();
+    const auto isLayer = loopProcessor.findParam (LoopParams::roleId (loop))->getValue() >= 0.5f;
+    const auto bpm = loopProcessor.getHostBpm();
+    const auto name = LoopExport::singleFileName (juce::Time::getCurrentTime(), loop, isLayer, bpm);
+
+    chooser = std::make_unique<juce::FileChooser> ("Export Loop " + juce::String (loop + 1),
+                                                   exporter.getLastFolder().getChildFile (name), "*.wav");
+    juce::Component::SafePointer<RKLoopEditor> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safe, loop] (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (safe == nullptr || file == juce::File())
+            return;
+        auto& x = safe->loopProcessor.getExporter();
+        x.setLastFolder (file.getParentDirectory());
+        x.exportLoop (loop, file);
+    });
+}
+
+void RKLoopEditor::chooseExportFolder()
+{
+    auto& exporter = loopProcessor.getExporter();
+    chooser = std::make_unique<juce::FileChooser> ("Export all loops into a new folder in...", exporter.getLastFolder());
+    juce::Component::SafePointer<RKLoopEditor> safe (this);
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [safe] (const juce::FileChooser& fc)
+    {
+        const auto folder = fc.getResult();
+        if (safe == nullptr || folder == juce::File())
+            return;
+        auto& x = safe->loopProcessor.getExporter();
+        x.setLastFolder (folder);
+        x.exportAll (folder);
+    });
 }

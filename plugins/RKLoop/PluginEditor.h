@@ -32,6 +32,9 @@ private:
     };
 
     std::array<std::unique_ptr<Footswitch>, 6> footswitches;
+    std::unique_ptr<Footswitch> saveLoops;          // Quick save all, a footswitch (assignable in RKBoard)
+    juce::TextButton exportButton { "Export" };
+    std::unique_ptr<juce::FileChooser> chooser;
     std::array<std::unique_ptr<Tile>, 8> tiles;
     std::unique_ptr<rkfx::ToggleSwitch> sync, reverse, halfSpeed;
     std::unique_ptr<rkfx::SegmentedSwitch> role;    // of the selected loop
@@ -44,6 +47,13 @@ private:
     juce::Rectangle<int> controlArea() const;
     juce::Rectangle<int> statusArea() const;
     void showRoleSwitch (int loop);
+    juce::Rectangle<int> exportStatusArea() const;
+
+    // Export (docs/design/RKLoop Export.md).
+    void showExportMenu();
+    void addExportLoopItem (juce::PopupMenu&, int loop, const juce::String& text);
+    void chooseLoopFile (int loop);
+    void chooseExportFolder();
 
     void layoutContent() override;
     void paintContent (juce::Graphics&) override;

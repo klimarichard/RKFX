@@ -79,6 +79,48 @@ public:
             expect (open > closed * 10.0f, "open " + juce::String (open) + " closed " + juce::String (closed));
         }
 
+        beginTest ("Envelope Range: how far 100% sweeps");
+        {
+            FilterEngine::Settings s;
+            s.cutoffHz = 200.0f;
+            s.resonance = 0.0f;
+            s.envAmount = 1.0f;
+            s.envRangeOctaves = 1.0f;
+            const auto oneOctave = gainAt (s, 2000.0f, 0.9f);
+            s.envRangeOctaves = 4.0f;
+            const auto fourOctaves = gainAt (s, 2000.0f, 0.9f);
+            expect (fourOctaves > oneOctave * 5.0f, "4 oct " + juce::String (fourOctaves) + ", 1 oct " + juce::String (oneOctave));
+        }
+
+        beginTest ("Snappy: soft playing hardly moves the cutoff, loud playing opens it as far as Smooth");
+        {
+            FilterEngine::Settings s;
+            s.cutoffHz = 200.0f;
+            s.resonance = 0.0f;
+            s.envAmount = 1.0f;
+
+            // -30 dB: Smooth is already 1.5 octaves up (566 Hz); Snappy about half an octave (290 Hz).
+            const auto smoothSoft = gainAt (s, 1000.0f, 0.03f);
+            s.envSnappy = true;
+            const auto snappySoft = gainAt (s, 1000.0f, 0.03f);
+            expect (smoothSoft > snappySoft * 1.6f, "soft: smooth " + juce::String (smoothSoft) + ", snappy " + juce::String (snappySoft));
+
+            // Near full scale both are close to Range (4 octaves) up.
+            const auto snappyLoud = gainAt (s, 2000.0f, 0.9f);
+            s.envSnappy = false;
+            const auto smoothLoud = gainAt (s, 2000.0f, 0.9f);
+            expectDb (snappyLoud / smoothLoud, 0.0f, 1.5f, "loud: snappy against smooth");
+
+            // A negative Amount sweeps down instead (and stays finite).
+            s.envSnappy = true;
+            s.envAmount = -1.0f;
+            s.cutoffHz = 3200.0f;
+            const auto down = gainAt (s, 3000.0f, 0.9f);
+            s.envAmount = 0.0f;
+            const auto still = gainAt (s, 3000.0f, 0.9f);
+            expect (std::isfinite (down) && down < still * 0.5f, "down " + juce::String (down) + ", still " + juce::String (still));
+        }
+
         beginTest ("Mode and slope changes crossfade without clicks");
         {
             FilterEngine engine;
@@ -138,6 +180,8 @@ public:
                         s.envSensDb = 24.0f;
                         s.envAttackMs = 1.0f;
                         s.envReleaseMs = 20.0f;
+                        s.envRangeOctaves = rng.nextBool() ? 8.0f : 1.0f;
+                        s.envSnappy = rng.nextBool();
                         s.lfoDepth = rng.nextBool() ? 1.0f : -1.0f;
                         s.lfoShape = (rkfx::LFO::Shape) rng.nextInt (6);
                         s.lfoRateHz = 20.0f;

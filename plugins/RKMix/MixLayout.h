@@ -225,6 +225,14 @@ namespace mix
     inline juce::String channelSendPanId (int ch, int bus) { return channelId (ch, ("span" + num (bus)).toRawUTF8()); }   // an Own-mode Aux
     inline juce::String busSendId (int bus, int to)       { return busId (bus, ("send" + num (to)).toRawUTF8()); }
 
+    // A channel's send EQ for bus b: "ch5_seq3_on", "ch5_seq3_lc"... (the fields below).
+    inline const char* const sendEqFields[] = { "on", "lc", "lsf", "lsg", "mf", "mg", "mq", "hsf", "hsg" };
+    constexpr int kSendEqFields = 9;
+    inline juce::String channelSendEqId (int ch, int bus, const char* field)
+    {
+        return channelId (ch, ("seq" + num (bus) + "_" + field).toRawUTF8());
+    }
+
     // The EQ, compressor and limiter of a bus, the main or the mono sum: "bus3_eq_on", "main_eq_on", "mono_eq_on".
     constexpr int kProcessingChains = kBuses + 2;                  // the buses, the main, the mono sum
     constexpr int kMainChain = kBuses, kMonoChain = kBuses + 1;

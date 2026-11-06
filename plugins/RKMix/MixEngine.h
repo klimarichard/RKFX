@@ -6,6 +6,7 @@
 #include "MixDelay.h"
 #include "MixLayout.h"
 #include "MixMeasure.h"
+#include "MixSendEq.h"
 #include "MixStrip.h"
 #include "safety/Smoothing.h"
 
@@ -91,6 +92,7 @@ public:
         std::array<float, kBuses> sendDb;         // to Aux and FX buses (fader law)
         std::array<float, kBuses> sendPan;        // -1 .. +1, into a stereo Aux bus in Own mode
         std::array<int, kBuses> tap;              // Aux sends: a Tap, or -1 = the bus's default
+        std::array<SendEqDsp::Settings, kBuses> sendEq {};   // each Aux and FX send's own EQ
         std::array<bool, kBuses> assign;          // to Group buses
         bool soloSafe = false;                    // in-place solo never mutes it
         int directOut = mix::kTargetOff;          // a direct output (a pair for a stereo channel)
@@ -240,6 +242,7 @@ private:
         rkfx::Smoothed toMain;                        // the Main switch, faded
         std::array<rkfx::Smoothed, kBuses> sends;     // linear send gains
         std::array<rkfx::Smoothed, kBuses> sendPans;  // Own-mode Aux buses
+        std::array<SendEqDsp, kBuses> sendEqs;        // each send's EQ (skipped while off)
         std::array<rkfx::Smoothed, kBuses> assigns;   // group assigns, faded
         rkfx::Smoothed soloGate, soloMainGate, cue;   // in-place solo (all of it / its main path), to the cue
     };
@@ -295,6 +298,7 @@ private:
     juce::AudioBuffer<float> busChannelBuffers;       // the channels' part, lined up separately while a plan is active
     juce::AudioBuffer<float> mainChannelBuffer, delayScratch;
     juce::AudioBuffer<float> directBuffer;            // a direct output, gained and lined up
+    juce::AudioBuffer<float> sendEqBuffer, sendEqScratch;   // a send with its EQ on: the filtered copy
 
     MixMeasure monitorEq;
     int measureBus = -1;                              // this block's bus taken over by the measuring, or -1
@@ -342,6 +346,7 @@ private:
     struct ActiveSends
     {
         std::array<std::pair<int, mix::Tap>, kBuses> sends {};
+        std::array<bool, kBuses> eq {};               // by position: the send's EQ runs (not fully off)
         int count = 0;
         bool uses (mix::Tap tap) const noexcept
         {

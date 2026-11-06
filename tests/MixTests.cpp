@@ -1160,6 +1160,200 @@ public:
             for (float db = -100.0f; db <= 10.0f; db += 2.5f)
                 expectWithinAbsoluteError (mix::faderDbAt (mix::faderPositionOf (db)), db, 1.0e-3f);
         }
+
+        // Send EQ (docs/design/RKMix Send EQ.md) ----------------------------------------
+        // A sine at hz into the inputs given; the loudest sample of output outCh over the last blocks.
+        const auto toneLevel = [] (MixEngine& e, int outCh, std::initializer_list<int> inputs, double hz, int blocks = 60)
+        {
+            juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+            std::vector<float> tail;
+            const auto tailBlocks = juce::jmin (blocks / 2, 24);
+            for (int b = 0; b < blocks; ++b)
+            {
+                in.clear();
+                for (auto input : inputs)
+                    for (int i = 0; i < kBlock; ++i)
+                        in.setSample (input, i, 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * hz * (b * kBlock + i) / kRate));
+                e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                if (b >= blocks - tailBlocks)
+                    for (int i = 0; i < kBlock; ++i)
+                        tail.push_back (out.getSample (outCh, i));
+            }
+            // The sine's amplitude from its RMS over whole periods (no sample-peak or partial-cycle error).
+            const auto period = kRate / hz;
+            const auto n = (int) (std::floor ((double) tail.size() / period) * period);
+            double sum = 0.0;
+            for (int i = (int) tail.size() - n; i < (int) tail.size(); ++i)
+                sum += (double) tail[(size_t) i] * tail[(size_t) i];
+            return (float) std::sqrt (2.0 * sum / juce::jmax (1, n));
+        };
+        const auto db = [] (float ratio) { return 20.0f * std::log10 (juce::jmax (1.0e-9f, ratio)); };
+
+        // Ch 1 to Aux 1 (Out 3, mono) and Aux 2 (Out 4, mono), and the main; ch 2 to Aux 1 too.
+        const auto sendSetup = []
+        {
+            auto s = only ({ 0 });
+            for (int bus = 0; bus < 2; ++bus)
+            {
+                s.buses[(size_t) bus] = {};
+                s.buses[(size_t) bus].stereo = false;
+                s.buses[(size_t) bus].output = 3 + bus;
+                s.channels[0].sendDb[(size_t) bus] = 0.0f;
+            }
+            s.channels[1].sendDb[0] = -6.0f;
+            s.channels[0].tap[1] = (int) mix::Tap::preEq;
+            return s;
+        };
+
+        beginTest ("Send EQ off: bit-identical to no send EQ, at every tap, with many sends");
+        {
+            for (int tap = -1; tap < mix::kNumTaps; ++tap)
+            {
+                auto plain = sendSetup();
+                plain.channels[0].tap[0] = tap;
+                auto withOff = plain;
+                for (auto& c : withOff.channels)
+                    for (auto& eq : c.sendEq)
+                        eq = { false, 120.0f, 150.0f, 9.0f, 1000.0f, -9.0f, 2.0f, 8000.0f, 6.0f };   // set, but Off
+                auto a = makeEngine (plain);
+                auto b = makeEngine (withOff);
+                float diff = 0.0f;
+                for (int n = 0; n < 8; ++n)
+                {
+                    const auto ra = block (a, n * kBlock), rb = block (b, n * kBlock);
+                    for (int ch = 0; ch < kChannels; ++ch)
+                        for (int i = 0; i < kBlock; ++i)
+                            diff = juce::jmax (diff, std::abs (ra.outSample (ch, i) - rb.outSample (ch, i)));
+                }
+                expectEquals (diff, 0.0f, "tap " + juce::String (tap));
+            }
+        }
+
+        beginTest ("Send EQ on and flat: the same within float rounding");
+        {
+            auto plain = sendSetup();
+            auto flat = plain;
+            flat.channels[0].sendEq[0].on = true;
+            auto a = makeEngine (plain);
+            auto b = makeEngine (flat);
+            float diff = 0.0f;
+            for (int n = 0; n < 8; ++n)
+            {
+                const auto ra = block (a, n * kBlock), rb = block (b, n * kBlock);
+                diff = juce::jmax (diff, maxError (rb, 2, [&ra] (int i) { return ra.outSample (2, i); }));
+            }
+            expectLessThan (diff, 1.0e-6f);
+        }
+
+        beginTest ("Send EQ bands: the low cut at 100 Hz is -3 dB there and 12 dB/oct below; shelves and the bell");
+        {
+            auto s = sendSetup();
+            auto& eq = s.channels[0].sendEq[0];
+            eq.on = true;
+            eq.lowCutHz = 100.0f;
+            auto e = makeEngine (s);
+            expectWithinAbsoluteError (db (toneLevel (e, 2, { 0 }, 100.0) / 0.5f), -3.0f, 0.3f, "-3 dB at the cutoff");
+            e = makeEngine (s);
+            const auto at25 = db (toneLevel (e, 2, { 0 }, 25.0, 200) / 0.5f);
+            expectWithinAbsoluteError (at25, -24.0f, 1.0f, "two octaves below: about -24 dB");
+            e = makeEngine (s);
+            expectWithinAbsoluteError (db (toneLevel (e, 2, { 0 }, 1000.0) / 0.5f), 0.0f, 0.1f, "flat well above");
+
+            eq = { true, 0.0f, 150.0f, 0.0f, 1000.0f, 6.0f, 1.0f, 8000.0f, 0.0f };
+            e = makeEngine (s);
+            expectWithinAbsoluteError (db (toneLevel (e, 2, { 0 }, 1000.0) / 0.5f), 6.0f, 0.2f, "mid +6 dB at its frequency");
+
+            eq = { true, 0.0f, 150.0f, -12.0f, 1000.0f, 0.0f, 1.0f, 8000.0f, 0.0f };
+            e = makeEngine (s);
+            expectWithinAbsoluteError (db (toneLevel (e, 2, { 0 }, 30.0, 200) / 0.5f), -12.0f, 0.5f, "low shelf -12 dB well below it");
+
+            eq = { true, 0.0f, 150.0f, 0.0f, 1000.0f, 0.0f, 1.0f, 4000.0f, 9.0f };
+            e = makeEngine (s);
+            expectWithinAbsoluteError (db (toneLevel (e, 2, { 0 }, 16000.0) / 0.5f), 9.0f, 0.5f, "high shelf +9 dB well above it");
+
+            for (const auto hz : { 30.0, 100.0, 1000.0, 16000.0 })
+                expectWithinAbsoluteError ((float) SendEqDsp::responseDb (eq, hz, kRate),
+                                           db (toneLevel (e, 2, { 0 }, hz, 200) / 0.5f), 0.5f, "the drawn curve matches the sound");
+        }
+
+        beginTest ("Send EQ: only its own send changes, not the channel's other sends, the main, or other channels");
+        {
+            auto plain = sendSetup();
+            auto cut = plain;
+            cut.channels[0].sendEq[0] = { true, 400.0f, 150.0f, 0.0f, 1000.0f, 0.0f, 1.0f, 8000.0f, 0.0f };
+            auto a = makeEngine (plain);
+            auto b = makeEngine (cut);
+            expectLessThan (toneLevel (b, 2, { 0 }, 100.0), 0.5f * toneLevel (a, 2, { 0 }, 100.0), "its own send is cut");
+            a = makeEngine (plain);
+            b = makeEngine (cut);
+            expectEquals (toneLevel (b, 3, { 0 }, 100.0), toneLevel (a, 3, { 0 }, 100.0), "Aux 2 untouched");
+            a = makeEngine (plain);
+            b = makeEngine (cut);
+            expectEquals (toneLevel (b, 0, { 0 }, 100.0), toneLevel (a, 0, { 0 }, 100.0), "the main untouched");
+            a = makeEngine (plain);
+            b = makeEngine (cut);
+            expectEquals (toneLevel (b, 2, { 1 }, 100.0), toneLevel (a, 2, { 1 }, 100.0), "another channel's send to the same bus untouched");
+        }
+
+        beginTest ("Send EQ on a pair: both sides alike; a mono bus sums after the EQ; Mirror swaps the filtered sides");
+        {
+            auto s = only ({});
+            s.links[0] = true;
+            s.buses[0] = {};
+            s.buses[0].output = mix::pairTarget (2);            // Out 3/4, stereo
+            s.buses[1] = {};
+            s.buses[1].stereo = false;
+            s.buses[1].output = 5;                              // Out 5, mono
+            s.channels[0].sendDb[0] = s.channels[0].sendDb[1] = 0.0f;
+            for (int bus = 0; bus < 2; ++bus)
+                s.channels[0].sendEq[(size_t) bus] = { true, 0.0f, 150.0f, 0.0f, 1000.0f, -12.0f, 1.0f, 8000.0f, 0.0f };
+            auto e = makeEngine (s);
+            const auto left = toneLevel (e, 2, { 0, 1 }, 1000.0);
+            e = makeEngine (s);
+            const auto right = toneLevel (e, 3, { 0, 1 }, 1000.0);
+            expectWithinAbsoluteError (left, right, 1.0e-5f, "both sides alike");
+            e = makeEngine (s);
+            const auto mono = toneLevel (e, 4, { 0, 1 }, 1000.0);
+            expectWithinAbsoluteError (db (mono / 0.5f), -12.0f, 0.3f, "(L + R) / 2 of the filtered sides");
+
+            s.buses[0].panMode = mix::PanMode::mirror;
+            e = makeEngine (s);
+            expectWithinAbsoluteError (toneLevel (e, 2, { 0, 1 }, 1000.0), left, 1.0e-5f, "Mirror: filtered too");
+        }
+
+        beginTest ("Send EQ switched on and off while playing: no clicks; fully off returns to the plain path");
+        {
+            auto s = sendSetup();
+            auto e = makeEngine (s);
+            juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+            float last = 0.0f, worstStep = 0.0f;
+            for (int b = 0; b < 40; ++b)
+            {
+                if (b == 10 || b == 25)
+                {
+                    s.channels[0].sendEq[0] = { b == 10, 300.0f, 150.0f, 12.0f, 1000.0f, 0.0f, 1.0f, 8000.0f, 0.0f };
+                    e.setSettings (s, 1);
+                }
+                in.clear();
+                for (int i = 0; i < kBlock; ++i)
+                    in.setSample (0, i, 0.5f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * (b * kBlock + i) / kRate));
+                e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                for (int i = 0; i < kBlock; ++i)
+                {
+                    const auto v = out.getSample (2, i);
+                    if (b > 0 || i > 0)
+                        worstStep = juce::jmax (worstStep, std::abs (v - last));
+                    last = v;
+                }
+            }
+            // A 220 Hz sine at 0.5 moves at most 0.0144 per sample; with the shelf's +12 dB, four times that.
+            expectLessThan (worstStep, 0.07f, "no step beyond the signal's own");
+
+            // Fully off again: bit-identical to a fresh engine without it.
+            auto plain = makeEngine (sendSetup());
+            const auto ra = block (plain, 40 * kBlock), rb = block (e, 40 * kBlock);
+            expectEquals (maxError (rb, 2, [&ra] (int i) { return ra.outSample (2, i); }), 0.0f);
+        }
     }
 };
 

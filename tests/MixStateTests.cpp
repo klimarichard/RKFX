@@ -603,6 +603,13 @@ public:
             bus1.sendBuses = 1u;
             expect (MixScenes::isInScope (bus1, mix::channelSendId (4, 0)), "a channel's send to bus 1");
             expect (MixScenes::isInScope (bus1, mix::channelSendPanId (4, 0)), "its Own pan");
+            for (const auto* field : mix::sendEqFields)
+            {
+                expect (MixScenes::isSceneValue (mix::channelSendEqId (4, 0, field)), juce::String ("send EQ ") + field + " is in the scenes");
+                expect (MixScenes::isInScope (bus1, mix::channelSendEqId (4, 0, field)), juce::String ("its send EQ: ") + field);
+                expect (! MixScenes::isInScope (bus1, mix::channelSendEqId (4, 1, field)), juce::String ("not the send EQ to bus 2: ") + field);
+                expect (! MixScenes::isInScope (only (Scope::channelProcessing), mix::channelSendEqId (4, 0, field)), "not channel processing");
+            }
             expect (MixScenes::isInScope (bus1, mix::busSendId (3, 0)), "a bus's send to bus 1");
             expect (! MixScenes::isInScope (bus1, mix::channelSendId (4, 1)), "not the sends to bus 2");
             expect (! MixScenes::isInScope (bus1, mix::busSendId (0, 1)), "nor bus 1's own sends");

@@ -41,6 +41,7 @@ set(RKFX_ENGINE_PLUGINS
     RKPatch/PatchEngine
     RKMix/MixEngine
     RKMix/MixStrip
+    RKMix/MixSendEq
     RKMix/MixBusDsp
     RKMix/MixMeasure
     RKMix/MixMonitorEq

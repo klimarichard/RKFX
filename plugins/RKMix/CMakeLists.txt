@@ -44,6 +44,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixMonitorEqSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixMonitorEqView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixStrip.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixSendEq.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixBusDsp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixInserts.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixScenes.cpp

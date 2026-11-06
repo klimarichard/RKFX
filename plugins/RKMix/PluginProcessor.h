@@ -267,6 +267,7 @@ private:
     struct RoutingParams
     {
         std::array<juce::RangedAudioParameter*, mix::kBuses> sends {}, taps {}, assigns {}, sendPans {};
+        std::array<std::array<juce::RangedAudioParameter*, mix::kSendEqFields>, mix::kBuses> sendEqs {};   // channels only
     };
     std::array<RoutingParams, kChannels> channelRouting {};
     struct BusParams

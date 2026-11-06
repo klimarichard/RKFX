@@ -99,6 +99,8 @@ RKMixProcessor::RKMixProcessor()
             channelRouting[(size_t) ch].taps[(size_t) bus] = &settings.param (channelTapId (ch, bus));
             channelRouting[(size_t) ch].assigns[(size_t) bus] = &settings.param (channelAssignId (ch, bus));
             channelRouting[(size_t) ch].sendPans[(size_t) bus] = &settings.param (channelSendPanId (ch, bus));
+            for (int f = 0; f < kSendEqFields; ++f)
+                channelRouting[(size_t) ch].sendEqs[(size_t) bus][(size_t) f] = &settings.param (channelSendEqId (ch, bus, sendEqFields[f]));
         }
     }
     for (int bus = 0; bus < kBuses; ++bus)
@@ -1266,6 +1268,11 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
         c.sendPan[(size_t) bus] = valueOf (routing.sendPans[(size_t) bus]) * 0.01f;
         c.tap[(size_t) bus] = juce::roundToInt (valueOf (routing.taps[(size_t) bus])) - 1;   // 0 = the bus's default
         c.assign[(size_t) bus] = valueOf (routing.assigns[(size_t) bus]) >= 0.5f;
+
+        // The send's EQ, in the order of mix::sendEqFields.
+        const auto& eq = routing.sendEqs[(size_t) bus];
+        const auto field = [&eq] (int f) { return valueOf (eq[(size_t) f]); };
+        c.sendEq[(size_t) bus] = { field (0) >= 0.5f, field (1), field (2), field (3), field (4), field (5), field (6), field (7), field (8) };
     }
     return c;
 }

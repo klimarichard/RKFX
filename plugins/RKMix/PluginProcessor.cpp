@@ -205,7 +205,8 @@ RKMixProcessor::RKMixProcessor()
             tracked.push_back (r);
     for (auto* p : getParameters())
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p))
-            if (const auto id = r->getParameterID(); ! id.startsWith ("assign") && id != "scene" && id != "talk" && id != "bypass")
+            if (const auto id = r->getParameterID(); ! id.startsWith ("assign") && id != "scene" && id != "talk" && id != "bypass"
+                                                     && id != "rec" && id != "marker")
                 tracked.push_back (r);
     undo = std::make_unique<MixUndo> (std::move (tracked), *scenes, [this] (int scene)
     {
@@ -213,6 +214,11 @@ RKMixProcessor::RKMixProcessor()
     });
 
     monitorEq = std::make_unique<MixMonitorEqSession> (*this);
+    recorder = std::make_unique<MixRecorderSession> (*this);
+    recordParam = findParam ("rec");
+    markerParam = findParam ("marker");
+    recordParam->addListener (&recordSync);
+    markerParam->addListener (&recordSync);
 
     // The monitor remote: only in the plugin and the app (never in tests and tools).
     remote = std::make_unique<MixRemote> (*this);
@@ -243,7 +249,10 @@ RKMixProcessor::RKMixProcessor()
 RKMixProcessor::~RKMixProcessor()
 {
     sceneParam->removeListener (&sceneSync);
+    recordParam->removeListener (&recordSync);
+    markerParam->removeListener (&recordSync);
     remote.reset();
+    recorder.reset();
     monitorEq.reset();
     undo.reset();
     assigns.reset();
@@ -444,9 +453,24 @@ void RKMixProcessor::glideControllers (int numSamples)
     }
 }
 
+void RKMixProcessor::RecordSync::parameterValueChanged (int index, float value)
+{
+    if (index == owner.recordParam->getParameterIndex())
+        owner.recorder->recordParameterChanged (value >= 0.5f);
+    else if (index == owner.markerParam->getParameterIndex())
+    {
+        const auto down = value >= 0.5f;
+        if (down && ! markerDown.exchange (true))
+            owner.recorder->markerPressed();
+        else if (! down)
+            markerDown = false;
+    }
+}
+
 void RKMixProcessor::recallScene (int scene)
 {
     scenes->recall (scene);
+    recorder->sceneRecalled (scenes->getCurrent());
     const auto value = sceneParam->convertTo0to1 ((float) (scenes->getCurrent() + 1));
     if (! juce::exactlyEqual (sceneParam->getValue(), value))
         sceneParam->setValueNotifyingHost (value);
@@ -464,7 +488,10 @@ void RKMixProcessor::SceneSync::parameterValueChanged (int, float)
 void RKMixProcessor::SceneSync::handleAsyncUpdate()
 {
     if (const auto scene = owner.pendingScene.exchange (-1); scene >= 0 && scene != owner.scenes->getCurrent())
+    {
         owner.scenes->recall (scene);
+        owner.recorder->sceneRecalled (owner.scenes->getCurrent());
+    }
 }
 
 juce::String RKMixProcessor::describeTarget (const MixAssigns::Target& t) const
@@ -775,6 +802,8 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
     monitorEq->fromVar (extra["monitorEq"]);
     sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) (scenes->getCurrent() + 1)));
     loadingMix = false;
+    if (recorder != nullptr)
+        recorder->mixLoaded();   // while recording: a new take with the new mix's layout
 
     const auto text = [] (const juce::var& list, int index)
     {
@@ -1431,6 +1460,9 @@ void RKMixProcessor::releaseMidi (juce::MidiBuffer& midi)
 
 void RKMixProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
+    if (preparedRate > 0.0 && ! juce::exactlyEqual (sampleRate, preparedRate))
+        recorder->sampleRateChanged();
+    preparedRate = sampleRate;
     insertMidi.ensureSize (8192);
     rack.prepare (sampleRate, maxBlockSize);
     updateLatencies();
@@ -1493,7 +1525,11 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         // The inserts stay put while they run (a removed one is deleted after this).
         const juce::SpinLock::ScopedLockType sl (rack.getLock());
         rack.setBlockContext (standalone ? &standalonePlayHead : getPlayHead(), getMidi(), getChunkStart());
+        // The recorder: the inputs as they arrive, the main and Aux buses as they leave.
+        recorder->beginBlock (getDryInput().getArrayOfReadPointers(), buffer.getNumSamples());
+        engine.setOutputTaps (recorder->isActive() ? recorder.get() : nullptr);
         engine.process (getDryInput().getArrayOfReadPointers(), buffer.getArrayOfWritePointers(), buffer.getNumSamples(), measure);
+        recorder->endBlock();
         insertMidi.clear();
         rack.takeMidi (insertMidi);
     }

@@ -6,6 +6,7 @@
 #include "MixAssigns.h"
 #include "MixInserts.h"
 #include "MixMonitorEqSession.h"
+#include "MixRecorderSession.h"
 #include "MixScenes.h"
 #include "MixUndo.h"
 #include "MixRemote.h"
@@ -133,6 +134,7 @@ public:
     /** Monitor EQ: the measuring (engine) and its flow (message thread). */
     MixMeasure& getMeasure() noexcept { return engine.getMeasure(); }
     MixMonitorEqSession& getMonitorEq() noexcept { return *monitorEq; }
+    MixRecorderSession& getRecorder() noexcept { return *recorder; }
 
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
@@ -368,6 +370,20 @@ private:
     std::unique_ptr<MixUndo> undo;
     std::unique_ptr<MixRemote> remote;
     std::unique_ptr<MixMonitorEqSession> monitorEq;
+    std::unique_ptr<MixRecorderSession> recorder;
+    double preparedRate = 0.0;
+
+    /** The Record and Marker host parameters (any thread): to the recorder. */
+    struct RecordSync : public juce::AudioProcessorParameter::Listener
+    {
+        explicit RecordSync (RKMixProcessor& p) : owner (p) {}
+        void parameterValueChanged (int index, float value) override;
+        void parameterGestureChanged (int, bool) override {}
+        RKMixProcessor& owner;
+        std::atomic<bool> markerDown { false };
+    };
+    RecordSync recordSync { *this };
+    juce::RangedAudioParameter *recordParam = nullptr, *markerParam = nullptr;
     std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
     std::array<std::atomic<float>, 2> remoteMainPeaks {};

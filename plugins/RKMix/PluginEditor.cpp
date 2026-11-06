@@ -47,6 +47,12 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
         addChildComponent (sendsButton);
     }
 
+    if (! isBus())
+    {
+        sendEq = std::make_unique<SendEqButton> (o, ch, 0);
+        addChildComponent (*sendEq);
+    }
+
     showSendTo (-1);
     addAndMakeVisible (meter);
     refresh();
@@ -74,6 +80,12 @@ void RKMixEditor::Strip::showSendTo (int b)
     if (sendBus >= 0)
         fader->setCapColour (MixGui::stripColour (owner.mixer.getBusColour (sendBus)));
     addAndMakeVisible (*fader);
+    if (sendEq != nullptr)
+    {
+        sendEq->setVisible (sendBus >= 0 && owner.mixer.hasSendEq (sendBus));
+        if (sendEq->isVisible())
+            sendEq->setTarget (channel, sendBus);
+    }
     bindPan();
     resized();
 }
@@ -158,6 +170,11 @@ void RKMixEditor::Strip::resized()
     buttons.removeFromRight (2);
     mute->setBounds (buttons);
     r.removeFromTop (6);
+    if (sendEq != nullptr && sendEq->isVisible())
+    {
+        sendEq->setBounds (r.removeFromTop (16).reduced (2, 0));
+        r.removeFromTop (4);
+    }
     auto faderArea = r.removeFromLeft (r.getWidth() - kMeterWidth - 2);
     if (fader != nullptr)
     {

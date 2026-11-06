@@ -70,6 +70,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
             v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
         for (auto& v : s.sendPans)
             v.reset (sampleRate, rkfx::kParamSmoothingSeconds);
+        for (auto& e : s.sendEqs)
+            e.prepare (sampleRate);
         for (auto& v : s.assigns)
             v.reset (sampleRate, kMuteFadeSeconds);
         for (auto* v : { &s.soloGate, &s.soloMainGate, &s.cue })
@@ -101,6 +103,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
 
     channelBuffer.setSize (2, maxBlock);
     scratchBuffer.setSize (2, maxBlock);
+    sendEqBuffer.setSize (2, maxBlock);
+    sendEqScratch.setSize (2, maxBlock);
     postBuffer.setSize (2, maxBlock);
     mainBuffer.setSize (2, maxBlock);
     monoBuffer.setSize (1, maxBlock);
@@ -212,6 +216,8 @@ void MixEngine::resetChannel (int ch)
     states[(size_t) ch].strip.setSettings (settings.channels[(size_t) ch].strip, true);
     states[(size_t) ch].strip.reset();
     applyChannel (ch, true);
+    for (auto& e : states[(size_t) ch].sendEqs)
+        e.reset();
 }
 
 void MixEngine::setSettings (const Settings& newSettings, std::uint64_t changed)
@@ -401,6 +407,9 @@ void MixEngine::applyChannel (int ch, bool snap)
         const auto sends = type == BusType::aux || type == BusType::fx;
         setValue (s.sends[(size_t) bus], sends ? mix::faderGain (c.sendDb[(size_t) bus]) : 0.0f, snap);
         setValue (s.sendPans[(size_t) bus], c.sendPan[(size_t) bus], snap);
+        auto eq = c.sendEq[(size_t) bus];
+        eq.on = eq.on && sends;
+        s.sendEqs[(size_t) bus].setSettings (eq, snap);
         setValue (s.assigns[(size_t) bus], type == BusType::group && c.assign[(size_t) bus] ? 1.0f : 0.0f, snap);
     }
 
@@ -567,7 +576,7 @@ void MixEngine::addToBus (int bus, const float* const* source, int numSides, con
     accumulate (dest (0), mono, { g0, g1, g2, &half }, numSamples);
 }
 
-void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const float* const* io, int numSides,
+void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const float* const* signal, int numSides,
                            const Curve& mute, const Curve& fader, const Curve& panLeft, const Curve& panRight, int numSamples) noexcept
 {
     auto& s = states[(size_t) ch];
@@ -578,6 +587,17 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
         const auto [bus, sendTap] = active.sends[(size_t) n];
         if (sendTap != tap)
             continue;
+
+        // Its own EQ: on a copy (the other sends at this tap share the plain signal).
+        const float* const* io = signal;
+        float* filtered[2] = { sendEqBuffer.getWritePointer (0), sendEqBuffer.getWritePointer (1) };
+        if (active.eq[(size_t) n])
+        {
+            for (int side = 0; side < numSides; ++side)
+                FVO::copy (filtered[side], signal[side], numSamples);
+            s.sendEqs[(size_t) bus].process (filtered, numSides, numSamples, sendEqScratch);
+            io = filtered;
+        }
 
         const auto& b = settings.buses[(size_t) bus];
         const auto send = curveOf (s.sends[(size_t) bus], productRow, numSamples);
@@ -640,7 +660,10 @@ void MixEngine::processChannel (int ch, const float* const* in, float* const* ou
     ActiveSends active;
     for (int bus = 0; bus < kBuses; ++bus)
         if (settings.buses[(size_t) bus].type != BusType::group && isActive (s.sends[(size_t) bus]))
+        {
+            active.eq[(size_t) active.count] = ! s.sendEqs[(size_t) bus].isOff();
             active.sends[(size_t) active.count++] = { bus, tapOf (ch, bus) };
+        }
 
     // This block's gains (each smoother is read once). In-place solo acts as a mute.
     const auto mute = curveOf (s.mute, s.soloGate, muteRow, soloRow, numSamples);

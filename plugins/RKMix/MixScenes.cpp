@@ -44,6 +44,15 @@ namespace
             sendBus = field.substring (4).getIntValue() - 1;
             return;
         }
+
+        // A send's EQ, "seq3_lc": with the sends to that bus.
+        if (const auto bus = field.fromFirstOccurrenceOf ("seq", false, false).upToFirstOccurrenceOf ("_", false, false);
+            field.startsWith ("seq") && bus.isNotEmpty() && bus.containsOnly ("0123456789") && field.containsChar ('_'))
+        {
+            category = Scope::routing;
+            sendBus = bus.getIntValue() - 1;
+            return;
+        }
         if (numbered ("grp") || numbered ("dca") || numbered ("mgrp") || field == "main")
             category = Scope::routing;
         else if (field == "pan" || id == "main_bal")

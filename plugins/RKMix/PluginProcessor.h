@@ -175,8 +175,25 @@ public:
     static bool isChainCopy (const juce::var& copy);
     void pasteChannel (int channel, const juce::var& copy);
     void pasteChain (int chain, const juce::var& copy);
-    /** "Gate from Lead Vocal", "RKVerb from Reverb". */
+    /** "Gate from Lead Vocal", "RKVerb from Reverb", "Send EQ from Lead Vocal". */
     static juce::String describeCopy (const juce::var& copy);
+
+    /** A send's EQ (docs/design/RKMix Send EQ.md): channel @p channel's send
+        to Aux or FX bus @p bus (a linked pair: its left channel's). */
+    SendEqDsp::Settings getSendEq (int channel, int bus) const;
+    /** Its settings, in the order of mix::sendEqFields (the remote reads and sets them). */
+    const std::array<juce::RangedAudioParameter*, mix::kSendEqFields>& getSendEqParams (int channel, int bus) const
+    {
+        return channelRouting[(size_t) channel].sendEqs[(size_t) bus];
+    }
+    /** True when channel @p channel's send to @p bus can have an EQ (an Aux or FX bus). */
+    bool hasSendEq (int bus) const;
+    juce::var copySendEq (int channel, int bus) const;
+    static bool isSendEqCopy (const juce::var& copy);
+    /** Pastes onto one send (the window adds the ganged channels). */
+    void pasteSendEq (int channel, int bus, const juce::var& copy);
+    /** Pastes onto every channel's send to @p bus (each linked pair once). */
+    void pasteSendEqToBus (int bus, const juce::var& copy);
 
     /** One insert with its settings and on/off (nothing when the slot is empty). */
     juce::var copyInsert (InsertRack::Slot) const;
@@ -267,6 +284,7 @@ private:
     struct RoutingParams
     {
         std::array<juce::RangedAudioParameter*, mix::kBuses> sends {}, taps {}, assigns {}, sendPans {};
+        std::array<std::array<juce::RangedAudioParameter*, mix::kSendEqFields>, mix::kBuses> sendEqs {};   // channels only
     };
     std::array<RoutingParams, kChannels> channelRouting {};
     struct BusParams

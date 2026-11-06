@@ -461,7 +461,7 @@ void MixConsole::queueValues (Client& client)
 juce::String MixConsole::curveJson (const juce::String& key) const
 {
     // "eq:ch3", "comp:ch3": a channel's EQ (with its HPF) and compressor;
-    // "eq:bus2", "eq:main", "eq:mono": a chain's EQ.
+    // "eq:bus2", "eq:main", "eq:mono": a chain's EQ; "seq:ch3:bus5": a send's EQ.
     const auto kind = key.upToFirstOccurrenceOf (":", false, false);
     const auto strip = key.fromFirstOccurrenceOf (":", false, false);
     const auto rate = mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0;
@@ -481,6 +481,17 @@ juce::String MixConsole::curveJson (const juce::String& key) const
             const auto hz = 20.0 * std::pow (1000.0, (double) i / (points - 1));
             add (ch >= 0 ? StripDsp::responseDb (channelStrip, hz, rate) : BusDsp::responseDb (chainEq, hz, rate));
         }
+    }
+    else if (kind == "seq")
+    {
+        // "seq:ch3:bus5": channel 3's send EQ to bus 5 (flat while off).
+        const auto sendCh = indexAfter (strip.upToFirstOccurrenceOf (":", false, false), "ch", kChannels);
+        const auto sendBus = indexAfter (strip.fromFirstOccurrenceOf (":", false, false), "bus", kBuses);
+        if (sendCh < 0 || sendBus < 0)
+            return {};
+        const auto eq = mixer.getSendEq (sendCh, sendBus);
+        for (int i = 0; i < points; ++i)
+            add (SendEqDsp::responseDb (eq, 20.0 * std::pow (1000.0, (double) i / (points - 1)), rate));
     }
     else if (kind == "comp" && ch >= 0)
     {

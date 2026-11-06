@@ -99,6 +99,8 @@ RKMixProcessor::RKMixProcessor()
             channelRouting[(size_t) ch].taps[(size_t) bus] = &settings.param (channelTapId (ch, bus));
             channelRouting[(size_t) ch].assigns[(size_t) bus] = &settings.param (channelAssignId (ch, bus));
             channelRouting[(size_t) ch].sendPans[(size_t) bus] = &settings.param (channelSendPanId (ch, bus));
+            for (int f = 0; f < kSendEqFields; ++f)
+                channelRouting[(size_t) ch].sendEqs[(size_t) bus][(size_t) f] = &settings.param (channelSendEqId (ch, bus, sendEqFields[f]));
         }
     }
     for (int bus = 0; bus < kBuses; ++bus)
@@ -1028,6 +1030,56 @@ juce::var RKMixProcessor::copyChain (int chain, Section section) const
                      section == Section::whole ? rack.stripToVar (strip, chain >= mix::kBuses ? 0 : chain) : juce::var());
 }
 
+SendEqDsp::Settings RKMixProcessor::getSendEq (int ch, int bus) const
+{
+    const auto leader = ch % 2 == 1 && isLinked (ch / 2) ? ch - 1 : ch;
+    const auto& eq = channelRouting[(size_t) leader].sendEqs[(size_t) bus];
+    const auto field = [&eq] (int f) { return valueOf (eq[(size_t) f]); };
+    return { field (0) >= 0.5f, field (1), field (2), field (3), field (4), field (5), field (6), field (7), field (8) };
+}
+
+bool RKMixProcessor::hasSendEq (int bus) const
+{
+    const auto type = getBusType (bus);
+    return type == mix::BusType::aux || type == mix::BusType::fx;
+}
+
+juce::var RKMixProcessor::copySendEq (int ch, int bus) const
+{
+    auto* values = new juce::DynamicObject();
+    const auto& eq = channelRouting[(size_t) ch].sendEqs[(size_t) bus];
+    for (int f = 0; f < mix::kSendEqFields; ++f)
+        values->setProperty (mix::sendEqFields[f], valueOf (eq[(size_t) f]));
+    auto* root = new juce::DynamicObject();
+    root->setProperty ("kind", "sendeq");
+    const auto name = getChannelName (ch);
+    root->setProperty ("from", name.isNotEmpty() ? name : "Ch " + mix::num (ch));
+    root->setProperty ("values", juce::var (values));
+    return juce::var (root);
+}
+
+bool RKMixProcessor::isSendEqCopy (const juce::var& copy) { return copy["kind"].toString() == "sendeq"; }
+
+void RKMixProcessor::pasteSendEq (int ch, int bus, const juce::var& copy)
+{
+    if (! isSendEqCopy (copy) || ! juce::isPositiveAndBelow (ch, kChannels) || ! juce::isPositiveAndBelow (bus, mix::kBuses))
+        return;
+    pasteValues (copy, [this, ch, bus] (const juce::String& field) -> juce::RangedAudioParameter*
+    {
+        for (int f = 0; f < mix::kSendEqFields; ++f)
+            if (field == mix::sendEqFields[f])
+                return channelRouting[(size_t) ch].sendEqs[(size_t) bus][(size_t) f];
+        return nullptr;
+    });
+}
+
+void RKMixProcessor::pasteSendEqToBus (int bus, const juce::var& copy)
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (ch % 2 == 0 || ! isLinked (ch / 2))
+            pasteSendEq (ch, bus, copy);
+}
+
 bool RKMixProcessor::isChannelCopy (const juce::var& copy) { return copy["kind"].toString() == "channel"; }
 bool RKMixProcessor::isChainCopy (const juce::var& copy)   { return copy["kind"].toString() == "chain"; }
 
@@ -1035,6 +1087,8 @@ juce::String RKMixProcessor::describeCopy (const juce::var& copy)
 {
     if (isInsertCopy (copy))
         return copy["plugin"].toString() + " from " + copy["from"].toString();
+    if (isSendEqCopy (copy))
+        return "Send EQ from " + copy["from"].toString();
     if (! isChannelCopy (copy) && ! isChainCopy (copy))
         return {};
     const auto section = sectionFromKey (copy["section"].toString());
@@ -1266,6 +1320,8 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
         c.sendPan[(size_t) bus] = valueOf (routing.sendPans[(size_t) bus]) * 0.01f;
         c.tap[(size_t) bus] = juce::roundToInt (valueOf (routing.taps[(size_t) bus])) - 1;   // 0 = the bus's default
         c.assign[(size_t) bus] = valueOf (routing.assigns[(size_t) bus]) >= 0.5f;
+
+        c.sendEq[(size_t) bus] = getSendEq (ch, bus);   // its own (a pair's follower is never read)
     }
     return c;
 }

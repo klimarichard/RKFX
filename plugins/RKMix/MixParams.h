@@ -343,6 +343,24 @@ namespace MixParams
                 p.addBool (busMuteGroupId (bus, group), busName (bus) + "Mute Group " + num (group), false);
         }
 
+        // Each Aux and FX send's own small EQ (appended): low cut, low shelf, mid bell, high shelf.
+        for (int ch = 0; ch < kChannels; ++ch)
+            for (int bus = 0; bus < kBuses; ++bus)
+            {
+                const auto name = channelName (ch) + "Send " + num (bus) + " EQ";
+                const auto id = [ch, bus] (const char* field) { return channelSendEqId (ch, bus, field); };
+                p.addBool          (id ("on"), name, false);
+                p.addFrequencyOrOff (id ("lc"), name + " Low Cut", 20.0f, 400.0f, 0.0f, false);
+                p.addFrequency     (id ("lsf"), name + " Low Frequency", 40.0f, 500.0f, 150.0f);
+                p.addDecibels      (id ("lsg"), name + " Low Gain", -15.0f, 15.0f, 0.0f);
+                p.addFrequency     (id ("mf"), name + " Mid Frequency", 200.0f, 8000.0f, 1000.0f);
+                p.addDecibels      (id ("mg"), name + " Mid Gain", -15.0f, 15.0f, 0.0f);
+                p.addFloat         (id ("mq"), name + " Mid Q", rkfx::Units::logRange (0.5f, 4.0f), 1.0f,
+                                    [] (float q) { return juce::String (q, 2); }, rkfx::Units::parseNumber);
+                p.addFrequency     (id ("hsf"), name + " High Frequency", 2000.0f, 16000.0f, 8000.0f);
+                p.addDecibels      (id ("hsg"), name + " High Gain", -15.0f, 15.0f, 0.0f);
+            }
+
         return p;
     }
 }

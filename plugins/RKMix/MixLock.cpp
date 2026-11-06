@@ -113,7 +113,10 @@ void RKMixEditor::applyLock()
     const auto locked = mode != Lock::off;
     const auto everything = mode == Lock::everything;
     if (locked)
+    {
         closeInsert();
+        closeSendEq();
+    }
 
     const auto place = [this] (LockShield& shield, bool visible, juce::Rectangle<int> area)
     {

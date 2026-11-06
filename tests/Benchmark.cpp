@@ -66,6 +66,36 @@ namespace
         std::function<Processor()> make;
     };
 
+    /** RKMix: 32 channels each sending to all 16 stereo Aux buses (512 sends), @p eqs of them with their EQ on. */
+    Processor sendEqBench (int eqs)
+    {
+        auto engine = std::make_shared<MixEngine>();
+        auto in = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+        auto out = std::make_shared<juce::AudioBuffer<float>> (MixEngine::kChannels, kBlock);
+        MixEngine::Settings s;
+        int n = 0;
+        for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+            s.buses[(size_t) bus].output = 1 + bus;
+        for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+            for (int bus = 0; bus < MixEngine::kBuses; ++bus)
+            {
+                s.channels[(size_t) ch].sendDb[(size_t) bus] = -6.0f;
+                if (n++ < eqs)
+                    s.channels[(size_t) ch].sendEq[(size_t) bus] = { true, 80.0f, 150.0f, -3.0f, 1000.0f, 2.0f, 1.0f, 8000.0f, -2.0f };
+            }
+        engine->prepare (kRate, kBlock);
+        engine->setSettings (s);
+        engine->reset();
+        juce::Random rng (5);
+        for (int ch = 0; ch < MixEngine::kChannels; ++ch)
+            for (int i = 0; i < kBlock; ++i)
+                in->setSample (ch, i, rng.nextFloat() - 0.5f);
+        return [engine, in, out] (juce::AudioBuffer<float>&)
+        {
+            engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
+        };
+    }
+
     template <typename Engine, typename Setup>
     Processor makeEngine (Setup setup)
     {
@@ -584,6 +614,22 @@ int main (int argc, char** argv)
               {
                   engine->process (in->getArrayOfReadPointers(), out->getArrayOfWritePointers(), kBlock, false);
               });
+          } },
+        { "RKMix", "512 sends (32 ch x 16 stereo Aux), no send EQ", []
+          {
+              return sendEqBench (0);
+          } },
+        { "RKMix", "512 sends, 1 send EQ on (cut + 3 bands)", []
+          {
+              return sendEqBench (1);
+          } },
+        { "RKMix", "512 sends, 60 send EQs on (cut + 3 bands)", []
+          {
+              return sendEqBench (60);
+          } },
+        { "RKMix", "512 sends, all 512 send EQs on (cut + 3 bands)", []
+          {
+              return sendEqBench (512);
           } },
         { "RKMix", "16 stereo buses and the main: EQ (6 bands, cuts), comp, limit all on", []
           {

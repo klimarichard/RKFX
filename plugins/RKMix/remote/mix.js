@@ -121,6 +121,14 @@ class Strip extends Component {
     this.fader.bind(this.sendBus >= 0 ? `ch${n}_send${this.sendBus + 1}` : this.isBus ? `bus_fader_${n}` : `ch_fader_${n}`);
     this.fader.capColour = this.sendBus >= 0 ? stripColour(S() ? S().bus[this.sendBus].c : 0) : Palette.knobTrack;
     this.bindPan();
+    // The send's own EQ (an Aux or FX bus): a button above the fader.
+    const s = S(), eqBus = !this.isBus && this.sendBus >= 0 && !!s && s.bus[this.sendBus].t !== 0;
+    if (eqBus && C.SendEqButton) {
+      if (!this.eq) this.eq = this.add(new C.SendEqButton(this.index, this.sendBus));
+      else this.eq.set(this.index, this.sendBus);
+    }
+    if (this.eq) this.eq.setVisible(eqBus);
+    if (this.w) this.resized();
   }
   bindPan() {
     const s = S(), n = num(this.index);
@@ -146,6 +154,7 @@ class Strip extends Component {
     const bw = w - 4, soloW = Math.floor(bw / 3);
     this.solo.setBounds(x + 2 + bw - soloW, y, soloW, L.button);
     this.mute.setBounds(x + 2, y, bw - soloW - 2, L.button); y += L.button + 8;
+    if (this.eq && this.eq.visible) { this.eq.setBounds(x + 2, y, w - 4, 20); y += 24; }
     const fw = w - L.meter - 2;
     this.fader.setBounds(x, y, fw, this.h - y);
     this.meter.setBounds(x + fw + 2, y, L.meter, this.h - y - 18);

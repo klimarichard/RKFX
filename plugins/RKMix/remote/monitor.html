@@ -30,7 +30,7 @@
 "use strict";
 (() => {
 const KEY = "{{KEY}}";
-const { Colour, Palette, J, Component, TextButton, ToggleSwitch, LinearSlider, ParamComponent, app, store, drawPanel, faderDbAt, faderPositionOf, fine, FineButton } = RK;
+const { Colour, Palette, J, Component, TextButton, ToggleSwitch, LinearSlider, ParamComponent, EqEditor, app, store, drawPanel, faderDbAt, faderPositionOf, fine, FineButton } = RK;
 
 const dbText = db => db <= -99.9 ? "-inf" : (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? 0 : db).toFixed(1);
 const panOf = n => Math.round(n * 200 - 100);
@@ -72,7 +72,18 @@ function drawNow(g, now, x, y, w, h) {
 }
 function send(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 
-// The store's IDs here: "fader", "mute", "send:<row>", "pan:<row>"; a set becomes the monitor message.
+// A channel's EQ in this mix (its send EQ): the fields as the server sends
+// them (normalised, in this order), their ranges, defaults and text.
+const eqFields = ["on", "lc", "lsf", "lsg", "mf", "mg", "mq", "hsf", "hsg"];
+const eqDefaults = { on: 0, lc: 0, lsf: Math.log(150 / 40) / Math.log(500 / 40), lsg: 0.5, mf: Math.log(1000 / 200) / Math.log(40),
+                     mg: 0.5, mq: Math.log(2) / Math.log(8), hsf: Math.log(4) / Math.log(8), hsg: 0.5 };
+const eqId = (k, f) => "seq:" + k + ":" + f;
+const logHz = (n, lo, hi) => lo * Math.pow(hi / lo, n);
+const hzText = hz => hz >= 1000 ? (hz / 1000).toFixed(hz >= 10000 ? 1 : 2) + " kHz" : Math.round(hz) + " Hz";
+const gainText = n => { const db = n * 30 - 15; return (db > 0.05 ? "+" : "") + (Math.abs(db) < 0.05 ? "0.0" : db.toFixed(1)) + " dB"; };
+const eqCurves = new Map();   // row key -> the curve the server sends (dB, 20 Hz to 20 kHz), when not flat
+
+// The store's IDs here: "fader", "mute", "send:<row>", "pan:<row>", "seq:<row>:<field>"; a set becomes the monitor message.
 store.send = msg => {
   if (msg.t !== "set") return;
   const id = msg.id, n = msg.v;
@@ -80,6 +91,7 @@ store.send = msg => {
   else if (id === "mute") send({ t: "mute", v: n >= 0.5 ? 1 : 0 });
   else if (id.startsWith("send:")) send({ t: "send", k: id.slice(5), v: +faderDbAt(n).toFixed(2) });
   else if (id.startsWith("pan:")) send({ t: "pan", k: id.slice(4), v: panOf(n) });
+  else if (id.startsWith("seq:")) { const [, k, f] = id.split(":"); send({ t: "seq", k, f, n: +n.toFixed(5) }); }
 };
 
 // A meter's ballistics (MixGui::Meter): falls at 24 dB/s, holds 1.5 s.
@@ -183,14 +195,23 @@ class Row extends Component {
     this.fader = this.add(new SideFader("send:" + r.k));
     this.pan = this.add(new LinearSlider("pan:" + r.k)); this.pan.locked = isLocked;
     this.pan.popupText = () => panText(this.pan.norm);
+    // Its EQ in this mix (channels only): lit when on; tap for the EQ sheet.
+    this.eq = this.add(new TextButton("EQ", () => { if (!locked && this.r && this.r.eq) root.sheet.open(this.r); }));
+    this.eq.fontHeight = 12; this.eq.bold = true;
   }
-  update(r, own) { this.r = r; this.hasPan = own && !r.ret && !layout.hidePans; this.pan.setVisible(this.hasPan); this.colour = Colour.hex(r.colour); }
+  update(r, own) {
+    this.r = r; this.hasPan = own && !r.ret && !layout.hidePans; this.pan.setVisible(this.hasPan); this.colour = Colour.hex(r.colour);
+    this.eq.setVisible(!!r.eq); this.eq.toggle = !!r.eq && store.on(eqId(r.k, "on"));
+  }
   height() { return this.hasPan ? 112 : 86; }
-  resized() { this.star.setBounds(8, 2, 30, 30); this.fader.setBounds(6, 28, this.w - 12, 50); this.pan.setBounds(54, 82, this.w - 54 - 22, 22); }
+  resized() {
+    this.star.setBounds(8, 2, 30, 30); this.eq.setBounds(this.w - 86 - 48, 5, 44, 24);
+    this.fader.setBounds(6, 28, this.w - 12, 50); this.pan.setBounds(54, 82, this.w - 54 - 22, 22);
+  }
   paint(g) {
     drawPanel(g, 0, 0, this.w, this.h, Palette.tintedPanel);
     g.setColour(this.colour); g.fillRoundedRectangle(0, 0, 5, this.h, 2.5);
-    g.setColour(Palette.text); g.setFont(14.5, true); g.drawText(this.r.name, 40, 6, this.w - 146, 22, J.centredLeft);
+    g.setColour(Palette.text); g.setFont(14.5, true); g.drawText(this.r.name, 40, 6, this.w - 146 - (this.r.eq ? 52 : 0), 22, J.centredLeft);
     g.setColour(Palette.textDim); g.setFont(12.5);
     if (this.r.ret) g.drawText("return", this.w - 160, 6, 70, 22, J.centredRight);
     g.setColour(Palette.text); g.setFont(14);
@@ -319,6 +340,78 @@ class List extends Component {
   }
 }
 
+// A channel's EQ in this mix only (its send EQ to this bus): the curve with a
+// handle per band (drag sideways for the frequency, up and down for the gain;
+// double-tap for 0 dB), the mid band's Q, On and Flat. Over the list; Close
+// goes back.
+class EqSheet extends Component {
+  constructor() {
+    super(); this.takesTouches = true; this.r = null;
+    this.close = this.add(new TextButton("Close", () => this.shut()));
+    this.flat = this.add(new TextButton("Flat", () => {
+      if (locked || !this.r) return;
+      for (const f of ["lc", "lsg", "mg", "hsg"]) store.set(eqId(this.r.k, f), eqDefaults[f]);
+    }));
+  }
+  open(r) {
+    for (const c of [this.on, this.curve, this.q]) if (c) this.remove(c);
+    this.r = r;
+    const id = f => eqId(r.k, f), eqOn = () => store.on(id("on"));
+    this.on = this.add(new ToggleSwitch(id("on"), Palette.accent, "On")); this.on.locked = isLocked;
+    this.curve = this.add(new EqEditor(Palette.accent, isLocked));
+    this.curve.setHandles([
+      { label: "C", freq: id("lc"), gain: null, minHz: 20, maxHz: 400, offZone: 0.05, on: eqOn },
+      { label: "L", freq: id("lsf"), gain: id("lsg"), minHz: 40, maxHz: 500, on: eqOn },
+      { label: "M", freq: id("mf"), gain: id("mg"), minHz: 200, maxHz: 8000, on: eqOn },
+      { label: "H", freq: id("hsf"), gain: id("hsg"), minHz: 2000, maxHz: 16000, on: eqOn },
+    ]);
+    this.q = this.add(new LinearSlider(id("mq"))); this.q.locked = isLocked;
+    this.q.popupText = () => "Q " + logHz(store.value(id("mq")), 0.5, 4).toFixed(2);
+    this.setVisible(true); this.update(r); this.resized(); this.repaint();
+  }
+  shut() { this.setVisible(false); this.r = null; root.repaint(); }
+  update(r) {
+    if (!this.r || !r || r.k !== this.r.k) return;
+    this.r = r;
+    this.curve.points = eqCurves.get(r.k) || null;
+    this.curve.repaint(); this.repaint();
+  }
+  resized() {
+    if (!this.on) return;
+    const w = this.w;
+    this.close.setBounds(w - 10 - 78, 10, 78, 32);
+    this.flat.setBounds(w - 10 - 78 - 8 - 64, 10, 64, 32);
+    this.on.setBounds(w - 10 - 78 - 8 - 64 - 8 - 56, 10, 56, 32);
+    const ch = Math.min(280, Math.max(160, this.h - 200));
+    this.curve.setBounds(10, 54, w - 20, ch);
+    this.q.setBounds(70, 54 + ch + 12, w - 80, 28);
+    this.textY = 54 + ch + 48;
+  }
+  pointerDown() { return true; }   // the list under it never gets a touch
+  paint(g) {
+    drawPanel(g, 0, 0, this.w, this.h, Palette.tintedPanel);
+    if (!this.r) return;
+    const r = this.r, v = f => store.value(eqId(r.k, f));
+    g.setColour(Colour.hex(r.colour)); g.fillRoundedRectangle(10, 14, 5, 24, 2.5);
+    g.setColour(Palette.text); g.setFont(15, true);
+    g.drawFittedText(r.name, 22, 10, this.w - 22 - 250, 32, J.centredLeft, 1);
+    g.setColour(Palette.textDim); g.setFont(12.5);
+    g.drawText("Mid Q", 10, (this.q ? this.q.y : 0), 56, 28, J.centredLeft);
+    const lc = v("lc") < 0.05 ? "Off" : hzText(logHz((v("lc") - 0.05) / 0.95, 20, 400));
+    const lines = [
+      "C  Low cut: " + lc,
+      "L  Low shelf: " + gainText(v("lsg")) + " at " + hzText(logHz(v("lsf"), 40, 500)),
+      "M  Mid: " + gainText(v("mg")) + " at " + hzText(logHz(v("mf"), 200, 8000)) + ", Q " + logHz(v("mq"), 0.5, 4).toFixed(2),
+      "H  High shelf: " + gainText(v("hsg")) + " at " + hzText(logHz(v("hsf"), 2000, 16000)),
+    ];
+    g.setColour(store.on(eqId(r.k, "on")) ? Palette.text : Palette.textDim); g.setFont(13.5);
+    lines.forEach((t, i) => g.drawText(t, 12, (this.textY || 0) + i * 22, this.w - 24, 20, J.centredLeft));
+    g.setColour(Palette.textDim); g.setFont(12);
+    g.drawFittedText("Only in your mix: the room and the other mixes don't change. Drag a handle sideways for its frequency, " +
+                     "up and down for its gain; double-tap it for 0 dB.", 12, (this.textY || 0) + 4 * 22 + 8, this.w - 24, 36, J.topLeft, 2);
+  }
+}
+
 class Root extends Component {
   constructor() {
     super();
@@ -330,6 +423,7 @@ class Root extends Component {
     this.pans.setVisible(false);
     this.master = this.add(new MasterPanel());
     this.list = this.add(new List());
+    this.sheet = this.add(new EqSheet()); this.sheet.setVisible(false);
     this.safe = { top: 0, bottom: 0 };
   }
   column() { const w = Math.min(this.w - 16, 620); return { x: (this.w - w) / 2, w }; }
@@ -345,6 +439,7 @@ class Root extends Component {
     const y = this.nowY + (nowOf(mix) ? kNowH + 8 : 0);
     this.master.setBounds(c.x, y, c.w, 102);
     this.list.setBounds(c.x, y + 102 + 8, c.w, this.h - (y + 110));
+    this.sheet.setBounds(c.x, top + 48, c.w, this.h - top - 48 - this.safe.bottom);
   }
   paint(g) {
     const c = this.column(), top = this.safe.top;
@@ -377,8 +472,16 @@ function render() {
   for (const r of mix.rows) {
     p["send:" + r.k] = [faderPositionOf(r.send), dbText(r.send), faderPositionOf(0), 0];
     p["pan:" + r.k] = [(r.pan + 100) / 200, "", 0.5, 201];
+    if (r.eq) {
+      eqFields.forEach((f, i) => { p[eqId(r.k, f)] = [r.eq[i], "", eqDefaults[f], f === "on" ? 2 : 0]; });
+      if (r.eqc) eqCurves.set(r.k, r.eqc); else eqCurves.delete(r.k);
+    }
   }
   store.receive(p);
+  if (root.sheet.r) {
+    const r = mix.rows.find(x => x.k === root.sheet.r.k);
+    if (r && r.eq) root.sheet.update(r); else root.sheet.shut();
+  }
   root.list.setRows(me, others, b.own);
   root.pans.setVisible(!!b.own); root.pans.toggle = layout.hidePans; root.repaint();
   const now = JSON.stringify(nowOf(mix));

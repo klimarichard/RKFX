@@ -53,6 +53,8 @@ struct MixConsole::Client
     int rackVersion = -1;
     juce::var clipboard;              // a copied insert
     bool monitorEq = false;           // shows Monitor EQ: gets its state
+    bool recorder = false;            // shows the Recorder: gets its state
+    juce::String recorderSent;
     int monitorEqSent = -1;           // the session's version last sent
 };
 
@@ -244,6 +246,7 @@ void MixConsole::tick()
             structure = structureJson();
         checkMonitorEqOwner();
         juce::String monitorEqState;      // made once per tick, when some console wants it
+        juce::String recorderState;
 
         for (auto& [c, clientPtr] : clients)
         {
@@ -284,6 +287,16 @@ void MixConsole::tick()
                         monitorEqState = monitorEqJson();
                     client.monitorEqSent = v;
                     post (client, monitorEqState);
+                }
+                if (client.recorder)
+                {
+                    if (recorderState.isEmpty())
+                        recorderState = recorderJson();
+                    if (recorderState != client.recorderSent)
+                    {
+                        client.recorderSent = recorderState;
+                        post (client, recorderState);
+                    }
                 }
             }
             posted = posted || client.outbox.size() != before;
@@ -724,6 +737,80 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
         post (client, R"({"type":"pong"})");
     else if (type == "meq")
         monitorEqCommand (client, m);
+    else if (type == "rec" || type == "pb")
+        recorderCommand (client, type, m);
+}
+
+//==============================================================================
+// The recorder and the virtual soundcheck (docs/design/RKMix Recorder.md), from the iPad.
+
+void MixConsole::recorderCommand (Client& client, const juce::String& type, const juce::var& m)
+{
+    const auto a = m["a"].toString();
+    auto& rec = mixer.getRecorder();
+    auto& pb = mixer.getPlayback();
+    if (type == "rec")
+    {
+        if (a == "sub")         { client.recorder = (bool) m["on"]; client.recorderSent = {}; }
+        else if (a == "start")  rec.start();
+        else if (a == "stop")   rec.stop();
+        else if (a == "marker") rec.addMarker();
+        return;
+    }
+    if (a == "play")         pb.play();
+    else if (a == "pause")   pb.pause();
+    else if (a == "stop")    pb.stop();
+    else if (a == "locate")  pb.locate ((juce::int64) ((double) m["at"] * juce::jmax (1.0, pb.getRecording().sampleRate)));
+    else if (a == "prev")    pb.locate (pb.markerNear (false));
+    else if (a == "next")    pb.locate (pb.markerNear (true));
+    else if (a == "loop")    pb.loopAroundPosition ((bool) m["on"]);
+    else if (a == "allLive") mixer.setAllInputsLive();
+    else if (a == "allPb")   mixer.setAllInputsOnPlayback();
+    else if (a == "src")
+    {
+        const auto ch = (int) m["ch"];
+        if (juce::isPositiveAndBelow (ch, kChannels))
+            mixer.setInputOnPlayback (ch, (bool) m["on"]);
+    }
+}
+
+juce::String MixConsole::recorderJson() const
+{
+    auto& rec = mixer.getRecorder();
+    auto& pb = mixer.getPlayback();
+    juce::String json;
+    json << R"({"type":"rec","on":)" << (rec.isRecording() ? "true" : "false")
+         << R"(,"t":)" << (int) rec.getElapsedSeconds()
+         << R"(,"drops":)" << rec.getDropouts()
+         << R"(,"left":)" << (int) (rec.getSecondsLeft() / 60.0)
+         << R"(,"status":)" << jsonString (rec.getStatus());
+
+    juce::StringArray sources;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (mixer.isInputOnPlayback (ch))
+            sources.add (juce::String (ch));
+    json << R"(,"src":[)" << sources.joinIntoString (",") << "]";
+
+    json << R"(,"pb":{"loaded":)" << (pb.isLoaded() ? "true" : "false");
+    if (pb.isLoaded())
+    {
+        const auto& r = pb.getRecording();
+        const auto rate = juce::jmax (1.0, r.sampleRate);
+        json << R"(,"name":)" << jsonString (r.folder.getFileName())
+             << R"(,"playing":)" << (pb.isPlaying() ? "true" : "false")
+             << R"(,"pos":)" << number ((float) ((double) pb.getPosition() / rate), 1)
+             << R"(,"len":)" << number ((float) ((double) r.length / rate), 1)
+             << R"(,"loop":)" << (pb.isLooping() ? "true" : "false")
+             << R"(,"ls":)" << number ((float) ((double) pb.getLoopStart() / rate), 1)
+             << R"(,"le":)" << number ((float) ((double) pb.getLoopEnd() / rate), 1)
+             << R"(,"locating":)" << (pb.isLocating() ? "true" : "false")
+             << R"(,"under":)" << pb.getUnderruns() << R"(,"markers":[)";
+        for (size_t i = 0; i < r.markers.size(); ++i)
+            json << (i > 0 ? "," : "") << "[" << number ((float) ((double) r.markers[i].at / rate), 1) << "," << jsonString (r.markers[i].label) << "]";
+        json << "]";
+    }
+    json << "}}";
+    return json;
 }
 
 //==============================================================================

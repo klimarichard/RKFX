@@ -268,6 +268,39 @@ void MixPlayback::setLoop (bool on, juce::int64 start, juce::int64 end)
     relocate (on && (now < start || now >= end) ? start : now);
 }
 
+juce::int64 MixPlayback::markerNear (bool next) const
+{
+    const auto now = shownPosition.load();
+    const auto back = (juce::int64) (0.5 * juce::jmax (1.0, recording.sampleRate));
+    juce::int64 best = next ? recording.length : 0;
+    for (const auto& m : recording.markers)
+    {
+        if (next && m.at > now && m.at < best)
+            best = m.at;
+        if (! next && m.at < now - back && m.at > best)
+            best = m.at;
+    }
+    return best;
+}
+
+void MixPlayback::loopAroundPosition (bool on)
+{
+    if (! on)
+    {
+        setLoop (false, 0, 0);
+        return;
+    }
+    juce::int64 start = 0, end = recording.length;
+    for (const auto& m : recording.markers)
+    {
+        if (m.at <= shownPosition.load())
+            start = juce::jmax (start, m.at);
+        else
+            end = juce::jmin (end, m.at);
+    }
+    setLoop (true, start, end);
+}
+
 bool MixPlayback::waitUntilReady (int ms) const
 {
     const auto until = juce::Time::getMillisecondCounter() + (juce::uint32) ms;

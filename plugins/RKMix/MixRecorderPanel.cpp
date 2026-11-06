@@ -184,28 +184,10 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
     stopButton.onClick = [this] { owner.mixer.getPlayback().stop(); tick(); };
     prevMarker.setButtonText (juce::String::fromUTF8 ("\xe2\x97\x80 Marker"));
     nextMarker.setButtonText (juce::String::fromUTF8 ("Marker \xe2\x96\xb6"));
-    prevMarker.onClick = [this] { owner.mixer.getPlayback().locate (markerNear (false)); };
-    nextMarker.onClick = [this] { owner.mixer.getPlayback().locate (markerNear (true)); };
+    prevMarker.onClick = [this] { auto& p = owner.mixer.getPlayback(); p.locate (p.markerNear (false)); };
+    nextMarker.onClick = [this] { auto& p = owner.mixer.getPlayback(); p.locate (p.markerNear (true)); };
     loopButton.setTooltip ("Plays the part between the markers around the play position over and over");
-    loopButton.onClick = [this]
-    {
-        auto& p = owner.mixer.getPlayback();
-        if (p.isLooping())
-            p.setLoop (false, 0, 0);
-        else
-        {
-            juce::int64 start = 0, end = p.getRecording().length;
-            for (const auto& m : p.getRecording().markers)
-            {
-                if (m.at <= p.getPosition())
-                    start = juce::jmax (start, m.at);
-                else
-                    end = juce::jmin (end, m.at);
-            }
-            p.setLoop (true, start, end);
-        }
-        tick();
-    };
+    loopButton.onClick = [this] { auto& p = owner.mixer.getPlayback(); p.loopAroundPosition (! p.isLooping()); tick(); };
     juce::ignoreUnused (pb);
     for (auto* b : { &loadButton, &unloadButton, &useNames, &allPlayback, &allLive, &playButton, &stopButton, &prevMarker, &nextMarker, &loopButton })
         addChildComponent (*b);
@@ -243,22 +225,6 @@ void RKMixEditor::RecorderPanel::loadRecording (const juce::File& folder)
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Can't play back this recording", r.getErrorMessage());
     loadedFiles = -1;
     refresh();
-}
-
-juce::int64 RKMixEditor::RecorderPanel::markerNear (bool next) const
-{
-    const auto& p = owner.mixer.getPlayback();
-    const auto now = p.getPosition();
-    const auto rate = juce::jmax (1.0, p.getRecording().sampleRate);
-    juce::int64 best = next ? p.getRecording().length : 0;
-    for (const auto& m : p.getRecording().markers)
-    {
-        if (next && m.at > now && m.at < best)
-            best = m.at;
-        if (! next && m.at < now - (juce::int64) (0.5 * rate) && m.at > best)   // half a second: a second press goes one further back
-            best = m.at;
-    }
-    return best;
 }
 
 void RKMixEditor::RecorderPanel::rebuildMapping()

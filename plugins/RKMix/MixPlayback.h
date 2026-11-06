@@ -84,6 +84,12 @@ public:
     juce::int64 getLoopStart() const noexcept { return loopStart.load(); }
     juce::int64 getLoopEnd() const noexcept { return loopEnd.load(); }
 
+    /** The next marker after the play position (or the end); the previous one
+        (half a second back, so a second press goes one further; or the start). */
+    juce::int64 markerNear (bool next) const;
+    /** Loops the part between the markers around the play position (or stops looping). */
+    void loopAroundPosition (bool on);
+
     bool isPlaying() const noexcept { return playing.load(); }
     bool isLocating() const noexcept { return requestGen.load() != readyGen.load(); }
     juce::int64 getPosition() const noexcept { return shownPosition.load(); }

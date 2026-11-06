@@ -530,7 +530,6 @@ private:
         int loadedFiles = -1;
         void rebuildMapping();
         void loadRecording (const juce::File& folder);
-        juce::int64 markerNear (bool next) const;
     };
 
     struct RemotePanel : public Panel

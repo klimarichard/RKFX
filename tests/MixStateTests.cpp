@@ -1464,6 +1464,24 @@ public:
                 expect (rec.start().wasOk());
                 exchange (a, R"({"t":"set","id":"link1","v":1})");
                 expect (! p.isLinked (0), "no link while recording");
+
+                // The iPad's Recorder page: its state, Marker, Stop; the inputs' source.
+                exchange (a, R"({"t":"rec","a":"sub","on":true})");
+                auto state = a.last ("rec");
+                expect ((bool) state["on"], "recording, as the iPad sees it");
+                expect (! (bool) state["pb"]["loaded"]);
+                exchange (a, R"({"t":"rec","a":"marker"})");
+                expectEquals (rec.getRecorder().getNumMarkers(), 1);
+                exchange (a, R"({"t":"pb","a":"src","ch":4,"on":true})");
+                expect (p.isInputOnPlayback (4));
+                expectEquals ((int) a.last ("rec")["src"][0], 4);
+                exchange (a, R"({"t":"pb","a":"allLive"})");
+                expect (! p.anyInputOnPlayback());
+                exchange (a, R"({"t":"rec","a":"stop"})");
+                expect (! rec.isRecording());
+                expect (! (bool) a.last ("rec")["on"]);
+                exchange (a, R"({"t":"rec","a":"sub","on":false})");
+                expect (rec.start().wasOk());
                 rec.stop();
                 exchange (a, R"({"t":"set","id":"link1","v":1})");
                 expect (p.isLinked (0), "linked once stopped");

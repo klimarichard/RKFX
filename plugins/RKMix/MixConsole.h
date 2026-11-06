@@ -109,6 +109,8 @@ public:
 
     /** Tests: Monitor EQ's state message as it would be sent now. */
     juce::String monitorEqJson() const;
+    /** Tests: the recorder's state message as it would be sent now. */
+    juce::String recorderJson() const;
     /** How long the iPad that started a Monitor EQ run may be gone before the run stops. */
     static constexpr juce::uint32 kOwnerGoneMs = 2000;
 
@@ -163,6 +165,7 @@ private:
     void handle (Client&, const juce::var& message);
     void signIn (Client&, const juce::var& message);
     void command (Client&, const juce::String& type, const juce::var& message);
+    void recorderCommand (Client&, const juce::String& type, const juce::var& message);
     void subscribe (Client&, const juce::var& ids);
     void queueValues (Client&);
     void queueCurves (Client&);

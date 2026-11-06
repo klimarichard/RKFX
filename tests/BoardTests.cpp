@@ -738,6 +738,45 @@ public:
             expectEquals (stateJson (copy), json);
         }
 
+        beginTest ("Scene names: saved, copied with Copy to, shown in the Scene parameter's text");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setSceneName (1, "  Verse ");
+            board.setSceneName (2, "A name much too long to fit on any scene button at all");
+            expectEquals (board.getSceneName (1), juce::String ("Verse"));
+            expectEquals (board.getSceneName (2), juce::String ("A name much too long to"), "cut to 24 characters, trimmed");
+            expectEquals (board.describeScene (1), juce::String ("2 Verse"));
+            expectEquals (board.describeScene (0), juce::String ("1"));
+
+            auto& scene = board.getSceneParam();
+            expectEquals (scene.getText (scene.convertTo0to1 (2.0f), 40), juce::String ("2 Verse"));
+            board.setScene (1);
+            expectEquals (scene.getCurrentValueAsText(), juce::String ("2 Verse"));
+            expectWithinAbsoluteError (scene.getValueForText ("3 Solo"), scene.convertTo0to1 (3.0f), 1.0e-6f);
+
+            board.copyScene (1, 7);
+            expectEquals (board.getSceneName (7), juce::String ("Verse"));
+
+            // Board presets and the host state.
+            BoardProcessor loaded;
+            expect (loaded.fromVar (board.toVar (false), false).ok);
+            expectEquals (loaded.getSceneName (1), juce::String ("Verse"));
+            expectEquals (loaded.getSceneName (7), juce::String ("Verse"));
+            expectEquals (loaded.getSceneName (0), juce::String());
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (copy.getSceneName (1), juce::String ("Verse"));
+
+            // No names: none written; an empty board forgets them.
+            BoardProcessor plain;
+            plain.clearBoard();
+            expect (! plain.toVar (false)["scenes"].hasProperty ("names"));
+            board.resetBoard();
+            expectEquals (board.getSceneName (1), juce::String());
+        }
+
         beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");
         {
             const auto measureTail = [this] (bool withTrails)

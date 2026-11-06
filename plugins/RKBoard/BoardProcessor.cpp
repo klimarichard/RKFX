@@ -79,7 +79,11 @@ BoardProcessor::BoardProcessor()
         p->addListener (this);
     }
 
-    sceneParam = new juce::AudioParameterInt (juce::ParameterID { "scene", hint++ }, "Scene", 1, kNumScenes, 1);
+    // The text shows the scene's name ("2 Verse"): Gig Performer puts it on a widget's label.
+    const auto sceneAttributes = juce::AudioParameterIntAttributes()
+        .withStringFromValueFunction ([this] (int value, int) { return describeScene (value - 1); })
+        .withValueFromStringFunction ([] (const juce::String& text) { return text.trim().getIntValue(); });
+    sceneParam = new juce::AudioParameterInt (juce::ParameterID { "scene", hint++ }, "Scene", 1, kNumScenes, 1, sceneAttributes);
     addParameter (sceneParam);
     sceneParam->addListener (this);
 
@@ -1574,8 +1578,39 @@ void BoardProcessor::copyScene (int from, int to)
         sceneBypass[(size_t) to][(size_t) i] = sceneBypass[(size_t) from][(size_t) i].load();
     for (auto& k : sceneKnobs)
         k.values[(size_t) to] = k.values[(size_t) from].load();
+    setSceneName (to, getSceneName (from));
 
     boardChanged();
+}
+
+juce::String BoardProcessor::getSceneName (int scene) const
+{
+    if (scene < 0 || scene >= kNumScenes)
+        return {};
+    const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+    return sceneNames[(size_t) scene];
+}
+
+void BoardProcessor::setSceneName (int scene, const juce::String& name)
+{
+    if (scene < 0 || scene >= kNumScenes)
+        return;
+    const auto clean = name.replaceCharacters ("\r\n\t", "   ").trim().substring (0, kMaxSceneNameLength).trim();
+    {
+        const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+        if (sceneNames[(size_t) scene] == clean)
+            return;
+        sceneNames[(size_t) scene] = clean;
+    }
+    boardChanged();
+    // Hosts showing the Scene parameter's text read it again.
+    updateHostDisplay (juce::AudioProcessorListener::ChangeDetails().withParameterInfoChanged (true));
+}
+
+juce::String BoardProcessor::describeScene (int scene) const
+{
+    const auto name = getSceneName (scene);
+    return juce::String (scene + 1) + (name.isNotEmpty() ? " " + name : juce::String());
 }
 
 bool BoardProcessor::canHaveTrails (int pedalId) const
@@ -1688,6 +1723,17 @@ juce::var BoardProcessor::toVar (bool fullState) const
                 knobs.add (juce::var (entry));
             }
     scenes->setProperty ("knobs", knobs);
+
+    // Names, only when there are some (one per scene, "" for none).
+    juce::Array<juce::var> names;
+    auto anyName = false;
+    for (int scene = 0; scene < kNumScenes; ++scene)
+    {
+        names.add (getSceneName (scene));
+        anyName = anyName || getSceneName (scene).isNotEmpty();
+    }
+    if (anyName)
+        scenes->setProperty ("names", names);
     root->setProperty ("scenes", juce::var (scenes));
 
     juce::Array<juce::var> list;
@@ -1850,6 +1896,14 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
                     k.values[(size_t) scene] = param->convertTo0to1 ((float) (double) (*values)[scene]);
         }
 
+    {
+        const auto* names = scenes["names"].getArray();
+        const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+        for (int scene = 0; scene < kNumScenes; ++scene)
+            sceneNames[(size_t) scene] = names != nullptr && scene < names->size()
+                                             ? (*names)[scene].toString().trim().substring (0, kMaxSceneNameLength) : juce::String();
+    }
+
     // The pedals were loaded as the current scene; just point there.
     const auto current = juce::jlimit (1, kNumScenes, scenes["current"].isVoid() ? 1 : (int) scenes["current"]);
     currentScene = current - 1;
@@ -1943,6 +1997,11 @@ void BoardProcessor::resetBoard()
         }
         numSplits = 1;
         publishChain();
+        {
+            const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+            for (auto& name : sceneNames)
+                name.clear();
+        }
         currentScene = 0;
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 (1.0f));
         ++boardCounter;

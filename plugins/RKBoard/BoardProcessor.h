@@ -184,7 +184,15 @@ public:
 
     bool getSceneBypass (int scene, int pedalId) const;
     float getSceneValue (int scene, int pedalId, const juce::String& paramId) const;   // normalised
+    /** Copies a scene's bypasses, scene knobs and name into another. */
     void copyScene (int from, int to);
+
+    /** A scene's name ("Verse"; empty: none). Saved with the board, any thread. */
+    juce::String getSceneName (int scene) const;
+    void setSceneName (int scene, const juce::String& name);
+    /** "2 Verse", or "2" without a name: the Scene parameter's text. */
+    juce::String describeScene (int scene) const;
+    static constexpr int kMaxSceneNameLength = 24;
 
     //==============================================================================
     // Trails (delay and reverb pedals): when bypassed with trails on, the pedal
@@ -373,6 +381,8 @@ private:
     // Scenes
     juce::AudioParameterInt* sceneParam = nullptr;
     std::atomic<int> currentScene { 0 };
+    mutable juce::SpinLock sceneNamesLock;
+    std::array<juce::String, kNumScenes> sceneNames;
     std::array<std::array<std::atomic<bool>, kMaxPedals>, kNumScenes> sceneBypass {};
 
     struct SceneKnob

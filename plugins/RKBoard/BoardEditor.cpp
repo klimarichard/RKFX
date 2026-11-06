@@ -702,6 +702,47 @@ void BoardStrip::showNodeMenu (int split)
 }
 
 //==============================================================================
+void SceneButton::setScene (int number, const juce::String& name)
+{
+    if (number == scene && name == sceneName)
+        return;
+    scene = number;
+    sceneName = name;
+    setButtonText (juce::String (number));
+    setTooltip ("Scene " + juce::String (number) + (name.isNotEmpty() ? ": " + name : juce::String())
+                + " (double-click to name it; right-click: rename, copy to another scene)");
+    repaint();
+}
+
+void SceneButton::paintButton (juce::Graphics& g, bool isMouseOver, bool isButtonDown)
+{
+    getLookAndFeel().drawButtonBackground (g, *this, findColour (getToggleState() ? buttonOnColourId : buttonColourId),
+                                           isMouseOver, isButtonDown);
+
+    const auto on = getToggleState();
+    const auto colour = findColour (on ? textColourOnId : textColourOffId).withMultipliedAlpha (isEnabled() ? 1.0f : 0.5f);
+    auto area = getLocalBounds().reduced (2, 2);
+    g.setColour (colour);
+    if (sceneName.isEmpty())
+    {
+        g.setFont (Fonts::bold (14.0f));
+        g.drawText (getButtonText(), area, juce::Justification::centred);
+        return;
+    }
+    g.setFont (Fonts::bold (13.0f));
+    g.drawText (getButtonText(), area.removeFromTop (area.getHeight() / 2 + 1), juce::Justification::centredBottom);
+    g.setColour (colour.withMultipliedAlpha (on ? 0.9f : 0.75f));
+    g.setFont (Fonts::regular (10.5f));
+    g.drawFittedText (sceneName, area, juce::Justification::centredTop, 1, 0.75f);
+}
+
+void SceneButton::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (onDoubleClick && ! e.mods.isPopupMenu())
+        onDoubleClick();
+}
+
+//==============================================================================
 BoardEditor::BoardEditor (BoardProcessor& p)
     : juce::AudioProcessorEditor (p), board (p)
 {
@@ -717,16 +758,10 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
     addAndMakeVisible (assignButton);
 
-    sceneLabel.setText ("Scene", juce::dontSendNotification);
-    sceneLabel.setFont (Fonts::regular (13.0f));
-    sceneLabel.setColour (juce::Label::textColourId, Palette::textDim);
-    addAndMakeVisible (sceneLabel);
-
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
     {
         auto& button = sceneButtons[(size_t) i];
-        button.setButtonText (juce::String (i + 1));
-        button.setTooltip ("Scene " + juce::String (i + 1) + " (right-click to copy it to another scene)");
+        button.onDoubleClick = [this, i] { renameScene (i); };
         button.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0)
                                   | (i < BoardProcessor::kNumScenes - 1 ? juce::Button::ConnectedOnRight : 0));
         button.onClick = [this, i] { board.setScene (i); refreshSceneButtons(); };
@@ -899,14 +934,14 @@ void BoardEditor::resized()
     noteLabel.setBounds (header);
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
-    const auto buttonWidth = 40;
-    tunerButton.setBounds (sceneBar.removeFromRight (70));
-    auto tempoArea = sceneBar.removeFromLeft (150);
-    tempoField.setBounds (tempoArea.removeFromLeft (56));
-    tempoUnit.setBounds (tempoArea.removeFromLeft (36));
-    tapButton.setBounds (tempoArea.removeFromLeft (50));
-    sceneBar = sceneBar.withSizeKeepingCentre (54 + BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
-    sceneLabel.setBounds (sceneBar.removeFromLeft (54));
+    const auto buttonWidth = 38;
+    const auto small = [] (juce::Rectangle<int> r) { return r.withSizeKeepingCentre (r.getWidth(), 26); };
+    tunerButton.setBounds (small (sceneBar.removeFromRight (64)));
+    auto tempoArea = sceneBar.removeFromLeft (142);
+    tempoField.setBounds (small (tempoArea.removeFromLeft (52)));
+    tempoUnit.setBounds (small (tempoArea.removeFromLeft (36)));
+    tapButton.setBounds (small (tempoArea.removeFromLeft (48)));
+    sceneBar = sceneBar.withSizeKeepingCentre (BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
     for (auto& button : sceneButtons)
         button.setBounds (sceneBar.removeFromLeft (buttonWidth));
 
@@ -1095,7 +1130,8 @@ void BoardEditor::showSceneMenu (int scene)
         copyTo.addItem (i + 1, "Scene " + juce::String (i + 1), i != scene);
 
     juce::PopupMenu menu;
-    menu.addSectionHeader ("Scene " + juce::String (scene + 1));
+    menu.addSectionHeader ("Scene " + board.describeScene (scene));
+    menu.addItem (1000, "Rename...");
     menu.addSubMenu ("Copy to", copyTo);
     if (board.isStandalone())
     {
@@ -1111,12 +1147,42 @@ void BoardEditor::showSceneMenu (int scene)
                             if (safe != nullptr && safe->handleLearnResult (result, LearnTarget::scene, 100))
                                 return;
 
+                            if (safe != nullptr && result == 1000)
+                            {
+                                safe->renameScene (scene);
+                                return;
+                            }
+
                             if (safe != nullptr && result > 0)
                             {
                                 safe->board.copyScene (scene, result - 1);
                                 safe->showNote ("Scene " + juce::String (scene + 1) + " copied to scene " + juce::String (result), false);
                             }
                         });
+}
+
+void BoardEditor::renameScene (int scene)
+{
+    auto* window = new juce::AlertWindow ("Scene " + juce::String (scene + 1),
+                                          "Its name (\"Intro\", \"Verse\", \"Solo\"); empty for none.",
+                                          juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("name", board.getSceneName (scene));
+    if (auto* editor = window->getTextEditor ("name"))
+    {
+        editor->setInputRestrictions (BoardProcessor::kMaxSceneNameLength);
+        editor->selectAll();
+    }
+    window->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, scene] (int result)
+    {
+        if (safe == nullptr || result != 1)
+            return;
+        safe->board.setSceneName (scene, window->getTextEditorContents ("name"));
+        safe->refreshSceneButtons();
+    }), true);
 }
 
 void BoardEditor::addLearnItems (juce::PopupMenu& menu, int target, int base) const
@@ -1220,7 +1286,10 @@ void BoardEditor::refreshTempo()
 void BoardEditor::refreshSceneButtons()
 {
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+    {
+        sceneButtons[(size_t) i].setScene (i + 1, board.getSceneName (i));
         sceneButtons[(size_t) i].setToggleState (i == board.getScene(), juce::dontSendNotification);
+    }
 }
 
 void BoardEditor::closePedalEditor()

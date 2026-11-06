@@ -130,6 +130,22 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardStrip)
 };
 
+/** A scene button: its number, and its name under it (shortened to fit;
+    whole in the tooltip). Double-click to rename it. */
+class SceneButton : public juce::TextButton
+{
+public:
+    void setScene (int number, const juce::String& name);
+    std::function<void()> onDoubleClick;
+
+    void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
+private:
+    int scene = 0;
+    juce::String sceneName;
+};
+
 /** The RKBoard window: a slim header (board preset, input and output level),
     the pedal row, and the selected pedal's own editor below. */
 class BoardEditor : public juce::AudioProcessorEditor,
@@ -154,7 +170,7 @@ public:
     static constexpr int kWidth = 1100;
     static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
-    static constexpr int kSceneBarHeight = 36;
+    static constexpr int kSceneBarHeight = 46;
     static constexpr int kMargin = 12;
 
 private:
@@ -165,8 +181,7 @@ private:
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
     juce::TextButton assignButton { "Assign" };
-    juce::Label sceneLabel;
-    std::array<juce::TextButton, BoardProcessor::kNumScenes> sceneButtons;
+    std::array<SceneButton, BoardProcessor::kNumScenes> sceneButtons;
 
     // Standalone: tempo and tuner
     juce::Label tempoField, tempoUnit;
@@ -200,6 +215,7 @@ private:
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
     void removeSplit (int split);
     void showSceneMenu (int scene);
+    void renameScene (int scene);
 
     /** MIDI learn items (standalone) for @p target, added to @p menu with IDs from @p base. */
     void addLearnItems (juce::PopupMenu& menu, int target, int base) const;

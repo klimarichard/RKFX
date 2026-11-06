@@ -225,6 +225,10 @@ namespace mix
     inline juce::String channelSendPanId (int ch, int bus) { return channelId (ch, ("span" + num (bus)).toRawUTF8()); }   // an Own-mode Aux
     inline juce::String busSendId (int bus, int to)       { return busId (bus, ("send" + num (to)).toRawUTF8()); }
 
+    // The recorder's choices (mix settings): input n, an Aux bus's output; "rec_main" for the main.
+    inline juce::String recordInputId (int ch) { return "rec_in" + num (ch); }
+    inline juce::String recordBusId (int bus)  { return "rec_bus" + num (bus); }
+
     // A channel's send EQ for bus b: "ch5_seq3_on", "ch5_seq3_lc"... (the fields below).
     inline const char* const sendEqFields[] = { "on", "lc", "lsf", "lsg", "mf", "mg", "mq", "hsf", "hsg" };
     constexpr int kSendEqFields = 9;

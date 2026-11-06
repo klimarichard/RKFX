@@ -1206,6 +1206,116 @@ public:
             dir.deleteRecursively();
         }
 
+        beginTest ("Recorder: the inputs before the trim, a pair as one stereo file, the main; names, markers at scene recalls");
+        {
+            juce::TemporaryFile temp;
+            const auto root = temp.getFile();
+            RKMixProcessor p;
+            auto& rec = p.getRecorder();
+            rec.setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            rec.setRootFolder (root.getChildFile ("Recordings"));
+            auto& s = p.getSettings();
+            for (int ch = 4; ch < 32; ++ch)
+                setParam (s.param (mix::recordInputId (ch)), 0.0f);   // inputs 1-4 and the main
+            setParam (s.param (mix::linkId (1)), 1.0f);                // 3/4 a pair
+            setParam (s.param (mix::channelId (0, "trim")), -12.0f);  // not in the recording
+            p.setChannelName (0, "Lead Vox");
+            p.setChannelName (2, "Keys");
+            p.prepareToPlay (48000.0, 128);
+
+            expect (rec.start().wasOk(), rec.getStatus());
+            expect (p.findParam ("rec")->getValue() > 0.5f, "the Record parameter follows");
+            run (p, 10);
+            p.recallScene (1);
+            run (p, 10);
+            rec.stop();
+            expect (p.findParam ("rec")->getValue() < 0.5f);
+
+            const auto takes = root.getChildFile ("Recordings").findChildFiles (juce::File::findDirectories, false);
+            expectEquals (takes.size(), 1);
+            const auto folder = takes[0];
+            juce::StringArray names;
+            for (const auto& f : folder.findChildFiles (juce::File::findFiles, false, "*.wav"))
+                names.add (f.getFileName());
+            names.sort (false);
+            expectEquals (names.joinIntoString ("|"), juce::String ("01 Lead Vox.wav|02 Ch 2.wav|03-04 Keys.wav|Main.wav"));
+
+            juce::WavAudioFormat wav;
+            std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (folder.getChildFile ("01 Lead Vox.wav").createInputStream().release(), true));
+            expect (reader != nullptr && reader->lengthInSamples == 20 * 128);
+            if (reader != nullptr)
+            {
+                juce::AudioBuffer<float> b (1, 128);
+                reader->read (&b, 0, 128, 0, true, false);
+                expectWithinAbsoluteError (b.getSample (0, 64), 0.5f, 1.0e-6f, "as it arrives, before the -12 dB trim");
+            }
+            std::unique_ptr<juce::AudioFormatReader> pair (wav.createReaderFor (folder.getChildFile ("03-04 Keys.wav").createInputStream().release(), true));
+            expect (pair != nullptr && pair->numChannels == 2);
+            const auto session = juce::JSON::parse (folder.getChildFile ("session.json"));
+            expectEquals (session["names"][0].toString(), juce::String ("Lead Vox"));
+            expectEquals (session["markers"][0]["label"].toString(), juce::String ("Scene 2"));
+            expectEquals ((int) session["markers"][0]["at"], 10 * 128);
+
+            // Pairs as two mono files (this computer's setting).
+            rec.setPairsAsMono (true);
+            juce::StringArray tracks;
+            for (const auto& t : rec.makeTake().tracks)
+                tracks.add (t.fileName);
+            expect (tracks.contains ("03 Keys L.wav") && tracks.contains ("04 Keys R.wav"), tracks.joinIntoString (", "));
+            root.deleteRecursively();
+        }
+
+        beginTest ("Recorder: Record and Marker parameters; links kept while recording; a mix loaded splits the take; a new rate stops it");
+        {
+            juce::TemporaryFile temp;
+            const auto root = temp.getFile();
+            RKMixProcessor p;
+            auto& rec = p.getRecorder();
+            rec.setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            rec.setRootFolder (root.getChildFile ("Recordings"));
+            auto& s = p.getSettings();
+            p.prepareToPlay (48000.0, 128);
+
+            p.findParam ("rec")->setValueNotifyingHost (1.0f);
+            rec.poll();
+            expect (rec.isRecording(), "Record on starts");
+            run (p, 4);
+            p.findParam ("marker")->setValueNotifyingHost (1.0f);
+            p.findParam ("marker")->setValueNotifyingHost (0.0f);
+            rec.poll();
+            expectEquals (rec.getRecorder().getNumMarkers(), 1, "Marker: one per press");
+
+            setParam (s.param (mix::linkId (0)), 1.0f);
+            rec.poll();
+            expect (! p.isLinked (0), "a link changed while recording is put back");
+
+            const auto first = rec.getTakeFolder();
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            p.setStateInformation (state.getData(), (int) state.getSize());
+            expect (rec.isRecording(), "still recording");
+            expect (rec.getTakeFolder() != first, "in a new take");
+            expect (juce::JSON::parse (first.getChildFile ("session.json"))["notes"][0].toString().startsWith ("split"));
+
+            p.prepareToPlay (44100.0, 128);
+            expect (! rec.isRecording(), "a new sample rate stops it");
+            expect (p.findParam ("rec")->getValue() < 0.5f);
+
+            p.findParam ("rec")->setValueNotifyingHost (1.0f);
+            rec.poll();
+            expect (rec.isRecording());
+            p.findParam ("rec")->setValueNotifyingHost (0.0f);
+            rec.poll();
+            expect (! rec.isRecording(), "Record off stops");
+
+            for (int ch = 0; ch < 32; ++ch)
+                setParam (s.param (mix::recordInputId (ch)), 0.0f);
+            setParam (s.param ("rec_main"), 0.0f);
+            expect (rec.start().failed(), "nothing chosen: refused");
+            expect (rec.getStatus().contains ("nothing"));
+            root.deleteRecursively();
+        }
+
         beginTest ("Names by OSC: Gig Performer's names on every remote page; scenes; the settings");
         {
             RKMixProcessor p;
@@ -1344,6 +1454,40 @@ public:
             const auto token = a.last ("auth")["token"].toString();
             expect ((bool) a.last ("auth")["ok"] && token.length() >= 16, "signed in, with a token");
             expect (a.last ("s")["ch"].size() == mix::kChannels, "the structure follows");
+
+            // While recording, a link from the iPad is refused (the files match the channels).
+            {
+                juce::TemporaryFile recTemp;
+                auto& rec = p.getRecorder();
+                rec.setSettingsFileForTesting (recTemp.getFile().getChildFile ("recorder.json"));
+                rec.setRootFolder (recTemp.getFile().getChildFile ("Recordings"));
+                expect (rec.start().wasOk());
+                exchange (a, R"({"t":"set","id":"link1","v":1})");
+                expect (! p.isLinked (0), "no link while recording");
+
+                // The iPad's Recorder page: its state, Marker, Stop; the inputs' source.
+                exchange (a, R"({"t":"rec","a":"sub","on":true})");
+                auto state = a.last ("rec");
+                expect ((bool) state["on"], "recording, as the iPad sees it");
+                expect (! (bool) state["pb"]["loaded"]);
+                exchange (a, R"({"t":"rec","a":"marker"})");
+                expectEquals (rec.getRecorder().getNumMarkers(), 1);
+                exchange (a, R"({"t":"pb","a":"src","ch":4,"on":true})");
+                expect (p.isInputOnPlayback (4));
+                expectEquals ((int) a.last ("rec")["src"][0], 4);
+                exchange (a, R"({"t":"pb","a":"allLive"})");
+                expect (! p.anyInputOnPlayback());
+                exchange (a, R"({"t":"rec","a":"stop"})");
+                expect (! rec.isRecording());
+                expect (! (bool) a.last ("rec")["on"]);
+                exchange (a, R"({"t":"rec","a":"sub","on":false})");
+                expect (rec.start().wasOk());
+                rec.stop();
+                exchange (a, R"({"t":"set","id":"link1","v":1})");
+                expect (p.isLinked (0), "linked once stopped");
+                p.getSettings().param (mix::linkId (0)).setValueNotifyingHost (0.0f);
+                recTemp.getFile().deleteRecursively();
+            }
 
             // Values: subscribed IDs come with their description, then only changes.
             exchange (a, R"({"t":"sub","ids":["ch_fader_1","ch1_trim","bus1_type","nonsense"]})");
@@ -1526,10 +1670,11 @@ public:
             expect (! p.pasteInsert ({ Strip::bus, 0, 0 }, p.copyChannel (0, RKMixProcessor::Section::gate)), "not a strip section");
         }
 
-        beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups (158 + bypass)");
+        beginTest ("The host sees the faders and mutes, assignables, scene, talk, DCAs and mute groups, Record and Marker (160 + bypass)");
         {
             RKMixProcessor p;
-            expectEquals (p.getParameters().size(), 159);
+            expectEquals (p.getParameters().size(), 161);
+            expect (p.findParam ("rec") != nullptr && p.findParam ("marker") != nullptr);
             expect (p.findParam ("dca_fader_8") != nullptr && p.findParam ("dca_mute_8") != nullptr && p.findParam ("mgrp_8") != nullptr);
             expect (p.findParam ("ch_fader_32") != nullptr && p.findParam ("bus_mute_16") != nullptr
                     && p.findParam ("mono_mute") != nullptr && p.findParam ("assign32") != nullptr

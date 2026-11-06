@@ -48,6 +48,8 @@ std::uint64_t MixSettings::ownerBits (const juce::String& id)
     // which knows the links); "bus2_type" -> bus 2; anything else -> the main.
     // DCA and mute group membership ("ch5_dca2", "bus3_mgrp1") is read with
     // the levels every block: it rebuilds nothing.
+    if (id.startsWith ("rec_"))
+        return 0;   // the recorder's choices: nothing in the engine
     const auto field = id.fromFirstOccurrenceOf ("_", false, false);
     if ((field.startsWith ("dca") || field.startsWith ("mgrp")) && field.getTrailingIntValue() > 0
         && (id.startsWith ("ch") || id.startsWith ("bus")))

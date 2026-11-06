@@ -41,7 +41,7 @@ public:
     static constexpr int kHeight = 900;
 
 private:
-    enum class Page { strip, sends, routing, monitor, scenes, assign, remote };
+    enum class Page { strip, sends, routing, monitor, scenes, assign, recorder, remote };
     static constexpr int kBusLayer = 2;
     static constexpr int kDcaLayer = 3;       // the DCAs and mute groups (or a DCA's members, spilled)
     static constexpr int kUserLayer = 4;      // and 5: the user pages
@@ -286,6 +286,7 @@ private:
         bool stereo = false;
         juce::Label name;
         juce::TextButton presets { juce::String::fromUTF8 ("Strip presets \xe2\x96\xbe") };
+        juce::TextButton source { "Live" };   // the input's source: Live or Playback (virtual soundcheck)
         std::array<juce::Rectangle<int>, 8> swatches;
 
         struct Section
@@ -494,6 +495,43 @@ private:
     };
 
     /** The monitor remote: on or off, its port, each Aux bus's link as a QR code. */
+    /** The recorder (docs/design/RKMix Recorder.md): Record and Stop, the
+        time, the disk, dropouts, markers; what is recorded; the folder and
+        format (this computer's). */
+    struct RecorderPanel : public Panel
+    {
+        explicit RecorderPanel (RKMixEditor&);
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void refresh() override;
+        void tick();                         // the time and the disk, while shown
+
+        juce::TextButton recordButton { "Record" }, markerButton { "Marker" }, folderButton { "Folder..." }, showButton { "Show" },
+                         int24 { "24-bit" }, float32 { "32-bit float" }, pairsMono { "Pairs as two mono files" },
+                         allInputs { "All" }, noInputs { "None" };
+        std::array<rkfx::ToggleSwitch*, mix::kChannels> inputs {};
+        rkfx::ToggleSwitch* mainSwitch = nullptr;
+        std::array<rkfx::ToggleSwitch*, mix::kBuses> buses {};
+        juce::Rectangle<int> controlArea, tracksArea, timeArea, infoArea;
+        juce::String lastTime, lastInfo;
+
+        // Two views on the right: what is recorded, or the playback (virtual soundcheck).
+        juce::TextButton recordView { "What is recorded" }, playbackView { "Playback (virtual soundcheck)" };
+        bool showingPlayback = false;
+        void showView (bool playback);
+
+        juce::TextButton loadButton { "Load..." }, unloadButton { "Unload" }, useNames { "Use the recording's names" },
+                         allPlayback { "All to playback" }, allLive { "All live" },
+                         playButton { "Play" }, stopButton { "Stop" }, prevMarker, nextMarker, loopButton { "Loop" };
+        struct PositionBar;
+        std::unique_ptr<juce::Component> bar;   // a PositionBar
+        std::vector<std::unique_ptr<juce::ComboBox>> mapping;   // one per file of the recording
+        juce::Rectangle<int> playbackInfo, mappingArea;
+        int loadedFiles = -1;
+        void rebuildMapping();
+        void loadRecording (const juce::File& folder);
+    };
+
     struct RemotePanel : public Panel
     {
         explicit RemotePanel (RKMixEditor&);
@@ -556,8 +594,16 @@ private:
     RoutingPanel routingPanel;
 
     juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" },
-                     scenesPage { "Scenes" }, assignPage { "Assign" }, remotePage { "Remote" };
+                     scenesPage { "Scenes" }, assignPage { "Assign" }, remotePage { "Remote" },
+                     recorderPage { "Recorder" };
     std::unique_ptr<RemotePanel> remotePanel;
+    std::unique_ptr<RecorderPanel> recorderPanel;
+    bool wasRecording = false;
+    // Inputs on Playback: one button back to all Live, always there (also when locked).
+    juce::TextButton allLiveButton { "PLAYBACK: all live" };
+    int lastSourceVersion = -1;
+    void sourcesChanged();
+    void recordingChanged();   // the REC light, Link and the preset menu follow
     MonitorPanel monitorPanel;
     ScenesPanel scenesPanel;
     AssignPanel assignPanel;

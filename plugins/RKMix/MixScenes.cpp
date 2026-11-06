@@ -77,11 +77,11 @@ bool MixScenes::isSceneValue (const juce::String& id)
         || id == "main_fader" || id == "main_mute" || id == "mono_fader" || id == "mono_mute"
         || id.startsWith ("dca_fader_") || id.startsWith ("dca_mute_") || id.startsWith ("mgrp_"))
         return true;
-    if (id.startsWith ("assign") || id == "scene" || id == "talk" || id == "bypass")
+    if (id.startsWith ("assign") || id == "scene" || id == "talk" || id == "bypass" || id == "rec" || id == "marker")
         return false;
 
     // Structure, setup and solo never change with a scene.
-    for (const auto* prefix : { "link", "talk_", "osc_", "solo_", "cue_", "midi_", "scene_" })
+    for (const auto* prefix : { "link", "talk_", "osc_", "solo_", "cue_", "midi_", "scene_", "rec_" })
         if (id.startsWith (prefix))
             return false;
     for (const auto* suffix : { "_type", "_format", "_out", "_solosafe", "_recallsafe", "_gate_key", "_comp_key", "_panmode", "_tap" })

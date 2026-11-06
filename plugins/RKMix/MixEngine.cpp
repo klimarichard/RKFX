@@ -919,6 +919,8 @@ void MixEngine::processBus (int bus, float* const* out, int numSamples, bool mea
     const float* source[2];
     delayedBusOutput (bus, io, numSides, plan.active ? plan.busOutputPad[(size_t) bus] : 0, source, numSamples);
     addToTarget (out, s.output, source[0], numSides == 2 ? source[1] : nullptr, numSamples);
+    if (outputTaps != nullptr && s.type == BusType::aux)
+        outputTaps->bus (bus, source[0], numSides == 2 ? source[1] : nullptr, numSamples);
     if (m.afl && isActive (b.cue))
     {
         const auto cue = curveOf (b.cue, productRow, numSamples);
@@ -1057,6 +1059,8 @@ void MixEngine::processMain (float* const* out, int numSamples, bool measure) no
     }
 
     addToTarget (out, settings.main.output, main[0], main[1], numSamples);
+    if (outputTaps != nullptr)
+        outputTaps->main (main[0], main[1], numSamples);
     addToTarget (out, settings.main.monoOutput, mono, nullptr, numSamples);
     if (settings.monitor.cueSource == 1)
         for (int side = 0; side < 2; ++side)

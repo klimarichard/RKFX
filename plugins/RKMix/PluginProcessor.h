@@ -6,6 +6,8 @@
 #include "MixAssigns.h"
 #include "MixInserts.h"
 #include "MixMonitorEqSession.h"
+#include "MixRecorderSession.h"
+#include "MixPlayback.h"
 #include "MixScenes.h"
 #include "MixUndo.h"
 #include "MixRemote.h"
@@ -133,6 +135,20 @@ public:
     /** Monitor EQ: the measuring (engine) and its flow (message thread). */
     MixMeasure& getMeasure() noexcept { return engine.getMeasure(); }
     MixMonitorEqSession& getMonitorEq() noexcept { return *monitorEq; }
+    MixRecorderSession& getRecorder() noexcept { return *recorder; }
+
+    /** Virtual soundcheck: a recording played into the inputs set to Playback.
+        The source of each input is never saved, never in scenes, never undone:
+        every session and every loaded mix starts all Live. A linked pair's
+        two inputs switch together. */
+    MixPlayback& getPlayback() noexcept { return playback; }
+    void setInputOnPlayback (int input, bool onPlayback);
+    bool isInputOnPlayback (int input) const noexcept { return inputOnPlayback[(size_t) input].load(); }
+    void setAllInputsLive();
+    void setAllInputsOnPlayback();
+    bool anyInputOnPlayback() const noexcept;
+    /** Bumped when an input's source changes (the window polls it). */
+    int getSourceVersion() const noexcept { return sourceVersion.load(); }
 
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
@@ -368,6 +384,24 @@ private:
     std::unique_ptr<MixUndo> undo;
     std::unique_ptr<MixRemote> remote;
     std::unique_ptr<MixMonitorEqSession> monitorEq;
+    std::unique_ptr<MixRecorderSession> recorder;
+    MixPlayback playback;
+    std::array<std::atomic<bool>, kChannels> inputOnPlayback {};
+    std::atomic<int> sourceVersion { 0 };
+    juce::AudioBuffer<float> playbackInputs;            // the inputs with the recording in place of the live ones
+    double preparedRate = 0.0;
+
+    /** The Record and Marker host parameters (any thread): to the recorder. */
+    struct RecordSync : public juce::AudioProcessorParameter::Listener
+    {
+        explicit RecordSync (RKMixProcessor& p) : owner (p) {}
+        void parameterValueChanged (int index, float value) override;
+        void parameterGestureChanged (int, bool) override {}
+        RKMixProcessor& owner;
+        std::atomic<bool> markerDown { false };
+    };
+    RecordSync recordSync { *this };
+    juce::RangedAudioParameter *recordParam = nullptr, *markerParam = nullptr;
     std::array<std::atomic<float>, kChannels> remoteChannelPeaks {};
     std::array<std::array<std::atomic<float>, 2>, mix::kBuses> remoteBusPeaks {};
     std::array<std::atomic<float>, 2> remoteMainPeaks {};

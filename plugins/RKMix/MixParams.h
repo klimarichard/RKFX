@@ -144,6 +144,10 @@ namespace MixParams
             p.addBool (dcaMuteId (dca), "DCA " + num (dca) + " Mute", false);
         for (int group = 0; group < kMuteGroups; ++group)
             p.addBool (muteGroupId (group), "Mute Group " + num (group), false);
+
+        // The recorder (appended): on = recording (a Gig Performer button); Marker acts once per press.
+        p.addBool ("rec", "Record", false);
+        p.addBool ("marker", "Marker", false);
         return p;
     }
 
@@ -360,6 +364,13 @@ namespace MixParams
                 p.addFrequency     (id ("hsf"), name + " High Frequency", 2000.0f, 16000.0f, 8000.0f);
                 p.addDecibels      (id ("hsg"), name + " High Gain", -15.0f, 15.0f, 0.0f);
             }
+
+        // What the recorder records (appended): every input and the main by default, Aux buses when chosen.
+        for (int ch = 0; ch < kChannels; ++ch)
+            p.addBool (recordInputId (ch), "Record In " + num (ch), true);
+        p.addBool ("rec_main", "Record Main", true);
+        for (int bus = 0; bus < kBuses; ++bus)
+            p.addBool (recordBusId (bus), "Record Bus " + num (bus), false);
 
         return p;
     }

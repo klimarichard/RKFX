@@ -99,6 +99,7 @@ function receive(msg) {
     case "clip": state.clipboard = msg.text; state.clipKind = msg.kind; break;
     case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
     case "meq": if (C.onMonitorEq) C.onMonitorEq(msg); break;
+    case "rec": if (C.onRecorder) C.onRecorder(msg); break;
   }
   app.dirty = true;
 }

@@ -75,6 +75,17 @@ public:
         virtual bool isActive (Strip, int index) const noexcept = 0;
     };
 
+    /** Where the recorder takes the main and the Aux buses: as they leave for
+        their outputs (after their limiters, lined up with every output). */
+    class OutputTaps
+    {
+    public:
+        virtual ~OutputTaps() = default;
+        virtual void main (const float* left, const float* right, int numSamples) noexcept = 0;
+        /** @p right is nullptr for a mono bus. */
+        virtual void bus (int bus, const float* left, const float* right, int numSamples) noexcept = 0;
+    };
+
     /** The latency the inserts of each strip add (leaders of linked pairs only). */
     struct Latencies
     {
@@ -191,6 +202,9 @@ public:
     /** The inserts to run (nullptr: none). Set before processing. */
     void setInserts (Inserts* i) noexcept { inserts = i; }
 
+    /** The recorder's taps (nullptr: none; one pointer check per bus and block). */
+    void setOutputTaps (OutputTaps* t) noexcept { outputTaps = t; }
+
     /** The inserts' latencies; the paths are lined up again from the next block. */
     void setLatencies (const Latencies&);
 
@@ -304,6 +318,7 @@ private:
     int measureBus = -1;                              // this block's bus taken over by the measuring, or -1
 
     Inserts* inserts = nullptr;
+    OutputTaps* outputTaps = nullptr;
     Latencies latencies;
     Plan plan;
     std::array<std::array<BlockDelay, 2>, kChannels> channelPadLines;

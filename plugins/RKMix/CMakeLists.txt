@@ -44,6 +44,10 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixMonitorEqSession.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixMonitorEqView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSendEqView.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixRecorder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixRecorderSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixRecorderPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixPlayback.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixStrip.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixSendEq.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixBusDsp.cpp

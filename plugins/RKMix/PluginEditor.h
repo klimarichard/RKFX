@@ -153,6 +153,25 @@ private:
         std::function<void()> afterClick;
     };
 
+    /** A send's EQ (docs/design/RKMix Send EQ.md): "EQ", lit when on, with its
+        curve drawn small when it isn't flat. Click: the EQ in a popover;
+        right-click: copy and paste. Nothing while the console is locked. */
+    struct SendEqButton : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+    {
+        SendEqButton (RKMixEditor&, int channel, int bus);
+        void setTarget (int channel, int bus);
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void timerCallback() override;
+
+        RKMixEditor& owner;
+        int channel, bus;
+        SendEqDsp::Settings shown;
+    };
+
+    /** The popover: the curve, On, Flat and the four bands. */
+    struct SendEqPanel;
+
     /** A strip: a channel (a linked pair's left channel shows the pair) or a bus. */
     struct Strip : public juce::Component
     {
@@ -178,6 +197,7 @@ private:
         std::unique_ptr<MixGui::Fader> fader;
         MixGui::Meter meter;
         juce::TextButton sendsButton { "Sends" };   // Aux and FX buses
+        std::unique_ptr<SendEqButton> sendEq;        // channels: the send's EQ while the faders show sends
         std::vector<std::unique_ptr<InsertButton>> insertButtons;
         bool stereo = false;
         bool groupMuted = false;             // a DCA or a mute group silences it
@@ -307,6 +327,7 @@ private:
             juce::Slider* pan = nullptr;     // the send's own pan (an Own-mode Aux)
             std::unique_ptr<juce::SliderParameterAttachment> panAttachment;
             MixGui::OptionList* tap = nullptr;
+            SendEqButton* eq = nullptr;      // Aux and FX sends
             juce::Rectangle<int> area;
         };
         std::array<Column, mix::kBuses> columns;
@@ -607,6 +628,12 @@ private:
     void addCopyPasteItems (juce::PopupMenu&, int channel, int chain, int section, int firstId) const;
     bool handleCopyPaste (int result, int channel, int chain, int section, int firstId);
     void showSectionMenu (int channel, int chain, int section, juce::Component& target, juce::Point<int> where);
+
+    // Send EQ (MixSendEqView.cpp)
+    juce::Component::SafePointer<juce::CallOutBox> sendEqBox;
+    void showSendEq (int channel, int bus, juce::Component& from);
+    void showSendEqMenu (int channel, int bus, juce::Component& from);
+    void closeSendEq();
 
     juce::Rectangle<int> topArea() const;
     juce::Rectangle<int> panelArea() const;

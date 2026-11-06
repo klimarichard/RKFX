@@ -454,6 +454,8 @@ RKMixEditor::SendsPanel::SendsPanel (RKMixEditor& o, int ch) : Panel (o), channe
                                           juce::StringArray { "Default", "Input", "Pre-EQ", "Pre-Comp", "Pre-Ins", "Pre-Fader", "Post-Fader" },
                                           o.accent());
         c.tap->setTooltip ("Where this send takes the channel's signal: the bus's default (dot) unless set here");
+        c.eq = make<SendEqButton> (o, ch, bus);
+        c.eq->setTarget (ch, bus);
     }
 
     directOut = make<ChoiceBox> (s.param (channelId (ch, "direct_out")), targetName, kFirstPairTarget);
@@ -475,6 +477,7 @@ void RKMixEditor::SendsPanel::refresh()
         c.pan->setVisible (owner.hasOwnPans (bus));
         c.pan->setColour (juce::Slider::trackColourId, MixGui::stripColour (owner.mixer.getBusColour (bus)));
         c.tap->setVisible (type == BusType::aux);
+        c.eq->setVisible (type != BusType::group);
         c.tap->setMarked (1 + owner.mixer.getSettings().choice (busId (bus, "tap")));
     }
 
@@ -503,6 +506,8 @@ void RKMixEditor::SendsPanel::resized()
         c.send->setBounds (a.removeFromTop (kKnobH));
         c.assign->setBounds (c.send->getBounds().withSizeKeepingCentre (a.getWidth(), kSwitchH));
         c.pan->setBounds (a.removeFromTop (22));
+        a.removeFromTop (4);
+        c.eq->setBounds (a.removeFromTop (18).reduced (4, 0));
         a.removeFromTop (6);
         c.tap->setBounds (a.removeFromTop (7 * 22));
     }

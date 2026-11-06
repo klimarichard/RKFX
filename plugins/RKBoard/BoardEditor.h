@@ -234,6 +234,15 @@ private:
     void applyLock();
     std::array<SceneButton, BoardProcessor::kNumScenes> sceneButtons;
 
+    // Scene morph: From, To, and the Morph position (the host parameter).
+    juce::Label morphLabel;
+    juce::TextButton morphFromButton, morphToButton;
+    juce::Label morphArrow;
+    juce::Slider morphSlider;
+    std::unique_ptr<juce::SliderParameterAttachment> morphAttachment;
+    void showMorphSceneMenu (bool to);
+    void refreshMorph();
+
     // Standalone: tempo and tuner
     juce::Label tempoField, tempoUnit;
     juce::TextButton tapButton { "Tap" }, tunerButton { "Tuner" };

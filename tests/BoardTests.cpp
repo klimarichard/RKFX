@@ -197,7 +197,7 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 1, "In, Out, Assign 1-32, Scene");
+            expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 2, "In, Out, Assign 1-32, Scene, Morph");
 
             const auto chorus = addOn (board, "RKChorus");
             const auto delay = addOn (board, "RKDelay");
@@ -1065,6 +1065,116 @@ public:
                 undo.undo();
             expectEquals (stateJson (board), stateBefore);
             expect (allFinite (run (board, 8).second));
+        }
+
+        beginTest ("Scene morph: 0% is From, 100% is To (and becomes current), the blend between, bypasses, no edits stored");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");     // on in both scenes
+            const auto delay = addOn (board, "RKDelay");       // off in scene 1, on in scene 2
+            const auto chorus = addOn (board, "RKChorus");     // off in both
+            prepare (board);
+            auto* mix = board.getPedal (delay)->findParam ("mix");
+            auto* time = board.getPedal (delay)->findParam ("time");
+            auto* gain = board.getPedal (drive)->findParam ("gain");
+            board.setSceneControlled (delay, "mix", true);
+            board.setSceneControlled (delay, "time", true);
+            board.setPedalBypassed (chorus, true);
+            board.setPedalBypassed (delay, true);
+            mix->setValueNotifyingHost (0.0f);
+            time->setValueNotifyingHost (0.2f);
+            board.setScene (1);
+            board.setPedalBypassed (delay, false);
+            mix->setValueNotifyingHost (0.4f);
+            time->setValueNotifyingHost (0.6f);
+            board.setScene (0);
+            run (board, 40);
+            expectEquals (board.getMorphFrom(), 0);
+            expectEquals (board.getMorphTo(), 1, "To: the next scene");
+            gain->setValueNotifyingHost (0.33f);   // not scene-controlled: the same everywhere
+
+            auto& morph = board.getMorphParam();
+            const auto at = [&] (float m)
+            {
+                morph.setValueNotifyingHost (m);
+                run (board, 40);   // the glide (100 ms for the whole range)
+            };
+
+            at (0.5f);
+            expect (board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.2f, 1.0e-5f, "halfway");
+            expectWithinAbsoluteError (time->getValue(), 0.4f, 1.0e-5f);
+            expectWithinAbsoluteError (gain->getValue(), 0.33f, 1.0e-6f, "other knobs don't move");
+            expect (! board.isPedalBypassed (drive), "on in both: on");
+            expect (board.isPedalBypassed (chorus), "off in both: off");
+            expect (! board.isPedalBypassed (delay), "on in one: on in between");
+            expectEquals (board.getScene(), 0);
+
+            // Edits mid-morph go into no scene.
+            board.getPedal (delay)->findParam ("feedback")->setValueNotifyingHost (0.9f);
+            mix->setValueNotifyingHost (0.77f);
+            board.setPedalBypassed (chorus, false);
+            expectWithinAbsoluteError (board.getSceneValue (0, delay, "mix"), 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "mix"), 0.4f, 1.0e-6f);
+            expect (board.getSceneBypass (0, chorus) && board.getSceneBypass (1, chorus));
+            board.setPedalBypassed (chorus, true);
+
+            at (0.0f);
+            expect (! board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f, "0% is exactly From");
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            expect (board.isPedalBypassed (delay), "as From has it");
+
+            at (0.25f);
+            expect (! board.isPedalBypassed (delay));
+            at (1.0f);
+            expectWithinAbsoluteError (mix->getValue(), 0.4f, 1.0e-6f, "100% is exactly To");
+            expectWithinAbsoluteError (time->getValue(), 0.6f, 1.0e-6f);
+            expect (! board.isPedalBypassed (delay));
+            expectEquals (board.getScene(), 1, "To is now the current scene");
+            expectEquals (board.getSceneParam().getCurrentValueAsText(), juce::String ("2"));
+            expectEquals (board.getMorphFrom(), 0, "the way back is still there");
+
+            // Heel again: back to scene 1.
+            at (0.0f);
+            expectEquals (board.getScene(), 0);
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f);
+
+            // A recall ends a morph: From is that scene, Morph back to 0%.
+            at (0.6f);
+            board.setScene (2);
+            expect (! board.isMorphing());
+            expectEquals (board.getMorphFrom(), 2);
+            expectWithinAbsoluteError (morph.getValue(), 0.0f, 1.0e-6f);
+            run (board, 40);
+            expectWithinAbsoluteError (mix->getValue(), board.getSceneValue (2, delay, "mix"), 1.0e-6f);
+            // Mid-morph, the current scene again goes back to it.
+            board.setScene (0);
+            run (board, 40);
+            board.setMorphScenes (0, 1);
+            at (0.5f);
+            board.setScene (0);
+            run (board, 40);
+            expect (! board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f);
+
+            // An assigned knob follows its Assign slot, not the morph.
+            board.assign (0, delay, "time");
+            board.getAssignParam (0).setValueNotifyingHost (0.9f);
+            at (0.5f);
+            expectWithinAbsoluteError (time->getValue(), 0.9f, 1.0e-6f);
+            expectWithinAbsoluteError (mix->getValue(), 0.2f, 1.0e-5f);
+
+            // From and To are saved with the board (when not the current scene and the next).
+            board.setScene (0);
+            board.setMorphScenes (3, 7);
+            BoardProcessor loaded;
+            expect (loaded.fromVar (board.toVar (false), false).ok);
+            expectEquals (loaded.getMorphFrom(), 3);
+            expectEquals (loaded.getMorphTo(), 7);
+            board.setMorphScenes (0, 1);
+            expect (! board.toVar (false)["scenes"].hasProperty ("morphFrom"));
         }
 
         beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");

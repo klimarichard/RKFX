@@ -143,6 +143,7 @@ void BoardUndo::beginApply()
     // A glide still under way would move a knob after it was set back.
     for (auto& k : board.sceneKnobs)
         k.gliding = false;
+    board.endMorph();
 }
 
 void BoardUndo::endApply()

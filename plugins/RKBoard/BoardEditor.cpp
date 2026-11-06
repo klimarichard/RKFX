@@ -807,6 +807,31 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     }
     refreshSceneButtons();
 
+    morphLabel.setFont (Fonts::regular (12.5f));
+    morphLabel.setJustificationType (juce::Justification::centredRight);
+    morphLabel.setMinimumHorizontalScale (0.8f);
+    morphLabel.addMouseListener (this, false);   // right-click: MIDI learn
+    addAndMakeVisible (morphLabel);
+    for (auto* button : { &morphFromButton, &morphToButton })
+    {
+        button->onClick = [this, button] { showMorphSceneMenu (button == &morphToButton); };
+        addAndMakeVisible (*button);
+    }
+    morphFromButton.setTooltip ("Morph from this scene");
+    morphToButton.setTooltip ("Morph to this scene");
+    morphArrow.setText (juce::String::fromUTF8 ("\xe2\x86\x92"), juce::dontSendNotification);
+    morphArrow.setJustificationType (juce::Justification::centred);
+    morphArrow.setColour (juce::Label::textColourId, Palette::textDim);
+    addAndMakeVisible (morphArrow);
+    morphSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    morphSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+    morphSlider.setTooltip ("Morph: blends the board from one scene to the other (an expression pedal on the Morph "
+                            "parameter; right-click Morph for MIDI learn in the app). At 100% the To scene is the current one.");
+    morphAttachment = std::make_unique<juce::SliderParameterAttachment> (board.getMorphParam(), morphSlider);
+    morphSlider.setDoubleClickReturnValue (true, 0.0);
+    addAndMakeVisible (morphSlider);
+    refreshMorph();
+
     // Standalone: tempo field, tap tempo, tuner (in a host, the host has these).
     // In a host the field shows the pedals' tempo (the host's or MIDI clock's),
     // and its right-click menu switches following MIDI clock.
@@ -978,16 +1003,25 @@ void BoardEditor::resized()
     noteLabel.setBounds (header.withTrimmedLeft (8));
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
-    const auto buttonWidth = 38;
+    const auto buttonWidth = 36;
     const auto small = [] (juce::Rectangle<int> r) { return r.withSizeKeepingCentre (r.getWidth(), 26); };
     tunerButton.setBounds (small (sceneBar.removeFromRight (64)));
     auto tempoArea = sceneBar.removeFromLeft (142);
     tempoField.setBounds (small (tempoArea.removeFromLeft (52)));
     tempoUnit.setBounds (small (tempoArea.removeFromLeft (36)));
     tapButton.setBounds (small (tempoArea.removeFromLeft (48)));
-    sceneBar = sceneBar.withSizeKeepingCentre (BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
+    sceneBar.removeFromLeft (8);
     for (auto& button : sceneButtons)
         button.setBounds (sceneBar.removeFromLeft (buttonWidth));
+    sceneBar.removeFromRight (10);
+    sceneBar.removeFromLeft (4);
+    morphLabel.setBounds (small (sceneBar.removeFromLeft (92)));
+    sceneBar.removeFromLeft (4);
+    morphFromButton.setBounds (small (sceneBar.removeFromLeft (36)));
+    morphArrow.setBounds (small (sceneBar.removeFromLeft (16)));
+    morphToButton.setBounds (small (sceneBar.removeFromLeft (36)));
+    sceneBar.removeFromLeft (6);
+    morphSlider.setBounds (small (sceneBar));
 
     strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (stripHeight()));
     layoutPedalEditor();
@@ -1089,6 +1123,12 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
     if (e.originalComponent == &tunerButton)
     {
         showLearnMenu (LearnTarget::tuner, tunerButton);
+        return;
+    }
+
+    if (e.originalComponent == &morphLabel || e.originalComponent == &morphSlider)
+    {
+        showLearnMenu (LearnTarget::morph, morphLabel);
         return;
     }
 
@@ -1205,6 +1245,44 @@ void BoardEditor::showSceneMenu (int scene)
                                 safe->showNote ("Scene " + juce::String (scene + 1) + " copied to scene " + juce::String (result), false);
                             }
                         });
+}
+
+void BoardEditor::showMorphSceneMenu (bool to)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader (to ? "Morph to" : "Morph from");
+    const auto current = to ? board.getMorphTo() : board.getMorphFrom();
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+        menu.addItem (i + 1, "Scene " + board.describeScene (i), true, i == current);
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (to ? morphToButton : morphFromButton), [safe, to] (int result)
+    {
+        if (safe == nullptr || result <= 0)
+            return;
+        auto& b = safe->board;
+        if (to)
+            b.setMorphScenes (b.getMorphFrom(), result - 1);
+        else
+            b.setMorphScenes (result - 1, b.getMorphTo());
+        safe->refreshMorph();
+    });
+}
+
+void BoardEditor::refreshMorph()
+{
+    const auto from = board.getMorphFrom(), to = board.getMorphTo();
+    morphFromButton.setButtonText (juce::String (from + 1));
+    morphToButton.setButtonText (juce::String (to + 1));
+    morphFromButton.setTooltip ("Morph from scene " + board.describeScene (from));
+    morphToButton.setTooltip ("Morph to scene " + board.describeScene (to));
+
+    // Mid-morph, edits go into no scene: say so.
+    const auto morphing = board.isMorphing();
+    morphLabel.setText (morphing ? "morphing " + juce::String (from + 1) + juce::String::fromUTF8 (" \xe2\x86\x92 ") + juce::String (to + 1)
+                                 : juce::String ("Morph"), juce::dontSendNotification);
+    morphLabel.setColour (juce::Label::textColourId, morphing ? Palette::boardAccent : Palette::textDim);
+    morphLabel.setTooltip (morphing ? "Morphing: edits now go into no scene" : "Scene morph (right-click: MIDI learn in the app)");
 }
 
 void BoardEditor::renameScene (int scene)
@@ -1434,6 +1512,7 @@ void BoardEditor::timerCallback()
 
         strip.repaint();
         refreshSceneButtons();
+        refreshMorph();
         refreshTempo();
         repaint (panelArea());
         if (routingPanel != nullptr)

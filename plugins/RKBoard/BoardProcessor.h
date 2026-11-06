@@ -199,6 +199,23 @@ public:
     /** Copies a scene's bypasses, scene knobs and name into another. */
     void copyScene (int from, int to);
 
+    //==============================================================================
+    // Scene morph: the host parameter "Morph" (an expression pedal) blends the
+    // board from scene From to scene To. Every scene-controlled knob sits at
+    // from + (to - from) x morph (normalised; an assigned knob follows its
+    // Assign slot instead); a pedal on in either scene is on in between, and
+    // at either end as that scene has it. At 0% the board is exactly From, at
+    // 100% exactly To, which then becomes the current scene. Edits in between
+    // go into no scene. Recalling a scene makes it From and ends the morph
+    // (Morph back to 0%). Any thread.
+
+    juce::RangedAudioParameter& getMorphParam() const noexcept { return *morphParam; }
+    int getMorphFrom() const noexcept { return morphFrom.load(); }
+    int getMorphTo() const noexcept { return morphTo.load(); }
+    void setMorphScenes (int from, int to);
+    /** Morph is strictly between 0% and 100%: edits are stored nowhere. */
+    bool isMorphing() const noexcept;
+
     /** A scene's name ("Verse"; empty: none). Saved with the board, any thread. */
     juce::String getSceneName (int scene) const;
     void setSceneName (int scene, const juce::String& name);
@@ -409,6 +426,16 @@ private:
     static inline thread_local bool applyingScene = false;    // this thread is recalling a scene
 
     void recallScene (int index);
+
+    juce::AudioParameterFloat* morphParam = nullptr;
+    std::atomic<int> morphFrom { 0 }, morphTo { 1 };
+    std::atomic<bool> morphActive { false };
+    std::atomic<bool> morphToChosen { false };   // To isn't the next scene: it stays when another scene is recalled
+    static inline thread_local bool resettingMorph = false;
+    void applyMorph (float position);
+    /** Ends a morph: From is the current scene, Morph back to 0% (nothing moves). */
+    void endMorph();
+    bool storesEdits() const noexcept { return ! applyingScene && ! isMorphing(); }
     void glideSceneKnobs (int numSamples);
     void clearSceneKnobsOf (int pedalId);
     int findSceneKnob (int pedalId, int paramIndex) const;

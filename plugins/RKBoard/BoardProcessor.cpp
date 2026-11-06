@@ -78,6 +78,14 @@ BoardProcessor::BoardProcessor()
     addParameter (sceneParam);
     sceneParam->addListener (this);
 
+    morphParam = new juce::AudioParameterFloat (juce::ParameterID { "morph", hint++ }, "Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f,
+                                                juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+                                                {
+                                                    return juce::String (juce::roundToInt (v * 100.0f)) + " %";
+                                                }).withValueFromStringFunction ([] (const juce::String& t) { return t.getFloatValue() / 100.0f; }));
+    addParameter (morphParam);
+    morphParam->addListener (this);
+
     pedalMidi.ensureSize (4096);
     tunerRing.setSize (1, kTunerBufferSize);
     tunerRing.clear();
@@ -115,6 +123,7 @@ BoardProcessor::~BoardProcessor()
     for (auto* p : assignParams)
         p->removeListener (this);
     sceneParam->removeListener (this);
+    morphParam->removeListener (this);
     for (auto& split : splits)
         for (auto* p : split->settings.getParameters())
             p->removeListener (&split->watcher);
@@ -522,8 +531,8 @@ void BoardProcessor::setPedalBypassed (int id, bool bypassed)
     if (getPedal (id) == nullptr)
         return;
 
-    // An edit (not a scene recall) goes into the current scene.
-    if (! applyingScene)
+    // An edit (not a scene recall or a morph) goes into the current scene.
+    if (storesEdits())
         sceneBypass[(size_t) currentScene.load()][(size_t) id - 1] = bypassed;
     bypassState[(size_t) id - 1] = bypassed;
 
@@ -562,6 +571,13 @@ void BoardProcessor::parameterValueChanged (int parameterIndex, float newValue)
     if (parameterIndex == sceneParam->getParameterIndex())
     {
         recallScene (juce::jlimit (0, kNumScenes - 1, sceneParam->get() - 1));
+        return;
+    }
+
+    if (parameterIndex == morphParam->getParameterIndex())
+    {
+        if (! resettingMorph)
+            applyMorph (newValue);
         return;
     }
 
@@ -779,7 +795,7 @@ void BoardProcessor::RoutingWatcher::parameterValueChanged (int parameterIndex, 
     board.followTarget (owner, parameterIndex, newValue);
     if (! applyingScene)
     {
-        if (const auto k = board.findSceneKnob (owner, parameterIndex); k >= 0)
+        if (const auto k = board.findSceneKnob (owner, parameterIndex); k >= 0 && ! board.isMorphing())
             board.sceneKnobs[(size_t) k].values[(size_t) board.currentScene.load()] = newValue;
         board.markModified();
     }
@@ -838,8 +854,8 @@ void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float
     // An assigned knob moves its Assign parameter along.
     board.followTarget (id, parameterIndex, newValue);
 
-    // A scene-controlled knob's edit goes into the current scene.
-    if (! applyingScene)
+    // A scene-controlled knob's edit goes into the current scene (not mid-morph).
+    if (board.storesEdits())
         if (const auto k = board.findSceneKnob (id, parameterIndex); k >= 0)
             board.sceneKnobs[(size_t) k].values[(size_t) board.currentScene.load()] = newValue;
 
@@ -1064,6 +1080,11 @@ void BoardProcessor::applyController (int target, bool momentary, int value, dou
                 boardPlayHead.bpm = *bpm;
                 ++boardCounter;
             }
+    }
+    else if (target == LearnTarget::morph)
+    {
+        // Smoothed by the scene glide the morph moves the knobs with.
+        morphParam->setValueNotifyingHost ((float) value / 127.0f);
     }
     else if (target == LearnTarget::tuner)
     {
@@ -1471,8 +1492,11 @@ void BoardProcessor::setScene (int index)
 
 void BoardProcessor::recallScene (int index)
 {
-    if (index == currentScene.exchange (index))
+    // The same scene again only means something mid-morph (back to it).
+    const auto previous = currentScene.exchange (index);
+    if (index == previous && ! isMorphing())
         return;
+    endMorph();
 
     // Not edits: nothing is written back into the scene.
     const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
@@ -1492,6 +1516,95 @@ void BoardProcessor::recallScene (int index)
             k.gliding = true;
         }
 
+    ++boardCounter;
+}
+
+bool BoardProcessor::isMorphing() const noexcept
+{
+    const auto m = morphParam->get();
+    return morphActive.load() && m > 0.0f && m < 1.0f;
+}
+
+void BoardProcessor::setMorphScenes (int from, int to)
+{
+    from = juce::jlimit (0, kNumScenes - 1, from);
+    to = juce::jlimit (0, kNumScenes - 1, to);
+    morphToChosen = to != (from + 1) % kNumScenes;
+    if (from == morphFrom.load() && to == morphTo.load())
+        return;
+    morphFrom = from;
+    morphTo = to;
+    // Mid-morph the board follows the new pair.
+    if (isMorphing())
+        applyMorph (morphParam->get());
+    ++boardCounter;
+}
+
+void BoardProcessor::endMorph()
+{
+    morphActive = false;
+    const auto from = currentScene.load();
+    morphFrom = from;
+    if (! morphToChosen.load() || morphTo.load() == from)
+    {
+        morphTo = (from + 1) % kNumScenes;
+        morphToChosen = false;
+    }
+    if (morphParam->get() > 0.0f)
+    {
+        const juce::ScopedValueSetter<bool> quiet (resettingMorph, true);
+        morphParam->setValueNotifyingHost (0.0f);
+    }
+    ++boardCounter;
+}
+
+void BoardProcessor::applyMorph (float m)
+{
+    const auto from = morphFrom.load(), to = morphTo.load();
+    if (from == to)
+        return;
+    morphActive = true;
+    m = juce::jlimit (0.0f, 1.0f, m);
+
+    {
+        // Not edits: nothing is stored into a scene.
+        const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
+
+        // Each scene knob glides to its blend (the scene glide's path, so it
+        // never zippers); an assigned one follows its Assign slot instead.
+        for (auto& k : sceneKnobs)
+        {
+            const auto owner = k.pedal.load(), index = k.paramIndex.load();
+            if (owner == 0)
+                continue;
+            auto assigned = false;
+            for (const auto& a : assignments)
+                assigned = assigned || (a.pedal == owner && a.paramIndex == index);
+            if (assigned)
+                continue;
+            const auto a = k.values[(size_t) from].load(), b = k.values[(size_t) to].load();
+            k.glideTarget = m >= 1.0f ? b : a + (b - a) * m;
+            k.gliding = true;
+        }
+
+        // A pedal on in either scene is on in between.
+        for (int id = 1; id <= kMaxPedals; ++id)
+            if (pedals[(size_t) id - 1] != nullptr)
+            {
+                const auto offFrom = sceneBypass[(size_t) from][(size_t) id - 1].load();
+                const auto offTo = sceneBypass[(size_t) to][(size_t) id - 1].load();
+                const auto off = m <= 0.0f ? offFrom : m >= 1.0f ? offTo : (offFrom && offTo);
+                if (off != bypassState[(size_t) id - 1])
+                    setPedalBypassed (id, off);
+            }
+    }
+
+    // At either end that scene is the current one (the scene bar follows).
+    if (const auto end = m >= 1.0f ? to : m <= 0.0f ? from : -1; end >= 0 && end != currentScene.load())
+    {
+        currentScene = end;   // first: the Scene parameter then recalls nothing
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) end + 1.0f));
+    }
     ++boardCounter;
 }
 
@@ -1739,6 +1852,12 @@ juce::var BoardProcessor::toVar (bool fullState) const
     // Scenes: the bypassed pedals of each, and each scene knob's values (real units).
     auto* scenes = new juce::DynamicObject();
     scenes->setProperty ("current", currentScene.load() + 1);
+    // The morph's scenes, when they aren't the current one and the next.
+    if (morphFrom.load() != currentScene.load() || morphTo.load() != (currentScene.load() + 1) % kNumScenes)
+    {
+        scenes->setProperty ("morphFrom", morphFrom.load() + 1);
+        scenes->setProperty ("morphTo", morphTo.load() + 1);
+    }
 
     juce::Array<juce::var> bypassLists;
     for (int scene = 0; scene < kNumScenes; ++scene)
@@ -1952,6 +2071,14 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
     const auto current = juce::jlimit (1, kNumScenes, scenes["current"].isVoid() ? 1 : (int) scenes["current"]);
     currentScene = current - 1;
     {
+        const juce::ScopedValueSetter<bool> quiet (resettingMorph, true);
+        morphActive = false;
+        morphParam->setValueNotifyingHost (0.0f);
+        morphFrom = scenes["morphFrom"].isVoid() ? current - 1 : juce::jlimit (1, kNumScenes, (int) scenes["morphFrom"]) - 1;
+        morphTo = scenes["morphTo"].isVoid() ? current % kNumScenes : juce::jlimit (1, kNumScenes, (int) scenes["morphTo"]) - 1;
+        morphToChosen = morphTo.load() != (morphFrom.load() + 1) % kNumScenes;
+    }
+    {
         const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) current));
     }
@@ -2051,6 +2178,8 @@ void BoardProcessor::resetBoard()
         }
         currentScene = 0;
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 (1.0f));
+        morphToChosen = false;
+        endMorph();
         ++boardCounter;
     }
     if (undo != nullptr)

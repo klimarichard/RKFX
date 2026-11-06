@@ -21,6 +21,7 @@ juce::String LearnTarget::key (int target)
     if (target == scene) return "scene";
     if (target == tap)   return "tap";
     if (target == tuner) return "tuner";
+    if (target == morph) return "morph";
     return {};
 }
 
@@ -35,6 +36,7 @@ int LearnTarget::fromKey (const juce::String& k)
     if (k == "scene") return scene;
     if (k == "tap")   return tap;
     if (k == "tuner") return tuner;
+    if (k == "morph") return morph;
     return -1;
 }
 
@@ -45,6 +47,7 @@ juce::String LearnTarget::describe (int target)
     if (target == scene) return "Scene";
     if (target == tap)   return "Tap Tempo";
     if (target == tuner) return "Tuner";
+    if (target == morph) return "Morph";
     return {};
 }
 

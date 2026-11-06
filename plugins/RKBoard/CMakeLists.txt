@@ -28,6 +28,8 @@ set(RKBOARD_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardUndo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/BoardLock.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/BoardRemote.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/RemotePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Routing.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/RoutingPanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/AssignPanel.cpp
@@ -47,6 +49,17 @@ juce_add_binary_data(RKBoard_FactoryPresets
     NAMESPACE   RKBoardFactoryPresetData
     SOURCES     ${boardPresets})
 target_link_libraries(rkboard_factory_presets INTERFACE RKBoard_FactoryPresets rkfx_pedal_host)
+
+# The remote's pages (remote/: board.html, board.js) and the suite's controls
+# (host/remote/rk.js, shared with RKMix), served by BoardRemoteHub.
+file(GLOB boardRemoteFiles CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.html" "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.js")
+list(APPEND boardRemoteFiles "${PROJECT_SOURCE_DIR}/host/remote/rk.js")
+list(SORT boardRemoteFiles)
+juce_add_binary_data(RKBoard_RemoteFiles
+    HEADER_NAME RKBoardRemoteFiles.h
+    NAMESPACE   RKBoardRemoteFiles
+    SOURCES     ${boardRemoteFiles})
+target_link_libraries(rkboard_factory_presets INTERFACE RKBoard_RemoteFiles)
 set(PLUGIN RKBoard)
 configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetList.cpp.in"
                "${CMAKE_CURRENT_BINARY_DIR}/RKBoardFactoryPresetList.cpp" @ONLY)

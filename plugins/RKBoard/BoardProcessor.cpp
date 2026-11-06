@@ -117,6 +117,9 @@ BoardProcessor::BoardProcessor()
 
 BoardProcessor::~BoardProcessor()
 {
+    if (remoteHub != nullptr)
+        (*remoteHub)->removeBoard (*this);
+    remoteHub.reset();
     undo.reset();
     inputParam->removeListener (this);
     outputParam->removeListener (this);
@@ -130,6 +133,31 @@ BoardProcessor::~BoardProcessor()
 
     for (int id = 1; id <= kMaxPedals; ++id)
         detachPedal (id);
+}
+
+//==============================================================================
+void BoardProcessor::beginRemote()
+{
+    if (remoteHub != nullptr)
+        return;
+    remoteHub = std::make_unique<juce::SharedResourcePointer<BoardRemoteHub>>();
+    (*remoteHub)->addBoard (*this, true);
+}
+
+juce::String BoardProcessor::getRemoteName() const
+{
+    const juce::ScopedLock sl (presetLock);
+    return remoteName;
+}
+
+void BoardProcessor::setRemoteName (const juce::String& name)
+{
+    const auto clean = name.trim().substring (0, 24).trim();
+    {
+        const juce::ScopedLock sl (presetLock);
+        remoteName = clean.isNotEmpty() ? clean : juce::String ("Board");
+    }
+    ++boardCounter;
 }
 
 //==============================================================================
@@ -1809,6 +1837,8 @@ juce::var BoardProcessor::toVar (bool fullState) const
     {
         root->setProperty ("name", getPresetName());
         root->setProperty ("modified", isPresetModified());
+        if (getRemoteName() != "Board")
+            root->setProperty ("remoteName", getRemoteName());
         if (const auto file = getPresetFile(); file != juce::File())
             root->setProperty ("file", file.getFullPathName());
     }
@@ -2207,6 +2237,7 @@ void BoardProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (! fromVar (root, true).ok)
         return;
+    setRemoteName (root.getProperty ("remoteName", "Board").toString());
 
     if (! standalone)
     {
@@ -2229,5 +2260,8 @@ juce::AudioProcessorEditor* BoardProcessor::createEditor()
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new rkboard::BoardProcessor();
+    // Only the plugin and the app serve the remote (never tests and tools).
+    auto* board = new rkboard::BoardProcessor();
+    board->beginRemote();
+    return board;
 }

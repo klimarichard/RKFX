@@ -75,6 +75,26 @@ namespace
         return true;
     }
 
+    /** A remote page without a network: what it is sent, kept as JSON. */
+    struct FakeConnection : public rkfx::RemoteServer::Connection
+    {
+        explicit FakeConnection (const juce::String& from = "10.0.0.5") { path = "/ws/board"; address = from; }
+        bool send (const juce::String& text) override { sent.add (text); return true; }
+        void close() override { closed = true; }
+        juce::StringArray sent;
+        bool closed = false;
+
+        /** The latest message of @p type sent (void if none), and forgets them all. */
+        juce::var last (const juce::String& type)
+        {
+            juce::var found;
+            for (const auto& text : sent)
+                if (const auto v = juce::JSON::parse (text); v["type"].toString() == type)
+                    found = v;
+            return found;
+        }
+    };
+
     juce::String stateJson (BoardProcessor& board)
     {
         juce::MemoryBlock block;
@@ -1175,6 +1195,167 @@ public:
             expectEquals (loaded.getMorphTo(), 7);
             board.setMorphScenes (0, 1);
             expect (! board.toVar (false)["scenes"].hasProperty ("morphFrom"));
+        }
+
+        beginTest ("Remote: PIN and token, several boards listed, every command, values, the pages");
+        {
+            const auto settings = juce::File::createTempFile ("rkboard-remote.json");
+            rkboard::BoardRemoteHub hub;
+            hub.setSettingsFileForTesting (settings);
+            hub.setEnabled (true);   // not serving: no board asked to
+            expect (! hub.isListening());
+            expect (hub.setPin ("2468"));
+            expect (! hub.setPin ("12a4") && ! hub.setPin ("123"));
+
+            BoardProcessor board, other;
+            board.clearBoard();
+            other.clearBoard();
+            board.setStandaloneForTesting (juce::File::createTempFile ("rig").getParentDirectory().getChildFile ("rkboard-remote-rig"));
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            prepare (board);
+            board.assign (2, delay, "time");
+            board.assign (3, drive, "bypass");
+            board.setSceneName (1, "Verse");
+            board.setRemoteName ("Left half");
+            hub.addBoard (board, false);
+            hub.addBoard (other, false);
+
+            FakeConnection page;
+            const auto say = [&] (const juce::String& json) { hub.received (page, json); hub.tick(); hub.send (page); };
+            hub.opened (page);
+
+            // A wrong PIN, then the right one: a token for next time.
+            say (R"({"t":"hello","name":"iPhone","pin":"1111"})");
+            expect ((bool) page.last ("auth")["wrong"]);
+            say (R"({"t":"hello","name":"iPhone","pin":"2468"})");
+            const auto token = page.last ("auth")["token"].toString();
+            expect ((bool) page.last ("auth")["ok"] && token.length() >= 16);
+
+            // Both boards listed, by name.
+            const auto boards = page.last ("boards")["list"];
+            expectEquals (boards.size(), 2);
+            expectEquals (boards[0]["name"].toString(), juce::String ("Left half"));
+            expectEquals (boards[1]["name"].toString(), juce::String ("Board"));
+            const auto id = (int) boards[0]["id"];
+            expectEquals (id, hub.idOf (board));
+
+            page.sent.clear();
+            say (R"({"t":"open","b":)" + juce::String (id) + "}");
+            auto state = page.last ("board");
+            expectEquals (state["names"][1].toString(), juce::String ("Verse"));
+            expectEquals (state["pedals"].size(), 2);
+            expectEquals ((int) state["pedals"][1]["id"], delay);
+            expectEquals (state["pedals"][1]["n"].toString(), juce::String ("Delay"));
+            expectEquals (state["assign"].size(), 2);
+            expect ((bool) state["assign"][1]["sw"], "Assign 4 switches the drive");
+            expect ((bool) state["app"]);
+
+            // Commands, applied as clicks in the window would be.
+            say (R"({"t":"scene","n":1})");
+            expectEquals (board.getScene(), 1);
+            expectEquals ((int) page.last ("board")["scene"], 1);
+            say (R"({"t":"bypass","id":)" + juce::String (delay) + R"(,"on":false})");
+            expect (board.isPedalBypassed (delay));
+            expect (board.getSceneBypass (1, delay), "into the current scene");
+            say (R"({"t":"set","id":"p)" + juce::String (delay) + R"(:feedback","v":0.25})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("feedback")->getValue(), 0.25f, 1.0e-6f);
+            say (R"({"t":"param","owner":)" + juce::String (delay) + R"(,"id":"mix","v":0.5})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("mix")->getValue(), 0.5f, 1.0e-6f);
+            say (R"({"t":"assign","slot":3,"v":0.75})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("time")->getValue(), 0.75f, 1.0e-6f, "Assign 3 drives the time");
+            say (R"({"t":"morphScenes","from":1,"to":4})");
+            expectEquals (board.getMorphTo(), 4);
+            say (R"({"t":"morph","v":0.3})");
+            expect (board.isMorphing());
+            say (R"({"t":"scene","n":0})");
+            expect (! board.isMorphing());
+            const auto wasBypassed = board.isPedalBypassed (delay);
+            say (R"({"t":"set","id":"p)" + juce::String (delay) + R"(:bypass","v":)" + (wasBypassed ? "0" : "1") + "}");
+            expect (board.isPedalBypassed (delay) == wasBypassed, "a bypass is never a value");
+            board.getUndo().poll();
+            expect (board.getUndo().canUndo(), "the remote's changes go into undo");
+
+            // Tap and the tuner (the app).
+            say (R"({"t":"tuner","on":true})");
+            expect (board.isTunerActive());
+            expect (page.last ("board")["tuner"].hasProperty ("on"));
+            say (R"({"t":"tuner","on":false})");
+            say (R"({"t":"tap"})");
+
+            // Values it subscribes to: normalised, text, default, steps.
+            page.sent.clear();
+            say (R"({"t":"sub","ids":["morph","a3","p)" + juce::String (delay) + R"(:mode","nonsense"]})");
+            const auto values = page.last ("v")["p"];
+            expect (values.hasProperty ("morph") && values.hasProperty ("a3"));
+            const auto mode = values[juce::Identifier ("p" + juce::String (delay) + ":mode")];
+            expect (mode.size() >= 5, "a choice comes with its choices");
+            expect (! values.hasProperty ("nonsense"));
+            page.sent.clear();
+            board.getPedal (delay)->findParam ("time")->setValueNotifyingHost (0.1f);
+            hub.tick(); hub.send (page);
+            expect (page.last ("v")["p"].hasProperty ("a3"), "a moved knob moves its Assign slot's value");
+
+            // A pedal's knobs.
+            say (R"({"t":"show","id":)" + juce::String (delay) + "}");
+            const auto controls = page.last ("controls");
+            expectEquals ((int) controls["id"], delay);
+            expect (controls["params"].size() > 5);
+            for (const auto& c : *controls["params"].getArray())
+                expect (! c["id"].toString().endsWith (":bypass"));
+
+            // The same device again: its token, no PIN.
+            FakeConnection again ("10.0.0.6");
+            hub.opened (again);
+            hub.received (again, R"({"t":"hello","token":")" + token + "\"}");
+            hub.tick(); hub.send (again);
+            expect ((bool) again.last ("auth")["ok"]);
+            expectEquals ((int) hub.getDevices().size(), 2);
+            hub.closed (again);
+
+            // Five wrong PINs: wait 30 s.
+            FakeConnection guess ("10.0.0.9");
+            hub.opened (guess);
+            for (int i = 0; i < 5; ++i)
+                hub.received (guess, R"({"t":"hello","pin":"0000"})");
+            hub.received (guess, R"({"t":"hello","pin":"2468"})");
+            hub.tick(); hub.send (guess);
+            expect ((int) guess.last ("auth")["wait"] > 0, "locked out, even with the right PIN");
+            hub.closed (guess);
+
+            // A board that goes: the page hears it, and the list follows.
+            page.sent.clear();
+            hub.removeBoard (board);
+            hub.tick(); hub.send (page);
+            expect (! page.last ("gone").isVoid());
+            expectEquals (page.last ("boards")["list"].size(), 1);
+
+            // A new PIN lets everyone go; the settings are saved.
+            hub.setPin ("97531");
+            expect (page.closed);
+            rkboard::BoardRemoteHub reloaded;
+            reloaded.setSettingsFileForTesting (settings);
+            expectEquals (reloaded.getPin(), juce::String ("97531"));
+            expect (reloaded.isEnabled());
+            expectEquals (reloaded.getPort(), rkboard::BoardRemoteHub::kDefaultPort);
+            reloaded.setEnabled (false);
+            hub.removeBoard (other);
+
+            // The pages.
+            expect (hub.answer ("/").body.toString().contains ("board.js"));
+            expect (hub.answer ("/b/rk.js").body.toString().contains ("const RK"));
+            expect (hub.answer ("/b/board.js").body.toString().contains ("BoardRemoteHub"));
+            expectEquals (hub.answer ("/b/../secret").status, 404);
+            expect (hub.answer ("/manifest/board.json").body.toString().contains ("RKBoard"));
+            expectEquals (hub.answer ("/icon.png").contentType, juce::String ("image/png"));
+            expect (hub.link (true).endsWith (":8081/#pin=97531"));
+
+            // The board's name is saved in the host session.
+            const auto json = stateJson (board);
+            BoardProcessor restored;
+            restored.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (restored.getRemoteName(), juce::String ("Left half"));
+            settings.deleteFile();
         }
 
         beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");

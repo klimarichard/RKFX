@@ -779,6 +779,9 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     assignButton.setClickingTogglesState (false);
     assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
     addAndMakeVisible (assignButton);
+    remoteButton.setTooltip ("The phone and iPad remote: on or off, its QR code and PIN, the devices connected.");
+    remoteButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kRemoteView ? 0 : BoardStrip::kRemoteView); };
+    addAndMakeVisible (remoteButton);
 
     undoButton.onClick = [this] { undoOrRedo (false); };
     redoButton.onClick = [this] { undoOrRedo (true); };
@@ -965,7 +968,7 @@ void BoardEditor::paint (juce::Graphics& g)
     g.drawText ("RKBoard", kMargin, 0, 96, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
-    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr)
+    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr && remotePanel == nullptr)
     {
         drawPanel (g, panel, Palette::panel);
         g.setColour (Palette::textDim);
@@ -980,13 +983,15 @@ void BoardEditor::resized()
     auto header = getLocalBounds().removeFromTop (kHeaderHeight).withTrimmedBottom (2).reduced (kMargin, 8);
     header.removeFromLeft (96);   // the name, painted
 
-    presetButton.setBounds (header.removeFromLeft (176));
+    presetButton.setBounds (header.removeFromLeft (164));
     header.removeFromLeft (4);
     saveButton.setBounds (header.removeFromLeft (50));
     header.removeFromLeft (4);
     saveAsButton.setBounds (header.removeFromLeft (64));
     header.removeFromLeft (10);
-    assignButton.setBounds (header.removeFromLeft (62));
+    assignButton.setBounds (header.removeFromLeft (60));
+    header.removeFromLeft (4);
+    remoteButton.setBounds (header.removeFromLeft (64));
     header.removeFromLeft (10);
     undoButton.setBounds (header.removeFromLeft (52));
     header.removeFromLeft (4);
@@ -1031,12 +1036,19 @@ void BoardEditor::resized()
 void BoardEditor::showPedal (int id)
 {
     if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || assignPanel != nullptr
-                             || tunerPanel != nullptr || id == 0))
+                             || tunerPanel != nullptr || remotePanel != nullptr || id == 0))
         return;
 
     closePedalEditor();
 
-    if (id == BoardStrip::kTunerView)
+    if (id == BoardStrip::kRemoteView)
+    {
+        remotePanel = std::make_unique<RemotePanel> (board);
+        shownPedal = id;
+        addAndMakeVisible (*remotePanel);
+        layoutPedalEditor();
+    }
+    else if (id == BoardStrip::kTunerView)
     {
         tunerPanel = std::make_unique<TunerPanel> (board);
         shownPedal = id;
@@ -1428,13 +1440,14 @@ void BoardEditor::closePedalEditor()
     routingPanel.reset();
     assignPanel.reset();
     tunerPanel.reset();
+    remotePanel.reset();
     shownPedal = 0;
 }
 
 void BoardEditor::layoutPedalEditor()
 {
     // A panel built before it joined the window restyles with the board's look.
-    for (auto* panel : std::initializer_list<juce::Component*> { routingPanel.get(), assignPanel.get(), tunerPanel.get() })
+    for (auto* panel : std::initializer_list<juce::Component*> { routingPanel.get(), assignPanel.get(), tunerPanel.get(), remotePanel.get() })
         if (panel != nullptr && &panel->getLookAndFeel() == &lookAndFeel && ! panel->getProperties().contains ("styled"))
         {
             panel->getProperties().set ("styled", true);
@@ -1445,10 +1458,13 @@ void BoardEditor::layoutPedalEditor()
         routingPanel->setBounds (panelArea());
     if (assignPanel != nullptr)
         assignPanel->setBounds (panelArea());
+    if (remotePanel != nullptr)
+        remotePanel->setBounds (panelArea().withHeight (juce::jmin (panelArea().getHeight(), 420)));
     if (tunerPanel != nullptr)
         tunerPanel->setBounds (panelArea().withHeight (juce::jmin (panelArea().getHeight(), 360)));
     tunerButton.setToggleState (shownPedal == BoardStrip::kTunerView, juce::dontSendNotification);
     assignButton.setToggleState (shownPedal == BoardStrip::kAssignView, juce::dontSendNotification);
+    remoteButton.setToggleState (shownPedal == BoardStrip::kRemoteView, juce::dontSendNotification);
 
     if (pedalEditor == nullptr)
         return;

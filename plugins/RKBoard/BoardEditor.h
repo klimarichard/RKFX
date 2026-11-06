@@ -5,6 +5,7 @@
 
 #include "BoardProcessor.h"
 #include "AssignPanel.h"
+#include "RemotePanel.h"
 #include "RoutingPanel.h"
 #include "TunerPanel.h"
 #include "gui/LookAndFeel.h"
@@ -47,6 +48,7 @@ public:
     static constexpr int kMergeNode = -101;      // mergeNode (0)
     static constexpr int kAssignView = -4;      // not on the strip: the Assign button
     static constexpr int kTunerView = -5;       // not on the strip: the tuner (standalone)
+    static constexpr int kRemoteView = -6;      // not on the strip: the remote's settings
 
     int getSelected() const noexcept { return selected; }
 
@@ -200,7 +202,7 @@ private:
     rkfx::LookAndFeel lookAndFeel { rkfx::Palette::boardAccent };
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
-    juce::TextButton assignButton { "Assign" };
+    juce::TextButton assignButton { "Assign" }, remoteButton { "Remote" };
     juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
     int lastUndoVersion = -1;
 
@@ -262,6 +264,7 @@ private:
     std::unique_ptr<RoutingPanel> routingPanel;
     std::unique_ptr<AssignPanel> assignPanel;
     std::unique_ptr<TunerPanel> tunerPanel;
+    std::unique_ptr<RemotePanel> remotePanel;
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;

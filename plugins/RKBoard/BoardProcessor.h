@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "BoardRemote.h"
 #include "BoardUndo.h"
 #include "MidiLearn.h"
 #include "PedalRegistry.h"
@@ -132,6 +133,18 @@ public:
     enum class Lock { off, footswitches, everything };
     Lock getLock() const noexcept { return (Lock) lock.load(); }
     void setLock (Lock l) { lock = (int) l; ++boardCounter; }
+
+    //==============================================================================
+    // The phone and iPad remote (BoardRemoteHub): one per process, shared by
+    // every RKBoard in it; each board is listed under its remote name.
+
+    /** Registers with the process's remote (the plugin and the app; tests and tools never call it). */
+    void beginRemote();
+    /** The remote, once begun (nullptr in tests and tools). */
+    BoardRemoteHub* getRemote() noexcept { return remoteHub != nullptr ? &remoteHub->get() : nullptr; }
+    /** "Board" unless renamed; saved with the board in the host session. */
+    juce::String getRemoteName() const;
+    void setRemoteName (const juce::String&);
 
     /** Undo and redo (message thread): see BoardUndo. Loading a board starts a new history. */
     rkfx::UndoHistory& getUndo() noexcept { return undo->getHistory(); }
@@ -511,6 +524,8 @@ private:
     std::atomic<int> lock { 0 };      // assignments, scene knobs, trails, names, scene copies (undo)
     std::atomic<bool> loadingBoard { false };
     std::unique_ptr<BoardUndo> undo;
+    std::unique_ptr<juce::SharedResourcePointer<BoardRemoteHub>> remoteHub;
+    juce::String remoteName { "Board" };   // under presetLock
 
     /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
     struct LoadingScope

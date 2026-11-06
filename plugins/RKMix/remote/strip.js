@@ -8,7 +8,7 @@
 
 (() => {
 const { Palette, J, Component, TextButton, ToggleSwitch, SegmentedSwitch, Knob, LinearSlider, ChoiceBox, GainReductionMeter,
-        ResponseCurve, TransferCurve, app, store, stripColour, drawPanel } = RK;
+        ResponseCurve, TransferCurve, EqEditor, app, store, stripColour, drawPanel } = RK;
 const { state, net, num } = C;
 const accent = Palette.accent;
 const PopupMenuShow = (items, anchor) => RK.PopupMenu.show(items, anchor, { minWidth: 200 });
@@ -17,6 +17,7 @@ const K = { knobW: 58, knobH: 80, switchW: 50, switchH: 30, title: 22, gap: 8, b
 
 function S() { return state.structure; }
 function inner(a) { return { x: a.x + 8, y: a.y + K.title, w: a.w - 16, h: a.h - K.title - 2 }; }
+const eqLocked = () => !!(C.isLocked && C.isLocked("everything"));
 function keyName(v) { return v === 0 ? "Self" : "Key: In " + v; }
 const tapLabels = ["Default", "Input", "Pre-EQ", "Pre-Comp", "Pre-Ins", "Pre-Fader", "Post-Fader"];
 
@@ -45,55 +46,6 @@ class OptionList extends RK.ParamComponent {
   pointerDown(e) {
     const n = this.labels.length, i = Math.max(0, Math.min(n - 1, Math.floor(e.y / Math.max(1, Math.floor(this.h / n)))));
     this.setNorm(i / (n - 1)); return false;
-  }
-}
-
-// The EQ curve with a handle per band: drag sideways for the frequency, up
-// and down for the gain (a shelf or bell), double-tap a handle for 0 dB.
-class EqEditor extends ResponseCurve {
-  constructor() { super(18, accent); this.takesTouches = true; this.handles = []; this.drag = new Map(); }
-  // handles: [{ label, freq: id, gain: id|null, minHz, maxHz, on: () => bool }]
-  setHandles(h) { this.handles = h; }
-  hzOf(h) { return h.minHz * Math.pow(h.maxHz / h.minHz, store.value(h.freq)); }
-  pos(h) {
-    const x = this.xFor(this.hzOf(h));
-    const y = h.gain ? this.yFor(store.value(h.gain) * 30 - 15) : this.yFor(0);
-    return [x, y];
-  }
-  paint(g) {
-    super.paint(g);
-    for (const h of this.handles) {
-      const [x, y] = this.pos(h), on = h.on(), held = [...this.drag.values()].some(d => d.h === h);
-      g.setColour((held ? Palette.text : accent).withAlpha(on ? 1 : 0.35));
-      g.fillEllipse(x - 10, y - 10, 20, 20);
-      g.setColour(held ? Palette.background : Palette.onAccent(accent).withAlpha(on ? 1 : 0.6));
-      g.setFont(11, true); g.drawText(h.label, x - 10, y - 10, 20, 20, J.centred);
-    }
-  }
-  pointerDown(e) {
-    let best = null, bestD = 34;
-    for (const h of this.handles) { const [x, y] = this.pos(h), d = Math.hypot(x - e.x, y - e.y); if (d < bestD) { bestD = d; best = h; } }
-    if (!best || (C.isLocked && C.isLocked("everything"))) return false;
-    if (e.taps >= 2 && best.gain) { store.set(best.gain, 0.5); return false; }
-    store.hold(best.freq, true); if (best.gain) store.hold(best.gain, true);
-    this.drag.set(e.id, { h: best, x: e.x, y: e.y, f: store.value(best.freq), gn: best.gain ? store.value(best.gain) : 0, k: RK.fine.scale() });
-    this.repaint();
-    return true;
-  }
-  pointerMove(e) {
-    const d = this.drag.get(e.id); if (!d) return;
-    const h = d.h;
-    // frequency: the curve's x is log(hz / 20) / log(1000)
-    const startHz = h.minHz * Math.pow(h.maxHz / h.minHz, d.f);
-    const hz = 20 * Math.pow(1000, Math.log(startHz / 20) / Math.log(1000) + (e.x - d.x) * d.k / this.w);
-    store.set(h.freq, Math.log(Math.max(h.minHz, Math.min(h.maxHz, hz)) / h.minHz) / Math.log(h.maxHz / h.minHz));
-    if (h.gain) store.set(h.gain, d.gn - (e.y - d.y) * d.k * (2 * this.range / this.h) / 30);
-  }
-  pointerUp(e) {
-    const d = this.drag.get(e.id); if (!d) return;
-    this.drag.delete(e.id);
-    store.hold(d.h.freq, false); if (d.h.gain) store.hold(d.h.gain, false);
-    this.repaint();
   }
 }
 
@@ -226,7 +178,7 @@ class StripPage extends Component {
       x.eqKnobs.push(this.knob(id(`eq_${b}_freq`), bandNames[i], id("eq_on")), this.knob(id(`eq_${b}_gain`), "Gain", id("eq_on")),
                      this.knob(id(`eq_${b}_q`), "Q", id("eq_on")));
     });
-    this.eqCurve = this.add(new EqEditor());
+    this.eqCurve = this.add(new EqEditor(accent, eqLocked));
     const eqOn = () => store.on(id("eq_on"));
     this.eqCurve.setHandles([
       { label: "H", freq: id("hpf"), gain: null, minHz: 20, maxHz: 400, on: () => store.on(id("hpf_on")) },
@@ -248,6 +200,7 @@ class StripPage extends Component {
       else col.send = this.knob(id(`send${b + 1}`), "Send", null);
       if (t === 1 && s.bus[b].own) { col.pan = this.add(new LinearSlider(id(`span${b + 1}`))); col.pan.trackColour = stripColour(s.bus[b].c); col.pan.popupText = () => store.text(col.pan.id); }
       if (t === 1) { col.tap = this.add(new OptionList(id(`tap${b + 1}`), tapLabels)); store.want(`bus${b + 1}_tap`); }
+      if (t !== 0 && C.SendEqButton) col.eq = this.add(new C.SendEqButton(ch, b));   // the send's own EQ
       x.sends.push(col);
     }
     x.directOut = this.add(new ChoiceBox(id("direct_out"), null));
@@ -272,7 +225,7 @@ class StripPage extends Component {
     x.bands = [];
     for (let b = 1; b <= 6; b++) x.bands.push(this.knob(id(`eq_b${b}_freq`), String(b), id("eq_on")), this.knob(id(`eq_b${b}_gain`), "Gain", id("eq_on")),
                                                this.knob(id(`eq_b${b}_q`), "Q", id("eq_on")));
-    this.eqCurve = this.add(new EqEditor());
+    this.eqCurve = this.add(new EqEditor(accent, eqLocked));
     const eqOn = () => store.on(id("eq_on"));
     this.eqCurve.setHandles([
       { label: "H", freq: id("hpf"), gain: null, minHz: 20, maxHz: 400, on: () => eqOn() && store.on(id("hpf_on")) },
@@ -376,6 +329,7 @@ class StripPage extends Component {
       cy += K.knobH;
       if (c.pan) c.pan.setBounds(area.x + 4, cy, w - 8, 20);
       cy += 24;
+      if (c.eq) { c.eq.setBounds(area.x + 4, cy, w - 8, 22); cy += 26; }
       if (c.tap) { c.tap.setBounds(area.x + 3, cy, w - 6, Math.max(70, Math.min(7 * 20, area.y + area.h - cy - 2))); c.tap.marked = 1 + Math.round(store.value(`bus${c.bus + 1}_tap`) * 5); }
       return area;
     });

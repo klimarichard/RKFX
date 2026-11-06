@@ -11,6 +11,8 @@
 
 namespace
 {
+    constexpr int kSendEqCurvePoints = 61;   // the remote's send EQ curve
+
     juce::String hexColour (int stripColour)
     {
         return "#" + MixGui::stripColour (stripColour).toDisplayString (false).toLowerCase();
@@ -515,13 +517,37 @@ juce::String MixRemote::mixFor (int bus) const
          << R"(,"rows":[)";
 
     bool first = true;
-    const auto row = [&] (const juce::String& key, const juce::String& name, int colour, float sendDb, float pan, bool used, bool isReturn)
+    const auto row = [&] (const juce::String& key, const juce::String& name, int colour, float sendDb, float pan, bool used, bool isReturn,
+                          const juce::String& eq = {})
     {
         json << (first ? "" : ",") << R"({"k":")" << key << R"(","name":)" << jsonString (name)
              << R"(,"colour":")" << hexColour (colour) << R"(","send":)" << juce::String (sendDb, 2)
              << R"(,"pan":)" << juce::String (pan, 1) << R"(,"used":)" << (used ? "true" : "false")
-             << R"(,"ret":)" << (isReturn ? "true" : "false") << "}";
+             << R"(,"ret":)" << (isReturn ? "true" : "false") << eq << "}";
         first = false;
+    };
+
+    // A channel's send EQ to this bus: its settings (normalised, in mix::sendEqFields order) and,
+    // when it isn't flat, its curve (dB at 61 frequencies, 20 Hz to 20 kHz, evenly on a log scale).
+    const auto rate = mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0;
+    const auto sendEq = [&] (int ch)
+    {
+        juce::String e (",\"eq\":[");
+        const auto& params = mixer.getSendEqParams (ch, bus);
+        for (int f = 0; f < mix::kSendEqFields; ++f)
+            e << (f > 0 ? "," : "") << juce::String (params[(size_t) f]->getValue(), 4);
+        e << "]";
+        if (const auto settings = mixer.getSendEq (ch, bus); ! settings.isFlat())
+        {
+            e << ",\"eqc\":[";
+            for (int i = 0; i < kSendEqCurvePoints; ++i)
+            {
+                const auto hz = 20.0 * std::pow (1000.0, (double) i / (kSendEqCurvePoints - 1));
+                e << (i > 0 ? "," : "") << juce::String (SendEqDsp::responseDb (settings, hz, rate), 1);
+            }
+            e << "]";
+        }
+        return e;
     };
 
     for (int ch = 0; ch < mix::kChannels; ++ch)
@@ -532,7 +558,7 @@ juce::String MixRemote::mixFor (int bus) const
         const auto label = mixer.isLinked (ch / 2) && ch % 2 == 0 ? mix::num (ch) + "/" + mix::num (ch + 1) : mix::num (ch);
         const auto sendDb = s.value (mix::channelSendId (ch, bus));
         row ("ch" + mix::num (ch), name.isNotEmpty() ? name : "Ch " + label, mixer.getChannelColour (ch), sendDb,
-             s.value (mix::channelSendPanId (ch, bus)), name.isNotEmpty() || sendDb > mix::kFaderMinDb + 0.001f, false);
+             s.value (mix::channelSendPanId (ch, bus)), name.isNotEmpty() || sendDb > mix::kFaderMinDb + 0.001f, false, sendEq (ch));
     }
     // The returns that can feed it: FX (a reverb in the in-ear) and Group buses.
     for (int from = 0; from < mix::kBuses; ++from)
@@ -591,6 +617,7 @@ void MixRemote::receive (int bus, const juce::String& message, bool now)
 
     // Only this bus's own controls: never anything else of the mix.
     juce::RangedAudioParameter* param = nullptr;
+    auto realValue = value;
     if (type == "fader")
         param = mixer.findParam (mix::busFaderId (bus));
     else if (type == "mute")
@@ -603,7 +630,22 @@ void MixRemote::receive (int bus, const juce::String& message, bool now)
         else if (key.startsWith ("bus") && type == "send" && juce::isPositiveAndBelow (n, mix::kBuses) && mixer.canSend (n, bus))
             param = &s.param (mix::busSendId (n, bus));
     }
-    if (param == nullptr || ! std::isfinite (value))
+    else if (type == "seq")
+    {
+        // A channel's send EQ to this bus: one field, normalised ("n").
+        const auto n = key.retainCharacters ("0123456789").getIntValue() - 1;
+        const auto field = msg["f"].toString();
+        const auto normalised = (float) (double) msg["n"];
+        if (key.startsWith ("ch") && juce::isPositiveAndBelow (n, mix::kChannels) && (n % 2 == 0 || ! mixer.isLinked (n / 2))
+            && std::isfinite (normalised))
+            for (int f = 0; f < mix::kSendEqFields; ++f)
+                if (field == mix::sendEqFields[f])
+                {
+                    param = mixer.getSendEqParams (n, bus)[(size_t) f];
+                    realValue = param->convertFrom0to1 (juce::jlimit (0.0f, 1.0f, normalised));
+                }
+    }
+    if (param == nullptr || ! std::isfinite (realValue))
         return;
 
     {
@@ -611,12 +653,12 @@ void MixRemote::receive (int bus, const juce::String& message, bool now)
         for (auto& p : pending)
             if (p.first == param)
             {
-                p.second = value;   // only the latest of a drag
+                p.second = realValue;   // only the latest of a drag
                 param = nullptr;
                 break;
             }
         if (param != nullptr)
-            pending.emplace_back (param, value);
+            pending.emplace_back (param, realValue);
     }
     if (now)
         applyPending();

@@ -181,6 +181,11 @@ public:
     /** A send's EQ (docs/design/RKMix Send EQ.md): channel @p channel's send
         to Aux or FX bus @p bus (a linked pair: its left channel's). */
     SendEqDsp::Settings getSendEq (int channel, int bus) const;
+    /** Its settings, in the order of mix::sendEqFields (the remote reads and sets them). */
+    const std::array<juce::RangedAudioParameter*, mix::kSendEqFields>& getSendEqParams (int channel, int bus) const
+    {
+        return channelRouting[(size_t) channel].sendEqs[(size_t) bus];
+    }
     /** True when channel @p channel's send to @p bus can have an EQ (an Aux or FX bus). */
     bool hasSendEq (int bus) const;
     juce::var copySendEq (int channel, int bus) const;

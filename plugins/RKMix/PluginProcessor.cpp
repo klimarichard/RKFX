@@ -1033,7 +1033,9 @@ juce::var RKMixProcessor::copyChain (int chain, Section section) const
 SendEqDsp::Settings RKMixProcessor::getSendEq (int ch, int bus) const
 {
     const auto leader = ch % 2 == 1 && isLinked (ch / 2) ? ch - 1 : ch;
-    return channelSettings (leader).sendEq[(size_t) bus];
+    const auto& eq = channelRouting[(size_t) leader].sendEqs[(size_t) bus];
+    const auto field = [&eq] (int f) { return valueOf (eq[(size_t) f]); };
+    return { field (0) >= 0.5f, field (1), field (2), field (3), field (4), field (5), field (6), field (7), field (8) };
 }
 
 bool RKMixProcessor::hasSendEq (int bus) const
@@ -1319,10 +1321,7 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
         c.tap[(size_t) bus] = juce::roundToInt (valueOf (routing.taps[(size_t) bus])) - 1;   // 0 = the bus's default
         c.assign[(size_t) bus] = valueOf (routing.assigns[(size_t) bus]) >= 0.5f;
 
-        // The send's EQ, in the order of mix::sendEqFields.
-        const auto& eq = routing.sendEqs[(size_t) bus];
-        const auto field = [&eq] (int f) { return valueOf (eq[(size_t) f]); };
-        c.sendEq[(size_t) bus] = { field (0) >= 0.5f, field (1), field (2), field (3), field (4), field (5), field (6), field (7), field (8) };
+        c.sendEq[(size_t) bus] = getSendEq (ch, bus);   // its own (a pair's follower is never read)
     }
     return c;
 }

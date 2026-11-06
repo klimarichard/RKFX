@@ -672,9 +672,11 @@ class ResponseCurve extends Component {
     if (!this.points) return;
     const pts = [], n = this.points.length;
     for (let i = 0; i < n; i++) pts.push(i / (n - 1) * this.w, this.yFor(this.points[i]));
+    g.save(); g.ctx.beginPath(); g.ctx.rect(0, 0, this.w, this.h); g.ctx.clip();   // a deep cut stays inside the box
     g.setColour(this.accent.withAlpha(0.15));
     g.fillPolygon(pts.concat([this.w, this.yFor(0), 0, this.yFor(0)]));
     g.setColour(this.accent); g.strokePolyline(pts, 2);
+    g.restore();
   }
 }
 
@@ -760,7 +762,7 @@ class PopupMenu extends Component {
       }
       y += this.rowH;
     });
-    c.restore();
+    g.restore();
   }
   pointerDown(e) { this.hot = this.rowAt(e.x, e.y); this.repaint(); if (this.hot < 0 && !this.boxHit(e)) { this.close(); return false; } return true; }
   boxHit(e) { const b = this.box; return b && e.x >= b.x && e.x <= b.x + b.w && e.y >= b.y && e.y <= b.y + b.h; }
@@ -823,7 +825,68 @@ function editText(target, value, onDone, opts = {}) {
   input.focus(); input.select();
 }
 
+// The EQ curve with a handle per band: drag sideways for the frequency, up
+// and down for the gain (a shelf or bell), double-tap a handle for 0 dB.
+// handles: [{ label, freq: id, gain: id|null, minHz, maxHz, on: () => bool, offZone }]
+// A handle with an offZone (a low cut that can be Off: the bottom offZone of
+// its travel reads Off) sits at its lowest frequency while off; dragged below
+// it, it switches off. The console remote's channel page and the monitor
+// remote's send EQ share it.
+class EqEditor extends ResponseCurve {
+  constructor(accent = Palette.accent, locked = () => false) {
+    super(18, accent); this.takesTouches = true; this.handles = []; this.drag = new Map(); this.locked = locked;
+  }
+  setHandles(h) { this.handles = h; }
+  isOff(h) { return !!h.offZone && store.value(h.freq) < h.offZone; }
+  live(h, n) { return h.offZone ? Math.max(0, (n - h.offZone) / (1 - h.offZone)) : n; }
+  hzOf(h, n = store.value(h.freq)) { return h.minHz * Math.pow(h.maxHz / h.minHz, this.live(h, n)); }
+  normOf(h, hz) {
+    if (h.offZone && hz < h.minHz * 0.92) return 0;
+    const t = Math.log(Math.max(h.minHz, Math.min(h.maxHz, hz)) / h.minHz) / Math.log(h.maxHz / h.minHz);
+    return h.offZone ? h.offZone + t * (1 - h.offZone) : t;
+  }
+  pos(h) {
+    const x = this.xFor(this.hzOf(h));
+    const y = h.gain ? this.yFor(store.value(h.gain) * 30 - 15) : this.yFor(0);
+    return [x, y];
+  }
+  paint(g) {
+    super.paint(g);
+    for (const h of this.handles) {
+      const [x, y] = this.pos(h), on = h.on() && !this.isOff(h), held = [...this.drag.values()].some(d => d.h === h);
+      g.setColour((held ? Palette.text : this.accent).withAlpha(on ? 1 : 0.35));
+      g.fillEllipse(x - 10, y - 10, 20, 20);
+      g.setColour(held ? Palette.background : Palette.onAccent(this.accent).withAlpha(on ? 1 : 0.6));
+      g.setFont(11, true); g.drawText(h.label, x - 10, y - 10, 20, 20, J.centred);
+    }
+  }
+  pointerDown(e) {
+    let best = null, bestD = 34;
+    for (const h of this.handles) { const [x, y] = this.pos(h), d = Math.hypot(x - e.x, y - e.y); if (d < bestD) { bestD = d; best = h; } }
+    if (!best || this.locked()) return false;
+    if (e.taps >= 2 && best.gain) { store.set(best.gain, 0.5); return false; }
+    store.hold(best.freq, true); if (best.gain) store.hold(best.gain, true);
+    this.drag.set(e.id, { h: best, x: e.x, y: e.y, hz: this.hzOf(best), gn: best.gain ? store.value(best.gain) : 0, k: fine.scale() });
+    this.repaint();
+    return true;
+  }
+  pointerMove(e) {
+    const d = this.drag.get(e.id); if (!d) return;
+    const h = d.h;
+    // frequency: the curve's x is log(hz / 20) / log(1000)
+    const hz = 20 * Math.pow(1000, Math.log(d.hz / 20) / Math.log(1000) + (e.x - d.x) * d.k / this.w);
+    store.set(h.freq, this.normOf(h, hz));
+    if (h.gain) store.set(h.gain, d.gn - (e.y - d.y) * d.k * (2 * this.range / this.h) / 30);
+  }
+  pointerUp(e) {
+    const d = this.drag.get(e.id); if (!d) return;
+    this.drag.delete(e.id);
+    store.hold(d.h.freq, false); if (d.h.gain) store.hold(d.h.gain, false);
+    this.repaint();
+  }
+}
+
 return { Colour, Palette, StripColours, StripColourNames, stripColour, Style, J, cssFont, Graphics, drawPanel, Component, app, store,
          ParamComponent, TextButton, ToggleSwitch, SegmentedSwitch, Knob, MixFader, Meter, LinearSlider, GainReductionMeter,
-         ResponseCurve, TransferCurve, PopupMenu, ChoiceBox, editText, faderDbAt, faderPositionOf, fine, FineButton };
+         ResponseCurve, TransferCurve, EqEditor, PopupMenu, ChoiceBox, editText, faderDbAt, faderPositionOf, fine, FineButton };
 })();

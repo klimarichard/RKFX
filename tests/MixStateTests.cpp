@@ -1167,6 +1167,45 @@ public:
             dir.deleteRecursively();
         }
 
+        beginTest ("Remote send EQ: in the phone's mix (settings, curve when not flat); a phone sets only its own bus's");
+        {
+            RKMixProcessor p;
+            auto& remote = p.getRemote();
+            const auto dir = juce::File::createTempFile ("rkmix-remote");
+            remote.setSettingsFileForTesting (dir.getChildFile ("remote.json"));
+            auto& s = p.getSettings();
+            const auto eqId = [] (int ch, int bus, const char* f) { return mix::channelSendEqId (ch, bus, f); };
+
+            auto mixJson = juce::JSON::parse (remote.mixFor (2));
+            auto row = (*mixJson["rows"].getArray())[0];
+            expectEquals (row["eq"].size(), mix::kSendEqFields, "nine settings");
+            expect (! row.hasProperty ("eqc"), "flat: no curve");
+
+            remote.receive (2, R"({"t":"seq","k":"ch1","f":"on","n":1})", true);
+            remote.receive (2, R"({"t":"seq","k":"ch1","f":"mg","n":0.7})", true);
+            expect (s.flag (eqId (0, 2, "on")));
+            expectWithinAbsoluteError (s.value (eqId (0, 2, "mg")), 6.0f, 0.01f, "0.7 of -15..+15");
+            mixJson = juce::JSON::parse (remote.mixFor (2));
+            row = (*mixJson["rows"].getArray())[0];
+            expectWithinAbsoluteError ((float) (double) row["eq"][0], 1.0f, 1.0e-4f);
+            expectEquals (row["eqc"].size(), 61);
+            float most = -100.0f;
+            for (int i = 0; i < row["eqc"].size(); ++i)
+                most = juce::jmax (most, (float) (double) row["eqc"][i]);
+            expectWithinAbsoluteError (most, 6.0f, 0.15f, "the curve peaks at the bell's gain");
+
+            // Nothing else: another bus's send EQ, a pair's follower, an unknown field, a bad value.
+            expect (! s.flag (eqId (0, 3, "on")), "never another bus's");
+            setParam (s.param (mix::linkId (0)), 1.0f);
+            remote.receive (2, R"({"t":"seq","k":"ch2","f":"on","n":1})", true);
+            expect (! s.flag (eqId (1, 2, "on")), "a linked pair's right channel isn't a row");
+            remote.receive (2, R"({"t":"seq","k":"ch3","f":"trim","n":1})", true);
+            expectWithinAbsoluteError (s.value (mix::channelId (2, "trim")), 0.0f, 0.01f);
+            remote.receive (2, R"({"t":"seq","k":"ch3","f":"lsg","n":5})", true);
+            expectWithinAbsoluteError (s.value (eqId (2, 2, "lsg")), 15.0f, 0.01f, "clamped to the range");
+            dir.deleteRecursively();
+        }
+
         beginTest ("Names by OSC: Gig Performer's names on every remote page; scenes; the settings");
         {
             RKMixProcessor p;

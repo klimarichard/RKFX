@@ -475,18 +475,21 @@ void RKMixProcessor::setInputOnPlayback (int input, bool on)
     const auto count = isLinked (input / 2) ? 2 : 1;
     for (int ch = first; ch < first + count; ++ch)
         inputOnPlayback[(size_t) ch] = on;
+    ++sourceVersion;
 }
 
 void RKMixProcessor::setAllInputsLive()
 {
     for (auto& on : inputOnPlayback)
         on = false;
+    ++sourceVersion;
 }
 
 void RKMixProcessor::setAllInputsOnPlayback()
 {
     for (auto& on : inputOnPlayback)
         on = true;
+    ++sourceVersion;
 }
 
 bool RKMixProcessor::anyInputOnPlayback() const noexcept

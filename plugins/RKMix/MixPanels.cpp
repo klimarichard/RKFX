@@ -96,6 +96,16 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
 
     presets.onClick = [this] { showPresetMenu(); };
     addAndMakeVisible (presets);
+    source.setClickingTogglesState (false);
+    source.setTooltip ("Where this input comes from: Live, or Playback (a recording, on the Recorder page). Never saved: every session starts Live");
+    source.onClick = [this]
+    {
+        if (owner.isLocked())
+            return;
+        owner.mixer.setInputOnPlayback (channel, ! owner.mixer.isInputOnPlayback (channel));
+        owner.sourcesChanged();
+    };
+    addAndMakeVisible (source);
     link = make<rkfx::ToggleSwitch> (s.param (linkId (ch / 2)), accent, "Link " + num (ch / 2 * 2) + "/" + num (ch / 2 * 2 + 1));
 
     // Input
@@ -172,6 +182,11 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
 
 void RKMixEditor::ChannelPanel::refresh()
 {
+    // The source: Live, or Playback (in the accent colour).
+    const auto onPlayback = owner.mixer.isInputOnPlayback (channel);
+    source.setButtonText (onPlayback ? "PB" : "Live");
+    source.setToggleState (onPlayback, juce::dontSendNotification);
+
     // The files match the channels as they were when Record was pressed.
     const auto recording = owner.mixer.getRecorder().isRecording();
     link->setEnabled (! recording);
@@ -227,6 +242,7 @@ void RKMixEditor::ChannelPanel::resized()
     r.removeFromTop (kGap);
 
     sections[input].area = place (rowA, 140);
+    source.setBounds (sections[input].area.withHeight (kSectionTitle).reduced (6, 3).removeFromRight (44));
     {
         auto a = inner (sections[input].area);
         trim->setBounds (a.removeFromLeft (kKnobW).withHeight (kKnobH));

@@ -147,6 +147,8 @@ public:
     void setAllInputsLive();
     void setAllInputsOnPlayback();
     bool anyInputOnPlayback() const noexcept;
+    /** Bumped when an input's source changes (the window polls it). */
+    int getSourceVersion() const noexcept { return sourceVersion.load(); }
 
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
@@ -385,6 +387,7 @@ private:
     std::unique_ptr<MixRecorderSession> recorder;
     MixPlayback playback;
     std::array<std::atomic<bool>, kChannels> inputOnPlayback {};
+    std::atomic<int> sourceVersion { 0 };
     juce::AudioBuffer<float> playbackInputs;            // the inputs with the recording in place of the live ones
     double preparedRate = 0.0;
 

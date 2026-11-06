@@ -286,6 +286,7 @@ private:
         bool stereo = false;
         juce::Label name;
         juce::TextButton presets { juce::String::fromUTF8 ("Strip presets \xe2\x96\xbe") };
+        juce::TextButton source { "Live" };   // the input's source: Live or Playback (virtual soundcheck)
         std::array<juce::Rectangle<int>, 8> swatches;
 
         struct Section
@@ -513,6 +514,23 @@ private:
         std::array<rkfx::ToggleSwitch*, mix::kBuses> buses {};
         juce::Rectangle<int> controlArea, tracksArea, timeArea, infoArea;
         juce::String lastTime, lastInfo;
+
+        // Two views on the right: what is recorded, or the playback (virtual soundcheck).
+        juce::TextButton recordView { "What is recorded" }, playbackView { "Playback (virtual soundcheck)" };
+        bool showingPlayback = false;
+        void showView (bool playback);
+
+        juce::TextButton loadButton { "Load..." }, unloadButton { "Unload" }, useNames { "Use the recording's names" },
+                         allPlayback { "All to playback" }, allLive { "All live" },
+                         playButton { "Play" }, stopButton { "Stop" }, prevMarker, nextMarker, loopButton { "Loop" };
+        struct PositionBar;
+        std::unique_ptr<juce::Component> bar;   // a PositionBar
+        std::vector<std::unique_ptr<juce::ComboBox>> mapping;   // one per file of the recording
+        juce::Rectangle<int> playbackInfo, mappingArea;
+        int loadedFiles = -1;
+        void rebuildMapping();
+        void loadRecording (const juce::File& folder);
+        juce::int64 markerNear (bool next) const;
     };
 
     struct RemotePanel : public Panel
@@ -582,6 +600,10 @@ private:
     std::unique_ptr<RemotePanel> remotePanel;
     std::unique_ptr<RecorderPanel> recorderPanel;
     bool wasRecording = false;
+    // Inputs on Playback: one button back to all Live, always there (also when locked).
+    juce::TextButton allLiveButton { "PLAYBACK: all live" };
+    int lastSourceVersion = -1;
+    void sourcesChanged();
     void recordingChanged();   // the REC light, Link and the preset menu follow
     MonitorPanel monitorPanel;
     ScenesPanel scenesPanel;

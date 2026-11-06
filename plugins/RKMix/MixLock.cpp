@@ -160,6 +160,8 @@ void RKMixEditor::applyLock()
         for (auto& s : *list)
             s->name.setEditable (false, ! locked, false);
 
+    if (allLiveButton.isVisible())
+        allLiveButton.toFront (false);   // always reachable, also when locked
     refreshUndo();
     lockButton.setTooltip (locked ? "Locked: hold for a second to unlock" : "Lock the console for the show");
     lockButton.repaint();

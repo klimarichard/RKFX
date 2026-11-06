@@ -216,9 +216,16 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
         g.setColour (rkfx::Palette::warning.withAlpha (0.8f));
         g.fillRoundedRectangle (numberRow.reduced (6, 0).toFloat(), 3.0f);
     }
-    g.setColour (groupMuted ? rkfx::Palette::text : rkfx::Palette::textDim);
-    g.setFont (rkfx::Fonts::regular (11.0f));
-    g.drawText (label(), numberRow, juce::Justification::centred);
+    // On Playback (virtual soundcheck): "PB" in the accent colour over the number.
+    const auto onPlayback = ! isBus() && owner.mixer.isInputOnPlayback (channel);
+    if (onPlayback && ! groupMuted)
+    {
+        g.setColour (owner.accent());
+        g.fillRoundedRectangle (numberRow.reduced (6, 0).toFloat(), 3.0f);
+    }
+    g.setColour (groupMuted ? rkfx::Palette::text : onPlayback ? juce::Colours::black : rkfx::Palette::textDim);
+    g.setFont (onPlayback ? rkfx::Fonts::bold (11.0f) : rkfx::Fonts::regular (11.0f));
+    g.drawText (onPlayback ? "PB " + label() : label(), numberRow, juce::Justification::centred);
 
     if (isBus())
         return;
@@ -366,6 +373,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     recorderPanel = std::make_unique<RecorderPanel> (*this);
     addToCanvas (*recorderPanel);
     recorderPage.onClick = [this] { setPage (Page::recorder); };
+    allLiveButton.setTooltip ("Some inputs play a recording (virtual soundcheck): click to put every input back to Live. Works when locked too");
+    allLiveButton.setColour (juce::TextButton::buttonColourId, accent());
+    allLiveButton.setColour (juce::TextButton::textColourOffId, juce::Colours::black);
+    allLiveButton.onClick = [this] { mixer.setAllInputsLive(); sourcesChanged(); };
+    addToCanvas (allLiveButton);
+    allLiveButton.setVisible (false);
     recorderPage.setTooltip ("Record every input to its own file, for listening back or mixing again");
     remotePage.onClick = [this] { setPage (Page::remote); };
     remotePage.setTooltip ("The musicians' phones set their own in-ear mixes");
@@ -574,6 +587,7 @@ void RKMixEditor::layoutContent()
     monoStrip.setBounds (master.withTrimmedLeft (4));
 
     sendsBack.setBounds (masterArea().removeFromTop (kTopHeight).reduced (12).removeFromBottom (30));
+    allLiveButton.setBounds (sendsBack.getBounds().translated (0, -36));
     sendsBack.toFront (false);
 
     auto layers = globalArea().withSizeKeepingCentre (globalArea().getWidth(), 30);
@@ -816,6 +830,7 @@ void RKMixEditor::selectMain (int chain)
     selectedDca = selectedMuteGroup = -1;
     rebuildPanels();
     setPage (Page::strip);
+    sourcesChanged();
 }
 
 RKMixEditor::ProcessingPanel* RKMixEditor::shownProcessing() const
@@ -953,6 +968,10 @@ void RKMixEditor::updateMeters()
     refreshUndo();
     if (remotePanel->isVisible())
         remotePanel->updateConnections();
+
+    // Inputs switched between Live and Playback (here, a remote or a loaded mix).
+    if (mixer.getSourceVersion() != lastSourceVersion)
+        sourcesChanged();
 
     // The recorder: its page's time and disk, the REC light (blinking), what recording locks.
     if (const auto recording = mixer.getRecorder().isRecording(); recording != wasRecording)

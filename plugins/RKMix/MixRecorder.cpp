@@ -292,6 +292,7 @@ void MixRecorder::run()
             for (auto& f : live->files)
                 if (f->writer != nullptr)
                     f->writer->flush();
+            writeSession (*live);   // its length too: a power cut leaves session.json at most 10 s behind
         }
 
         // Under a minute left on the disk: whoever runs the recorder stops it.

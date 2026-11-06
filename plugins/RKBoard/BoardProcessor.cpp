@@ -2260,8 +2260,10 @@ juce::AudioProcessorEditor* BoardProcessor::createEditor()
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    // Only the plugin and the app serve the remote (never tests and tools).
+    // Only the plugin and the app serve the remote (never tests and tools,
+    // whose wrapper type is undefined).
     auto* board = new rkboard::BoardProcessor();
-    board->beginRemote();
+    if (board->wrapperType != juce::AudioProcessor::wrapperType_Undefined)
+        board->beginRemote();
     return board;
 }

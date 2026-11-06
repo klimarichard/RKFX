@@ -6,7 +6,7 @@
 "use strict";
 
 const B = (() => {
-const { Colour, Palette, J, Component, TextButton, ToggleSwitch, Knob, LinearSlider, ChoiceBox, PopupMenu, app, store, fine, FineButton, editText, Style } = RK;
+const { Colour, Palette, J, Component, TextButton, ToggleSwitch, SegmentedSwitch, Knob, LinearSlider, ChoiceBox, PopupMenu, app, store, fine, FineButton, editText, Style } = RK;
 
 // rkfx::Palette::boardAccent: the board's own accent, on every lit control.
 Palette.accent = Colour.hex(0xffe6e2d8);
@@ -168,10 +168,14 @@ class BigFader extends LinearSlider {
 
 // rkfx::Knob, ToggleSwitch or ChoiceBox, as the parameter is (known once its value comes).
 function controlFor(id, name) {
-  const info = store.get(id);
-  if (info && info.choices && info.choices.length > 2) { const c = new ChoiceBox(id); c.label = name; c.locked = isLocked; return c; }
-  if (info && (info.steps === 2 || (info.choices && info.choices.length === 2))) { const t = new ToggleSwitch(id, Palette.accent, name); t.locked = isLocked; return t; }
-  const k = new Knob(id, name); k.locked = isLocked; return k;
+  const info = store.get(id), n = info && info.choices ? info.choices.length : 0;
+  let c;
+  if (n > 4) { c = new ChoiceBox(id); c.label = name; }
+  else if (n >= 2) c = new SegmentedSwitch(id, Palette.accent, null, name);
+  else if (info && info.steps === 2) c = new ToggleSwitch(id, Palette.accent, name);
+  else c = new Knob(id, name);
+  c.locked = isLocked;
+  return c;
 }
 
 // ---------------------------------------------------------------- the header and tabs
@@ -180,15 +184,16 @@ class Header extends Component {
     super();
     this.lock = this.add(new TextButton("Lock", () => { state.locked = !state.locked; this.update(); app.dirty = true; }));
     this.fine = this.add(new FineButton());
+    // The board's name (tap: the other boards); drawn by the header, left-aligned.
     this.name = this.add(new TextButton("", () => { if (state.boards.length > 1) showBoardMenu(this.name); }));
-    this.name.colour = Palette.panel; this.name.bold = true; this.name.fontHeight = 16;
+    this.name.colour = Colour.hex(0x00000000);
     this.update();
   }
   update() { this.lock.toggle = state.locked; this.lock.onColour = Palette.warning; this.lock.text = state.locked ? "Locked" : "Lock"; }
   resized() {
     this.fine.setBounds(this.w - kPad - 58, 8, 58, this.h - 16);
     this.lock.setBounds(this.fine.x - 6 - 72, 8, 72, this.h - 16);
-    this.name.setBounds(kPad - 6, 6, this.lock.x - kPad - 4, this.h - 12);
+    this.name.setBounds(kPad - 6, 6, this.lock.x - kPad - 30, this.h - 12);
   }
   paint(g) {
     g.setColour(Palette.panel); g.fillRect(0, 0, this.w, this.h);
@@ -373,7 +378,7 @@ class ControlsSheet extends Scroller {
       if (col === 0 && i > 0) { y += row + gap; row = 0; }
       const h = c instanceof Knob ? 110 : 64;
       const top = 60 + y - this.offset;
-      if (c instanceof Knob) c.setBounds(kPad + col * (w + gap), top, w, h);
+      if (c instanceof Knob || c instanceof SegmentedSwitch) c.setBounds(kPad + col * (w + gap), top, w, c instanceof Knob ? h : 58);
       else c.setBounds(kPad + col * (w + gap), top + 22, w, 38);
       row = Math.max(row, h); x++;
     });

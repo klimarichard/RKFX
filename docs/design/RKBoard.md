@@ -1,6 +1,6 @@
 # RKBoard: design notes
 
-**The RKFX pedalboard.** How the board works is described in `plugins/RKBoard/BoardProcessor.h` and in the manual (`docs/manuals/RKBoard.md`). This file keeps design decisions and ideas for later.
+**The RKFX pedalboard.** How the board works is described in `plugins/RKBoard/BoardProcessor.h` and in the manual (`docs/manuals/RKBoard.md`). This file keeps design decisions and ideas for later. Undo, Lock, named scenes, scene morph and the remote are designed in `RKBoard Live Control.md`.
 
 ## Ideas for later
 

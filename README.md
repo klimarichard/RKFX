@@ -16,7 +16,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | Plugin | Effect | Status |
 | --- | --- | --- |
 | [RKFreqShift](docs/manuals/RKFreqShift.md) | Frequency shifter, four independent shifts with feedback | Available |
-| [RKFilter](docs/manuals/RKFilter.md) | Low-pass, high-pass, band-pass and auto-wah, with a tempo-synced LFO | Available |
+| [RKFilter](docs/manuals/RKFilter.md) | Low-pass, high-pass, band-pass and auto-wah (Smooth, or Snappy for a hardware-style quack), with a tempo-synced LFO | Available |
 | [RKParaEQ](docs/manuals/RKParaEQ.md) | Seven-band parametric EQ with response curve; any gain band can be dynamic (cut when loud, lift when soft) | Available |
 | [RKGraphEQ](docs/manuals/RKGraphEQ.md) | Graphic EQ (10, 15 or 31 bands) with response curve | Available |
 | [RKVocode](docs/manuals/RKVocode.md) | Channel vocoder with sidechain or MIDI-played carrier | Available |

@@ -617,6 +617,9 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
     }
     else if (type == "set")
     {
+        // Links never change while recording (the files match the channels).
+        if (m["id"].toString().startsWith ("link") && mixer.getRecorder().isRecording())
+            return;
         auto* p = resolve (m["id"].toString());
         const auto v = (float) (double) m["v"];
         if (p != nullptr && std::isfinite (v))

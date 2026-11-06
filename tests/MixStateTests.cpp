@@ -1455,6 +1455,22 @@ public:
             expect ((bool) a.last ("auth")["ok"] && token.length() >= 16, "signed in, with a token");
             expect (a.last ("s")["ch"].size() == mix::kChannels, "the structure follows");
 
+            // While recording, a link from the iPad is refused (the files match the channels).
+            {
+                juce::TemporaryFile recTemp;
+                auto& rec = p.getRecorder();
+                rec.setSettingsFileForTesting (recTemp.getFile().getChildFile ("recorder.json"));
+                rec.setRootFolder (recTemp.getFile().getChildFile ("Recordings"));
+                expect (rec.start().wasOk());
+                exchange (a, R"({"t":"set","id":"link1","v":1})");
+                expect (! p.isLinked (0), "no link while recording");
+                rec.stop();
+                exchange (a, R"({"t":"set","id":"link1","v":1})");
+                expect (p.isLinked (0), "linked once stopped");
+                p.getSettings().param (mix::linkId (0)).setValueNotifyingHost (0.0f);
+                recTemp.getFile().deleteRecursively();
+            }
+
             // Values: subscribed IDs come with their description, then only changes.
             exchange (a, R"({"t":"sub","ids":["ch_fader_1","ch1_trim","bus1_type","nonsense"]})");
             const auto v = a.last ("v")["p"];

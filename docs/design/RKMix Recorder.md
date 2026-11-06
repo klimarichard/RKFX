@@ -24,15 +24,17 @@ This is a design, not a manual: it says what the feature does and how, so it can
 ### What is recorded
 
 - **The inputs** you choose (saved with the mix; a new mix records all 32), **before the trim and polarity**, as they come in. The trim, and everything after it, then work the same on playback as live.
-- One **mono file per input**. A linked pair is two files, `05 Keys L` and `06 Keys R`, so playback maps one file to one input.
+- One file per channel: a **mono file** for a single input, a **stereo file** for a linked pair (`05-06 Keys.wav`, left = the odd input, right = the even one). Both sides of a pair are in one file, so they can never drift apart.
+- **Pairs as two mono files** (a setting on the Recorder page, off by default, remembered per machine): for a DAW or a mixing workflow that prefers mono tracks, a linked pair is recorded as `05 Keys L.wav` and `06 Keys R.wav` instead.
+- **Linking and unlinking are disabled while recording** (see Links while recording), so the files always match the channels as they were when Record was pressed.
 - **Main L/R** (optional, default on): a stereo file of the main output after its limiter, for listening back.
 - Optionally any **Aux bus** output (an in-ear mix, for the musician to hear what they had).
 
 ### Files
 
 - WAV, **24-bit** (default) or **32-bit float**, at the session's sample rate.
-- A folder per recording: `~/Music/RKMusic Plugins/RKFX/Recordings/<date> <time> <mix name>/` (the root folder can be changed in the Recorder page and is remembered per machine), containing `01 Lead Vox.wav` (input number and channel name), `Main.wav`, and `session.json`:
-  - the sample rate, start time and each file's input number;
+- A folder per recording: `~/Music/RKMusic Plugins/RKFX/Recordings/<date> <time> <mix name>/` (the root folder can be changed in the Recorder page and is remembered per machine), containing `01 Lead Vox.wav` (input number and channel name), `05-06 Keys.wav` (a pair), `Main.wav`, and `session.json`:
+  - the sample rate and start time; for each file, the input each of its channels came from (`"05-06 Keys.wav": [5, 6]`), so mono and stereo files, and pairs split into two mono files, all load the same way;
   - the names and colours when recording started;
   - the **markers** (sample position, label: "Scene 3", "Marker 2", ...);
   - the dropout count and where they happened.
@@ -42,8 +44,9 @@ This is a design, not a manual: it says what the feature does and how, so it can
 
 ### On the audio thread
 
-- `MixRecorder::push (input, samples)` for each recorded input, called in `processBlock` at the point the inputs arrive, before the channel strips run. The main (and Aux) pushes happen after their limiters.
-- Use `juce::AudioFormatWriter::ThreadedWriter`: each has its own lock-free FIFO and is written by one shared `juce::TimeSliceThread`. FIFO size: **4 s per track** (at 48 kHz mono float, 768 KB per track, about 26 MB for 33 tracks), allocated when recording is armed, never in the callback.
+- `MixRecorder::push (file, channels, numSamples)` for each recorded file (one or two input channels at once), called in `processBlock` at the point the inputs arrive, before the channel strips run. The main (and Aux) pushes happen after their limiters.
+- Use `juce::AudioFormatWriter::ThreadedWriter`, one per file, mono or stereo (its `write` takes several channels at once, so a pair needs nothing special). Each has its own lock-free FIFO and is written by one shared `juce::TimeSliceThread`. FIFO size: **4 s per channel** (at 48 kHz float, 768 KB per channel, about 26 MB for 32 inputs and the main), allocated when recording is armed, never in the callback.
+- **The file layout is fixed when Record is pressed:** which inputs are recorded, and which are pairs (stereo files). The audio thread reads that layout, never the live link settings.
 - `ThreadedWriter::write` returns false when its FIFO is full. The recorder then counts a dropout (an atomic), and the page and `session.json` say where.
 - **Start and stop are sample-exact and shared:** the audio thread starts every track on the same sample (the first block after Record is pressed) and stops them all on the same block, so the files stay aligned to the sample.
 
@@ -53,14 +56,26 @@ This is a design, not a manual: it says what the feature does and how, so it can
 - **Markers:** every scene recall writes one ("Scene 3 Verse" once scenes have names); a **Marker** button (and a host parameter) adds "Marker n".
 - Host parameters **Record** (on = recording; a Gig Performer button) and **Marker** (acts once).
 - **REC** in the master section, blinking red while recording, so it's visible from every page.
-- **Loading another mix** while recording: the recording goes on (it's the gig, not the mix), with a marker "Mix: <name>". A change of sample rate stops it cleanly.
+- A change of sample rate stops the recording cleanly.
+
+### Links while recording
+
+Linking or unlinking a pair while recording would leave a file that no longer matches its channel, so it's blocked:
+
+- **Link** on the Channel page is dimmed while recording, with the tooltip "Stop recording to link or unlink". The console remote's Link control is dimmed the same way, and a link message from any remote is refused.
+- **Loading a mix** from the preset menu is dimmed while recording ("Stop recording to load a mix"): a mix can bring other links with it. Strip presets and scenes are fine, since they never change links.
+- **A session restored by the host** while recording (Gig Performer reloading the gig, `setStateInformation`) can't be refused. The take then ends and a new one starts in a new folder on the same block (no samples lost between them), with the new mix's links. Both takes' `session.json` note the split.
 - **The console remote** (iPad): Record / Stop (Stop with a confirmation), elapsed time, dropouts, Marker.
 
 ## Virtual soundcheck (playback)
 
 ### Loading
 
-On the Recorder page, **Playback: Load...** picks a recording folder (it reads `session.json`; a folder of plain WAVs without one is accepted too, mapped by the number at the start of each name, else in order). It shows the length, the markers, and how each file maps to an input (editable: drag a file to another input).
+On the Recorder page, **Playback: Load...** picks a recording folder (it reads `session.json`; a folder of plain WAVs without one is accepted too, mapped by the number at the start of each name, else in order). It shows the length, the markers, and how each file maps to inputs (editable: drag a file to another input).
+
+- **Each channel of a file feeds one input:** a mono file one input, a stereo file two neighbouring inputs (left to the odd one, right to the even one). A stereo file can only be dropped on an odd input, so its two sides land on a pair.
+- The mix's links don't have to match the recording: a stereo file still plays into two inputs that are now unlinked (each side into its own channel), and two mono files into a pair that is now linked.
+- A plain WAV without `session.json`: a stereo file takes two inputs, from the number its name starts with.
 
 - **Sample rate:** a recording at another rate than the session's is refused in this version, with a message.
 - The input names stored in the recording are offered (**Use the recording's names**) but not applied by default.
@@ -89,6 +104,8 @@ Allowed: the recorder records what reaches the inputs, Live or Playback. A virtu
 ## Tests
 
 - Recording: a known signal on every input comes back sample-exact from the files (24-bit within rounding, float bit-exact), all files the same length and aligned to the sample; the main file matches the main output.
+- Pairs: a linked pair records as one stereo file (left = odd input) and, with Pairs as two mono files on, as two mono files; `session.json` maps both. Link is refused while recording (the window, a remote message); loading a mix is refused; a host state restore splits the take on one block with no samples lost.
+- Playback mapping: a stereo file into a pair that is now unlinked, two mono files into a pair that is now linked, a plain WAV folder without `session.json`.
 - Markers at the right samples; `session.json` read back.
 - Dropouts: a writer that can't keep up (a test hook that stalls the disk thread) counts dropouts, and the audio thread never blocks.
 - Playback: files played into channels give, sample for sample, the same channel output as feeding the same signal live; locate, loop and marker jumps are sample-accurate and click-free; a dry ring plays silence.

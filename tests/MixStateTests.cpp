@@ -694,6 +694,113 @@ public:
             expect (q.getScenes().getScope (1).describe ([] (int bus) { return "Bus " + mix::num (bus); }) == "Sends to Bus 1");
         }
 
+        beginTest ("Send EQ: reaches the audio; the session and presets keep it (only what's set); scenes, scoped with Sends to B#; undo");
+        {
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            const auto eqId = [] (int ch, int bus, const char* field) { return mix::channelSendEqId (ch, bus, field); };
+
+            // A mix without send EQs doesn't grow.
+            const auto before = juce::JSON::toString (s.toVar()).length();
+            setParam (s.param (eqId (0, 0, "on")), 1.0f);
+            setParam (s.param (eqId (0, 0, "lc")), 400.0f);
+            setParam (s.param (eqId (0, 0, "mg")), -4.0f);
+            setParam (s.param (eqId (0, 0, "mq")), 2.0f);
+            setParam (s.param (eqId (0, 0, "hsf")), 5000.0f);
+            const auto saved = s.toVar();
+            expectEquals (saved.getDynamicObject()->getProperties().size(), 5, "only the five values set");
+            expect (juce::JSON::toString (saved).length() > before);
+
+            // The fields reach the engine's settings in their order.
+            const auto eq = p.getSendEq (0, 0);
+            expect (eq.on);
+            expectWithinAbsoluteError (eq.lowCutHz, 400.0f, 0.5f);
+            expectWithinAbsoluteError (eq.midDb, -4.0f, 0.01f);
+            expectWithinAbsoluteError (eq.midQ, 2.0f, 0.01f);
+            expectWithinAbsoluteError (eq.highHz, 5000.0f, 1.0f);
+            expectWithinAbsoluteError (eq.lowHz, 150.0f, 0.5f);
+            expect (p.hasSendEq (0));
+            setParam (s.param (mix::busId (2, "type")), 0.0f);               // a group: no send EQ
+            expect (! p.hasSendEq (2));
+
+            // The audio: input 1 (a steady 0.5) through the low cut to Aux 1 on Out 5 dies away; Aux 2 keeps it.
+            setParam (s.param (mix::busId (0, "format")), 0.0f);
+            setParam (s.param (mix::busId (0, "out")), 5.0f);
+            setParam (s.param (mix::busId (1, "format")), 0.0f);
+            setParam (s.param (mix::busId (1, "out")), 6.0f);
+            setParam (s.param (mix::channelSendId (0, 0)), 0.0f);
+            setParam (s.param (mix::channelSendId (0, 1)), 0.0f);
+            p.prepareToPlay (48000.0, 128);
+            auto b = run (p, 60);
+            expectLessThan (std::abs (b.getSample (4, 64)), 1.0e-3f, "the steady signal is cut in Aux 1");
+            expectWithinAbsoluteError (b.getSample (5, 64), 0.5f, 1.0e-4f, "Aux 2 untouched");
+
+            // Kept in the session.
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expect (q.getSettings().flag (eqId (0, 0, "on")));
+            expectWithinAbsoluteError (q.getSettings().value (eqId (0, 0, "mg")), -4.0f, 0.01f);
+
+            // Scenes: scene 2 recalls only the sends to bus 1, with their EQ.
+            using Scope = MixScenes::Scope;
+            setParam (s.param ("scene_glide"), 0.0f);
+            Scope sends1;
+            sends1.categories = 0;
+            sends1.sendBuses = 1u;
+            p.getScenes().setScope (1, sends1);
+            p.recallScene (1);
+            setParam (s.param (eqId (0, 0, "mg")), 6.0f);
+            setParam (s.param (eqId (0, 1, "on")), 1.0f);
+            p.recallScene (0);
+            expectWithinAbsoluteError (s.value (eqId (0, 0, "mg")), -4.0f, 0.01f, "scene 1 has its own");
+            expect (! s.flag (eqId (0, 1, "on")), "scene 1: the send EQ to bus 2 off");
+            setParam (s.param (eqId (0, 1, "hsg")), 3.0f);
+            p.recallScene (1);
+            expectWithinAbsoluteError (s.value (eqId (0, 0, "mg")), 6.0f, 0.01f, "the send EQ to bus 1 recalls");
+            expectWithinAbsoluteError (s.value (eqId (0, 1, "hsg")), 3.0f, 0.01f, "the send EQ to bus 2 stays (out of scope)");
+
+            // Undo.
+            auto& undo = p.getUndo();
+            undo.poll();
+            undo.closeStep();
+            setParam (s.param (eqId (3, 4, "lsg")), -9.0f);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Ch 4 Send 5 EQ Low Gain"));
+            undo.undo();
+            expectWithinAbsoluteError (s.value (eqId (3, 4, "lsg")), 0.0f, 0.01f);
+        }
+
+        beginTest ("Send EQ copy and paste: one send, every send to a bus (a linked pair once)");
+        {
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            setParam (s.param (mix::channelSendEqId (0, 2, "on")), 1.0f);
+            setParam (s.param (mix::channelSendEqId (0, 2, "lc")), 200.0f);
+            setParam (s.param (mix::channelSendEqId (0, 2, "hsg")), -6.0f);
+            p.setChannelName (0, "Kick");
+            const auto copy = p.copySendEq (0, 2);
+            expect (RKMixProcessor::isSendEqCopy (copy));
+            expect (! RKMixProcessor::isChannelCopy (copy));
+            expectEquals (RKMixProcessor::describeCopy (copy), juce::String ("Send EQ from Kick"));
+
+            p.pasteSendEq (5, 7, copy);
+            expect (s.flag (mix::channelSendEqId (5, 7, "on")));
+            expectWithinAbsoluteError (s.value (mix::channelSendEqId (5, 7, "lc")), 200.0f, 0.5f);
+            expectWithinAbsoluteError (s.value (mix::channelSendEqId (5, 7, "hsg")), -6.0f, 0.01f);
+            expect (! s.flag (mix::channelSendEqId (5, 6, "on")), "only that bus");
+
+            setParam (s.param (mix::linkId (1)), 1.0f);                       // channels 3 and 4 linked
+            p.pasteSendEqToBus (9, copy);
+            int on = 0;
+            for (int ch = 0; ch < mix::kChannels; ++ch)
+                on += s.flag (mix::channelSendEqId (ch, 9, "on")) ? 1 : 0;
+            expectEquals (on, 31, "every channel, the pair's follower left alone");
+            expect (! s.flag (mix::channelSendEqId (3, 9, "on")));
+        }
+
         beginTest ("Assignables: an Assign moves its control within its range, and the control moves the Assign");
         {
             using Kind = MixAssigns::Target::Kind;

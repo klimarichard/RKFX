@@ -6,6 +6,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 
 /** The RKLoop DSP: a live looper with eight loops, zero latency.
 
@@ -91,6 +92,24 @@ public:
     /** Loop 1's length while sync is on (0 = no sync reference). */
     int getMasterLength() const noexcept;
 
+    // Export (message thread). The audio thread writes into a loop only while
+    // it records, overdubs or swaps for Undo / Redo; each time it starts one
+    // of those it bumps the loop's write counter, so a copy taken in between
+    // can be checked afterwards (a seqlock, as in RKMix's Monitor EQ).
+
+    /** True when loop @p i is being written (recording, overdubbing or an
+        Undo / Redo swap): it can't be exported until that ends. */
+    bool isBusy (int i) const noexcept;
+    bool hasAudio (int i) const noexcept;   // recorded, and not being recorded for the first time
+
+    /** Copies loop @p i, exactly as stored (`length` samples, its seam
+        fades, the overdubs as they are now) into @p dest with
+        @p numChannels channels (1 or 2), resizing it. False, and @p dest
+        untouched, when the loop is empty or busy, or was written to during
+        the copy (try again later). Message thread; allocates. */
+    bool copyLoop (int i, juce::AudioBuffer<float>& dest, int numChannels) const;
+    std::uint32_t getWriteCount (int i) const noexcept { return loops[(size_t) i].writes.load(); }   // tests
+
 private:
     enum class AfterFade { nothing, stop, clear };
 
@@ -111,7 +130,8 @@ private:
 
         int undoStart = 0, sessionSaved = 0, swapCursor = -1;
         std::atomic<int> undoCount { 0 };
-        std::atomic<bool> undone { false };
+        std::atomic<bool> undone { false }, swapping { false };   // swapping mirrors swapCursor >= 0, for other threads
+        std::atomic<std::uint32_t> writes { 0 };                  // bumped as a recording, overdub or swap starts
     };
 
     double sampleRate = 0.0;
@@ -142,5 +162,7 @@ private:
     void fadeOut (int i, AfterFade) noexcept;
     void stopOtherParts (int except) noexcept;
     void continueSwap (int i) noexcept;
+    void startSwap (int i) noexcept;
+    void bumpWrites (Loop&) noexcept;
     float read (const Loop&, int channel, double pos) const noexcept;
 };

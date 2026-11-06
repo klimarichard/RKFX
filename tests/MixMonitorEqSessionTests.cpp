@@ -260,7 +260,7 @@ public:
             auto& console = remote.getConsole();
             expect (console.setPin ("2468"));
 
-            struct Fake : MixWebServer::Connection
+            struct Fake : rkfx::RemoteServer::Connection
             {
                 juce::StringArray sent;
                 bool send (const juce::String& t) override { sent.add (t); return true; }

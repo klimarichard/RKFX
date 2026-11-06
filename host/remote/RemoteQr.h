@@ -4,14 +4,17 @@
 
 #include <vector>
 
+namespace rkfx
+{
+
 /** A QR code for a short text (a URL): byte mode, error correction level M,
     versions 1 to 10 (up to 213 bytes). The encoding follows ISO/IEC 18004,
     as in Project Nayuki's reference generator. GUI-free apart from draw(). */
-class MixQr
+class RemoteQr
 {
 public:
     /** Encodes @p text; isValid() is false when it doesn't fit. */
-    explicit MixQr (const juce::String& text);
+    explicit RemoteQr (const juce::String& text);
 
     bool isValid() const noexcept { return size > 0; }
     int getSize() const noexcept { return size; }           // modules per side
@@ -34,3 +37,5 @@ private:
     void applyMask (int mask);
     long penalty() const;
 };
+
+} // namespace rkfx

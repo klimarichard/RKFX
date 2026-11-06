@@ -1,7 +1,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "../plugins/RKMix/PluginProcessor.h"
-#include "../plugins/RKMix/MixQr.h"
+#include "host/remote/RemoteQr.h"
 #include "../plugins/RKMix/MixOsc.h"
 
 /** RKMix as a plugin: 32 channels each way, the default console, bypass to
@@ -1099,17 +1099,17 @@ public:
         beginTest ("Remote: SHA-1 and the WebSocket handshake key; a QR code for a link");
         {
             const juce::String abc ("abc");
-            const auto digest = MixWebServer::sha1 (abc.toRawUTF8(), 3);
+            const auto digest = rkfx::RemoteServer::sha1 (abc.toRawUTF8(), 3);
             expectEquals (juce::String::toHexString (digest.getData(), 20, 0), juce::String ("a9993e364706816aba3e25717850c26c9cd0d89d"));
             const juce::String key ("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11");   // RFC 6455's example
-            const auto accept = MixWebServer::sha1 (key.toRawUTF8(), key.getNumBytesAsUTF8());
+            const auto accept = rkfx::RemoteServer::sha1 (key.toRawUTF8(), key.getNumBytesAsUTF8());
             expectEquals (juce::Base64::toBase64 (accept.getData(), accept.getSize()), juce::String ("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
 
-            MixQr qr ("http://Richards-MacBook-Pro.local:8080/m/3f9a2c71b0aa");
+            rkfx::RemoteQr qr ("http://Richards-MacBook-Pro.local:8080/m/3f9a2c71b0aa");
             expect (qr.isValid());
             expectEquals (qr.getSize(), 33, "version 4");
             expect (qr.isDark (0, 0) && qr.isDark (6, 6) && ! qr.isDark (1, 1), "a finder pattern in the corner");
-            expect (! MixQr (juce::String::repeatedString ("x", 300)).isValid(), "too long for version 10");
+            expect (! rkfx::RemoteQr (juce::String::repeatedString ("x", 300)).isValid(), "too long for version 10");
         }
 
         beginTest ("Remote: a bus's page and manifest; a phone changes only its own bus");
@@ -1421,7 +1421,7 @@ public:
             expect (console.setPin ("2468"));
             expect (! console.setPin ("12a4") && ! console.setPin ("123"), "digits only, 4 to 8");
 
-            struct Fake : MixWebServer::Connection
+            struct Fake : rkfx::RemoteServer::Connection
             {
                 juce::StringArray sent;
                 bool closed = false;

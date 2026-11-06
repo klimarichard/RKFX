@@ -60,7 +60,9 @@ const char* MixRemotePage::find (const juce::String& name, int& size)
         static juce::CriticalSection cacheLock;
         static std::map<juce::String, juce::MemoryBlock> cache;
         const juce::ScopedLock sl (cacheLock);
-        const auto file = juce::File (RKMIX_REMOTE_FROM_DISK).getChildFile (name);
+        auto file = juce::File (RKMIX_REMOTE_FROM_DISK).getChildFile (name);
+        if (! file.existsAsFile())   // the shared controls (rk.js)
+            file = juce::File (RKMIX_REMOTE_FROM_DISK).getChildFile ("../../../host/remote").getChildFile (name);
         if (file.existsAsFile())
         {
             auto& block = cache[name];
@@ -121,7 +123,7 @@ public:
 
             std::map<int, juce::String> mixes, meters;   // by bus, made once for all its phones
             const juce::ScopedLock sl (sentLock);
-            owner.server.forEachConnection ([&] (MixWebServer::Connection& c)
+            owner.server.forEachConnection ([&] (rkfx::RemoteServer::Connection& c)
             {
                 if (c.tag == MixConsole::kTag)
                     return owner.console.send (c, consoleMeters);
@@ -141,7 +143,7 @@ public:
         }
     }
 
-    void forget (MixWebServer::Connection& c)
+    void forget (rkfx::RemoteServer::Connection& c)
     {
         const juce::ScopedLock sl (sentLock);
         sent.erase (&c);
@@ -154,7 +156,7 @@ private:
     MixRemote& owner;
     MixRemoteMeters monitorMeters;
     juce::CriticalSection sentLock;
-    std::map<const MixWebServer::Connection*, juce::String> sent;
+    std::map<const rkfx::RemoteServer::Connection*, juce::String> sent;
 };
 
 //==============================================================================
@@ -177,7 +179,7 @@ MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p), osc (std::mak
     icon = makeIcon();
 
     server.onHttp = [this] (const juce::String& path) { return http (path); };
-    server.onOpen = [this] (MixWebServer::Connection& c)
+    server.onOpen = [this] (rkfx::RemoteServer::Connection& c)
     {
         if (c.path == "/ws/console")
         {
@@ -201,14 +203,14 @@ MixRemote::MixRemote (RKMixProcessor& p) : mixer (p), console (p), osc (std::mak
         ++version;
         return true;
     };
-    server.onMessage = [this] (MixWebServer::Connection& c, const juce::String& message)
+    server.onMessage = [this] (rkfx::RemoteServer::Connection& c, const juce::String& message)
     {
         if (c.tag == MixConsole::kTag)
             console.received (c, message);
         else
             receive (c.tag, message);
     };
-    server.onClose = [this] (MixWebServer::Connection& c)
+    server.onClose = [this] (rkfx::RemoteServer::Connection& c)
     {
         if (c.tag == MixConsole::kTag)
         {
@@ -362,7 +364,7 @@ juce::String MixRemote::getHostName() const
 juce::String MixRemote::keyFor (int bus) const
 {
     const auto text = secret + ":bus:" + juce::String (bus + 1);
-    const auto digest = MixWebServer::sha1 (text.toRawUTF8(), text.getNumBytesAsUTF8());
+    const auto digest = rkfx::RemoteServer::sha1 (text.toRawUTF8(), text.getNumBytesAsUTF8());
     return juce::String::toHexString (digest.getData(), 6, 0);   // 12 hex digits
 }
 
@@ -387,7 +389,7 @@ juce::String MixRemote::consoleLink() const
 std::array<int, mix::kBuses> MixRemote::connectedByBus()
 {
     std::array<int, mix::kBuses> n {};
-    server.forEachConnection ([&n] (MixWebServer::Connection& c)
+    server.forEachConnection ([&n] (rkfx::RemoteServer::Connection& c)
     {
         if (c.tag != MixConsole::kTag && juce::isPositiveAndBelow (c.tag, mix::kBuses))
             ++n[(size_t) c.tag];
@@ -396,9 +398,9 @@ std::array<int, mix::kBuses> MixRemote::connectedByBus()
 }
 
 //==============================================================================
-MixWebServer::Response MixRemote::http (const juce::String& path) const
+rkfx::RemoteServer::Response MixRemote::http (const juce::String& path) const
 {
-    using Response = MixWebServer::Response;
+    using Response = rkfx::RemoteServer::Response;
     if (path == "/icon.png" || path == "/apple-touch-icon.png")
     {
         Response r;

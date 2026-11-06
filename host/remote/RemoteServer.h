@@ -6,11 +6,15 @@
 #include <memory>
 #include <vector>
 
-/** A small HTTP and WebSocket server for the local network: plain HTTP
+namespace rkfx
+{
+
+/** A small HTTP and WebSocket server for the local network (RKMix's and
+    RKBoard's remotes): plain HTTP
     GETs answered by a callback, and WebSocket connections (RFC 6455, text
     messages) with a callback per message. One thread listens, one thread
     per connection reads; sending is thread-safe. No TLS, no keep-alive. */
-class MixWebServer
+class RemoteServer
 {
 public:
     struct Response
@@ -31,7 +35,7 @@ public:
         virtual void close() = 0;
         juce::String path;              // what the client asked for: "/ws/3f9a2c71b0"
         juce::String address;           // the client's IP
-        int tag = -1;                   // free for the owner (RKMix: the bus)
+        int tag = -1;                   // free for the owner (RKMix: the bus; RKBoard: the board)
     };
 
     /** GET @p path (any thread): the answer. */
@@ -41,8 +45,8 @@ public:
     std::function<void (Connection&, const juce::String& message)> onMessage;
     std::function<void (Connection&)> onClose;
 
-    MixWebServer();
-    ~MixWebServer();
+    RemoteServer();
+    ~RemoteServer();
 
     /** Listens on @p port (all interfaces). False when the port is taken. */
     bool start (int port);
@@ -70,5 +74,7 @@ private:
     friend class Listener;
     friend class Client;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixWebServer)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RemoteServer)
 };
+
+} // namespace rkfx

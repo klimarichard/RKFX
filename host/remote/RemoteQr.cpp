@@ -1,6 +1,9 @@
-#include "MixQr.h"
+#include "RemoteQr.h"
 
 #include <array>
+
+namespace rkfx
+{
 
 namespace
 {
@@ -106,7 +109,7 @@ namespace
 }
 
 //==============================================================================
-MixQr::MixQr (const juce::String& text)
+RemoteQr::RemoteQr (const juce::String& text)
 {
     const auto* utf8 = text.toRawUTF8();
     const auto length = (int) text.getNumBytesAsUTF8();
@@ -194,7 +197,7 @@ MixQr::MixQr (const juce::String& text)
     drawFormatBits (best);
 }
 
-void MixQr::drawFunctionPatterns (int version)
+void RemoteQr::drawFunctionPatterns (int version)
 {
     for (int i = 0; i < size; ++i)
     {
@@ -233,7 +236,7 @@ void MixQr::drawFunctionPatterns (int version)
     drawVersion (version);
 }
 
-void MixQr::drawFormatBits (int mask)
+void RemoteQr::drawFormatBits (int mask)
 {
     const auto data = kFormatBitsM << 3 | mask;
     long rem = data;
@@ -256,7 +259,7 @@ void MixQr::drawFormatBits (int mask)
     setFunction (8, size - 8, true);   // always dark
 }
 
-void MixQr::drawVersion (int version)
+void RemoteQr::drawVersion (int version)
 {
     if (version < 7)
         return;
@@ -272,7 +275,7 @@ void MixQr::drawVersion (int version)
     }
 }
 
-void MixQr::drawCodewords (const std::vector<std::uint8_t>& data)
+void RemoteQr::drawCodewords (const std::vector<std::uint8_t>& data)
 {
     size_t i = 0;
     for (int right = size - 1; right >= 1; right -= 2)
@@ -294,7 +297,7 @@ void MixQr::drawCodewords (const std::vector<std::uint8_t>& data)
     }
 }
 
-void MixQr::applyMask (int mask)
+void RemoteQr::applyMask (int mask)
 {
     for (int y = 0; y < size; ++y)
         for (int x = 0; x < size; ++x)
@@ -302,7 +305,7 @@ void MixQr::applyMask (int mask)
                 set (x, y, ! isDark (x, y));
 }
 
-long MixQr::penalty() const
+long RemoteQr::penalty() const
 {
     long result = 0;
 
@@ -370,7 +373,7 @@ long MixQr::penalty() const
     return result;
 }
 
-void MixQr::draw (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour dark, juce::Colour light) const
+void RemoteQr::draw (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour dark, juce::Colour light) const
 {
     if (! isValid())
         return;
@@ -389,3 +392,5 @@ void MixQr::draw (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour d
                                            module + 0.02f, module + 0.02f });
     g.fillRectList (cells);
 }
+
+} // namespace rkfx

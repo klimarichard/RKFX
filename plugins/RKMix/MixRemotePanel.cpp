@@ -1,7 +1,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "MixEditorStyle.h"
-#include "MixQr.h"
+#include "host/remote/RemoteQr.h"
 #include "MixOsc.h"
 
 using namespace MixGui::Layout;
@@ -243,7 +243,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
         g.drawText ("PIN", pin.getBounds().withX (pin.getX() - 40).withWidth (36), juce::Justification::centredLeft);
         const auto link = remote.consoleLink();
         if (listening && console.isEnabled())
-            MixQr (link).draw (g, consoleQr.toFloat());
+            rkfx::RemoteQr (link).draw (g, consoleQr.toFloat());
         else
         {
             g.setColour (rkfx::Palette::knobTrack);
@@ -336,7 +336,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
 
         auto qrArea = cell.removeFromTop (kQrSize).withSizeKeepingCentre (kQrSize, kQrSize);
         if (listening)
-            MixQr (link.url).draw (g, qrArea.toFloat());
+            rkfx::RemoteQr (link.url).draw (g, qrArea.toFloat());
         else
         {
             g.setColour (rkfx::Palette::knobTrack);

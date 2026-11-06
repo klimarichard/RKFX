@@ -3,7 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "MixLayout.h"
-#include "MixWebServer.h"
+#include "host/remote/RemoteServer.h"
 
 #include <array>
 #include <atomic>
@@ -78,12 +78,12 @@ public:
     //==============================================================================
     // Connections (any thread)
 
-    void opened (MixWebServer::Connection&);
-    void closed (MixWebServer::Connection&);
-    void received (MixWebServer::Connection&, const juce::String& message);
+    void opened (rkfx::RemoteServer::Connection&);
+    void closed (rkfx::RemoteServer::Connection&);
+    void received (rkfx::RemoteServer::Connection&, const juce::String& message);
 
     /** The push thread: sends what waits for @p connection, and @p meters (empty: none). */
-    void send (MixWebServer::Connection&, const juce::String& meters);
+    void send (rkfx::RemoteServer::Connection&, const juce::String& meters);
 
     //==============================================================================
     // Message thread
@@ -148,7 +148,7 @@ private:
     std::map<juce::String, Failures> failures;   // by address
 
     juce::CriticalSection lock;
-    std::map<const MixWebServer::Connection*, std::unique_ptr<Client>> clients;
+    std::map<const rkfx::RemoteServer::Connection*, std::unique_ptr<Client>> clients;
     int nextId = 1;
     std::atomic<int> version { 0 };
     int ticks = 0;

@@ -41,7 +41,7 @@ namespace
 //==============================================================================
 struct MixConsole::Client
 {
-    MixWebServer::Connection* connection = nullptr;
+    rkfx::RemoteServer::Connection* connection = nullptr;
     int id = 0;
     juce::String address, name, token;
     bool signedIn = false;
@@ -155,7 +155,7 @@ void MixConsole::settingsChanged()
 }
 
 //==============================================================================
-void MixConsole::opened (MixWebServer::Connection& c)
+void MixConsole::opened (rkfx::RemoteServer::Connection& c)
 {
     const juce::ScopedLock sl (lock);
     auto client = std::make_unique<Client>();
@@ -166,21 +166,21 @@ void MixConsole::opened (MixWebServer::Connection& c)
     ++version;
 }
 
-void MixConsole::closed (MixWebServer::Connection& c)
+void MixConsole::closed (rkfx::RemoteServer::Connection& c)
 {
     const juce::ScopedLock sl (lock);
     clients.erase (&c);
     ++version;
 }
 
-void MixConsole::received (MixWebServer::Connection& c, const juce::String& message)
+void MixConsole::received (rkfx::RemoteServer::Connection& c, const juce::String& message)
 {
     const juce::ScopedLock sl (lock);
     if (auto it = clients.find (&c); it != clients.end() && it->second->inbox.size() < 2000)
         it->second->inbox.add (message);
 }
 
-void MixConsole::send (MixWebServer::Connection& c, const juce::String& meters)
+void MixConsole::send (rkfx::RemoteServer::Connection& c, const juce::String& meters)
 {
     juce::StringArray out;
     bool signedIn = false;

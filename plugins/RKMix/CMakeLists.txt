@@ -30,8 +30,6 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixUndo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixLock.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixGang.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/MixQr.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/MixWebServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemote.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixConsole.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixOsc.cpp
@@ -84,10 +82,12 @@ target_link_libraries(rkmix_factory_presets INTERFACE rkfx_pedal_host)
 target_link_libraries(rkmix_factory_presets INTERFACE juce::juce_osc)
 
 # The remote's web pages (remote/: the monitor page, the console app), served
-# by MixRemote; looked up by file name (MixRemotePage::find).
+# by MixRemote; looked up by file name (MixRemotePage::find). The suite's
+# controls (rk.js) are shared with RKBoard's remote (host/remote/).
 file(GLOB remoteFiles CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.html"
                                         "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.js"
                                         "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.css")
+list(APPEND remoteFiles "${PROJECT_SOURCE_DIR}/host/remote/rk.js")
 list(SORT remoteFiles)
 juce_add_binary_data(RKMix_RemoteFiles
     HEADER_NAME RKMixRemoteFiles.h

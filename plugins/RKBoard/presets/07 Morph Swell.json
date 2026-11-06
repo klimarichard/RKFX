@@ -1,0 +1,192 @@
+{
+  "plugin": "RKBoard",
+  "version": 1,
+  "name": "Morph Swell",
+  "pedals": [
+    {
+      "id": 1,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKCompress",
+        "version": 1,
+        "params": {}
+      }
+    },
+    {
+      "id": 2,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKDistort",
+        "version": 1,
+        "params": {
+          "gain": 6
+        }
+      }
+    },
+    {
+      "id": 3,
+      "section": "pre",
+      "bypass": true,
+      "preset": {
+        "plugin": "RKDelay",
+        "version": 1,
+        "params": {
+          "mix": 0
+        }
+      },
+      "trails": true
+    },
+    {
+      "id": 4,
+      "section": "pre",
+      "bypass": false,
+      "preset": {
+        "plugin": "RKVerb",
+        "version": 1,
+        "params": {
+          "mix": 15
+        }
+      },
+      "trails": true
+    }
+  ],
+  "scenes": {
+    "current": 1,
+    "bypass": [
+      [
+        3
+      ],
+      [],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ],
+      [
+        3
+      ]
+    ],
+    "knobs": [
+      {
+        "pedal": 2,
+        "param": "gain",
+        "values": [
+          6,
+          24,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6
+        ]
+      },
+      {
+        "pedal": 3,
+        "param": "mix",
+        "values": [
+          0,
+          35,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "pedal": 4,
+        "param": "mix",
+        "values": [
+          15,
+          35,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15,
+          15
+        ]
+      }
+    ],
+    "names": [
+      "Verse",
+      "Chorus",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  }
+}

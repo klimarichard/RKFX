@@ -69,7 +69,7 @@ The MIDI family: MIDI effects (MIDI in, MIDI out, no audio) for keyboards and MI
 
 ### RKBoard
 
-[RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding the plugins above as pedals, as many as you like (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain with up to four splits, each into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets, expression pedals and footswitches (knobs or pedal on/off), 16 scenes (a new pedal starts bypassed in all of them), and trails for delays and reverbs. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app. Its app icon is the RKMusic name strip (RK over a warm white band).
+[RKBoard](docs/manuals/RKBoard.md) is a pedalboard holding the plugins above as pedals, as many as you like (each one the real plugin, with its presets), plus board-only Wah and Volume pedals. Pedals run in a chain with up to four splits, each into two parallel paths (full, frequency or stereo split) that are mixed back together. It has 32 assignable host parameters for widgets, expression pedals and footswitches (knobs or pedal on/off), 16 named scenes (a new pedal starts bypassed in all of them; the Scene parameter's text shows the name), scene morph (an expression pedal on the Morph parameter blends one scene into another), trails for delays and reverbs, undo and redo, and a lock for the show. A phone or iPad remote (a web page on the local network, PIN-protected, one per process listing every RKBoard) switches scenes, morphs, switches pedals, turns their knobs and the Assign parameters, and shows the tuner and the tempo. As a standalone app it adds tap tempo and MIDI clock, MIDI learn for footswitches and expression pedals, and a tuner. Board presets are shared by the plugin and the app. Its app icon is the RKMusic name strip (RK over a warm white band).
 
 ### RKMix
 
@@ -126,6 +126,8 @@ Every release build of every plugin must pass the tests, auval and [pluginval](h
 
 To check a GUI without a host, `cmake --build build --target RKFXSnapshots` builds a snapshot tool per plugin; `build/tools/RKFXSnapshot_<Name>_artefacts/Release/RKFXSnapshot_<Name> out.png [scale]` saves that plugin's window as a PNG.
 
+To try a remote page in a browser without the app or a host, `cmake --build build --target RKFXRemoteDemo_RKMix` (or `RKFXRemoteDemo_RKBoard`) builds a tool serving it from a headless RKMix (or two RKBoards), with the pages read from disk: `build/tools/RKFXRemoteDemo_RKBoard_artefacts/Release/RKFXRemoteDemo_RKBoard [port] [pin]` (default 18081, PIN 1234).
+
 `cmake --build build --target RKIconRender` builds the icon renderer for the RKMusic plugins (RKModular, RKSampler, RKTracks, RKBoard, RKMix, RKPlay): `build/tools/RKIconRender_artefacts/Release/RKIconRender tools/icons/fonts <out dir>` writes each plugin's `icon_big.png` and `icon_small.png`, to copy into its resources folder (see `tools/icons/RenderIcons.cpp`).
 
 ## Repository layout
@@ -148,8 +150,9 @@ core/              shared code for every plugin
 plugins/<Name>/    one folder per plugin (presets/ holds its factory presets)
 host/              the pedal host shared by RKBoard and RKMix: every plugin's
                    processor as a pedal or insert, the Wah and Volume pedals,
-                   MIDI learn, tap tempo and MIDI clock
-plugins/RKBoard/   the pedalboard
+                   MIDI learn, tap tempo and MIDI clock, the undo history;
+                   remote/: the remotes' web server, QR codes and controls (rk.js)
+plugins/RKBoard/   the pedalboard (undo, lock, morph, the remote and its web page)
 plugins/RKMix/     the mixing console (engine, strip, buses, inserts, scenes, DCAs, undo, Monitor EQ, the remote and its web page)
 plugins/RKPlay/    the music player (streaming engine, analysis, shows, remote)
 tests/             DSP and format tests, CPU benchmark

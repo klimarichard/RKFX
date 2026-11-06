@@ -5,6 +5,7 @@
 
 #include "BoardProcessor.h"
 #include "AssignPanel.h"
+#include "RemotePanel.h"
 #include "RoutingPanel.h"
 #include "TunerPanel.h"
 #include "gui/LookAndFeel.h"
@@ -47,8 +48,14 @@ public:
     static constexpr int kMergeNode = -101;      // mergeNode (0)
     static constexpr int kAssignView = -4;      // not on the strip: the Assign button
     static constexpr int kTunerView = -5;       // not on the strip: the tuner (standalone)
+    static constexpr int kRemoteView = -6;      // not on the strip: the remote's settings
 
     int getSelected() const noexcept { return selected; }
+
+    /** The window's lock: with footswitches, a click selects a pedal or
+        switches it; with everything, it only selects. No dragging, adding or
+        menus either way. */
+    void setLock (BoardProcessor::Lock l) { lock = l; dragging = false; pressedId = 0; repaint(); }
     void setSelected (int item);
     std::function<void (int item)> onSelect;
 
@@ -66,6 +73,10 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+
+    /** Where pedal @p id's tile is, and its footswitch (empty when it isn't on the board). */
+    juce::Rectangle<int> tileBounds (int id);
+    juce::Rectangle<int> footswitchOf (int id) { return tileBounds (id).isEmpty() ? juce::Rectangle<int>() : footswitchBounds (tileBounds (id)); }
 
     /** The height the board needs at @p width (it grows a row at a time). */
     int getPreferredHeight (int width) const;
@@ -99,6 +110,7 @@ private:
     };
 
     BoardProcessor& board;
+    BoardProcessor::Lock lock = BoardProcessor::Lock::off;
     int selected = 0;
     int hoverKey = 0;                     // keyOf() the item under the mouse
     Layout layout;                        // rebuilt by layoutItems()
@@ -130,6 +142,25 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardStrip)
 };
 
+/** A scene button: its number, and its name under it (shortened to fit;
+    whole in the tooltip). Double-click to rename it. */
+class SceneButton : public juce::TextButton
+{
+public:
+    void setScene (int number, const juce::String& name);
+    std::function<void()> onDoubleClick;
+    /** Locked: it recalls its scene, but isn't renamed. */
+    void setLocked (bool l) { locked = l; }
+
+    void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
+private:
+    int scene = 0;
+    juce::String sceneName;
+    bool locked = false;
+};
+
 /** The RKBoard window: a slim header (board preset, input and output level),
     the pedal row, and the selected pedal's own editor below. */
 class BoardEditor : public juce::AudioProcessorEditor,
@@ -144,6 +175,8 @@ public:
 
     /** Right-click on a knob in the pedal's controls: the assign menu. */
     void mouseDown (const juce::MouseEvent&) override;
+    /** Cmd+Z undo, Cmd+Shift+Z redo. */
+    bool keyPressed (const juce::KeyPress&) override;
 
     /** Opens a pedal's controls below the board, the split's or merge's
         settings (BoardStrip::kSplitNode / kMergeNode), or the assignable
@@ -151,10 +184,15 @@ public:
     void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
-    static constexpr int kWidth = 1100;
+    /** The pedal row (tests). */
+    BoardStrip& getStrip() noexcept { return strip; }
+    /** Follows the board now, as the window's timer does (tests). */
+    void update() { timerCallback(); }
+
+    static constexpr int kWidth = 1180;
     static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
-    static constexpr int kSceneBarHeight = 36;
+    static constexpr int kSceneBarHeight = 46;
     static constexpr int kMargin = 12;
 
 private:
@@ -164,9 +202,48 @@ private:
     rkfx::LookAndFeel lookAndFeel { rkfx::Palette::boardAccent };
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
-    juce::TextButton assignButton { "Assign" };
-    juce::Label sceneLabel;
-    std::array<juce::TextButton, BoardProcessor::kNumScenes> sceneButtons;
+    juce::TextButton assignButton { "Assign" }, remoteButton { "Remote" };
+    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
+    int lastUndoVersion = -1;
+
+    /** Lies over what the lock protects: takes the clicks, does nothing. */
+    struct LockShield : public juce::Component,
+                        public juce::SettableTooltipClient
+    {
+        LockShield() { setTooltip ("Locked: hold Lock to unlock"); }
+        void paint (juce::Graphics&) override;
+    };
+
+    /** Lock: click for the lock's menu; while locked, hold it a second to unlock. */
+    struct LockButton : public juce::Component,
+                        public juce::SettableTooltipClient,
+                        private juce::Timer
+    {
+        explicit LockButton (BoardEditor& o) : owner (o) {}
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void timerCallback() override;
+
+        BoardEditor& owner;
+        double holdStart = 0.0;
+        bool holding = false;
+    };
+    LockButton lockButton { *this };
+    std::array<LockShield, 4> shields;   // the header's left and right, the scene bar (or its tempo field), the panel
+    BoardProcessor::Lock shownLock = BoardProcessor::Lock::off;
+    bool isLocked() const noexcept { return board.getLock() != BoardProcessor::Lock::off; }
+    void applyLock();
+    std::array<SceneButton, BoardProcessor::kNumScenes> sceneButtons;
+
+    // Scene morph: From, To, and the Morph position (the host parameter).
+    juce::Label morphLabel;
+    juce::TextButton morphFromButton, morphToButton;
+    juce::Label morphArrow;
+    juce::Slider morphSlider;
+    std::unique_ptr<juce::SliderParameterAttachment> morphAttachment;
+    void showMorphSceneMenu (bool to);
+    void refreshMorph();
 
     // Standalone: tempo and tuner
     juce::Label tempoField, tempoUnit;
@@ -187,6 +264,7 @@ private:
     std::unique_ptr<RoutingPanel> routingPanel;
     std::unique_ptr<AssignPanel> assignPanel;
     std::unique_ptr<TunerPanel> tunerPanel;
+    std::unique_ptr<RemotePanel> remotePanel;
     juce::Rectangle<int> pedalBaseSize;     // its own (unscaled) size
 
     int lastPresetCounter = -1;
@@ -200,6 +278,7 @@ private:
     void showAssignMenu (int pedalId, juce::RangedAudioParameter&);
     void removeSplit (int split);
     void showSceneMenu (int scene);
+    void renameScene (int scene);
 
     /** MIDI learn items (standalone) for @p target, added to @p menu with IDs from @p base. */
     void addLearnItems (juce::PopupMenu& menu, int target, int base) const;
@@ -212,6 +291,8 @@ private:
     void layoutPedalEditor();
 
     void refreshPresetButton();
+    void refreshUndo();
+    void undoOrRedo (bool redo);
     void showNote (const juce::String& text, bool isError);
     void showPresetMenu();
     void save();

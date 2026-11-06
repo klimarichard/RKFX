@@ -69,3 +69,13 @@ target_compile_definitions(RKFXRemoteDemo_RKMix PRIVATE JUCE_USE_CURL=0 JUCE_WEB
                            RKMIX_REMOTE_FROM_DISK="${PROJECT_SOURCE_DIR}/plugins/RKMix/remote")
 target_link_libraries(RKFXRemoteDemo_RKMix PRIVATE rkmix_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
                       PUBLIC juce::juce_recommended_config_flags)
+
+# RKBoard's remote page served from two headless RKBoards (try it in a browser).
+juce_add_console_app(RKFXRemoteDemo_RKBoard PRODUCT_NAME "RKFXRemoteDemo_RKBoard")
+set_target_properties(RKFXRemoteDemo_RKBoard PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKFXRemoteDemo_RKBoard PRIVATE BoardRemoteDemo.cpp ${RKBOARD_SOURCES})
+target_include_directories(RKFXRemoteDemo_RKBoard PRIVATE ${PROJECT_SOURCE_DIR}/plugins/RKBoard)
+target_compile_definitions(RKFXRemoteDemo_RKBoard PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0
+                           RKBOARD_REMOTE_FROM_DISK="${PROJECT_SOURCE_DIR}/plugins/RKBoard/remote")
+target_link_libraries(RKFXRemoteDemo_RKBoard PRIVATE rkboard_factory_presets rkfx_core juce::juce_audio_processors juce::juce_gui_basics
+                      PUBLIC juce::juce_recommended_config_flags)

@@ -75,6 +75,26 @@ namespace
         return true;
     }
 
+    /** A remote page without a network: what it is sent, kept as JSON. */
+    struct FakeConnection : public rkfx::RemoteServer::Connection
+    {
+        explicit FakeConnection (const juce::String& from = "10.0.0.5") { path = "/ws/board"; address = from; }
+        bool send (const juce::String& text) override { sent.add (text); return true; }
+        void close() override { closed = true; }
+        juce::StringArray sent;
+        bool closed = false;
+
+        /** The latest message of @p type sent (void if none), and forgets them all. */
+        juce::var last (const juce::String& type)
+        {
+            juce::var found;
+            for (const auto& text : sent)
+                if (const auto v = juce::JSON::parse (text); v["type"].toString() == type)
+                    found = v;
+            return found;
+        }
+    };
+
     juce::String stateJson (BoardProcessor& board)
     {
         juce::MemoryBlock block;
@@ -197,7 +217,7 @@ public:
         {
             BoardProcessor board;
             board.clearBoard();
-            expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 1, "In, Out, Assign 1-32, Scene");
+            expectEquals (board.getParameters().size(), 2 + BoardProcessor::kNumAssigns + 2, "In, Out, Assign 1-32, Scene, Morph");
 
             const auto chorus = addOn (board, "RKChorus");
             const auto delay = addOn (board, "RKDelay");
@@ -341,6 +361,88 @@ public:
             // Closing the board's window lets the pedals make new editors later.
             rkboard::BoardEditor reopened (board);
             expectEquals (reopened.getShownPedal(), b);
+        }
+
+        beginTest ("Lock: footswitches and scenes only, or everything; hold to unlock");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setStandaloneForTesting (juce::File::createTempFile ("rig").getParentDirectory().getChildFile ("rkboard-lock-test"));
+            const auto a = addOn (board, "RKChorus");
+            const auto b = addOn (board, "RKDelay");
+            rkboard::BoardEditor editor (board);
+            editor.setBounds (0, 0, rkboard::BoardEditor::kWidth, 900);
+            editor.setVisible (true);   // hit-tested (not on the screen)
+            auto& strip = editor.getStrip();
+
+            const auto mouse = [&] (juce::Component& c, juce::Point<int> at, juce::Point<int> to, bool popup = false)
+            {
+                auto source = juce::Desktop::getInstance().getMainMouseSource();
+                const auto now = juce::Time::getCurrentTime();
+                const auto mods = popup ? juce::ModifierKeys (juce::ModifierKeys::rightButtonModifier) : juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier);
+                const auto event = [&] (juce::Point<int> p, bool dragged)
+                {
+                    return juce::MouseEvent (source, p.toFloat(), mods, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, at.toFloat(), now, 1, dragged);
+                };
+                c.mouseDown (event (at, false));
+                if (to != at)
+                    c.mouseDrag (event (to, true));
+                c.mouseUp (event (to, to != at));
+            };
+            const auto blocked = [&] (const juce::String& id)
+            {
+                auto* c = editor.findChildWithID (id);
+                if (c == nullptr)
+                    return false;
+                auto* top = editor.getComponentAt (c->getBounds().getCentre());
+                auto* tip = dynamic_cast<juce::SettableTooltipClient*> (top);
+                return top != c && tip != nullptr && tip->getTooltip().startsWith ("Locked");
+            };
+            const auto panelBlocked = [&]
+            {
+                auto* top = editor.getComponentAt (editor.getLocalBounds().getCentre().withY (editor.getHeight() - 100));
+                auto* tip = dynamic_cast<juce::SettableTooltipClient*> (top);
+                return tip != nullptr && tip->getTooltip().startsWith ("Locked");
+            };
+
+            // Unlocked: nothing in the way; a footswitch switches; a drag moves.
+            expect (! blocked ("scene2") && ! blocked ("preset") && ! blocked ("tempo") && ! panelBlocked());
+            mouse (strip, strip.footswitchOf (a).getCentre(), strip.footswitchOf (a).getCentre());
+            expect (board.isPedalBypassed (a));
+            mouse (strip, strip.footswitchOf (a).getCentre(), strip.footswitchOf (a).getCentre());
+            expect (! board.isPedalBypassed (a));
+
+            board.setLock (BoardProcessor::Lock::footswitches);
+            editor.update();   // as the window's timer does
+            expect (! blocked ("scene2"), "scenes work");
+            expect (! blocked ("tap"), "Tap works");
+            expect (! blocked ("lock"));
+            expect (blocked ("preset") && blocked ("undo") && blocked ("tempo"), "presets, undo, the tempo field don't");
+            expect (panelBlocked(), "the knobs don't");
+            mouse (strip, strip.footswitchOf (b).getCentre(), strip.footswitchOf (b).getCentre());
+            expect (board.isPedalBypassed (b), "a footswitch works");
+            mouse (strip, strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12),
+                   strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12));
+            expectEquals (editor.getShownPedal(), b, "a click still selects");
+            mouse (strip, strip.tileBounds (b).getCentre(), strip.tileBounds (a).getCentre().translated (-40, 0));
+            expect (board.getSection (Section::pre) == std::vector<int> { a, b }, "no dragging");
+
+            board.setLock (BoardProcessor::Lock::everything);
+            editor.update();
+            expect (blocked ("scene2") && blocked ("tap") && ! blocked ("lock"), "everything: the scene bar too");
+            mouse (strip, strip.footswitchOf (b).getCentre(), strip.footswitchOf (b).getCentre());
+            expect (board.isPedalBypassed (b), "no footswitch");
+            mouse (strip, strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12),
+                   strip.tileBounds (b).getCentre().withY (strip.tileBounds (b).getY() + 12));
+            expectEquals (editor.getShownPedal(), b, "selecting still works");
+
+            // Host parameters and MIDI aren't locked.
+            board.setScene (3);
+            expectEquals (board.getScene(), 3);
+
+            board.setLock (BoardProcessor::Lock::off);
+            editor.update();
+            expect (! blocked ("scene2") && ! blocked ("preset") && ! panelBlocked());
         }
 
         beginTest ("Pedals move between sections; the split takes part only with a pedal on A or B");
@@ -736,6 +838,524 @@ public:
             BoardProcessor copy;
             copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
             expectEquals (stateJson (copy), json);
+        }
+
+        beginTest ("Scene names: saved, copied with Copy to, shown in the Scene parameter's text");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            board.setSceneName (1, "  Verse ");
+            board.setSceneName (2, "A name much too long to fit on any scene button at all");
+            expectEquals (board.getSceneName (1), juce::String ("Verse"));
+            expectEquals (board.getSceneName (2), juce::String ("A name much too long to"), "cut to 24 characters, trimmed");
+            expectEquals (board.describeScene (1), juce::String ("2 Verse"));
+            expectEquals (board.describeScene (0), juce::String ("1"));
+
+            auto& scene = board.getSceneParam();
+            expectEquals (scene.getText (scene.convertTo0to1 (2.0f), 40), juce::String ("2 Verse"));
+            board.setScene (1);
+            expectEquals (scene.getCurrentValueAsText(), juce::String ("2 Verse"));
+            expectWithinAbsoluteError (scene.getValueForText ("3 Solo"), scene.convertTo0to1 (3.0f), 1.0e-6f);
+
+            board.copyScene (1, 7);
+            expectEquals (board.getSceneName (7), juce::String ("Verse"));
+
+            // Board presets and the host state.
+            BoardProcessor loaded;
+            expect (loaded.fromVar (board.toVar (false), false).ok);
+            expectEquals (loaded.getSceneName (1), juce::String ("Verse"));
+            expectEquals (loaded.getSceneName (7), juce::String ("Verse"));
+            expectEquals (loaded.getSceneName (0), juce::String());
+            const auto json = stateJson (board);
+            BoardProcessor copy;
+            copy.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (copy.getSceneName (1), juce::String ("Verse"));
+
+            // No names: none written; an empty board forgets them.
+            BoardProcessor plain;
+            plain.clearBoard();
+            expect (! plain.toVar (false)["scenes"].hasProperty ("names"));
+            board.resetBoard();
+            expectEquals (board.getSceneName (1), juce::String());
+        }
+
+        beginTest ("Undo: knobs, bypasses, assignments; grouping; descriptions; a load clears it");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto delay = addOn (board, "RKDelay");
+            const auto drive = addOn (board, "RKDistort");
+            auto& undo = board.getUndo();
+            undo.clear();
+            auto* time = board.getPedal (delay)->findParam ("time");
+            const auto start = time->getValue();
+
+            // A drag: many moves, one step.
+            for (int i = 1; i <= 5; ++i)
+            {
+                time->setValueNotifyingHost (0.1f + 0.05f * (float) i);
+                undo.poll();
+            }
+            undo.closeStep();
+            expect (undo.canUndo());
+            expectEquals (undo.undoDescription(), juce::String ("Delay: Time"));
+
+            board.setPedalBypassed (drive, true);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Distort On/Off"));
+
+            undo.undo();
+            expect (! board.isPedalBypassed (drive), "bypass undone");
+            expect (! board.getSceneBypass (0, drive), "and in the scene");
+            undo.undo();
+            expectWithinAbsoluteError (time->getValue(), start, 1.0e-6f);
+            expect (! undo.canUndo());
+            expect (undo.canRedo());
+            undo.redo();
+            expectWithinAbsoluteError (time->getValue(), 0.35f, 1.0e-6f);
+            undo.redo();
+            expect (board.isPedalBypassed (drive));
+
+            // A new change forgets what was undone.
+            undo.undo();
+            board.getOutputParam().setValueNotifyingHost (0.2f);
+            undo.poll();
+            expect (! undo.canRedo());
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Output"));
+
+            // Assignments (a setting, not a value).
+            board.assign (3, delay, "time");
+            board.setAssignmentRange (3, 0.1f, 0.6f, true);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Assignment"));
+            undo.undo();
+            expectEquals (board.findAssignment (delay, "time"), -1);
+            undo.redo();
+            expectEquals (board.findAssignment (delay, "time"), 3);
+            expectWithinAbsoluteError (board.getAssignment (3).max, 0.6f, 1.0e-6f);
+            expect (board.getAssignment (3).invert);
+
+            // Scene control, names, copies.
+            board.setSceneControlled (delay, "time", true);
+            board.setSceneName (0, "Intro");
+            undo.poll();
+            undo.closeStep();
+            undo.undo();
+            expect (! board.isSceneControlled (delay, "time"));
+            expectEquals (board.getSceneName (0), juce::String());
+
+            // Loading a board starts a new history.
+            expect (undo.canUndo());
+            expect (board.loadFactoryPreset (0).ok);
+            expect (! undo.canUndo() && ! undo.canRedo());
+        }
+
+        beginTest ("Undo: a scene recall brings back the board and the scene before, storing nothing");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            prepare (board);
+            auto* time = board.getPedal (delay)->findParam ("time");
+            board.setSceneControlled (delay, "time", true);
+            time->setValueNotifyingHost (0.2f);
+            board.setScene (1);
+            board.setPedalBypassed (drive, true);
+            time->setValueNotifyingHost (0.7f);
+            board.setScene (0);
+            run (board, 40);   // the glide
+            auto& undo = board.getUndo();
+            undo.clear();
+
+            board.setScene (1);
+            run (board, 40);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Scene 2 recall"));
+            expect (board.isPedalBypassed (drive));
+            expectWithinAbsoluteError (time->getValue(), 0.7f, 1.0e-6f);
+
+            undo.undo();
+            expectEquals (board.getScene(), 0);
+            expectEquals (board.getSceneParam().getCurrentValueAsText(), juce::String ("1"));
+            expect (! board.isPedalBypassed (drive));
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            run (board, 40);
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f, "nothing glides afterwards");
+            // Both scenes as they were.
+            expect (board.getSceneBypass (1, drive) && ! board.getSceneBypass (0, drive));
+            expectWithinAbsoluteError (board.getSceneValue (0, delay, "time"), 0.2f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "time"), 0.7f, 1.0e-6f);
+
+            undo.redo();
+            expectEquals (board.getScene(), 1);
+            expect (board.isPedalBypassed (drive));
+        }
+
+        beginTest ("Undo: moves, removals (the pedal comes back with its ID, state, assignments, scenes) and splits");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            const auto chorus = addOn (board, "RKChorus");
+            prepare (board);
+            auto& undo = board.getUndo();
+            undo.clear();
+
+            auto* time = board.getPedal (delay)->findParam ("time");
+            time->setValueNotifyingHost (0.42f);
+            board.assign (5, delay, "time");
+            board.setSceneControlled (delay, "mix", true);
+            board.setTrails (delay, true);
+            board.setScene (2);
+            board.getPedal (delay)->findParam ("mix")->setValueNotifyingHost (0.9f);
+            board.setPedalBypassed (delay, true);   // in scene 3
+            undo.clear();
+            const auto stateBefore = stateJson (board);
+            auto* chorusObject = board.getPedal (chorus);
+
+            board.movePedal (chorus, Section::pre, 0);
+            expectEquals (undo.undoDescription(), juce::String ("Move Chorus"));
+            expect (board.getSection (Section::pre) == std::vector<int> { chorus, drive, delay });
+            undo.undo();
+            expect (board.getSection (Section::pre) == std::vector<int> { drive, delay, chorus });
+            expect (board.getPedal (chorus) == chorusObject, "the pedals still there are kept");
+            undo.redo();
+            undo.undo();
+
+            board.removePedal (delay);
+            expect (board.getPedal (delay) == nullptr);
+            expectEquals (undo.undoDescription(), juce::String ("Remove Delay"));
+            undo.undo();
+            expect (board.getPedal (delay) != nullptr, "back with its ID");
+            expect (board.getSection (Section::pre) == std::vector<int> { drive, delay, chorus });
+            expect (board.getPedal (chorus) == chorusObject);
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("time")->getValue(), 0.42f, 1.0e-6f);
+            expectEquals (board.findAssignment (delay, "time"), 5);
+            expect (board.isSceneControlled (delay, "mix"));
+            expectWithinAbsoluteError (board.getSceneValue (2, delay, "mix"), 0.9f, 1.0e-6f);
+            expect (board.getSceneBypass (2, delay) && ! board.getSceneBypass (0, delay));
+            expect (board.getTrails (delay));
+            expect (board.isPedalBypassed (delay));
+            expectEquals (stateJson (board), stateBefore, "the whole board as it was");
+            undo.redo();
+            expect (board.getPedal (delay) == nullptr);
+            undo.undo();
+
+            // Add and duplicate.
+            const auto added = board.addPedal ("RKFilter", Section::pre, 1);
+            expectEquals (undo.undoDescription(), juce::String ("Add Filter"));
+            undo.undo();
+            expect (board.getPedal (added) == nullptr);
+            undo.redo();
+            expect (board.getPedal (added) != nullptr && board.getSection (Section::pre)[1] == added);
+            undo.undo();
+            const auto copy = board.duplicatePedal (delay);
+            expectEquals (undo.undoDescription(), juce::String ("Duplicate Delay"));
+            undo.undo();
+            expect (board.getPedal (copy) == nullptr);
+
+            // A split with pedals and its own settings, removed and restored.
+            const auto split = board.insertSplit (Section::pre, 1);
+            expectEquals (undo.undoDescription(), juce::String ("Insert split"));
+            board.movePedal (delay, pathSection (split, 1), 0);
+            auto& routing = board.getRouting (split);
+            routing.param ("crossover").setValueNotifyingHost (0.3f);
+            board.assign (7, BoardProcessor::routingOwner (split), "crossover");
+            undo.poll();
+            undo.closeStep();
+            const auto withSplit = stateJson (board);
+            const auto splits = board.getNumSplits();   // a new board has one (empty) already
+            board.removeSplit (split);
+            expectEquals (board.getNumSplits(), splits - 1);
+            undo.undo();
+            expectEquals (board.getNumSplits(), splits);
+            expect (board.getSection (pathSection (split, 1)) == std::vector<int> { delay });
+            expectWithinAbsoluteError (board.getRouting (split).param ("crossover").getValue(), 0.3f, 1.0e-6f);
+            expectEquals (board.findAssignment (BoardProcessor::routingOwner (split), "crossover"), 7);
+            expectEquals (stateJson (board), withSplit);
+
+            // Back to the beginning, all the way, and it still plays.
+            while (undo.canUndo())
+                undo.undo();
+            expectEquals (stateJson (board), stateBefore);
+            expect (allFinite (run (board, 8).second));
+        }
+
+        beginTest ("Scene morph: 0% is From, 100% is To (and becomes current), the blend between, bypasses, no edits stored");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");     // on in both scenes
+            const auto delay = addOn (board, "RKDelay");       // off in scene 1, on in scene 2
+            const auto chorus = addOn (board, "RKChorus");     // off in both
+            prepare (board);
+            auto* mix = board.getPedal (delay)->findParam ("mix");
+            auto* time = board.getPedal (delay)->findParam ("time");
+            auto* gain = board.getPedal (drive)->findParam ("gain");
+            board.setSceneControlled (delay, "mix", true);
+            board.setSceneControlled (delay, "time", true);
+            board.setPedalBypassed (chorus, true);
+            board.setPedalBypassed (delay, true);
+            mix->setValueNotifyingHost (0.0f);
+            time->setValueNotifyingHost (0.2f);
+            board.setScene (1);
+            board.setPedalBypassed (delay, false);
+            mix->setValueNotifyingHost (0.4f);
+            time->setValueNotifyingHost (0.6f);
+            board.setScene (0);
+            run (board, 40);
+            expectEquals (board.getMorphFrom(), 0);
+            expectEquals (board.getMorphTo(), 1, "To: the next scene");
+            gain->setValueNotifyingHost (0.33f);   // not scene-controlled: the same everywhere
+
+            auto& morph = board.getMorphParam();
+            const auto at = [&] (float m)
+            {
+                morph.setValueNotifyingHost (m);
+                run (board, 40);   // the glide (100 ms for the whole range)
+            };
+
+            at (0.5f);
+            expect (board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.2f, 1.0e-5f, "halfway");
+            expectWithinAbsoluteError (time->getValue(), 0.4f, 1.0e-5f);
+            expectWithinAbsoluteError (gain->getValue(), 0.33f, 1.0e-6f, "other knobs don't move");
+            expect (! board.isPedalBypassed (drive), "on in both: on");
+            expect (board.isPedalBypassed (chorus), "off in both: off");
+            expect (! board.isPedalBypassed (delay), "on in one: on in between");
+            expectEquals (board.getScene(), 0);
+
+            // Edits mid-morph go into no scene.
+            board.getPedal (delay)->findParam ("feedback")->setValueNotifyingHost (0.9f);
+            mix->setValueNotifyingHost (0.77f);
+            board.setPedalBypassed (chorus, false);
+            expectWithinAbsoluteError (board.getSceneValue (0, delay, "mix"), 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "mix"), 0.4f, 1.0e-6f);
+            expect (board.getSceneBypass (0, chorus) && board.getSceneBypass (1, chorus));
+            board.setPedalBypassed (chorus, true);
+
+            at (0.0f);
+            expect (! board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f, "0% is exactly From");
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            expect (board.isPedalBypassed (delay), "as From has it");
+
+            at (0.25f);
+            expect (! board.isPedalBypassed (delay));
+            at (1.0f);
+            expectWithinAbsoluteError (mix->getValue(), 0.4f, 1.0e-6f, "100% is exactly To");
+            expectWithinAbsoluteError (time->getValue(), 0.6f, 1.0e-6f);
+            expect (! board.isPedalBypassed (delay));
+            expectEquals (board.getScene(), 1, "To is now the current scene");
+            expectEquals (board.getSceneParam().getCurrentValueAsText(), juce::String ("2"));
+            expectEquals (board.getMorphFrom(), 0, "the way back is still there");
+
+            // Heel again: back to scene 1.
+            at (0.0f);
+            expectEquals (board.getScene(), 0);
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f);
+
+            // A recall ends a morph: From is that scene, Morph back to 0%.
+            at (0.6f);
+            board.setScene (2);
+            expect (! board.isMorphing());
+            expectEquals (board.getMorphFrom(), 2);
+            expectWithinAbsoluteError (morph.getValue(), 0.0f, 1.0e-6f);
+            run (board, 40);
+            expectWithinAbsoluteError (mix->getValue(), board.getSceneValue (2, delay, "mix"), 1.0e-6f);
+            // Mid-morph, the current scene again goes back to it.
+            board.setScene (0);
+            run (board, 40);
+            board.setMorphScenes (0, 1);
+            at (0.5f);
+            board.setScene (0);
+            run (board, 40);
+            expect (! board.isMorphing());
+            expectWithinAbsoluteError (mix->getValue(), 0.0f, 1.0e-6f);
+
+            // An assigned knob follows its Assign slot, not the morph.
+            board.assign (0, delay, "time");
+            board.getAssignParam (0).setValueNotifyingHost (0.9f);
+            at (0.5f);
+            expectWithinAbsoluteError (time->getValue(), 0.9f, 1.0e-6f);
+            expectWithinAbsoluteError (mix->getValue(), 0.2f, 1.0e-5f);
+
+            // From and To are saved with the board (when not the current scene and the next).
+            board.setScene (0);
+            board.setMorphScenes (3, 7);
+            BoardProcessor loaded;
+            expect (loaded.fromVar (board.toVar (false), false).ok);
+            expectEquals (loaded.getMorphFrom(), 3);
+            expectEquals (loaded.getMorphTo(), 7);
+            board.setMorphScenes (0, 1);
+            expect (! board.toVar (false)["scenes"].hasProperty ("morphFrom"));
+        }
+
+        beginTest ("Remote: PIN and token, several boards listed, every command, values, the pages");
+        {
+            const auto settings = juce::File::createTempFile ("rkboard-remote.json");
+            rkboard::BoardRemoteHub hub;
+            hub.setSettingsFileForTesting (settings);
+            hub.setEnabled (true);   // not serving: no board asked to
+            expect (! hub.isListening());
+            expect (hub.setPin ("2468"));
+            expect (! hub.setPin ("12a4") && ! hub.setPin ("123"));
+
+            BoardProcessor board, other;
+            board.clearBoard();
+            other.clearBoard();
+            board.setStandaloneForTesting (juce::File::createTempFile ("rig").getParentDirectory().getChildFile ("rkboard-remote-rig"));
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            prepare (board);
+            board.assign (2, delay, "time");
+            board.assign (3, drive, "bypass");
+            board.setSceneName (1, "Verse");
+            board.setRemoteName ("Left half");
+            hub.addBoard (board, false);
+            hub.addBoard (other, false);
+
+            FakeConnection page;
+            const auto say = [&] (const juce::String& json) { hub.received (page, json); hub.tick(); hub.send (page); };
+            hub.opened (page);
+
+            // A wrong PIN, then the right one: a token for next time.
+            say (R"({"t":"hello","name":"iPhone","pin":"1111"})");
+            expect ((bool) page.last ("auth")["wrong"]);
+            say (R"({"t":"hello","name":"iPhone","pin":"2468"})");
+            const auto token = page.last ("auth")["token"].toString();
+            expect ((bool) page.last ("auth")["ok"] && token.length() >= 16);
+
+            // Both boards listed, by name.
+            const auto boards = page.last ("boards")["list"];
+            expectEquals (boards.size(), 2);
+            expectEquals (boards[0]["name"].toString(), juce::String ("Left half"));
+            expectEquals (boards[1]["name"].toString(), juce::String ("Board"));
+            const auto id = (int) boards[0]["id"];
+            expectEquals (id, hub.idOf (board));
+
+            page.sent.clear();
+            say (R"({"t":"open","b":)" + juce::String (id) + "}");
+            auto state = page.last ("board");
+            expectEquals (state["names"][1].toString(), juce::String ("Verse"));
+            expectEquals (state["pedals"].size(), 2);
+            expectEquals ((int) state["pedals"][1]["id"], delay);
+            expectEquals (state["pedals"][1]["n"].toString(), juce::String ("Delay"));
+            expectEquals (state["assign"].size(), 2);
+            expect ((bool) state["assign"][1]["sw"], "Assign 4 switches the drive");
+            expect ((bool) state["app"]);
+
+            // Commands, applied as clicks in the window would be.
+            say (R"({"t":"scene","n":1})");
+            expectEquals (board.getScene(), 1);
+            expectEquals ((int) page.last ("board")["scene"], 1);
+            say (R"({"t":"bypass","id":)" + juce::String (delay) + R"(,"on":false})");
+            expect (board.isPedalBypassed (delay));
+            expect (board.getSceneBypass (1, delay), "into the current scene");
+            say (R"({"t":"set","id":"p)" + juce::String (delay) + R"(:feedback","v":0.25})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("feedback")->getValue(), 0.25f, 1.0e-6f);
+            say (R"({"t":"param","owner":)" + juce::String (delay) + R"(,"id":"mix","v":0.5})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("mix")->getValue(), 0.5f, 1.0e-6f);
+            say (R"({"t":"assign","slot":3,"v":0.75})");
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("time")->getValue(), 0.75f, 1.0e-6f, "Assign 3 drives the time");
+            say (R"({"t":"morphScenes","from":1,"to":4})");
+            expectEquals (board.getMorphTo(), 4);
+            say (R"({"t":"morph","v":0.3})");
+            expect (board.isMorphing());
+            say (R"({"t":"scene","n":0})");
+            expect (! board.isMorphing());
+            const auto wasBypassed = board.isPedalBypassed (delay);
+            say (R"({"t":"set","id":"p)" + juce::String (delay) + R"(:bypass","v":)" + (wasBypassed ? "0" : "1") + "}");
+            expect (board.isPedalBypassed (delay) == wasBypassed, "a bypass is never a value");
+            board.getUndo().poll();
+            expect (board.getUndo().canUndo(), "the remote's changes go into undo");
+
+            // Tap and the tuner (the app).
+            say (R"({"t":"tuner","on":true})");
+            expect (board.isTunerActive());
+            expect (page.last ("board")["tuner"].hasProperty ("on"));
+            say (R"({"t":"tuner","on":false})");
+            say (R"({"t":"tap"})");
+
+            // Values it subscribes to: normalised, text, default, steps.
+            page.sent.clear();
+            say (R"({"t":"sub","ids":["morph","a3","p)" + juce::String (delay) + R"(:mode","nonsense"]})");
+            const auto values = page.last ("v")["p"];
+            expect (values.hasProperty ("morph") && values.hasProperty ("a3"));
+            const auto mode = values[juce::Identifier ("p" + juce::String (delay) + ":mode")];
+            expect (mode.size() >= 5, "a choice comes with its choices");
+            expect (! values.hasProperty ("nonsense"));
+            page.sent.clear();
+            board.getPedal (delay)->findParam ("time")->setValueNotifyingHost (0.1f);
+            hub.tick(); hub.send (page);
+            expect (page.last ("v")["p"].hasProperty ("a3"), "a moved knob moves its Assign slot's value");
+
+            // A pedal's knobs.
+            say (R"({"t":"show","id":)" + juce::String (delay) + "}");
+            const auto controls = page.last ("controls");
+            expectEquals ((int) controls["id"], delay);
+            expect (controls["params"].size() > 5);
+            for (const auto& c : *controls["params"].getArray())
+                expect (! c["id"].toString().endsWith (":bypass"));
+
+            // The same device again: its token, no PIN.
+            FakeConnection again ("10.0.0.6");
+            hub.opened (again);
+            hub.received (again, R"({"t":"hello","token":")" + token + "\"}");
+            hub.tick(); hub.send (again);
+            expect ((bool) again.last ("auth")["ok"]);
+            expectEquals ((int) hub.getDevices().size(), 2);
+            hub.closed (again);
+
+            // Five wrong PINs: wait 30 s.
+            FakeConnection guess ("10.0.0.9");
+            hub.opened (guess);
+            for (int i = 0; i < 5; ++i)
+                hub.received (guess, R"({"t":"hello","pin":"0000"})");
+            hub.received (guess, R"({"t":"hello","pin":"2468"})");
+            hub.tick(); hub.send (guess);
+            expect ((int) guess.last ("auth")["wait"] > 0, "locked out, even with the right PIN");
+            hub.closed (guess);
+
+            // A board that goes: the page hears it, and the list follows.
+            page.sent.clear();
+            hub.removeBoard (board);
+            hub.tick(); hub.send (page);
+            expect (! page.last ("gone").isVoid());
+            expectEquals (page.last ("boards")["list"].size(), 1);
+
+            // A new PIN lets everyone go; the settings are saved.
+            hub.setPin ("97531");
+            expect (page.closed);
+            rkboard::BoardRemoteHub reloaded;
+            reloaded.setSettingsFileForTesting (settings);
+            expectEquals (reloaded.getPin(), juce::String ("97531"));
+            expect (reloaded.isEnabled());
+            expectEquals (reloaded.getPort(), rkboard::BoardRemoteHub::kDefaultPort);
+            reloaded.setEnabled (false);
+            hub.removeBoard (other);
+
+            // The pages.
+            expect (hub.answer ("/").body.toString().contains ("board.js"));
+            expect (hub.answer ("/b/rk.js").body.toString().contains ("const RK"));
+            expect (hub.answer ("/b/board.js").body.toString().contains ("BoardRemoteHub"));
+            expectEquals (hub.answer ("/b/../secret").status, 404);
+            expect (hub.answer ("/manifest/board.json").body.toString().contains ("RKBoard"));
+            expectEquals (hub.answer ("/icon.png").contentType, juce::String ("image/png"));
+            expect (hub.link (true).endsWith (":8081/#pin=97531"));
+
+            // The board's name is saved in the host session.
+            const auto json = stateJson (board);
+            BoardProcessor restored;
+            restored.setStateInformation (json.toRawUTF8(), (int) json.getNumBytesAsUTF8());
+            expectEquals (restored.getRemoteName(), juce::String ("Left half"));
+            settings.deleteFile();
         }
 
         beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");

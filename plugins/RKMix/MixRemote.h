@@ -4,7 +4,7 @@
 
 #include "MixConsole.h"
 #include "MixLayout.h"
-#include "MixWebServer.h"
+#include "host/remote/RemoteServer.h"
 
 #include <array>
 #include <atomic>
@@ -79,7 +79,7 @@ public:
 
     /** Tests: the settings file, and an answer without a network. */
     void setSettingsFileForTesting (const juce::File&);
-    MixWebServer::Response answer (const juce::String& path) const { return http (path); }
+    rkfx::RemoteServer::Response answer (const juce::String& path) const { return http (path); }
     /** The console's messages are handled now (tests: no message loop). */
     void tickConsole() { console.tick(); }
     /** The mix a page on @p bus is sent (JSON). */
@@ -93,7 +93,7 @@ public:
 
 private:
     RKMixProcessor& mixer;
-    MixWebServer server;
+    rkfx::RemoteServer server;
     MixConsole console;
     std::unique_ptr<MixOsc> osc;
     juce::File settingsFile;
@@ -119,7 +119,7 @@ private:
     void restart();
     juce::String keyFor (int bus) const;
     int busForKey (const juce::String&) const;
-    MixWebServer::Response http (const juce::String& path) const;
+    rkfx::RemoteServer::Response http (const juce::String& path) const;
     juce::String meters (int bus) const;
     void timerCallback() override;
     void applyPending();

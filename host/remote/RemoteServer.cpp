@@ -1,9 +1,12 @@
-#include "MixWebServer.h"
+#include "RemoteServer.h"
 
 #include <array>
 
+namespace rkfx
+{
+
 //==============================================================================
-juce::MemoryBlock MixWebServer::sha1 (const void* data, size_t size)
+juce::MemoryBlock RemoteServer::sha1 (const void* data, size_t size)
 {
     std::array<std::uint32_t, 5> h { 0x67452301u, 0xEFCDAB89u, 0x98BADCFEu, 0x10325476u, 0xC3D2E1F0u };
     const auto rol = [] (std::uint32_t v, int n) { return (v << n) | (v >> (32 - n)); };
@@ -46,7 +49,7 @@ juce::MemoryBlock MixWebServer::sha1 (const void* data, size_t size)
     return out;
 }
 
-MixWebServer::Response MixWebServer::Response::text (const juce::String& s, const juce::String& type)
+RemoteServer::Response RemoteServer::Response::text (const juce::String& s, const juce::String& type)
 {
     Response r;
     r.contentType = type;
@@ -54,7 +57,7 @@ MixWebServer::Response MixWebServer::Response::text (const juce::String& s, cons
     return r;
 }
 
-MixWebServer::Response MixWebServer::Response::notFound()
+RemoteServer::Response RemoteServer::Response::notFound()
 {
     auto r = text ("Not found", "text/plain; charset=utf-8");
     r.status = 404;
@@ -62,10 +65,10 @@ MixWebServer::Response MixWebServer::Response::notFound()
 }
 
 //==============================================================================
-class MixWebServer::Listener : public juce::Thread
+class RemoteServer::Listener : public juce::Thread
 {
 public:
-    Listener (MixWebServer& o) : juce::Thread ("RKMix remote"), owner (o) {}
+    Listener (RemoteServer& o) : juce::Thread ("RKFX remote"), owner (o) {}
     ~Listener() override
     {
         socket.close();
@@ -88,15 +91,15 @@ public:
     }
 
     juce::StreamingSocket socket;
-    MixWebServer& owner;
+    RemoteServer& owner;
 };
 
 //==============================================================================
-class MixWebServer::Client : public juce::Thread,
-                             public MixWebServer::Connection
+class RemoteServer::Client : public juce::Thread,
+                             public RemoteServer::Connection
 {
 public:
-    Client (MixWebServer& o, std::unique_ptr<juce::StreamingSocket> s)
+    Client (RemoteServer& o, std::unique_ptr<juce::StreamingSocket> s)
         : juce::Thread ("RKMix remote client"), owner (o), socket (std::move (s))
     {
         address = socket->getHostName();
@@ -129,7 +132,7 @@ public:
     }
 
 private:
-    MixWebServer& owner;
+    RemoteServer& owner;
     std::unique_ptr<juce::StreamingSocket> socket;
     juce::CriticalSection writeLock;
     bool open = true, isWebSocket = false;
@@ -312,14 +315,14 @@ private:
 };
 
 //==============================================================================
-MixWebServer::MixWebServer() = default;
+RemoteServer::RemoteServer() = default;
 
-MixWebServer::~MixWebServer()
+RemoteServer::~RemoteServer()
 {
     stop();
 }
 
-bool MixWebServer::start (int p)
+bool RemoteServer::start (int p)
 {
     stop();
     auto l = std::make_unique<Listener> (*this);
@@ -331,7 +334,7 @@ bool MixWebServer::start (int p)
     return true;
 }
 
-void MixWebServer::stop()
+void RemoteServer::stop()
 {
     listener.reset();
     std::vector<std::unique_ptr<Client>> old;
@@ -343,12 +346,12 @@ void MixWebServer::stop()
     port = 0;
 }
 
-bool MixWebServer::isRunning() const noexcept
+bool RemoteServer::isRunning() const noexcept
 {
     return listener != nullptr;
 }
 
-void MixWebServer::serve (std::unique_ptr<juce::StreamingSocket> socket)
+void RemoteServer::serve (std::unique_ptr<juce::StreamingSocket> socket)
 {
     auto client = std::make_unique<Client> (*this, std::move (socket));
     client->startThread();
@@ -356,7 +359,7 @@ void MixWebServer::serve (std::unique_ptr<juce::StreamingSocket> socket)
     clients.push_back (std::move (client));
 }
 
-void MixWebServer::removeFinished()
+void RemoteServer::removeFinished()
 {
     std::vector<std::unique_ptr<Client>> finished;
     {
@@ -372,7 +375,7 @@ void MixWebServer::removeFinished()
     }
 }
 
-void MixWebServer::forEachConnection (const std::function<void (Connection&)>& f)
+void RemoteServer::forEachConnection (const std::function<void (Connection&)>& f)
 {
     const juce::ScopedLock sl (clientsLock);
     for (auto& c : clients)
@@ -380,9 +383,11 @@ void MixWebServer::forEachConnection (const std::function<void (Connection&)>& f
             f (*c);
 }
 
-int MixWebServer::numConnections()
+int RemoteServer::numConnections()
 {
     int n = 0;
     forEachConnection ([&n] (Connection&) { ++n; });
     return n;
 }
+
+} // namespace rkfx

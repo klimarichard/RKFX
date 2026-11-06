@@ -224,6 +224,13 @@ const BoardStrip::Item* BoardStrip::find (Item::Kind kind, int id) const
     return nullptr;
 }
 
+juce::Rectangle<int> BoardStrip::tileBounds (int id)
+{
+    layoutItems();
+    const auto* item = find (Item::Kind::pedal, id);
+    return item != nullptr ? item->bounds : juce::Rectangle<int>();
+}
+
 juce::Rectangle<int> BoardStrip::footswitchBounds (juce::Rectangle<int> tile) const
 {
     return tile.removeFromBottom (40).withSizeKeepingCentre (28, 28);
@@ -482,6 +489,18 @@ void BoardStrip::mouseDown (const juce::MouseEvent& e)
     if (item == nullptr)
         return;
 
+    // Locked: a click selects (and with footswitches, switches); nothing else.
+    if (lock != BoardProcessor::Lock::off)
+    {
+        if (e.mods.isPopupMenu() || item->kind == Item::Kind::add)
+            return;
+        if (item->kind == Item::Kind::pedal)
+            pressedId = item->id;
+        else if (onSelect)
+            onSelect (keyOf (*item));
+        return;
+    }
+
     switch (item->kind)
     {
         case Item::Kind::add:
@@ -507,7 +526,7 @@ void BoardStrip::mouseDown (const juce::MouseEvent& e)
 
 void BoardStrip::mouseDrag (const juce::MouseEvent& e)
 {
-    if (pressedId <= 0)
+    if (pressedId <= 0 || lock != BoardProcessor::Lock::off)
         return;
 
     if (! dragging && e.getDistanceFromDragStart() > 5)
@@ -541,7 +560,10 @@ void BoardStrip::mouseUp (const juce::MouseEvent& e)
     if (const auto* item = find (Item::Kind::pedal, id))
     {
         if (footswitchBounds (item->bounds).contains (e.getPosition()))
-            board.setPedalBypassed (id, ! board.isPedalBypassed (id));
+        {
+            if (lock != BoardProcessor::Lock::everything)
+                board.setPedalBypassed (id, ! board.isPedalBypassed (id));
+        }
         else if (onSelect)
             onSelect (id);
     }
@@ -702,6 +724,47 @@ void BoardStrip::showNodeMenu (int split)
 }
 
 //==============================================================================
+void SceneButton::setScene (int number, const juce::String& name)
+{
+    if (number == scene && name == sceneName)
+        return;
+    scene = number;
+    sceneName = name;
+    setButtonText (juce::String (number));
+    setTooltip ("Scene " + juce::String (number) + (name.isNotEmpty() ? ": " + name : juce::String())
+                + " (double-click to name it; right-click: rename, copy to another scene)");
+    repaint();
+}
+
+void SceneButton::paintButton (juce::Graphics& g, bool isMouseOver, bool isButtonDown)
+{
+    getLookAndFeel().drawButtonBackground (g, *this, findColour (getToggleState() ? buttonOnColourId : buttonColourId),
+                                           isMouseOver, isButtonDown);
+
+    const auto on = getToggleState();
+    const auto colour = findColour (on ? textColourOnId : textColourOffId).withMultipliedAlpha (isEnabled() ? 1.0f : 0.5f);
+    auto area = getLocalBounds().reduced (2, 2);
+    g.setColour (colour);
+    if (sceneName.isEmpty())
+    {
+        g.setFont (Fonts::bold (14.0f));
+        g.drawText (getButtonText(), area, juce::Justification::centred);
+        return;
+    }
+    g.setFont (Fonts::bold (13.0f));
+    g.drawText (getButtonText(), area.removeFromTop (area.getHeight() / 2 + 1), juce::Justification::centredBottom);
+    g.setColour (colour.withMultipliedAlpha (on ? 0.9f : 0.75f));
+    g.setFont (Fonts::regular (10.5f));
+    g.drawFittedText (sceneName, area, juce::Justification::centredTop, 1, 0.75f);
+}
+
+void SceneButton::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (onDoubleClick && ! e.mods.isPopupMenu() && ! locked)
+        onDoubleClick();
+}
+
+//==============================================================================
 BoardEditor::BoardEditor (BoardProcessor& p)
     : juce::AudioProcessorEditor (p), board (p)
 {
@@ -716,17 +779,29 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     assignButton.setClickingTogglesState (false);
     assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
     addAndMakeVisible (assignButton);
+    remoteButton.setTooltip ("The phone and iPad remote: on or off, its QR code and PIN, the devices connected.");
+    remoteButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kRemoteView ? 0 : BoardStrip::kRemoteView); };
+    addAndMakeVisible (remoteButton);
 
-    sceneLabel.setText ("Scene", juce::dontSendNotification);
-    sceneLabel.setFont (Fonts::regular (13.0f));
-    sceneLabel.setColour (juce::Label::textColourId, Palette::textDim);
-    addAndMakeVisible (sceneLabel);
+    undoButton.onClick = [this] { undoOrRedo (false); };
+    redoButton.onClick = [this] { undoOrRedo (true); };
+    undoButton.setComponentID ("undo");
+    lockButton.setComponentID ("lock");
+    tempoField.setComponentID ("tempo");
+    tapButton.setComponentID ("tap");
+    presetButton.setComponentID ("preset");
+    addAndMakeVisible (undoButton);
+    addAndMakeVisible (redoButton);
+    addAndMakeVisible (lockButton);
+    for (auto& shield : shields)
+        addChildComponent (shield);
+    setWantsKeyboardFocus (true);
 
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
     {
         auto& button = sceneButtons[(size_t) i];
-        button.setButtonText (juce::String (i + 1));
-        button.setTooltip ("Scene " + juce::String (i + 1) + " (right-click to copy it to another scene)");
+        button.onDoubleClick = [this, i] { renameScene (i); };
+        button.setComponentID ("scene" + juce::String (i + 1));
         button.setConnectedEdges ((i > 0 ? juce::Button::ConnectedOnLeft : 0)
                                   | (i < BoardProcessor::kNumScenes - 1 ? juce::Button::ConnectedOnRight : 0));
         button.onClick = [this, i] { board.setScene (i); refreshSceneButtons(); };
@@ -734,6 +809,33 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         addAndMakeVisible (button);
     }
     refreshSceneButtons();
+
+    morphLabel.setFont (Fonts::regular (12.5f));
+    morphLabel.setJustificationType (juce::Justification::centredRight);
+    morphLabel.setMinimumHorizontalScale (0.8f);
+    morphLabel.addMouseListener (this, false);   // right-click: MIDI learn
+    addAndMakeVisible (morphLabel);
+    for (auto* button : { &morphFromButton, &morphToButton })
+    {
+        button->onClick = [this, button] { showMorphSceneMenu (button == &morphToButton); };
+        addAndMakeVisible (*button);
+    }
+    morphFromButton.setTooltip ("Morph from this scene");
+    morphToButton.setTooltip ("Morph to this scene");
+    morphArrow.setText (juce::String::fromUTF8 ("\xe2\x86\x92"), juce::dontSendNotification);
+    morphArrow.setJustificationType (juce::Justification::centred);
+    morphArrow.setBorderSize ({});
+    morphArrow.setFont (Fonts::regular (15.0f));
+    morphArrow.setColour (juce::Label::textColourId, Palette::textDim);
+    addAndMakeVisible (morphArrow);
+    morphSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    morphSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 22);
+    morphSlider.setTooltip ("Morph: blends the board from one scene to the other (an expression pedal on the Morph "
+                            "parameter; right-click Morph for MIDI learn in the app). At 100% the To scene is the current one.");
+    morphAttachment = std::make_unique<juce::SliderParameterAttachment> (board.getMorphParam(), morphSlider);
+    morphSlider.setDoubleClickReturnValue (true, 0.0);
+    addAndMakeVisible (morphSlider);
+    refreshMorph();
 
     // Standalone: tempo field, tap tempo, tuner (in a host, the host has these).
     // In a host the field shows the pedals' tempo (the host's or MIDI clock's),
@@ -777,7 +879,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         addAndMakeVisible (label);
 
         slider.setSliderStyle (juce::Slider::LinearHorizontal);
-        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
+        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 58, 22);
         slider.setDoubleClickReturnValue (true, 0.0);
         attachment = std::make_unique<juce::SliderParameterAttachment> (param, slider);
         slider.setTextValueSuffix (" dB");
@@ -816,6 +918,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         showPedal (chain.front());
 
     refreshPresetButton();
+    refreshUndo();
     startTimerHz (15);
 }
 
@@ -864,10 +967,10 @@ void BoardEditor::paint (juce::Graphics& g)
 
     g.setColour (Palette::text);
     g.setFont (Fonts::bold (18.0f));
-    g.drawText ("RKBoard", kMargin, 0, 120, kHeaderHeight - 2, juce::Justification::centredLeft);
+    g.drawText ("RKBoard", kMargin, 0, 96, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
-    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr)
+    if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr && remotePanel == nullptr)
     {
         drawPanel (g, panel, Palette::panel);
         g.setColour (Palette::textDim);
@@ -880,49 +983,74 @@ void BoardEditor::paint (juce::Graphics& g)
 void BoardEditor::resized()
 {
     auto header = getLocalBounds().removeFromTop (kHeaderHeight).withTrimmedBottom (2).reduced (kMargin, 8);
-    header.removeFromLeft (110);   // the name, painted
+    header.removeFromLeft (96);   // the name, painted
 
-    presetButton.setBounds (header.removeFromLeft (200));
+    presetButton.setBounds (header.removeFromLeft (164));
     header.removeFromLeft (4);
-    saveButton.setBounds (header.removeFromLeft (56));
+    saveButton.setBounds (header.removeFromLeft (50));
     header.removeFromLeft (4);
-    saveAsButton.setBounds (header.removeFromLeft (70));
-    header.removeFromLeft (12);
-    assignButton.setBounds (header.removeFromLeft (70));
+    saveAsButton.setBounds (header.removeFromLeft (64));
+    header.removeFromLeft (10);
+    assignButton.setBounds (header.removeFromLeft (60));
+    header.removeFromLeft (4);
+    remoteButton.setBounds (header.removeFromLeft (64));
+    header.removeFromLeft (10);
+    undoButton.setBounds (header.removeFromLeft (52));
+    header.removeFromLeft (4);
+    redoButton.setBounds (header.removeFromLeft (52));
+    header.removeFromLeft (8);
+    lockButton.setBounds (header.removeFromLeft (100));
 
-    outputSlider.setBounds (header.removeFromRight (150));
-    outputLabel.setBounds (header.removeFromRight (34));
+    outputSlider.setBounds (header.removeFromRight (124));
+    outputLabel.setBounds (header.removeFromRight (30));
+    header.removeFromRight (6);
+    inputSlider.setBounds (header.removeFromRight (124));
+    inputLabel.setBounds (header.removeFromRight (22));
     header.removeFromRight (8);
-    inputSlider.setBounds (header.removeFromRight (150));
-    inputLabel.setBounds (header.removeFromRight (24));
-    header.removeFromRight (8);
-    noteLabel.setBounds (header);
+    noteLabel.setBounds (header.withTrimmedLeft (8));
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
-    const auto buttonWidth = 40;
-    tunerButton.setBounds (sceneBar.removeFromRight (70));
-    auto tempoArea = sceneBar.removeFromLeft (150);
-    tempoField.setBounds (tempoArea.removeFromLeft (56));
-    tempoUnit.setBounds (tempoArea.removeFromLeft (36));
-    tapButton.setBounds (tempoArea.removeFromLeft (50));
-    sceneBar = sceneBar.withSizeKeepingCentre (54 + BoardProcessor::kNumScenes * buttonWidth, sceneBar.getHeight());
-    sceneLabel.setBounds (sceneBar.removeFromLeft (54));
+    const auto buttonWidth = 36;
+    const auto small = [] (juce::Rectangle<int> r) { return r.withSizeKeepingCentre (r.getWidth(), 26); };
+    tunerButton.setBounds (small (sceneBar.removeFromRight (64)));
+    auto tempoArea = sceneBar.removeFromLeft (142);
+    tempoField.setBounds (small (tempoArea.removeFromLeft (52)));
+    tempoUnit.setBounds (small (tempoArea.removeFromLeft (36)));
+    tapButton.setBounds (small (tempoArea.removeFromLeft (48)));
+    sceneBar.removeFromLeft (8);
     for (auto& button : sceneButtons)
         button.setBounds (sceneBar.removeFromLeft (buttonWidth));
+    sceneBar.removeFromRight (10);
+    sceneBar.removeFromLeft (4);
+    morphLabel.setBounds (small (sceneBar.removeFromLeft (92)));
+    sceneBar.removeFromLeft (4);
+    morphFromButton.setBounds (small (sceneBar.removeFromLeft (36)));
+    morphArrow.setBounds (small (sceneBar.removeFromLeft (16)));
+    morphToButton.setBounds (small (sceneBar.removeFromLeft (36)));
+    sceneBar.removeFromLeft (6);
+    morphSlider.setBounds (small (sceneBar));
 
     strip.setBounds (getLocalBounds().withTrimmedTop (kHeaderHeight + kSceneBarHeight).removeFromTop (stripHeight()));
     layoutPedalEditor();
+    applyLock();
 }
 
 void BoardEditor::showPedal (int id)
 {
     if (id == shownPedal && (pedalEditor != nullptr || routingPanel != nullptr || assignPanel != nullptr
-                             || tunerPanel != nullptr || id == 0))
+                             || tunerPanel != nullptr || remotePanel != nullptr || id == 0))
         return;
 
     closePedalEditor();
 
-    if (id == BoardStrip::kTunerView)
+    if (id == BoardStrip::kRemoteView)
+    {
+        remotePanel = std::make_unique<RemotePanel> (board);
+        shownPedal = id;
+        addAndMakeVisible (*remotePanel);
+        layoutPedalEditor();
+    }
+    else if (id == BoardStrip::kTunerView)
     {
         tunerPanel = std::make_unique<TunerPanel> (board);
         shownPedal = id;
@@ -966,12 +1094,13 @@ void BoardEditor::showPedal (int id)
     }
 
     strip.setSelected (shownPedal);
+    applyLock();   // the shields stay on top of a new panel
     repaint();
 }
 
 void BoardEditor::mouseDown (const juce::MouseEvent& e)
 {
-    if (! e.mods.isPopupMenu() || e.originalComponent == nullptr)
+    if (! e.mods.isPopupMenu() || e.originalComponent == nullptr || isLocked())
         return;
 
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
@@ -1008,6 +1137,12 @@ void BoardEditor::mouseDown (const juce::MouseEvent& e)
     if (e.originalComponent == &tunerButton)
     {
         showLearnMenu (LearnTarget::tuner, tunerButton);
+        return;
+    }
+
+    if (e.originalComponent == &morphLabel || e.originalComponent == &morphSlider)
+    {
+        showLearnMenu (LearnTarget::morph, morphLabel);
         return;
     }
 
@@ -1095,7 +1230,8 @@ void BoardEditor::showSceneMenu (int scene)
         copyTo.addItem (i + 1, "Scene " + juce::String (i + 1), i != scene);
 
     juce::PopupMenu menu;
-    menu.addSectionHeader ("Scene " + juce::String (scene + 1));
+    menu.addSectionHeader ("Scene " + board.describeScene (scene));
+    menu.addItem (1000, "Rename...");
     menu.addSubMenu ("Copy to", copyTo);
     if (board.isStandalone())
     {
@@ -1111,12 +1247,80 @@ void BoardEditor::showSceneMenu (int scene)
                             if (safe != nullptr && safe->handleLearnResult (result, LearnTarget::scene, 100))
                                 return;
 
+                            if (safe != nullptr && result == 1000)
+                            {
+                                safe->renameScene (scene);
+                                return;
+                            }
+
                             if (safe != nullptr && result > 0)
                             {
                                 safe->board.copyScene (scene, result - 1);
                                 safe->showNote ("Scene " + juce::String (scene + 1) + " copied to scene " + juce::String (result), false);
                             }
                         });
+}
+
+void BoardEditor::showMorphSceneMenu (bool to)
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader (to ? "Morph to" : "Morph from");
+    const auto current = to ? board.getMorphTo() : board.getMorphFrom();
+    for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+        menu.addItem (i + 1, "Scene " + board.describeScene (i), true, i == current);
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (to ? morphToButton : morphFromButton), [safe, to] (int result)
+    {
+        if (safe == nullptr || result <= 0)
+            return;
+        auto& b = safe->board;
+        if (to)
+            b.setMorphScenes (b.getMorphFrom(), result - 1);
+        else
+            b.setMorphScenes (result - 1, b.getMorphTo());
+        safe->refreshMorph();
+    });
+}
+
+void BoardEditor::refreshMorph()
+{
+    const auto from = board.getMorphFrom(), to = board.getMorphTo();
+    morphFromButton.setButtonText (juce::String (from + 1));
+    morphToButton.setButtonText (juce::String (to + 1));
+    morphFromButton.setTooltip ("Morph from scene " + board.describeScene (from));
+    morphToButton.setTooltip ("Morph to scene " + board.describeScene (to));
+
+    // Mid-morph, edits go into no scene: say so.
+    const auto morphing = board.isMorphing();
+    morphLabel.setText (morphing ? "morphing " + juce::String (from + 1) + juce::String::fromUTF8 (" \xe2\x86\x92 ") + juce::String (to + 1)
+                                 : juce::String ("Morph"), juce::dontSendNotification);
+    morphLabel.setColour (juce::Label::textColourId, morphing ? Palette::boardAccent : Palette::textDim);
+    morphLabel.setTooltip (morphing ? "Morphing: edits now go into no scene" : "Scene morph (right-click: MIDI learn in the app)");
+}
+
+void BoardEditor::renameScene (int scene)
+{
+    auto* window = new juce::AlertWindow ("Scene " + juce::String (scene + 1),
+                                          "Its name (\"Intro\", \"Verse\", \"Solo\"); empty for none.",
+                                          juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("name", board.getSceneName (scene));
+    if (auto* editor = window->getTextEditor ("name"))
+    {
+        editor->setInputRestrictions (BoardProcessor::kMaxSceneNameLength);
+        editor->selectAll();
+    }
+    window->addButton ("Rename", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<BoardEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, scene] (int result)
+    {
+        if (safe == nullptr || result != 1)
+            return;
+        safe->board.setSceneName (scene, window->getTextEditorContents ("name"));
+        safe->refreshSceneButtons();
+    }), true);
 }
 
 void BoardEditor::addLearnItems (juce::PopupMenu& menu, int target, int base) const
@@ -1220,7 +1424,10 @@ void BoardEditor::refreshTempo()
 void BoardEditor::refreshSceneButtons()
 {
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
+    {
+        sceneButtons[(size_t) i].setScene (i + 1, board.getSceneName (i));
         sceneButtons[(size_t) i].setToggleState (i == board.getScene(), juce::dontSendNotification);
+    }
 }
 
 void BoardEditor::closePedalEditor()
@@ -1235,13 +1442,14 @@ void BoardEditor::closePedalEditor()
     routingPanel.reset();
     assignPanel.reset();
     tunerPanel.reset();
+    remotePanel.reset();
     shownPedal = 0;
 }
 
 void BoardEditor::layoutPedalEditor()
 {
     // A panel built before it joined the window restyles with the board's look.
-    for (auto* panel : std::initializer_list<juce::Component*> { routingPanel.get(), assignPanel.get(), tunerPanel.get() })
+    for (auto* panel : std::initializer_list<juce::Component*> { routingPanel.get(), assignPanel.get(), tunerPanel.get(), remotePanel.get() })
         if (panel != nullptr && &panel->getLookAndFeel() == &lookAndFeel && ! panel->getProperties().contains ("styled"))
         {
             panel->getProperties().set ("styled", true);
@@ -1252,10 +1460,13 @@ void BoardEditor::layoutPedalEditor()
         routingPanel->setBounds (panelArea());
     if (assignPanel != nullptr)
         assignPanel->setBounds (panelArea());
+    if (remotePanel != nullptr)
+        remotePanel->setBounds (panelArea().withHeight (juce::jmin (panelArea().getHeight(), 420)));
     if (tunerPanel != nullptr)
         tunerPanel->setBounds (panelArea().withHeight (juce::jmin (panelArea().getHeight(), 360)));
     tunerButton.setToggleState (shownPedal == BoardStrip::kTunerView, juce::dontSendNotification);
     assignButton.setToggleState (shownPedal == BoardStrip::kAssignView, juce::dontSendNotification);
+    remoteButton.setToggleState (shownPedal == BoardStrip::kRemoteView, juce::dontSendNotification);
 
     if (pedalEditor == nullptr)
         return;
@@ -1289,6 +1500,13 @@ void BoardEditor::timerCallback()
     if (board.getPresetStateCounter() != lastPresetCounter)
         refreshPresetButton();
 
+    // The undo history polls on its own; the buttons follow it (and a change
+    // being recorded makes Undo possible before its step closes).
+    refreshUndo();
+
+    if (board.getLock() != shownLock)
+        applyLock();
+
     if (board.getBoardCounter() != lastBoardCounter)
     {
         lastBoardCounter = board.getBoardCounter();
@@ -1312,6 +1530,7 @@ void BoardEditor::timerCallback()
 
         strip.repaint();
         refreshSceneButtons();
+        refreshMorph();
         refreshTempo();
         repaint (panelArea());
         if (routingPanel != nullptr)
@@ -1319,6 +1538,46 @@ void BoardEditor::timerCallback()
         if (assignPanel != nullptr)
             assignPanel->refresh();
     }
+}
+
+void BoardEditor::refreshUndo()
+{
+    auto& undo = board.getUndo();
+    const auto canUndo = ! isLocked() && undo.canUndo(), canRedo = ! isLocked() && undo.canRedo();
+    if (undo.getVersion() == lastUndoVersion && canUndo == undoButton.isEnabled() && canRedo == redoButton.isEnabled())
+        return;
+    lastUndoVersion = undo.getVersion();
+    undoButton.setEnabled (canUndo);
+    redoButton.setEnabled (canRedo);
+    undoButton.setTooltip (canUndo ? "Undo " + undo.undoDescription() + " (Cmd+Z)" : juce::String ("Nothing to undo"));
+    redoButton.setTooltip (canRedo ? "Redo " + undo.redoDescription() + " (Cmd+Shift+Z)" : juce::String ("Nothing to redo"));
+}
+
+void BoardEditor::undoOrRedo (bool redo)
+{
+    if (isLocked())
+        return;
+    auto& undo = board.getUndo();
+    const auto what = redo ? undo.redoDescription() : undo.undoDescription();
+    if (redo)
+        undo.redo();
+    else
+        undo.undo();
+    if (what.isNotEmpty())
+        showNote ((redo ? "Redone: " : "Undone: ") + what, false);
+    lastUndoVersion = -1;
+    refreshUndo();
+}
+
+bool BoardEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getModifiers().isCommandDown() && (key.getKeyCode() == 'Z' || key.getKeyCode() == 'z'))
+    {
+        if (! isLocked())
+            undoOrRedo (key.getModifiers().isShiftDown());
+        return true;
+    }
+    return juce::AudioProcessorEditor::keyPressed (key);
 }
 
 void BoardEditor::refreshPresetButton()

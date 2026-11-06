@@ -109,3 +109,13 @@ One web page served by RKBoard on the local network, drawn with the suite's own 
 - Linked boards (see `RKBoard.md`): a remote listing several instances is the first step towards it.
 - Morph across more than two scenes, or a morph curve.
 - Remote editing of the board's structure (adding and moving pedals).
+
+## As built (2026-11-06)
+
+Built as designed, in the build order above, with these differences:
+
+- **Undo:** the shared step and grouping logic is `host/UndoHistory` (`rkfx::UndoHistory`, a client interface per plugin); RKMix's `MixUndo` is a small adapter on it, with its public API and tests unchanged. RKBoard's adapter is `BoardUndo`. Value keys are (owner, parameter index); the settings that aren't values (assignments, scene knobs, trails, names, what each scene stores) are compared as JSON when their counter moves; structural steps keep the layout before and after, the settings before and after, and the full state of the pedals added or removed. A pedal preset loaded into a pedal is recorded as its value changes (one step), not as a structural step.
+- **Morph:** To follows "the next scene" until the user picks another To (then it stays across recalls). Recalling a scene sets Morph back to 0% (quietly), so the board and the parameter agree. Choosing the current scene again mid-morph goes back to it. RKBoard's knobs have no scene marks, so nothing is dimmed; the scene bar says "morphing 2 → 3".
+- **Remote:** `BoardRemoteHub` (plugins/RKBoard/BoardRemote.*). Besides the messages above, the page uses RKMix's value protocol (`sub` and `set` with value IDs `p<pedal>:<param>`, `s<split>:<param>`, `a<slot>`, `morph`, `in`, `out`), and `show` (whose knobs to send), `morphScenes`, `tuner`. The page has a single start: a list of boards when there are several (each device remembers its own). The board's remote name is saved in the host session, not in board presets. The QR code's link carries the PIN as a URL fragment (never sent to the server). The window's header grew to 1180 px for Undo, Redo, Lock and Remote. `RKFXRemoteDemo_RKBoard` serves the page from two headless boards.
+- **Not done:** RKMix's scene names (the "small follow-up"); a benchmark for RKBoard idle (there is none in the suite; nothing was added to the audio path besides the morph's knob targets).
+

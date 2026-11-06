@@ -13,15 +13,6 @@ namespace
 {
     constexpr int kStateVersion = 1;
 
-    /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
-    struct LoadingScope
-    {
-        explicit LoadingScope (std::atomic<bool>& f) : flag (f), previous (f.exchange (true)) {}
-        ~LoadingScope() { flag = previous; }
-        std::atomic<bool>& flag;
-        const bool previous;
-    };
-
     /** An assignment's or scene knob's owner in a board preset: "pedal": id,
         or "split": n (1 and up) for a split's settings. */
     void writeOwner (juce::DynamicObject& entry, int owner)
@@ -79,9 +70,21 @@ BoardProcessor::BoardProcessor()
         p->addListener (this);
     }
 
-    sceneParam = new juce::AudioParameterInt (juce::ParameterID { "scene", hint++ }, "Scene", 1, kNumScenes, 1);
+    // The text shows the scene's name ("2 Verse"): Gig Performer puts it on a widget's label.
+    const auto sceneAttributes = juce::AudioParameterIntAttributes()
+        .withStringFromValueFunction ([this] (int value, int) { return describeScene (value - 1); })
+        .withValueFromStringFunction ([] (const juce::String& text) { return text.trim().getIntValue(); });
+    sceneParam = new juce::AudioParameterInt (juce::ParameterID { "scene", hint++ }, "Scene", 1, kNumScenes, 1, sceneAttributes);
     addParameter (sceneParam);
     sceneParam->addListener (this);
+
+    morphParam = new juce::AudioParameterFloat (juce::ParameterID { "morph", hint++ }, "Morph", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f,
+                                                juce::AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+                                                {
+                                                    return juce::String (juce::roundToInt (v * 100.0f)) + " %";
+                                                }).withValueFromStringFunction ([] (const juce::String& t) { return t.getFloatValue() / 100.0f; }));
+    addParameter (morphParam);
+    morphParam->addListener (this);
 
     pedalMidi.ensureSize (4096);
     tunerRing.setSize (1, kTunerBufferSize);
@@ -108,21 +111,53 @@ BoardProcessor::BoardProcessor()
     const auto defaultFile = library.getDefaultPresetFile ("RKBoard");
     if (defaultFile.existsAsFile())
         loadBoardPreset (defaultFile);
+
+    undo = std::make_unique<BoardUndo> (*this);
 }
 
 BoardProcessor::~BoardProcessor()
 {
+    if (remoteHub != nullptr)
+        (*remoteHub)->removeBoard (*this);
+    remoteHub.reset();
+    undo.reset();
     inputParam->removeListener (this);
     outputParam->removeListener (this);
     for (auto* p : assignParams)
         p->removeListener (this);
     sceneParam->removeListener (this);
+    morphParam->removeListener (this);
     for (auto& split : splits)
         for (auto* p : split->settings.getParameters())
             p->removeListener (&split->watcher);
 
     for (int id = 1; id <= kMaxPedals; ++id)
         detachPedal (id);
+}
+
+//==============================================================================
+void BoardProcessor::beginRemote()
+{
+    if (remoteHub != nullptr)
+        return;
+    remoteHub = std::make_unique<juce::SharedResourcePointer<BoardRemoteHub>>();
+    (*remoteHub)->addBoard (*this, true);
+}
+
+juce::String BoardProcessor::getRemoteName() const
+{
+    const juce::ScopedLock sl (presetLock);
+    return remoteName;
+}
+
+void BoardProcessor::setRemoteName (const juce::String& name)
+{
+    const auto clean = name.trim().substring (0, 24).trim();
+    {
+        const juce::ScopedLock sl (presetLock);
+        remoteName = clean.isNotEmpty() ? clean : juce::String ("Board");
+    }
+    ++boardCounter;
 }
 
 //==============================================================================
@@ -188,6 +223,8 @@ int BoardProcessor::insertSplit (Section chainSection, int position)
         return -1;
 
     const auto k = chainOf (chainSection);   // the new split follows chain k
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // Later splits move up by one, keeping their settings (and what is
     // assigned to them or scene-controlled); the new one starts at defaults.
@@ -218,6 +255,8 @@ int BoardProcessor::insertSplit (Section chainSection, int position)
     ++numSplits;
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Insert split");
     return k;
 }
 
@@ -225,6 +264,8 @@ void BoardProcessor::removeSplit (int split)
 {
     if (split < 0 || split >= numSplits)
         return;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // Path A, then path B, then the chain after the merge join the chain before.
     const auto before = (int) chainSection (split);
@@ -255,6 +296,8 @@ void BoardProcessor::removeSplit (int split)
     --numSplits;
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Remove split " + juce::String (split + 1));
 }
 
 rkfx::ProcessorBase* BoardProcessor::getPedal (int id) const
@@ -317,7 +360,7 @@ void BoardProcessor::attachPedal (int id, std::unique_ptr<rkfx::ProcessorBase> p
     pedals[(size_t) id - 1] = std::move (pedal);
 }
 
-std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
+std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id, bool publish)
 {
     if (id < 1 || id > kMaxPedals || pedals[(size_t) id - 1] == nullptr)
         return nullptr;
@@ -332,7 +375,8 @@ std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
 
     for (auto& section : layout)
         section.erase (std::remove (section.begin(), section.end(), id), section.end());
-    publishChain();
+    if (publish)
+        publishChain();
 
     std::unique_ptr<rkfx::ProcessorBase> pedal;
     {
@@ -385,6 +429,8 @@ int BoardProcessor::addPedal (const juce::String& typeName, Section section, int
     auto pedal = createPedal (typeName);
     if (pedal == nullptr)
         return 0;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // A new pedal starts bypassed, in every scene, so adding it never
     // changes the sound until it is switched on.
@@ -397,6 +443,9 @@ int BoardProcessor::addPedal (const juce::String& typeName, Section section, int
     list.insert (list.begin() + position, id);
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        if (const auto* type = findPedalType (typeName))
+            undo->endStructure ("Add " + type->shortName);
     return id;
 }
 
@@ -408,6 +457,10 @@ int BoardProcessor::duplicatePedal (int sourceId)
         return 0;
 
     auto pedal = createPedal (source->getConfig().name);
+    if (pedal == nullptr)
+        return 0;
+    if (undo != nullptr)
+        undo->beginStructure();
     pedal->loadPresetVar (source->getPresetVar (true), true);
     attachPedal (id, std::move (pedal));
 
@@ -421,19 +474,41 @@ int BoardProcessor::duplicatePedal (int sourceId)
     list.insert (at == list.end() ? list.end() : at + 1, id);
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Duplicate " + undoName (id));
     return id;
 }
 
 void BoardProcessor::removePedal (int id)
 {
-    if (detachPedal (id) != nullptr)
-        boardChanged();
+    if (getPedal (id) == nullptr)
+        return;
+    const auto name = undoName (id);
+    if (undo != nullptr)
+        undo->beginStructure ({ id });
+    detachPedal (id);
+    boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Remove " + name);
+}
+
+juce::String BoardProcessor::undoName (int id) const
+{
+    if (auto* pedal = getPedal (id))
+    {
+        if (const auto* type = findPedalType (pedal->getConfig().name))
+            return type->shortName;
+        return pedal->getConfig().name;
+    }
+    return {};
 }
 
 void BoardProcessor::movePedal (int id, Section section, int position)
 {
     if (getPedal (id) == nullptr)
         return;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     const auto from = sectionOf (id);
     auto& source = layout[(size_t) from];
@@ -451,6 +526,8 @@ void BoardProcessor::movePedal (int id, Section section, int position)
 
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Move " + undoName (id));
 }
 
 void BoardProcessor::clearBoard()
@@ -482,8 +559,8 @@ void BoardProcessor::setPedalBypassed (int id, bool bypassed)
     if (getPedal (id) == nullptr)
         return;
 
-    // An edit (not a scene recall) goes into the current scene.
-    if (! applyingScene)
+    // An edit (not a scene recall or a morph) goes into the current scene.
+    if (storesEdits())
         sceneBypass[(size_t) currentScene.load()][(size_t) id - 1] = bypassed;
     bypassState[(size_t) id - 1] = bypassed;
 
@@ -522,6 +599,13 @@ void BoardProcessor::parameterValueChanged (int parameterIndex, float newValue)
     if (parameterIndex == sceneParam->getParameterIndex())
     {
         recallScene (juce::jlimit (0, kNumScenes - 1, sceneParam->get() - 1));
+        return;
+    }
+
+    if (parameterIndex == morphParam->getParameterIndex())
+    {
+        if (! resettingMorph)
+            applyMorph (newValue);
         return;
     }
 
@@ -655,6 +739,7 @@ void BoardProcessor::assign (int slot, int pedalId, const juce::String& paramId)
     a.pedal = pedalId;
 
     followTarget (pedalId, index, targetValue (pedalId, index));
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -665,6 +750,7 @@ void BoardProcessor::clearAssignment (int slot)
 
     assignments[(size_t) slot].pedal = 0;
     assignments[(size_t) slot].paramIndex = -1;
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -692,6 +778,7 @@ void BoardProcessor::setAssignmentRange (int slot, float min, float max, bool in
     if (a.pedal != 0 && ownerProcessor (a.pedal) != nullptr && a.paramIndex >= 0)
         followTarget (a.pedal, a.paramIndex, targetValue (a.pedal, a.paramIndex));
 
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -736,7 +823,7 @@ void BoardProcessor::RoutingWatcher::parameterValueChanged (int parameterIndex, 
     board.followTarget (owner, parameterIndex, newValue);
     if (! applyingScene)
     {
-        if (const auto k = board.findSceneKnob (owner, parameterIndex); k >= 0)
+        if (const auto k = board.findSceneKnob (owner, parameterIndex); k >= 0 && ! board.isMorphing())
             board.sceneKnobs[(size_t) k].values[(size_t) board.currentScene.load()] = newValue;
         board.markModified();
     }
@@ -795,8 +882,8 @@ void BoardProcessor::PedalLink::parameterValueChanged (int parameterIndex, float
     // An assigned knob moves its Assign parameter along.
     board.followTarget (id, parameterIndex, newValue);
 
-    // A scene-controlled knob's edit goes into the current scene.
-    if (! applyingScene)
+    // A scene-controlled knob's edit goes into the current scene (not mid-morph).
+    if (board.storesEdits())
         if (const auto k = board.findSceneKnob (id, parameterIndex); k >= 0)
             board.sceneKnobs[(size_t) k].values[(size_t) board.currentScene.load()] = newValue;
 
@@ -1021,6 +1108,11 @@ void BoardProcessor::applyController (int target, bool momentary, int value, dou
                 boardPlayHead.bpm = *bpm;
                 ++boardCounter;
             }
+    }
+    else if (target == LearnTarget::morph)
+    {
+        // Smoothed by the scene glide the morph moves the knobs with.
+        morphParam->setValueNotifyingHost ((float) value / 127.0f);
     }
     else if (target == LearnTarget::tuner)
     {
@@ -1428,8 +1520,11 @@ void BoardProcessor::setScene (int index)
 
 void BoardProcessor::recallScene (int index)
 {
-    if (index == currentScene.exchange (index))
+    // The same scene again only means something mid-morph (back to it).
+    const auto previous = currentScene.exchange (index);
+    if (index == previous && ! isMorphing())
         return;
+    endMorph();
 
     // Not edits: nothing is written back into the scene.
     const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
@@ -1449,6 +1544,95 @@ void BoardProcessor::recallScene (int index)
             k.gliding = true;
         }
 
+    ++boardCounter;
+}
+
+bool BoardProcessor::isMorphing() const noexcept
+{
+    const auto m = morphParam->get();
+    return morphActive.load() && m > 0.0f && m < 1.0f;
+}
+
+void BoardProcessor::setMorphScenes (int from, int to)
+{
+    from = juce::jlimit (0, kNumScenes - 1, from);
+    to = juce::jlimit (0, kNumScenes - 1, to);
+    morphToChosen = to != (from + 1) % kNumScenes;
+    if (from == morphFrom.load() && to == morphTo.load())
+        return;
+    morphFrom = from;
+    morphTo = to;
+    // Mid-morph the board follows the new pair.
+    if (isMorphing())
+        applyMorph (morphParam->get());
+    ++boardCounter;
+}
+
+void BoardProcessor::endMorph()
+{
+    morphActive = false;
+    const auto from = currentScene.load();
+    morphFrom = from;
+    if (! morphToChosen.load() || morphTo.load() == from)
+    {
+        morphTo = (from + 1) % kNumScenes;
+        morphToChosen = false;
+    }
+    if (morphParam->get() > 0.0f)
+    {
+        const juce::ScopedValueSetter<bool> quiet (resettingMorph, true);
+        morphParam->setValueNotifyingHost (0.0f);
+    }
+    ++boardCounter;
+}
+
+void BoardProcessor::applyMorph (float m)
+{
+    const auto from = morphFrom.load(), to = morphTo.load();
+    if (from == to)
+        return;
+    morphActive = true;
+    m = juce::jlimit (0.0f, 1.0f, m);
+
+    {
+        // Not edits: nothing is stored into a scene.
+        const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
+
+        // Each scene knob glides to its blend (the scene glide's path, so it
+        // never zippers); an assigned one follows its Assign slot instead.
+        for (auto& k : sceneKnobs)
+        {
+            const auto owner = k.pedal.load(), index = k.paramIndex.load();
+            if (owner == 0)
+                continue;
+            auto assigned = false;
+            for (const auto& a : assignments)
+                assigned = assigned || (a.pedal == owner && a.paramIndex == index);
+            if (assigned)
+                continue;
+            const auto a = k.values[(size_t) from].load(), b = k.values[(size_t) to].load();
+            k.glideTarget = m >= 1.0f ? b : a + (b - a) * m;
+            k.gliding = true;
+        }
+
+        // A pedal on in either scene is on in between.
+        for (int id = 1; id <= kMaxPedals; ++id)
+            if (pedals[(size_t) id - 1] != nullptr)
+            {
+                const auto offFrom = sceneBypass[(size_t) from][(size_t) id - 1].load();
+                const auto offTo = sceneBypass[(size_t) to][(size_t) id - 1].load();
+                const auto off = m <= 0.0f ? offFrom : m >= 1.0f ? offTo : (offFrom && offTo);
+                if (off != bypassState[(size_t) id - 1])
+                    setPedalBypassed (id, off);
+            }
+    }
+
+    // At either end that scene is the current one (the scene bar follows).
+    if (const auto end = m >= 1.0f ? to : m <= 0.0f ? from : -1; end >= 0 && end != currentScene.load())
+    {
+        currentScene = end;   // first: the Scene parameter then recalls nothing
+        sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) end + 1.0f));
+    }
     ++boardCounter;
 }
 
@@ -1518,6 +1702,7 @@ bool BoardProcessor::setSceneControlled (int pedalId, const juce::String& paramI
         {
             sceneKnobs[(size_t) existing].pedal = 0;
             sceneKnobs[(size_t) existing].paramIndex = -1;
+            ++settingsCounter;
             boardChanged();
         }
         return true;
@@ -1536,6 +1721,7 @@ bool BoardProcessor::setSceneControlled (int pedalId, const juce::String& paramI
             k.gliding = false;
             k.paramIndex = index;
             k.pedal = pedalId;
+            ++settingsCounter;
             boardChanged();
             return true;
         }
@@ -1574,8 +1760,41 @@ void BoardProcessor::copyScene (int from, int to)
         sceneBypass[(size_t) to][(size_t) i] = sceneBypass[(size_t) from][(size_t) i].load();
     for (auto& k : sceneKnobs)
         k.values[(size_t) to] = k.values[(size_t) from].load();
+    setSceneName (to, getSceneName (from));
 
+    ++settingsCounter;
     boardChanged();
+}
+
+juce::String BoardProcessor::getSceneName (int scene) const
+{
+    if (scene < 0 || scene >= kNumScenes)
+        return {};
+    const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+    return sceneNames[(size_t) scene];
+}
+
+void BoardProcessor::setSceneName (int scene, const juce::String& name)
+{
+    if (scene < 0 || scene >= kNumScenes)
+        return;
+    const auto clean = name.replaceCharacters ("\r\n\t", "   ").trim().substring (0, kMaxSceneNameLength).trim();
+    {
+        const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+        if (sceneNames[(size_t) scene] == clean)
+            return;
+        sceneNames[(size_t) scene] = clean;
+    }
+    ++settingsCounter;
+    boardChanged();
+    // Hosts showing the Scene parameter's text read it again.
+    updateHostDisplay (juce::AudioProcessorListener::ChangeDetails().withParameterInfoChanged (true));
+}
+
+juce::String BoardProcessor::describeScene (int scene) const
+{
+    const auto name = getSceneName (scene);
+    return juce::String (scene + 1) + (name.isNotEmpty() ? " " + name : juce::String());
 }
 
 bool BoardProcessor::canHaveTrails (int pedalId) const
@@ -1604,6 +1823,7 @@ void BoardProcessor::setTrails (int pedalId, bool on)
     setPedalOwnBypass (pedalId, ! on && bypassed);
     syncingBypass = false;
 
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -1617,6 +1837,8 @@ juce::var BoardProcessor::toVar (bool fullState) const
     {
         root->setProperty ("name", getPresetName());
         root->setProperty ("modified", isPresetModified());
+        if (getRemoteName() != "Board")
+            root->setProperty ("remoteName", getRemoteName());
         if (const auto file = getPresetFile(); file != juce::File())
             root->setProperty ("file", file.getFullPathName());
     }
@@ -1660,6 +1882,12 @@ juce::var BoardProcessor::toVar (bool fullState) const
     // Scenes: the bypassed pedals of each, and each scene knob's values (real units).
     auto* scenes = new juce::DynamicObject();
     scenes->setProperty ("current", currentScene.load() + 1);
+    // The morph's scenes, when they aren't the current one and the next.
+    if (morphFrom.load() != currentScene.load() || morphTo.load() != (currentScene.load() + 1) % kNumScenes)
+    {
+        scenes->setProperty ("morphFrom", morphFrom.load() + 1);
+        scenes->setProperty ("morphTo", morphTo.load() + 1);
+    }
 
     juce::Array<juce::var> bypassLists;
     for (int scene = 0; scene < kNumScenes; ++scene)
@@ -1688,6 +1916,17 @@ juce::var BoardProcessor::toVar (bool fullState) const
                 knobs.add (juce::var (entry));
             }
     scenes->setProperty ("knobs", knobs);
+
+    // Names, only when there are some (one per scene, "" for none).
+    juce::Array<juce::var> names;
+    auto anyName = false;
+    for (int scene = 0; scene < kNumScenes; ++scene)
+    {
+        names.add (getSceneName (scene));
+        anyName = anyName || getSceneName (scene).isNotEmpty();
+    }
+    if (anyName)
+        scenes->setProperty ("names", names);
     root->setProperty ("scenes", juce::var (scenes));
 
     juce::Array<juce::var> list;
@@ -1850,9 +2089,25 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
                     k.values[(size_t) scene] = param->convertTo0to1 ((float) (double) (*values)[scene]);
         }
 
+    {
+        const auto* names = scenes["names"].getArray();
+        const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+        for (int scene = 0; scene < kNumScenes; ++scene)
+            sceneNames[(size_t) scene] = names != nullptr && scene < names->size()
+                                             ? (*names)[scene].toString().trim().substring (0, kMaxSceneNameLength) : juce::String();
+    }
+
     // The pedals were loaded as the current scene; just point there.
     const auto current = juce::jlimit (1, kNumScenes, scenes["current"].isVoid() ? 1 : (int) scenes["current"]);
     currentScene = current - 1;
+    {
+        const juce::ScopedValueSetter<bool> quiet (resettingMorph, true);
+        morphActive = false;
+        morphParam->setValueNotifyingHost (0.0f);
+        morphFrom = scenes["morphFrom"].isVoid() ? current - 1 : juce::jlimit (1, kNumScenes, (int) scenes["morphFrom"]) - 1;
+        morphTo = scenes["morphTo"].isVoid() ? current % kNumScenes : juce::jlimit (1, kNumScenes, (int) scenes["morphTo"]) - 1;
+        morphToChosen = morphTo.load() != (morphFrom.load() + 1) % kNumScenes;
+    }
     {
         const juce::ScopedValueSetter<bool> recalling (applyingScene, true);
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) current));
@@ -1860,6 +2115,9 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
 
     publishChain();
     ++boardCounter;
+    ++settingsCounter;
+    if (undo != nullptr)
+        undo->getHistory().clear();   // a new board: nothing to undo into
 
     return { true, notes.joinIntoString ("; ") };
 }
@@ -1943,10 +2201,19 @@ void BoardProcessor::resetBoard()
         }
         numSplits = 1;
         publishChain();
+        {
+            const juce::SpinLock::ScopedLockType sl (sceneNamesLock);
+            for (auto& name : sceneNames)
+                name.clear();
+        }
         currentScene = 0;
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 (1.0f));
+        morphToChosen = false;
+        endMorph();
         ++boardCounter;
     }
+    if (undo != nullptr)
+        undo->getHistory().clear();
     setPresetState ("Default", {}, false);
 }
 
@@ -1970,6 +2237,7 @@ void BoardProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     if (! fromVar (root, true).ok)
         return;
+    setRemoteName (root.getProperty ("remoteName", "Board").toString());
 
     if (! standalone)
     {
@@ -1992,5 +2260,10 @@ juce::AudioProcessorEditor* BoardProcessor::createEditor()
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new rkboard::BoardProcessor();
+    // Only the plugin and the app serve the remote (never tests and tools,
+    // whose wrapper type is undefined).
+    auto* board = new rkboard::BoardProcessor();
+    if (board->wrapperType != juce::AudioProcessor::wrapperType_Undefined)
+        board->beginRemote();
+    return board;
 }

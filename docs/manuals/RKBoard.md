@@ -8,10 +8,10 @@ For knobs, presets and the standard controls inside each pedal, see [Common Cont
 
 ## The window
 
-- **Header (top):** the board preset (name, menu, Save, Save as), the **Assign** button, and the board's **In** and **Out** levels (-24 to +12 dB).
-- **Scene bar:** scenes 1 to 16 (see Scenes).
+- **Header (top):** the board preset (name, menu, Save, Save as), the **Assign** and **Remote** buttons, **Undo**, **Redo** and **Lock**, and the board's **In** and **Out** levels (-24 to +12 dB).
+- **Scene bar:** the tempo, scenes 1 to 16 with their names (see Scenes), and the **Morph** section (see Scene morph).
 - **The board:** the pedals, flowing left to right. A board too long for one row continues on the next, like text, with a cable from the end of one row to the start of the next; the window grows by a row. The split, both paths and the merge always stay together on one row.
-- **Below the board:** the controls of the selected pedal (its own plugin window), the split's or merge's settings, or the assignable parameters.
+- **Below the board:** the controls of the selected pedal (its own plugin window), the split's or merge's settings, the assignable parameters, or the remote's page.
 
 ## The board
 
@@ -88,9 +88,45 @@ A board has 16 **scenes**. A scene remembers:
 - whether each pedal is on or bypassed (a newly added pedal is bypassed in all of them), and
 - the value of every **scene-controlled** knob. Right-click a knob (a pedal's, or a split's or merge's) and tick **Scene controlled** (up to 48 knobs per board). All other knobs are the same in every scene.
 
-Click a scene button to switch. Pedals switch on and off at once; scene-controlled knobs glide to their new values, so nothing clicks. Changes you make while a scene is selected are stored in that scene. Right-click a scene button to copy it to another scene, then change what should differ.
+Click a scene button to switch. Pedals switch on and off at once; scene-controlled knobs glide to their new values, so nothing clicks. Changes you make while a scene is selected are stored in that scene. Right-click a scene button to copy it to another scene (with its name), then change what should differ.
 
-Scenes can also be switched by the host parameter **Scene** (1 to 16, for a Gig Performer widget), and in the standalone app by MIDI program changes 0 to 15.
+**Names:** double-click a scene button (or right-click it and choose **Rename...**) to name it: "Intro", "Verse", "Solo" (up to 24 characters; empty for none). The button shows the number and the name under it, shortened to fit; the tooltip shows it whole. Names are saved with the board.
+
+Scenes can also be switched by the host parameter **Scene** (1 to 16, for a Gig Performer widget), and in the standalone app by MIDI program changes 0 to 15. The Scene parameter's text includes the name ("2 Verse"), so a Gig Performer widget showing it reads like the setlist. If a widget still shows an old name after a rename, reload the rackspace.
+
+## Scene morph
+
+An expression pedal blends the board from one scene to another: clean to lead in one sweep, or a verse's delay swelling into the chorus's.
+
+The **Morph** section at the right of the scene bar has **From** (the first button, the current scene unless you choose another), **To** (the second, the next scene unless you choose another) and the **Morph** position (0 to 100%). Morph is a host parameter, so in Gig Performer map an expression pedal to it; in the app, right-click **Morph** for MIDI learn.
+
+- **Knobs:** every scene-controlled knob moves from its value in From (at 0%) to its value in To (at 100%), along the same smooth glide as a scene change. Knobs that aren't scene-controlled don't move (they are the same in every scene).
+- **Pedals on and off** can't be blended: a pedal on in both scenes stays on, off in both stays off. A pedal **on in only one** of them is on anywhere between 0% and 100%, and at either end as that scene has it. To fade such a pedal in, make its Dry/Wet (or level) scene-controlled.
+- **At 0%** the board is exactly scene From, **at 100%** exactly scene To, and To becomes the current scene (the scene bar follows). A heel-to-toe sweep is a slow scene change; rocking back to the heel returns to From.
+- **While morphing** (between 0% and 100%) the scene bar reads "morphing 2 → 3": changes you make then are stored in no scene.
+- **Choosing a scene** (a button, the Scene parameter, a program change) makes it From and ends a morph in progress: Morph goes back to 0%, and the next move of the pedal blends from that scene.
+- A knob that is also on an **Assign** parameter follows its Assign parameter, not the morph. To morph a knob, make it scene-controlled and leave it unassigned.
+
+**Example** (the factory preset **Morph Swell**): the Delay is off in scene 1 and on in scene 2, with its Dry/Wet scene-controlled at 0% in scene 1 and 35% in scene 2. As the pedal moves from the heel, the Delay switches on at 0% Dry/Wet and swells to 35%; the Distort's Gain and the Verb's Dry/Wet rise with it.
+
+## Undo and redo
+
+**Undo** and **Redo** in the header (or **Cmd+Z** and **Cmd+Shift+Z**) step back and forward through your changes; their tooltips say what they undo. Changes less than half a second apart are one step (a whole knob turn, a scene change with its glide).
+
+- **Recorded:** every pedal's knobs and switches, the splits' settings, pedals on and off, In and Out, assignments (with their range and invert), scene-controlled knobs, trails, scene names and copies; pedals added, removed, duplicated or moved, and splits inserted or removed. A removed pedal comes back exactly as it was, with its assignments and scenes.
+- **Scene changes:** undoing one brings back the scene before it and the board as it was, without changing what either scene stores.
+- **Not recorded:** loading a board (it starts a new history), the Morph position, the tuner, tempo and tap, and MIDI learn.
+
+Changes from a Gig Performer widget, an Assign parameter or the remote are recorded too.
+
+## Lock
+
+**Lock** protects the board from a stray click during the show. Click it and choose:
+
+- **Footswitches and scenes only:** the scene buttons, the pedals' footswitches, **Tap**, **Tuner** and **Morph** still work; knobs, dragging, adding and removing pedals, the routing, presets, Undo and right-click menus don't.
+- **Everything:** nothing can be changed. A pedal can still be clicked to look at its controls.
+
+Locked parts are covered by a faint hatch. **Hold Lock for a second** to unlock. The lock is for the window only: host parameters, MIDI and the remote still work. It isn't saved.
 
 ## Trails
 
@@ -129,6 +165,7 @@ Footswitches and expression pedals connect through MIDI learn. Right-click what 
 | Scene selector | a scene button | the controller's value picks the scene (0 = scene 1, up to 15 = scene 16) |
 | Tap tempo | **Tap** | a switch |
 | Tuner | **Tuner** | a switch |
+| Morph | **Morph** (or its slider) | an expression pedal |
 
 For switches, the same menu chooses **toggle** (each press switches on or off) or **momentary** (on while held). **Clear MIDI** removes the mapping. MIDI program changes 0 to 15 always select scenes 1 to 16.
 
@@ -137,6 +174,36 @@ Mappings belong to your rig, not to a sound: they stay the same whatever board y
 ### Tuner
 
 Click **Tuner** (or a learned footswitch) to show the tuner: the note, its octave, and how many cents it is off (the marker turns green within 3 cents). Set the **Reference** pitch (430 to 450 Hz, A4) and whether the output is **muted while tuning**. The tuner listens to a copy of the input, so it never adds delay or changes the sound.
+
+## Remote (phone and iPad)
+
+A phone on a mic stand or an iPad on the pedalboard can run the board: RKBoard serves a web page on the local network. Click **Remote** in the header:
+
+| Control | What it does |
+| --- | --- |
+| **Remote on** | Starts serving the page. |
+| **This board** | This board's name in the remote's list (default "Board"). Saved with the host session. |
+| **PIN** | 4 to 8 digits. **New PIN** makes a random one; a new PIN signs every device out. |
+| **Port** | 8081 by default (RKMix's remote uses 8080, so both can run in one gig). |
+| **Address by IP** | Uses this computer's IP address in the link, for networks that don't find `.local` names. |
+| **QR code** | Scan it with the phone's camera: it opens the page and signs in (the PIN is in the link). |
+| **Connected** | The devices on the page; **Disconnect** lets one go (it must type the PIN again). |
+
+On the phone or iPad, **Add to Home Screen** (Safari's share menu) makes it a full-screen app. A device that signed in once is remembered. Five wrong PINs make it wait 30 seconds.
+
+The page's tabs, along the bottom:
+
+- **Scenes:** big buttons with the scene names (the current one lit), and the **Morph** fader with its From and To.
+- **Board:** the pedals as tiles in signal order, in their family colours (A1, B1... on a split's paths). Tap a tile's **footswitch** to switch it on or off; tap the tile for its knobs (**Done** closes them).
+- **Assign:** the Assign parameters in use, as big faders (an expression pedal on the screen), and the on/off switches.
+- **Tuner** (the app): the note, its octave, cents and Hz, big; and the tuner on or off.
+- **Tempo:** the BPM, and a big **Tap** (in the app; in a host the tempo is the host's).
+
+**Lock** on the page locks the knobs, the Assign faders and Morph's From and To; scenes, footswitches, the Morph fader, Tap and the tuner still work. **Fine** makes faders and knobs move a quarter as far, for small changes. Both are the device's own.
+
+The remote can do what the window can, as clicks in the window would (Undo records them, an edit goes into the current scene). It can't add, remove or move pedals. The window's Lock doesn't apply to it.
+
+**Several RKBoards** (one per Gig Performer rackspace) share one remote: the page lists them by name, and each device remembers its board. The header's name switches between them. The settings (on, PIN, port, devices) belong to the computer, shared by the plugin and the app.
 
 ## Board-only pedals
 
@@ -188,11 +255,12 @@ These boards are built in as **factory presets**: open the board's preset menu a
 | **Wet Dry Rig** | Compress, Distort, then a full split: path A dry, path B Delay and Verb fully wet (trails), path B at -6 dB |
 | **Bass Split** | Frequency split at 250 Hz: Compress on the lows (A), Distort on the highs (B) |
 | **Wah and Volume** | Wah (auto engage), Distort, Volume, Delay (20%, trails); Assign 1 drives the Wah, Assign 2 the Volume |
-| **Scenes Starter** | Compress, Distort, Delay, Verb. Scene 1: clean (Distort and Delay off); scene 2: crunch (Distort on); scene 3: lead (Distort and Delay on) |
+| **Scenes Starter** | Compress, Distort, Delay, Verb. Scene 1 "Clean" (Distort and Delay off); scene 2 "Crunch" (Distort on); scene 3 "Lead" (Distort and Delay on) |
+| **Morph Swell** | Compress, Distort, Delay, Verb. Scene 1 "Verse": Delay off (Dry/Wet 0%), Verb 15%, Gain 6 dB; scene 2 "Chorus": Delay on at 35%, Verb 35%, Gain 24 dB. Put an expression pedal on **Morph** to swell from one to the other (see Scene morph) |
 
 ## Board presets
 
-Board presets live in `Presets/RKBoard` in the RKFX preset library, shared by the plugin and the standalone app. A board preset holds every pedal (as that plugin's own preset), the routing, the assignments and the scenes. A gig saved in Gig Performer is self-contained: it never depends on the preset file.
+Board presets live in `Presets/RKBoard` in the RKFX preset library, shared by the plugin and the standalone app. A board preset holds every pedal (as that plugin's own preset), the routing, the assignments and the scenes (with their names, and Morph's From and To when you chose them). A gig saved in Gig Performer is self-contained: it never depends on the preset file.
 
 Each pedal also keeps its own preset menu, so you can load any RKFX preset or factory preset into a pedal on the board, or save a pedal's settings as a preset for the single plugin.
 
@@ -202,7 +270,8 @@ Each pedal also keeps its own preset menu, so you can load any RKFX preset or fa
 | --- | --- |
 | **Input**, **Output** | The board's In and Out levels. |
 | **Assign 1** to **Assign 32** | Knobs and on/off switches, see Assignable parameters. An assignment belongs to a pedal, not a place: it follows the pedal when you move it. |
-| **Scene** | 1 to 16. |
+| **Scene** | 1 to 16; its text includes the scene's name ("2 Verse"). |
+| **Morph** | 0 to 100%: blends scene From into scene To, see Scene morph. |
 
 ## Notes
 

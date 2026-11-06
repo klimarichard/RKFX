@@ -21,6 +21,7 @@ namespace LearnTarget
     constexpr int scene = 200;           // the CC value picks the scene (0..15)
     constexpr int tap = 201;             // switch: tap tempo
     constexpr int tuner = 202;           // switch: tuner on / off
+    constexpr int morph = 203;           // continuous: the scene morph
 
     juce::String key (int target);                 // "assign3", "bypass5", "scene", "tap", "tuner"
     int fromKey (const juce::String&);             // -1 when unknown

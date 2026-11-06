@@ -2,6 +2,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "BoardRemote.h"
+#include "BoardUndo.h"
 #include "MidiLearn.h"
 #include "PedalRegistry.h"
 #include "Tempo.h"
@@ -124,6 +126,29 @@ public:
         can cheaply poll for updates. */
     int getBoardCounter() const noexcept { return boardCounter.load(); }
 
+    /** The window's lock for the show (not saved; host parameters, MIDI and
+        the remote still work). Footswitches: scenes, the pedals' footswitches,
+        Tap, Tuner and Morph still work. Everything: nothing changes (a pedal
+        can still be selected to look at its controls). */
+    enum class Lock { off, footswitches, everything };
+    Lock getLock() const noexcept { return (Lock) lock.load(); }
+    void setLock (Lock l) { lock = (int) l; ++boardCounter; }
+
+    //==============================================================================
+    // The phone and iPad remote (BoardRemoteHub): one per process, shared by
+    // every RKBoard in it; each board is listed under its remote name.
+
+    /** Registers with the process's remote (the plugin and the app; tests and tools never call it). */
+    void beginRemote();
+    /** The remote, once begun (nullptr in tests and tools). */
+    BoardRemoteHub* getRemote() noexcept { return remoteHub != nullptr ? &remoteHub->get() : nullptr; }
+    /** "Board" unless renamed; saved with the board in the host session. */
+    juce::String getRemoteName() const;
+    void setRemoteName (const juce::String&);
+
+    /** Undo and redo (message thread): see BoardUndo. Loading a board starts a new history. */
+    rkfx::UndoHistory& getUndo() noexcept { return undo->getHistory(); }
+
     //==============================================================================
     // In the assignment and scene functions below, "pedalId" is an owner:
     // a pedal ID, or routingOwner (split) for a split's settings.
@@ -184,7 +209,32 @@ public:
 
     bool getSceneBypass (int scene, int pedalId) const;
     float getSceneValue (int scene, int pedalId, const juce::String& paramId) const;   // normalised
+    /** Copies a scene's bypasses, scene knobs and name into another. */
     void copyScene (int from, int to);
+
+    //==============================================================================
+    // Scene morph: the host parameter "Morph" (an expression pedal) blends the
+    // board from scene From to scene To. Every scene-controlled knob sits at
+    // from + (to - from) x morph (normalised; an assigned knob follows its
+    // Assign slot instead); a pedal on in either scene is on in between, and
+    // at either end as that scene has it. At 0% the board is exactly From, at
+    // 100% exactly To, which then becomes the current scene. Edits in between
+    // go into no scene. Recalling a scene makes it From and ends the morph
+    // (Morph back to 0%). Any thread.
+
+    juce::RangedAudioParameter& getMorphParam() const noexcept { return *morphParam; }
+    int getMorphFrom() const noexcept { return morphFrom.load(); }
+    int getMorphTo() const noexcept { return morphTo.load(); }
+    void setMorphScenes (int from, int to);
+    /** Morph is strictly between 0% and 100%: edits are stored nowhere. */
+    bool isMorphing() const noexcept;
+
+    /** A scene's name ("Verse"; empty: none). Saved with the board, any thread. */
+    juce::String getSceneName (int scene) const;
+    void setSceneName (int scene, const juce::String& name);
+    /** "2 Verse", or "2" without a name: the Scene parameter's text. */
+    juce::String describeScene (int scene) const;
+    static constexpr int kMaxSceneNameLength = 24;
 
     //==============================================================================
     // Trails (delay and reverb pedals): when bypassed with trails on, the pedal
@@ -373,6 +423,8 @@ private:
     // Scenes
     juce::AudioParameterInt* sceneParam = nullptr;
     std::atomic<int> currentScene { 0 };
+    mutable juce::SpinLock sceneNamesLock;
+    std::array<juce::String, kNumScenes> sceneNames;
     std::array<std::array<std::atomic<bool>, kMaxPedals>, kNumScenes> sceneBypass {};
 
     struct SceneKnob
@@ -387,6 +439,16 @@ private:
     static inline thread_local bool applyingScene = false;    // this thread is recalling a scene
 
     void recallScene (int index);
+
+    juce::AudioParameterFloat* morphParam = nullptr;
+    std::atomic<int> morphFrom { 0 }, morphTo { 1 };
+    std::atomic<bool> morphActive { false };
+    std::atomic<bool> morphToChosen { false };   // To isn't the next scene: it stays when another scene is recalled
+    static inline thread_local bool resettingMorph = false;
+    void applyMorph (float position);
+    /** Ends a morph: From is the current scene, Morph back to 0% (nothing moves). */
+    void endMorph();
+    bool storesEdits() const noexcept { return ! applyingScene && ! isMorphing(); }
     void glideSceneKnobs (int numSamples);
     void clearSceneKnobsOf (int pedalId);
     int findSceneKnob (int pedalId, int paramIndex) const;
@@ -458,7 +520,21 @@ private:
     std::atomic<bool> presetModified { false };
     std::atomic<int> presetStateCounter { 0 };
     std::atomic<int> boardCounter { 0 };
+    std::atomic<int> settingsCounter { 0 };
+    std::atomic<int> lock { 0 };      // assignments, scene knobs, trails, names, scene copies (undo)
     std::atomic<bool> loadingBoard { false };
+    std::unique_ptr<BoardUndo> undo;
+    std::unique_ptr<juce::SharedResourcePointer<BoardRemoteHub>> remoteHub;
+    juce::String remoteName { "Board" };   // under presetLock
+
+    /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
+    struct LoadingScope
+    {
+        explicit LoadingScope (std::atomic<bool>& f) : flag (f), previous (f.exchange (true)) {}
+        ~LoadingScope() { flag = previous; }
+        std::atomic<bool>& flag;
+        const bool previous;
+    };
 
     /** Listens to every parameter of one pedal: its own bypass switch (in its
         editor) bypasses it on the board, any other change marks the board
@@ -474,8 +550,11 @@ private:
     std::array<std::unique_ptr<PedalLink>, kMaxPedals> links;
 
     void attachPedal (int id, std::unique_ptr<rkfx::ProcessorBase>);
-    std::unique_ptr<rkfx::ProcessorBase> detachPedal (int id);
+    /** Takes the pedal off the board; @p publish: swaps in the chain without it
+        (else the caller has already). */
+    std::unique_ptr<rkfx::ProcessorBase> detachPedal (int id, bool publish = true);
     void markModified();
+    juce::String undoName (int id) const;     // "Delay"
 
     std::unique_ptr<rkfx::ProcessorBase> createPedal (const juce::String& typeName) const;
     void preparePedal (rkfx::ProcessorBase&) const;
@@ -527,6 +606,7 @@ private:
     void handleAsyncUpdate() override;
 
     friend class BoardEditor;
+    friend class BoardUndo;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardProcessor)
 };

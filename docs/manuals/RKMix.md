@@ -22,8 +22,8 @@ Every section has its own **On** switch. A section that is off is skipped comple
 
 ## The window
 
-- **Top panel:** the selected channel or bus in full, with page tabs: **Channel** (or **Bus**, **Main**, **DCA**, **Mute group**), **Sends**, **Routing**, **Talk / Osc**, **Scenes**, **Assign**, **Remote**; then **Undo**, **Redo** and **Lock**.
-- **Master section (top right, always there):** solo settings, Clear solo, TALK, OSC, and in the standalone app the tempo.
+- **Top panel:** the selected channel or bus in full, with page tabs: **Channel** (or **Bus**, **Main**, **DCA**, **Mute group**), **Sends**, **Routing**, **Talk / Osc**, **Scenes**, **Assign**, **Recorder**, **Remote**; then **Undo**, **Redo** and **Lock**.
+- **Master section (top right, always there):** solo settings, Clear solo, TALK, OSC, and in the standalone app the tempo. **REC** blinks at its top while the recorder runs; **PLAYBACK: all live** appears while any input plays a recording.
 - **Fader area:** 16 strips at a time. Click a strip's name to show it in the top panel.
 - **Main and Mono strips** (right): click one to open the Main page.
 - **Bottom row:** the strip pages (**Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA**, **User 1**, **User 2**), the scene bar and Bypass.
@@ -195,6 +195,35 @@ Limits: a wedge's correction cuts down to -12 dB and boosts no more than +4 dB; 
 - It isn't on the musicians' phone pages: those have no PIN, so only the iPad console (with its PIN) and the window can play noise into a monitor.
 - The settings (type, mic, target, level, files) are saved with the mix.
 
+## Recorder and virtual soundcheck
+
+The **Recorder** page records every input to its own WAV file for the whole gig, and plays a recording back into the channels in place of the band, so the mix can be set again without them: last night's show, or the afternoon's line check.
+
+### Recording
+
+- **Record** starts, **Stop** ends. The time, the free disk space and how long it lasts at the chosen tracks, and the **dropouts** are next to it. **REC** blinks in the master section on every page.
+- **What is recorded** (saved with the mix; a new mix records every input and the main): tick the inputs (**All**, **None**), **Main** (the main L/R after its limiter, for listening back) and any **Aux buses** (their outputs, what the musician heard).
+- **The inputs are recorded as they arrive**, before the trim and polarity, so everything after the trim works the same on playback as live.
+- **One file per channel:** a mono file for a single input, one **stereo file for a linked pair** (`05-06 Keys.wav`, left = the odd input). **Pairs as two mono files** (this computer's setting) records a pair as `05 Keys L.wav` and `06 Keys R.wav` instead, for a DAW that prefers mono tracks.
+- **Files:** WAV, **24-bit** or **32-bit float** (this computer's setting), at the session's sample rate, in a folder per recording: `Music/RKMusic Plugins/RKFX/Recordings/<date> <time> <mix name>/` (**Folder...** changes where; **Show** opens it). Each file is named by its input and the channel's name (`01 Lead Vox.wav`). A `session.json` beside them says which input each file came from, the names and colours, the markers and any dropouts.
+- **Markers:** every scene recall writes one ("Scene 3"), and **Marker** adds "Marker 1", "Marker 2"...
+- **Size:** a mono track at 48 kHz, 24-bit is about 518 MB an hour: a 3-hour gig with 24 inputs is about 37 GB. Record refuses to start with less than 10 minutes of space, and stops by itself (the files finished) with a minute left. Files past 4 GB become RF64 automatically.
+- **Safe for the show:** the recording never touches the sound. If the disk can't keep up, RKMix drops what it can't write (counted as dropouts, every file still aligned) rather than stopping the audio. A crash or a power cut loses at most the last 10 seconds.
+- **While recording:** **Link** is dimmed (the files match the channels as they were), and so is loading a mix from the preset menu. If the host reloads the session anyway, the recording carries on in a new folder from the next sample. A change of sample rate stops it.
+- **Record** and **Marker** are host parameters, for Gig Performer buttons.
+
+### Virtual soundcheck (playback)
+
+1. On the Recorder page, choose **Playback (virtual soundcheck)**, then **Load...** a recording's folder: RKMix's own, or any WAV files whose names start with their input number (`05 Kick.wav`, `09-10 Overheads.wav`). A recording at another sample rate than the session's is refused.
+2. Each file is shown with the input it feeds; change it in its menu (a stereo file goes onto a pair: In 1/2, In 3/4...). The mix's links don't have to match: a stereo file plays into two unlinked channels as well. The recorded main and buses are listed but **Off**. **Use the recording's names** names the channels as they were.
+3. Switch inputs to **Playback**: **PB** in the Input section of the Channel page, or **All to playback**. A strip on Playback shows **PB** over its number. An input on Playback with no file is silent.
+4. **Play** / **Pause**, **Stop** (back to the start), **◀ Marker** and **Marker ▶**, and the bar (click to go there). **Loop** plays the part between the markers around the play position over and over: one song's mix.
+
+- The recording replaces the input **before the trim**: the gate, the compressor, the keys, the inserts (RKTrigger and RKFollow play their samples and synths as at the gig) all work as live. Every file stays aligned to the sample; starts, stops and jumps fade over 5 ms.
+- **The source is never saved**, never in scenes and never undone: every session and every loaded mix starts with every input **Live**, so a show can't start on Playback by mistake. **Lock** blocks switching to Playback; **PLAYBACK: all live** in the master section stays available, also when locked.
+- A virtual soundcheck can be recorded too (to compare two mixes): the page warns when a recorded input is on Playback.
+- The iPad's **Recorder** page has Record and Stop (Stop asks again), the time, dropouts and Marker, and the playback transport with the markers and the loop. Recordings are loaded on the computer.
+
 ## MIDI out
 
 RKMix sends MIDI from two kinds of inserts: **RKTrigger** (a kick or snare mic triggering a drum sampler) and **RKFollow** (a voice or violin playing a synth). Each uses its own MIDI channel and notes. Wire RKMix's MIDI output to the instrument in Gig Performer.
@@ -352,6 +381,7 @@ A preset is a **whole console**: every setting, the inserts with their own setti
 | **Scene** | 1 to 16 |
 | **Talk** | Talkback on or off |
 | **DCA 1 Fader** … **DCA 8 Fader**, **DCA 1 Mute** …, **Mute Group 1** … **Mute Group 8** | The DCAs and mute groups |
+| **Record**, **Marker** | The recorder: on = recording; Marker adds one marker per press |
 
 Everything else is in the mix itself. A scene that moves a fader moves its host parameter, so Gig Performer widgets follow.
 

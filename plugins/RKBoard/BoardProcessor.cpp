@@ -13,15 +13,6 @@ namespace
 {
     constexpr int kStateVersion = 1;
 
-    /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
-    struct LoadingScope
-    {
-        explicit LoadingScope (std::atomic<bool>& f) : flag (f), previous (f.exchange (true)) {}
-        ~LoadingScope() { flag = previous; }
-        std::atomic<bool>& flag;
-        const bool previous;
-    };
-
     /** An assignment's or scene knob's owner in a board preset: "pedal": id,
         or "split": n (1 and up) for a split's settings. */
     void writeOwner (juce::DynamicObject& entry, int owner)
@@ -112,10 +103,13 @@ BoardProcessor::BoardProcessor()
     const auto defaultFile = library.getDefaultPresetFile ("RKBoard");
     if (defaultFile.existsAsFile())
         loadBoardPreset (defaultFile);
+
+    undo = std::make_unique<BoardUndo> (*this);
 }
 
 BoardProcessor::~BoardProcessor()
 {
+    undo.reset();
     inputParam->removeListener (this);
     outputParam->removeListener (this);
     for (auto* p : assignParams)
@@ -192,6 +186,8 @@ int BoardProcessor::insertSplit (Section chainSection, int position)
         return -1;
 
     const auto k = chainOf (chainSection);   // the new split follows chain k
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // Later splits move up by one, keeping their settings (and what is
     // assigned to them or scene-controlled); the new one starts at defaults.
@@ -222,6 +218,8 @@ int BoardProcessor::insertSplit (Section chainSection, int position)
     ++numSplits;
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Insert split");
     return k;
 }
 
@@ -229,6 +227,8 @@ void BoardProcessor::removeSplit (int split)
 {
     if (split < 0 || split >= numSplits)
         return;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // Path A, then path B, then the chain after the merge join the chain before.
     const auto before = (int) chainSection (split);
@@ -259,6 +259,8 @@ void BoardProcessor::removeSplit (int split)
     --numSplits;
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Remove split " + juce::String (split + 1));
 }
 
 rkfx::ProcessorBase* BoardProcessor::getPedal (int id) const
@@ -321,7 +323,7 @@ void BoardProcessor::attachPedal (int id, std::unique_ptr<rkfx::ProcessorBase> p
     pedals[(size_t) id - 1] = std::move (pedal);
 }
 
-std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
+std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id, bool publish)
 {
     if (id < 1 || id > kMaxPedals || pedals[(size_t) id - 1] == nullptr)
         return nullptr;
@@ -336,7 +338,8 @@ std::unique_ptr<rkfx::ProcessorBase> BoardProcessor::detachPedal (int id)
 
     for (auto& section : layout)
         section.erase (std::remove (section.begin(), section.end(), id), section.end());
-    publishChain();
+    if (publish)
+        publishChain();
 
     std::unique_ptr<rkfx::ProcessorBase> pedal;
     {
@@ -389,6 +392,8 @@ int BoardProcessor::addPedal (const juce::String& typeName, Section section, int
     auto pedal = createPedal (typeName);
     if (pedal == nullptr)
         return 0;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     // A new pedal starts bypassed, in every scene, so adding it never
     // changes the sound until it is switched on.
@@ -401,6 +406,9 @@ int BoardProcessor::addPedal (const juce::String& typeName, Section section, int
     list.insert (list.begin() + position, id);
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        if (const auto* type = findPedalType (typeName))
+            undo->endStructure ("Add " + type->shortName);
     return id;
 }
 
@@ -412,6 +420,10 @@ int BoardProcessor::duplicatePedal (int sourceId)
         return 0;
 
     auto pedal = createPedal (source->getConfig().name);
+    if (pedal == nullptr)
+        return 0;
+    if (undo != nullptr)
+        undo->beginStructure();
     pedal->loadPresetVar (source->getPresetVar (true), true);
     attachPedal (id, std::move (pedal));
 
@@ -425,19 +437,41 @@ int BoardProcessor::duplicatePedal (int sourceId)
     list.insert (at == list.end() ? list.end() : at + 1, id);
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Duplicate " + undoName (id));
     return id;
 }
 
 void BoardProcessor::removePedal (int id)
 {
-    if (detachPedal (id) != nullptr)
-        boardChanged();
+    if (getPedal (id) == nullptr)
+        return;
+    const auto name = undoName (id);
+    if (undo != nullptr)
+        undo->beginStructure ({ id });
+    detachPedal (id);
+    boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Remove " + name);
+}
+
+juce::String BoardProcessor::undoName (int id) const
+{
+    if (auto* pedal = getPedal (id))
+    {
+        if (const auto* type = findPedalType (pedal->getConfig().name))
+            return type->shortName;
+        return pedal->getConfig().name;
+    }
+    return {};
 }
 
 void BoardProcessor::movePedal (int id, Section section, int position)
 {
     if (getPedal (id) == nullptr)
         return;
+    if (undo != nullptr)
+        undo->beginStructure();
 
     const auto from = sectionOf (id);
     auto& source = layout[(size_t) from];
@@ -455,6 +489,8 @@ void BoardProcessor::movePedal (int id, Section section, int position)
 
     publishChain();
     boardChanged();
+    if (undo != nullptr)
+        undo->endStructure ("Move " + undoName (id));
 }
 
 void BoardProcessor::clearBoard()
@@ -659,6 +695,7 @@ void BoardProcessor::assign (int slot, int pedalId, const juce::String& paramId)
     a.pedal = pedalId;
 
     followTarget (pedalId, index, targetValue (pedalId, index));
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -669,6 +706,7 @@ void BoardProcessor::clearAssignment (int slot)
 
     assignments[(size_t) slot].pedal = 0;
     assignments[(size_t) slot].paramIndex = -1;
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -696,6 +734,7 @@ void BoardProcessor::setAssignmentRange (int slot, float min, float max, bool in
     if (a.pedal != 0 && ownerProcessor (a.pedal) != nullptr && a.paramIndex >= 0)
         followTarget (a.pedal, a.paramIndex, targetValue (a.pedal, a.paramIndex));
 
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -1522,6 +1561,7 @@ bool BoardProcessor::setSceneControlled (int pedalId, const juce::String& paramI
         {
             sceneKnobs[(size_t) existing].pedal = 0;
             sceneKnobs[(size_t) existing].paramIndex = -1;
+            ++settingsCounter;
             boardChanged();
         }
         return true;
@@ -1540,6 +1580,7 @@ bool BoardProcessor::setSceneControlled (int pedalId, const juce::String& paramI
             k.gliding = false;
             k.paramIndex = index;
             k.pedal = pedalId;
+            ++settingsCounter;
             boardChanged();
             return true;
         }
@@ -1580,6 +1621,7 @@ void BoardProcessor::copyScene (int from, int to)
         k.values[(size_t) to] = k.values[(size_t) from].load();
     setSceneName (to, getSceneName (from));
 
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -1602,6 +1644,7 @@ void BoardProcessor::setSceneName (int scene, const juce::String& name)
             return;
         sceneNames[(size_t) scene] = clean;
     }
+    ++settingsCounter;
     boardChanged();
     // Hosts showing the Scene parameter's text read it again.
     updateHostDisplay (juce::AudioProcessorListener::ChangeDetails().withParameterInfoChanged (true));
@@ -1639,6 +1682,7 @@ void BoardProcessor::setTrails (int pedalId, bool on)
     setPedalOwnBypass (pedalId, ! on && bypassed);
     syncingBypass = false;
 
+    ++settingsCounter;
     boardChanged();
 }
 
@@ -1914,6 +1958,9 @@ BoardProcessor::PresetResult BoardProcessor::fromVar (const juce::var& root, boo
 
     publishChain();
     ++boardCounter;
+    ++settingsCounter;
+    if (undo != nullptr)
+        undo->getHistory().clear();   // a new board: nothing to undo into
 
     return { true, notes.joinIntoString ("; ") };
 }
@@ -2006,6 +2053,8 @@ void BoardProcessor::resetBoard()
         sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 (1.0f));
         ++boardCounter;
     }
+    if (undo != nullptr)
+        undo->getHistory().clear();
     setPresetState ("Default", {}, false);
 }
 

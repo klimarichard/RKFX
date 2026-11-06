@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include "BoardUndo.h"
 #include "MidiLearn.h"
 #include "PedalRegistry.h"
 #include "Tempo.h"
@@ -123,6 +124,9 @@ public:
     /** Bumped whenever the chain or a pedal's preset changes, so the editor
         can cheaply poll for updates. */
     int getBoardCounter() const noexcept { return boardCounter.load(); }
+
+    /** Undo and redo (message thread): see BoardUndo. Loading a board starts a new history. */
+    rkfx::UndoHistory& getUndo() noexcept { return undo->getHistory(); }
 
     //==============================================================================
     // In the assignment and scene functions below, "pedalId" is an owner:
@@ -468,7 +472,18 @@ private:
     std::atomic<bool> presetModified { false };
     std::atomic<int> presetStateCounter { 0 };
     std::atomic<int> boardCounter { 0 };
+    std::atomic<int> settingsCounter { 0 };      // assignments, scene knobs, trails, names, scene copies (undo)
     std::atomic<bool> loadingBoard { false };
+    std::unique_ptr<BoardUndo> undo;
+
+    /** Sets a flag for the duration of a scope (edits while loading don't mark the board modified). */
+    struct LoadingScope
+    {
+        explicit LoadingScope (std::atomic<bool>& f) : flag (f), previous (f.exchange (true)) {}
+        ~LoadingScope() { flag = previous; }
+        std::atomic<bool>& flag;
+        const bool previous;
+    };
 
     /** Listens to every parameter of one pedal: its own bypass switch (in its
         editor) bypasses it on the board, any other change marks the board
@@ -484,8 +499,11 @@ private:
     std::array<std::unique_ptr<PedalLink>, kMaxPedals> links;
 
     void attachPedal (int id, std::unique_ptr<rkfx::ProcessorBase>);
-    std::unique_ptr<rkfx::ProcessorBase> detachPedal (int id);
+    /** Takes the pedal off the board; @p publish: swaps in the chain without it
+        (else the caller has already). */
+    std::unique_ptr<rkfx::ProcessorBase> detachPedal (int id, bool publish = true);
     void markModified();
+    juce::String undoName (int id) const;     // "Delay"
 
     std::unique_ptr<rkfx::ProcessorBase> createPedal (const juce::String& typeName) const;
     void preparePedal (rkfx::ProcessorBase&) const;
@@ -537,6 +555,7 @@ private:
     void handleAsyncUpdate() override;
 
     friend class BoardEditor;
+    friend class BoardUndo;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BoardProcessor)
 };

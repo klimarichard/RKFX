@@ -12,6 +12,7 @@ add_library(rkfx_pedal_host INTERFACE)
 set(hostSources
     ${CMAKE_CURRENT_SOURCE_DIR}/PedalRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MidiMap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UndoHistory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/VolumePedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahPedal.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pedals/WahEngine.cpp

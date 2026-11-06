@@ -777,6 +777,214 @@ public:
             expectEquals (board.getSceneName (1), juce::String());
         }
 
+        beginTest ("Undo: knobs, bypasses, assignments; grouping; descriptions; a load clears it");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto delay = addOn (board, "RKDelay");
+            const auto drive = addOn (board, "RKDistort");
+            auto& undo = board.getUndo();
+            undo.clear();
+            auto* time = board.getPedal (delay)->findParam ("time");
+            const auto start = time->getValue();
+
+            // A drag: many moves, one step.
+            for (int i = 1; i <= 5; ++i)
+            {
+                time->setValueNotifyingHost (0.1f + 0.05f * (float) i);
+                undo.poll();
+            }
+            undo.closeStep();
+            expect (undo.canUndo());
+            expectEquals (undo.undoDescription(), juce::String ("Delay: Time"));
+
+            board.setPedalBypassed (drive, true);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Distort On/Off"));
+
+            undo.undo();
+            expect (! board.isPedalBypassed (drive), "bypass undone");
+            expect (! board.getSceneBypass (0, drive), "and in the scene");
+            undo.undo();
+            expectWithinAbsoluteError (time->getValue(), start, 1.0e-6f);
+            expect (! undo.canUndo());
+            expect (undo.canRedo());
+            undo.redo();
+            expectWithinAbsoluteError (time->getValue(), 0.35f, 1.0e-6f);
+            undo.redo();
+            expect (board.isPedalBypassed (drive));
+
+            // A new change forgets what was undone.
+            undo.undo();
+            board.getOutputParam().setValueNotifyingHost (0.2f);
+            undo.poll();
+            expect (! undo.canRedo());
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Output"));
+
+            // Assignments (a setting, not a value).
+            board.assign (3, delay, "time");
+            board.setAssignmentRange (3, 0.1f, 0.6f, true);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Assignment"));
+            undo.undo();
+            expectEquals (board.findAssignment (delay, "time"), -1);
+            undo.redo();
+            expectEquals (board.findAssignment (delay, "time"), 3);
+            expectWithinAbsoluteError (board.getAssignment (3).max, 0.6f, 1.0e-6f);
+            expect (board.getAssignment (3).invert);
+
+            // Scene control, names, copies.
+            board.setSceneControlled (delay, "time", true);
+            board.setSceneName (0, "Intro");
+            undo.poll();
+            undo.closeStep();
+            undo.undo();
+            expect (! board.isSceneControlled (delay, "time"));
+            expectEquals (board.getSceneName (0), juce::String());
+
+            // Loading a board starts a new history.
+            expect (undo.canUndo());
+            expect (board.loadFactoryPreset (0).ok);
+            expect (! undo.canUndo() && ! undo.canRedo());
+        }
+
+        beginTest ("Undo: a scene recall brings back the board and the scene before, storing nothing");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            prepare (board);
+            auto* time = board.getPedal (delay)->findParam ("time");
+            board.setSceneControlled (delay, "time", true);
+            time->setValueNotifyingHost (0.2f);
+            board.setScene (1);
+            board.setPedalBypassed (drive, true);
+            time->setValueNotifyingHost (0.7f);
+            board.setScene (0);
+            run (board, 40);   // the glide
+            auto& undo = board.getUndo();
+            undo.clear();
+
+            board.setScene (1);
+            run (board, 40);
+            undo.poll();
+            undo.closeStep();
+            expectEquals (undo.undoDescription(), juce::String ("Scene 2 recall"));
+            expect (board.isPedalBypassed (drive));
+            expectWithinAbsoluteError (time->getValue(), 0.7f, 1.0e-6f);
+
+            undo.undo();
+            expectEquals (board.getScene(), 0);
+            expectEquals (board.getSceneParam().getCurrentValueAsText(), juce::String ("1"));
+            expect (! board.isPedalBypassed (drive));
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f);
+            run (board, 40);
+            expectWithinAbsoluteError (time->getValue(), 0.2f, 1.0e-6f, "nothing glides afterwards");
+            // Both scenes as they were.
+            expect (board.getSceneBypass (1, drive) && ! board.getSceneBypass (0, drive));
+            expectWithinAbsoluteError (board.getSceneValue (0, delay, "time"), 0.2f, 1.0e-6f);
+            expectWithinAbsoluteError (board.getSceneValue (1, delay, "time"), 0.7f, 1.0e-6f);
+
+            undo.redo();
+            expectEquals (board.getScene(), 1);
+            expect (board.isPedalBypassed (drive));
+        }
+
+        beginTest ("Undo: moves, removals (the pedal comes back with its ID, state, assignments, scenes) and splits");
+        {
+            BoardProcessor board;
+            board.clearBoard();
+            const auto drive = addOn (board, "RKDistort");
+            const auto delay = addOn (board, "RKDelay");
+            const auto chorus = addOn (board, "RKChorus");
+            prepare (board);
+            auto& undo = board.getUndo();
+            undo.clear();
+
+            auto* time = board.getPedal (delay)->findParam ("time");
+            time->setValueNotifyingHost (0.42f);
+            board.assign (5, delay, "time");
+            board.setSceneControlled (delay, "mix", true);
+            board.setTrails (delay, true);
+            board.setScene (2);
+            board.getPedal (delay)->findParam ("mix")->setValueNotifyingHost (0.9f);
+            board.setPedalBypassed (delay, true);   // in scene 3
+            undo.clear();
+            const auto stateBefore = stateJson (board);
+            auto* chorusObject = board.getPedal (chorus);
+
+            board.movePedal (chorus, Section::pre, 0);
+            expectEquals (undo.undoDescription(), juce::String ("Move Chorus"));
+            expect (board.getSection (Section::pre) == std::vector<int> { chorus, drive, delay });
+            undo.undo();
+            expect (board.getSection (Section::pre) == std::vector<int> { drive, delay, chorus });
+            expect (board.getPedal (chorus) == chorusObject, "the pedals still there are kept");
+            undo.redo();
+            undo.undo();
+
+            board.removePedal (delay);
+            expect (board.getPedal (delay) == nullptr);
+            expectEquals (undo.undoDescription(), juce::String ("Remove Delay"));
+            undo.undo();
+            expect (board.getPedal (delay) != nullptr, "back with its ID");
+            expect (board.getSection (Section::pre) == std::vector<int> { drive, delay, chorus });
+            expect (board.getPedal (chorus) == chorusObject);
+            expectWithinAbsoluteError (board.getPedal (delay)->findParam ("time")->getValue(), 0.42f, 1.0e-6f);
+            expectEquals (board.findAssignment (delay, "time"), 5);
+            expect (board.isSceneControlled (delay, "mix"));
+            expectWithinAbsoluteError (board.getSceneValue (2, delay, "mix"), 0.9f, 1.0e-6f);
+            expect (board.getSceneBypass (2, delay) && ! board.getSceneBypass (0, delay));
+            expect (board.getTrails (delay));
+            expect (board.isPedalBypassed (delay));
+            expectEquals (stateJson (board), stateBefore, "the whole board as it was");
+            undo.redo();
+            expect (board.getPedal (delay) == nullptr);
+            undo.undo();
+
+            // Add and duplicate.
+            const auto added = board.addPedal ("RKFilter", Section::pre, 1);
+            expectEquals (undo.undoDescription(), juce::String ("Add Filter"));
+            undo.undo();
+            expect (board.getPedal (added) == nullptr);
+            undo.redo();
+            expect (board.getPedal (added) != nullptr && board.getSection (Section::pre)[1] == added);
+            undo.undo();
+            const auto copy = board.duplicatePedal (delay);
+            expectEquals (undo.undoDescription(), juce::String ("Duplicate Delay"));
+            undo.undo();
+            expect (board.getPedal (copy) == nullptr);
+
+            // A split with pedals and its own settings, removed and restored.
+            const auto split = board.insertSplit (Section::pre, 1);
+            expectEquals (undo.undoDescription(), juce::String ("Insert split"));
+            board.movePedal (delay, pathSection (split, 1), 0);
+            auto& routing = board.getRouting (split);
+            routing.param ("crossover").setValueNotifyingHost (0.3f);
+            board.assign (7, BoardProcessor::routingOwner (split), "crossover");
+            undo.poll();
+            undo.closeStep();
+            const auto withSplit = stateJson (board);
+            const auto splits = board.getNumSplits();   // a new board has one (empty) already
+            board.removeSplit (split);
+            expectEquals (board.getNumSplits(), splits - 1);
+            undo.undo();
+            expectEquals (board.getNumSplits(), splits);
+            expect (board.getSection (pathSection (split, 1)) == std::vector<int> { delay });
+            expectWithinAbsoluteError (board.getRouting (split).param ("crossover").getValue(), 0.3f, 1.0e-6f);
+            expectEquals (board.findAssignment (BoardProcessor::routingOwner (split), "crossover"), 7);
+            expectEquals (stateJson (board), withSplit);
+
+            // Back to the beginning, all the way, and it still plays.
+            while (undo.canUndo())
+                undo.undo();
+            expectEquals (stateJson (board), stateBefore);
+            expect (allFinite (run (board, 8).second));
+        }
+
         beginTest ("Trails: a bypassed delay stops taking input but its echoes ring out");
         {
             const auto measureTail = [this] (bool withTrails)

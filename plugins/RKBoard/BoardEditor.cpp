@@ -758,6 +758,12 @@ BoardEditor::BoardEditor (BoardProcessor& p)
     assignButton.onClick = [this] { showPedal (shownPedal == BoardStrip::kAssignView ? 0 : BoardStrip::kAssignView); };
     addAndMakeVisible (assignButton);
 
+    undoButton.onClick = [this] { undoOrRedo (false); };
+    redoButton.onClick = [this] { undoOrRedo (true); };
+    addAndMakeVisible (undoButton);
+    addAndMakeVisible (redoButton);
+    setWantsKeyboardFocus (true);
+
     for (int i = 0; i < BoardProcessor::kNumScenes; ++i)
     {
         auto& button = sceneButtons[(size_t) i];
@@ -812,7 +818,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         addAndMakeVisible (label);
 
         slider.setSliderStyle (juce::Slider::LinearHorizontal);
-        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
+        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 58, 22);
         slider.setDoubleClickReturnValue (true, 0.0);
         attachment = std::make_unique<juce::SliderParameterAttachment> (param, slider);
         slider.setTextValueSuffix (" dB");
@@ -851,6 +857,7 @@ BoardEditor::BoardEditor (BoardProcessor& p)
         showPedal (chain.front());
 
     refreshPresetButton();
+    refreshUndo();
     startTimerHz (15);
 }
 
@@ -899,7 +906,7 @@ void BoardEditor::paint (juce::Graphics& g)
 
     g.setColour (Palette::text);
     g.setFont (Fonts::bold (18.0f));
-    g.drawText ("RKBoard", kMargin, 0, 120, kHeaderHeight - 2, juce::Justification::centredLeft);
+    g.drawText ("RKBoard", kMargin, 0, 96, kHeaderHeight - 2, juce::Justification::centredLeft);
 
     const auto panel = panelArea();
     if (pedalEditor == nullptr && routingPanel == nullptr && assignPanel == nullptr && tunerPanel == nullptr)
@@ -915,23 +922,27 @@ void BoardEditor::paint (juce::Graphics& g)
 void BoardEditor::resized()
 {
     auto header = getLocalBounds().removeFromTop (kHeaderHeight).withTrimmedBottom (2).reduced (kMargin, 8);
-    header.removeFromLeft (110);   // the name, painted
+    header.removeFromLeft (96);   // the name, painted
 
-    presetButton.setBounds (header.removeFromLeft (200));
+    presetButton.setBounds (header.removeFromLeft (176));
     header.removeFromLeft (4);
-    saveButton.setBounds (header.removeFromLeft (56));
+    saveButton.setBounds (header.removeFromLeft (50));
     header.removeFromLeft (4);
-    saveAsButton.setBounds (header.removeFromLeft (70));
-    header.removeFromLeft (12);
-    assignButton.setBounds (header.removeFromLeft (70));
+    saveAsButton.setBounds (header.removeFromLeft (64));
+    header.removeFromLeft (10);
+    assignButton.setBounds (header.removeFromLeft (62));
+    header.removeFromLeft (10);
+    undoButton.setBounds (header.removeFromLeft (52));
+    header.removeFromLeft (4);
+    redoButton.setBounds (header.removeFromLeft (52));
 
-    outputSlider.setBounds (header.removeFromRight (150));
-    outputLabel.setBounds (header.removeFromRight (34));
+    outputSlider.setBounds (header.removeFromRight (124));
+    outputLabel.setBounds (header.removeFromRight (30));
+    header.removeFromRight (6);
+    inputSlider.setBounds (header.removeFromRight (124));
+    inputLabel.setBounds (header.removeFromRight (22));
     header.removeFromRight (8);
-    inputSlider.setBounds (header.removeFromRight (150));
-    inputLabel.setBounds (header.removeFromRight (24));
-    header.removeFromRight (8);
-    noteLabel.setBounds (header);
+    noteLabel.setBounds (header.withTrimmedLeft (8));
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
     const auto buttonWidth = 38;
@@ -1358,6 +1369,10 @@ void BoardEditor::timerCallback()
     if (board.getPresetStateCounter() != lastPresetCounter)
         refreshPresetButton();
 
+    // The undo history polls on its own; the buttons follow it (and a change
+    // being recorded makes Undo possible before its step closes).
+    refreshUndo();
+
     if (board.getBoardCounter() != lastBoardCounter)
     {
         lastBoardCounter = board.getBoardCounter();
@@ -1388,6 +1403,43 @@ void BoardEditor::timerCallback()
         if (assignPanel != nullptr)
             assignPanel->refresh();
     }
+}
+
+void BoardEditor::refreshUndo()
+{
+    auto& undo = board.getUndo();
+    const auto canUndo = undo.canUndo(), canRedo = undo.canRedo();
+    if (undo.getVersion() == lastUndoVersion && canUndo == undoButton.isEnabled() && canRedo == redoButton.isEnabled())
+        return;
+    lastUndoVersion = undo.getVersion();
+    undoButton.setEnabled (canUndo);
+    redoButton.setEnabled (canRedo);
+    undoButton.setTooltip (canUndo ? "Undo " + undo.undoDescription() + " (Cmd+Z)" : juce::String ("Nothing to undo"));
+    redoButton.setTooltip (canRedo ? "Redo " + undo.redoDescription() + " (Cmd+Shift+Z)" : juce::String ("Nothing to redo"));
+}
+
+void BoardEditor::undoOrRedo (bool redo)
+{
+    auto& undo = board.getUndo();
+    const auto what = redo ? undo.redoDescription() : undo.undoDescription();
+    if (redo)
+        undo.redo();
+    else
+        undo.undo();
+    if (what.isNotEmpty())
+        showNote ((redo ? "Redone: " : "Undone: ") + what, false);
+    lastUndoVersion = -1;
+    refreshUndo();
+}
+
+bool BoardEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getModifiers().isCommandDown() && (key.getKeyCode() == 'Z' || key.getKeyCode() == 'z'))
+    {
+        undoOrRedo (key.getModifiers().isShiftDown());
+        return true;
+    }
+    return juce::AudioProcessorEditor::keyPressed (key);
 }
 
 void BoardEditor::refreshPresetButton()

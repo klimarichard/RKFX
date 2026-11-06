@@ -160,6 +160,8 @@ public:
 
     /** Right-click on a knob in the pedal's controls: the assign menu. */
     void mouseDown (const juce::MouseEvent&) override;
+    /** Cmd+Z undo, Cmd+Shift+Z redo. */
+    bool keyPressed (const juce::KeyPress&) override;
 
     /** Opens a pedal's controls below the board, the split's or merge's
         settings (BoardStrip::kSplitNode / kMergeNode), or the assignable
@@ -167,7 +169,7 @@ public:
     void showPedal (int item);
     int getShownPedal() const noexcept { return shownPedal; }
 
-    static constexpr int kWidth = 1100;
+    static constexpr int kWidth = 1180;
     static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
     static constexpr int kSceneBarHeight = 46;
@@ -181,6 +183,8 @@ private:
 
     juce::TextButton presetButton, saveButton { "Save" }, saveAsButton { "Save as" };
     juce::TextButton assignButton { "Assign" };
+    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
+    int lastUndoVersion = -1;
     std::array<SceneButton, BoardProcessor::kNumScenes> sceneButtons;
 
     // Standalone: tempo and tuner
@@ -228,6 +232,8 @@ private:
     void layoutPedalEditor();
 
     void refreshPresetButton();
+    void refreshUndo();
+    void undoOrRedo (bool redo);
     void showNote (const juce::String& text, bool isError);
     void showPresetMenu();
     void save();

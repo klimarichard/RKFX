@@ -285,6 +285,87 @@ public:
             e.prepare (44100.0);
             expectEquals (e.getLength(), 0, "a new rate starts empty");
         }
+
+        beginTest ("Export: a copy is the loop exactly as stored");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            juce::AudioBuffer<float> copy;
+            expect (! e.copyLoop (0, copy, 2), "an empty loop has nothing to copy");
+
+            e.press (Button::record);
+            auto a = sine (440.0, 0.5f, 48000);
+            const auto recorded = a;
+            process (e, a);
+            expect (! e.copyLoop (0, copy, 2), "not while recording");
+            expect (e.isBusy (0));
+
+            e.press (Button::record);
+            expect (e.copyLoop (0, copy, 2), "playing");
+            expectEquals (copy.getNumSamples(), 48000);
+            expectEquals (copy.getNumChannels(), 2);
+            expectEquals (copy.getSample (0, 0), 0.0f, "the seam fade is in the copy");
+            auto maxDiff = 0.0f;
+            for (int i = 480; i < 48000 - 480; ++i)
+                maxDiff = juce::jmax (maxDiff, std::abs (copy.getSample (1, i) - recorded.getSample (1, i)));
+            expectEquals (maxDiff, 0.0f, "bit-exact between the fades");
+
+            expect (e.copyLoop (0, copy, 1), "mono");
+            expectEquals (copy.getNumChannels(), 1);
+
+            e.press (Button::stop);
+            silenceFor (e, 4800);
+            expect (e.getState() == State::stopped);
+            expect (e.copyLoop (0, copy, 2), "stopped");
+        }
+
+        beginTest ("Export: busy while overdubbing or swapping; undone overdubs are left out");
+        {
+            LoopEngine e;
+            e.prepare (48000.0);
+            recordLoop (e, 440.0, 24000);
+            juce::AudioBuffer<float> original, copy;
+            expect (e.copyLoop (0, original, 2));
+
+            const auto before = e.getWriteCount (0);
+            e.press (Button::record);                       // overdub
+            expect (e.getWriteCount (0) != before, "an overdub bumps the write count");
+            auto b = sine (1000.0, 0.3f, 24000);
+            process (e, b);
+            expect (e.isBusy (0));
+            expect (! e.copyLoop (0, copy, 2), "not while overdubbing");
+            e.press (Button::record);                       // play
+            expect (e.copyLoop (0, copy, 2));
+            const auto overdubbed = copy;
+            expect (maxDifference (overdubbed, original) > 0.1f, "the overdub is in the copy");
+
+            const auto beforeUndo = e.getWriteCount (0);
+            e.press (Button::undo);
+            expect (e.getWriteCount (0) != beforeUndo, "a swap bumps the write count");
+            float silent[2][1] {};
+            float* io[] { silent[0], silent[1] };
+            e.process (io, 2, 1);                           // one sample: the swap has started, not finished
+            expect (e.isBusy (0));
+            expect (! e.copyLoop (0, copy, 2), "not while the Undo swap runs");
+            silenceFor (e, 4800);
+            expect (! e.isBusy (0));
+            expect (e.copyLoop (0, copy, 2));
+            expectEquals (maxDifference (copy, original), 0.0f, "undone: the copy is the loop before the overdub");
+
+            e.press (Button::undo);                         // redo
+            silenceFor (e, 4800);
+            expect (e.copyLoop (0, copy, 2));
+            expectEquals (maxDifference (copy, overdubbed), 0.0f, "redone: the overdub is back");
+        }
+    }
+
+    static float maxDifference (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+    {
+        float d = 0.0f;
+        for (int ch = 0; ch < juce::jmin (a.getNumChannels(), b.getNumChannels()); ++ch)
+            for (int i = 0; i < juce::jmin (a.getNumSamples(), b.getNumSamples()); ++i)
+                d = juce::jmax (d, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return d;
     }
 
 private:

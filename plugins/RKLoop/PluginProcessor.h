@@ -3,6 +3,7 @@
 #include "plugin/ProcessorBase.h"
 
 #include "LoopEngine.h"
+#include "LoopExport.h"
 #include "Parameters.h"
 
 #include <array>
@@ -17,6 +18,12 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
 
     const LoopEngine& getEngine() const noexcept { return engine; }
+    LoopExporter& getExporter() noexcept { return exporter; }
+    std::optional<double> getHostBpm() const noexcept
+    {
+        const auto b = hostBpm.load();
+        return b > 0.0 ? std::optional<double> (b) : std::nullopt;
+    }
 
 protected:
     void prepareDsp (double sampleRate, int maxBlockSize, int numChannels) override;
@@ -29,6 +36,11 @@ private:
     std::array<juce::RangedAudioParameter*, LoopEngine::kLoops> roles {};
     juce::RangedAudioParameter *reverse, *halfSpeed, *level, *loop, *sync;
     LoopEngine engine;
+    std::atomic<int> channels { 2 };
+    std::atomic<double> hostBpm { 0.0 };   // 0: the host gives no tempo
+    LoopExporter exporter;                 // after the engine: it reads it
+    juce::RangedAudioParameter* saveLoops = nullptr;
+    std::atomic<bool> saveDown { false };
     int shownLoop = -1;                   // the Loop parameter as last applied (1..8)
 
     // Footswitch presses, counted when the parameter changes (so a quick

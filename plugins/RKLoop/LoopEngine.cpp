@@ -51,6 +51,7 @@ void LoopEngine::prepare (double newSampleRate)
         l.undoCount = 0;
         l.undone = false;
         l.swapCursor = -1;
+        l.swapping = false;
         l.position = 0.0;
         l.shownPosition = 0.0;
         l.gain.setCurrentAndTargetValue (0.0f);
@@ -186,7 +187,7 @@ void LoopEngine::press (Button button) noexcept
             if (l.state == State::overdubbing)
                 l.state = State::playing;
             if (l.undoCount > 0 && l.swapCursor < 0 && (l.state == State::playing || l.state == State::stopped))
-                l.swapCursor = 0;
+                startSwap (i);
             break;
 
         case Button::clear:
@@ -273,6 +274,7 @@ void LoopEngine::beginRecording (int i) noexcept
         currentPart = i;
     }
 
+    bumpWrites (l);
     l.written = 0;
     l.recordTarget = -1;
     l.queued = l.queuedRecord = false;
@@ -422,6 +424,7 @@ void LoopEngine::startOverdub (int i) noexcept
 {
     // A new session: the previous undo (or redo) is gone.
     auto& l = loops[(size_t) i];
+    bumpWrites (l);
     l.undoStart = (int) l.position;
     l.sessionSaved = 0;
     l.undoCount = 0;
@@ -479,7 +482,69 @@ void LoopEngine::continueSwap (int i) noexcept
     {
         l.swapCursor = -1;
         l.undone = ! l.undone.load();
+        l.swapping.store (false, std::memory_order_release);
     }
+}
+
+void LoopEngine::startSwap (int i) noexcept
+{
+    auto& l = loops[(size_t) i];
+    l.swapping.store (true, std::memory_order_relaxed);
+    bumpWrites (l);
+    l.swapCursor = 0;
+}
+
+void LoopEngine::bumpWrites (Loop& l) noexcept
+{
+    // Before the first write: a copy that read the old count sees the change.
+    l.writes.fetch_add (1, std::memory_order_relaxed);
+    std::atomic_thread_fence (std::memory_order_release);
+}
+
+//==============================================================================
+bool LoopEngine::isBusy (int i) const noexcept
+{
+    const auto& l = loops[(size_t) i];
+    const auto s = l.state.load();
+    return s == State::recording || s == State::overdubbing || l.swapping.load();
+}
+
+bool LoopEngine::hasAudio (int i) const noexcept
+{
+    const auto s = loops[(size_t) i].state.load();
+    return s != State::empty && s != State::recording && loops[(size_t) i].length.load() > 0;
+}
+
+bool LoopEngine::copyLoop (int i, juce::AudioBuffer<float>& dest, int numChannels) const
+{
+    if (i < 0 || i >= kLoops)
+        return false;
+
+    const auto& l = loops[(size_t) i];
+    const auto readable = [&l]
+    {
+        const auto s = l.state.load();
+        return (s == State::playing || s == State::stopped) && ! l.swapping.load();
+    };
+
+    const auto before = l.writes.load (std::memory_order_acquire);
+    const auto length = l.length.load();
+    if (! readable() || length <= 0 || length > l.audio.getNumSamples())
+        return false;
+
+    numChannels = juce::jlimit (1, kMaxChannels, numChannels);
+    juce::AudioBuffer<float> copy (numChannels, length);
+    for (int ch = 0; ch < numChannels; ++ch)
+        copy.copyFrom (ch, 0, l.audio, ch, 0, length);
+
+    // Anything written meanwhile (a new recording, an overdub, a swap, a
+    // clear): throw the copy away.
+    std::atomic_thread_fence (std::memory_order_acquire);
+    if (l.writes.load (std::memory_order_relaxed) != before || ! readable() || l.length.load() != length)
+        return false;
+
+    dest = std::move (copy);
+    return true;
 }
 
 float LoopEngine::read (const Loop& l, int channel, double pos) const noexcept

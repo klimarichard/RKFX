@@ -46,7 +46,7 @@ Each effect is its own plugin, so a rackspace loads only what it uses. **RKBoard
 | [RKPreamp](docs/manuals/RKPreamp.md) | Guitar amp preamp: four voicings, amp-style tone stack, presence, bright, cab | Available |
 | [RKSynth](docs/manuals/RKSynth.md) | Monophonic synth played by your bass, guitar or violin: saw, square, triangle, sub, resonant filter envelope | Available |
 | [RKRingMod](docs/manuals/RKRingMod.md) | Ring modulator: free, pitch-tracked or tempo-synced carrier, with LFO | Available |
-| [RKLoop](docs/manuals/RKLoop.md) | Live looper, eight loops as song parts or layers, synced to Loop 1: overdub, undo/redo, reverse, half speed, footswitch control | Available |
+| [RKLoop](docs/manuals/RKLoop.md) | Live looper, eight loops as song parts or layers, synced to Loop 1: overdub, undo/redo, reverse, half speed, footswitch control, save loops as WAV files (also from a footswitch) | Available |
 | [RKHold](docs/manuals/RKHold.md) | Note freeze: a footswitch holds the note you're playing as a drone (or a chord, layer by layer), an octave down or up if you like | Available |
 | [RKPolyPitch](docs/manuals/RKPolyPitch.md) | Polyphonic pitch shifter, whammy style: pedal sweeps, momentary jumps, harmony and detune, chords included (Whammy mode delays your sound by a few ms, stated on screen) | Available |
 | [RKVoice](docs/manuals/RKVoice.md) | Harmonizer: up to four harmony voices on a voice or instrument, placed by a held MIDI chord (1st, 2nd, 3rd above or below), a key and scale, or any interval from −12 to +12 semitones (Chromatic); the dry signal untouched | Available |

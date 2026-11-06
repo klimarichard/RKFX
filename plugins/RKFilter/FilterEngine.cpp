@@ -5,6 +5,7 @@
 namespace
 {
     constexpr float kButterworthQ = 0.70710678f;
+    const float kSnappyKneeGain = 1.0f / juce::Decibels::decibelsToGain (FilterEngine::kSnappyKneeDb);
 }
 
 float FilterEngine::resonanceToQ (float r) noexcept
@@ -121,8 +122,19 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
 
             const auto level = envelope.process (detector * sens);
             if (std::abs (env) > 0.0f)
-                envelope01 = settings.envSnappy ? juce::jmin (1.0f, level)
-                                                : rkfx::EnvelopeFollower::toUnit (level, kEnvFloorDb);
+            {
+                if (settings.envSnappy)
+                {
+                    // The power over the knee's, softly limited: p / (1 + p).
+                    const auto a = level * kSnappyKneeGain;
+                    const auto p = a * a;
+                    envelope01 = p / (1.0f + p);
+                }
+                else
+                {
+                    envelope01 = rkfx::EnvelopeFollower::toUnit (level, kEnvFloorDb);
+                }
+            }
         }
 
         // The envelope's move in octaves. Smooth: even in dB. Snappy: even in Hz,

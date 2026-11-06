@@ -99,11 +99,19 @@ public:
             s.resonance = 0.0f;
             s.envAmount = 1.0f;
 
-            // -30 dB: Smooth is already 1.5 octaves up (566 Hz); Snappy about half an octave (290 Hz).
-            const auto smoothSoft = gainAt (s, 1000.0f, 0.03f);
+            // -40 dB: Smooth is already 0.67 octaves up (318 Hz); Snappy only 0.2 (230 Hz).
+            const auto smoothSoft = gainAt (s, 1000.0f, 0.01f);
             s.envSnappy = true;
-            const auto snappySoft = gainAt (s, 1000.0f, 0.03f);
+            const auto snappySoft = gainAt (s, 1000.0f, 0.01f);
             expect (smoothSoft > snappySoft * 1.6f, "soft: smooth " + juce::String (smoothSoft) + ", snappy " + juce::String (snappySoft));
+
+            // Around the knee (-20 dB) it's steep: from -26 to -14 dB Snappy goes from 2 to 3.7 octaves up
+            // (800 Hz to 2.6 kHz); Smooth moves only 1 octave. Measured as the low-pass's gain at 2 kHz.
+            const auto snappyRise = gainAt (s, 2000.0f, 0.2f) / gainAt (s, 2000.0f, 0.05f);
+            s.envSnappy = false;
+            const auto smoothRise = gainAt (s, 2000.0f, 0.2f) / gainAt (s, 2000.0f, 0.05f);
+            s.envSnappy = true;
+            expect (snappyRise > smoothRise * 1.5f, "rise: snappy " + juce::String (snappyRise) + ", smooth " + juce::String (smoothRise));
 
             // Near full scale both are close to Range (4 octaves) up.
             const auto snappyLoud = gainAt (s, 2000.0f, 0.9f);

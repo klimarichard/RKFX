@@ -21,7 +21,8 @@ protected:
 private:
     juce::RangedAudioParameter *mode, *slope, *cutoff, *resonance,
                                *envAmount, *envSens, *envAttack, *envRelease,
-                               *lfoDepth, *lfoShape, *lfoRate, *lfoSync, *lfoDivision, *lfoPhase;
+                               *lfoDepth, *lfoShape, *lfoRate, *lfoSync, *lfoDivision, *lfoPhase,
+                               *envRange, *envResponse;
 
     FilterEngine engine;
 

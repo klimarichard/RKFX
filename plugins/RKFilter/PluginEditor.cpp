@@ -7,7 +7,7 @@ namespace
     constexpr int kTitleHeight = 26;
     constexpr int kSwitchHeight = 26;
     constexpr int kFilterWidth = 200;
-    constexpr int kEnvelopeWidth = 176;
+    constexpr int kEnvelopeWidth = 252;   // three knobs a row (Amount, Range, Sensitivity)
 }
 
 RKFilterEditor::RKFilterEditor (RKFilterProcessor& p)
@@ -21,11 +21,13 @@ RKFilterEditor::RKFilterEditor (RKFilterProcessor& p)
     lfoShape = std::make_unique<rkfx::SegmentedSwitch> (param ("lfo_shape"), accent(),
                                                         juce::StringArray { "Sine", "Tri", "Sqr", "Up", "Down", "S&H" });
     lfoSync  = std::make_unique<rkfx::ToggleSwitch> (param ("lfo_sync"), accent(), "Sync");
+    envResponse = std::make_unique<rkfx::SegmentedSwitch> (param ("env_response"), accent(), juce::StringArray { "Smooth", "Snappy" });
 
     cutoff      = std::make_unique<Knob> (param ("cutoff"), "Cutoff");
     resonance   = std::make_unique<Knob> (param ("resonance"), "Resonance");
     envAmount   = std::make_unique<Knob> (param ("env_amount"), "Amount");
     envSens     = std::make_unique<Knob> (param ("env_sens"), "Sensitivity");
+    envRange    = std::make_unique<Knob> (param ("env_range"), "Range");
     envAttack   = std::make_unique<Knob> (param ("env_attack"), "Attack");
     envRelease  = std::make_unique<Knob> (param ("env_release"), "Release");
     lfoDepth    = std::make_unique<Knob> (param ("lfo_depth"), "Depth");
@@ -35,7 +37,7 @@ RKFilterEditor::RKFilterEditor (RKFilterProcessor& p)
 
     for (juce::Component* c : std::initializer_list<juce::Component*> {
              mode.get(), slope.get(), lfoShape.get(), lfoSync.get(), cutoff.get(), resonance.get(),
-             envAmount.get(), envSens.get(), envAttack.get(), envRelease.get(),
+             envResponse.get(), envAmount.get(), envRange.get(), envSens.get(), envAttack.get(), envRelease.get(),
              lfoDepth.get(), lfoRate.get(), lfoDivision.get(), lfoPhase.get() })
         addToCanvas (*c);
 
@@ -47,7 +49,7 @@ RKFilterEditor::RKFilterEditor (RKFilterProcessor& p)
 
     envWatcher = std::make_unique<juce::ParameterAttachment> (param ("env_amount"), [this] (float v)
     {
-        for (auto* k : { envSens.get(), envAttack.get(), envRelease.get() })
+        for (auto* k : { envRange.get(), envSens.get(), envAttack.get(), envRelease.get() })
             k->setDimmed (std::abs (v) < 0.5f);
     });
 
@@ -98,13 +100,16 @@ void RKFilterEditor::layoutContent()
     {
         auto area = envelopeArea().reduced (8, 0);
         area.removeFromTop (kTitleHeight);
-        const auto half = area.getWidth() / 2;
+        envResponse->setBounds (area.removeFromTop (kSwitchHeight));
+        area.removeFromTop (8);
+        const auto third = area.getWidth() / 3;
         auto row1 = area.removeFromTop (Knob::kDefaultHeight);
-        envAmount->setBounds (row1.removeFromLeft (half));
+        envAmount->setBounds (row1.removeFromLeft (third));
+        envRange->setBounds (row1.removeFromLeft (third));
         envSens->setBounds (row1);
         auto row2 = area.removeFromTop (Knob::kDefaultHeight);
-        envAttack->setBounds (row2.removeFromLeft (half));
-        envRelease->setBounds (row2);
+        envAttack->setBounds (row2.removeFromLeft (third));
+        envRelease->setBounds (row2.removeFromLeft (third));
     }
 
     {

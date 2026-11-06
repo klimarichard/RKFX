@@ -10,10 +10,10 @@ public:
     explicit RKFilterEditor (RKFilterProcessor&);
 
 private:
-    std::unique_ptr<rkfx::SegmentedSwitch> mode, slope, lfoShape;
+    std::unique_ptr<rkfx::SegmentedSwitch> mode, slope, lfoShape, envResponse;
     std::unique_ptr<rkfx::ToggleSwitch> lfoSync;
     std::unique_ptr<rkfx::Knob> cutoff, resonance,
-                                envAmount, envSens, envAttack, envRelease,
+                                envAmount, envRange, envSens, envAttack, envRelease,
                                 lfoDepth, lfoRate, lfoDivision, lfoPhase;
 
     // Rate shows as a note division while synced; envelope and LFO controls

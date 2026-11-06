@@ -33,7 +33,9 @@ The envelope moves the cutoff with your playing dynamics: play harder and the fi
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
-| **Amount** | -100% to +100% | 0% | How far the envelope moves the cutoff, up to about 4 octaves. Positive values sweep **up** when you play louder (classic auto-wah). Negative values sweep **down** (a closing, "reverse" wah). At 0% the envelope is off and its other knobs are dimmed. |
+| **Smooth / Snappy** | Smooth, Snappy | Smooth | How the filter follows your playing. **Smooth** moves it evenly over a wide range of loudness (48 dB): every bit louder opens it a bit more, a gentle, vocal sweep. **Snappy** works like a hardware envelope filter (and Line 6 Helix's Auto Filter): soft playing hardly moves it, then a few dB louder makes it jump octaves up, and it levels off when you play hard. That jump on every attack is the "quack". Sensitivity sets where the jump happens. |
+| **Amount** | -100% to +100% | 0% | How far the envelope moves the cutoff, up to Range (4 octaves unless you change it). Positive values sweep **up** when you play louder (classic auto-wah). Negative values sweep **down** (a closing, "reverse" wah). At 0% the envelope is off and its other knobs are dimmed. |
+| **Range** | 1 to 8 octaves | 4 oct | How far the cutoff moves at 100% Amount. 4 octaves is plenty for most auto-wahs (200 Hz up to 3.2 kHz); less keeps the sweep tight around the cutoff, more makes it extreme. |
 | **Sensitivity** | -24 to +24 dB | 0 dB | Matches the envelope to your source. Raise it for quiet sources (soft vocals, clean guitar) so they still open the filter; lower it for hot sources (drums, high-gain guitar) so they don't keep it fully open. |
 | **Attack** | 1 to 100 ms | 5 ms | How quickly the filter opens when you play. Short = snappy "quack", longer = smoother, softer sweep. |
 | **Release** | 20 ms to 1 s | 150 ms | How quickly the filter closes again as the note fades. |
@@ -65,9 +67,11 @@ These starting points are built into the plugin as **factory presets**: open the
 | **Random Stepped Filter** | LP, 24, Cutoff 1 kHz, Resonance 50%, LFO Depth +70%, Shape S&H, Sync on, 1/16 |
 | **Telephone Voice** | BP, 24, Cutoff 1.5 kHz, Resonance 20% |
 | **Wide Stereo Sweep** | LP, 12, Cutoff 1.2 kHz, LFO Depth +50%, Rate 0.2 Hz, Stereo Phase 180° |
+| **Snappy Quack** | BP, 12, Cutoff 140 Hz, Resonance 74%, Snappy, Env Amount +100%, Range 3.2 oct, Sensitivity +17.4 dB, Attack 35 ms, Release 20 ms. A Helix-style quack (matched to its Auto Filter); set for a violin pickup, so raise or lower Sensitivity until only your attacks make it jump. |
 
 ## Notes
 
+- With **Snappy**, Sensitivity matters much more than with Smooth: a few dB moves the point where the filter jumps. Set it while playing at your normal level.
 - High Resonance boosts the cutoff frequency strongly (up to about +20 dB at 100%). With a loud, bright source, lower Output or Resonance.
 - Gig Performer tip: map Cutoff to an expression pedal for a manual wah, or map Env Amount and LFO Depth to widgets to bring the movement in and out during a song.
 - When the host isn't playing, a synced LFO keeps running at the tempo's rate; it locks to the beat as soon as the transport starts.

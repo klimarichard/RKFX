@@ -1,0 +1,16 @@
+{
+  "plugin": "RKFilter",
+  "version": 1,
+  "name": "Snappy Quack",
+  "params": {
+    "mode": "bandpass",
+    "cutoff": 140,
+    "resonance": 74,
+    "env_response": "snappy",
+    "env_amount": 100,
+    "env_range": 3.2,
+    "env_sens": 17.4,
+    "env_attack": 35,
+    "env_release": 20
+  }
+}

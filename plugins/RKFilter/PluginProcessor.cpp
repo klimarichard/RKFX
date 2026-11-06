@@ -24,7 +24,8 @@ RKFilterProcessor::RKFilterProcessor()
       envAttack (findParam ("env_attack")), envRelease (findParam ("env_release")),
       lfoDepth (findParam ("lfo_depth")), lfoShape (findParam ("lfo_shape")),
       lfoRate (findParam ("lfo_rate")), lfoSync (findParam ("lfo_sync")),
-      lfoDivision (findParam ("lfo_division")), lfoPhase (findParam ("lfo_phase"))
+      lfoDivision (findParam ("lfo_division")), lfoPhase (findParam ("lfo_phase")),
+      envRange (findParam ("env_range")), envResponse (findParam ("env_response"))
 {
 }
 
@@ -39,6 +40,8 @@ void RKFilterProcessor::updateEngine()
     s.envSensDb    = valueOf (envSens);
     s.envAttackMs  = valueOf (envAttack);
     s.envReleaseMs = valueOf (envRelease);
+    s.envRangeOctaves = valueOf (envRange);
+    s.envSnappy    = juce::roundToInt (valueOf (envResponse)) == 1;
     s.lfoDepth     = valueOf (lfoDepth) / 100.0f;
     s.lfoShape     = (rkfx::LFO::Shape) juce::roundToInt (valueOf (lfoShape));
     s.lfoRateHz    = valueOf (lfoRate);

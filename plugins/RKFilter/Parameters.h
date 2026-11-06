@@ -37,6 +37,13 @@ namespace FilterParams
         p.addChoice    ("lfo_division", "LFO Division", divisionNames, divisionKeys, rkfx::SyncDivision::index (4));
         p.addDegrees   ("lfo_phase", "LFO Stereo Phase", 0.0f, 180.0f, 0.0f);
 
+        // Added later (appended, so the earlier parameters keep their places):
+        // how far the envelope sweeps at 100%, and how it follows the playing.
+        p.addFloat     ("env_range", "Envelope Range", { 1.0f, 8.0f }, 4.0f,
+                        [] (float v) { return juce::String (v, 1) + " oct"; },
+                        [] (const juce::String& t) { return t.getFloatValue(); });
+        p.addChoice    ("env_response", "Envelope Response", { "Smooth", "Snappy" }, { "smooth", "snappy" }, 0);
+
         return p;
     }
 }

@@ -27,8 +27,9 @@ public:
     static constexpr int kMaxChannels = 2;
     static constexpr int kMaxStages = rkfx::FilterCascade::kMaxStages;
     static constexpr float kMaxQ = 10.0f;            // resonance 100%
-    static constexpr float kModOctaves = 4.0f;       // envelope / LFO at 100%
+    static constexpr float kModOctaves = 4.0f;       // LFO at 100% (and the envelope's default range)
     static constexpr float kEnvFloorDb = -48.0f;     // envelope range: -48 dB (closed) to 0 dB (fully open)
+    static constexpr float kSnappyKneeDb = -20.0f;   // Snappy: half way (in Hz) at this level, at 0 dB Sensitivity
 
     struct Settings
     {
@@ -41,6 +42,11 @@ public:
         float envSensDb = 0.0f;
         float envAttackMs = 5.0f;
         float envReleaseMs = 150.0f;
+        float envRangeOctaves = kModOctaves;   // the sweep at 100% Amount
+        bool envSnappy = false;          // Smooth: the cutoff moves evenly with the level in dB (over 48 dB).
+                                         // Snappy: in Hz with the signal's power, softly limited (a knee at
+                                         // kSnappyKneeDb + Sensitivity): soft playing hardly moves it, and a
+                                         // few dB louder jumps it octaves up (the quack of hardware auto-wahs).
 
         float lfoDepth = 0.0f;           // -1..1
         rkfx::LFO::Shape lfoShape = rkfx::LFO::Shape::sine;
@@ -68,6 +74,6 @@ private:
     rkfx::EnvelopeFollower envelope;
     std::array<rkfx::LFO, kMaxChannels> lfos;
 
-    rkfx::Smoothed cutoffOctaves { 0.0f }, resonance { 0.2f }, envAmount, lfoDepth;
+    rkfx::Smoothed cutoffOctaves { 0.0f }, resonance { 0.2f }, envAmount, lfoDepth, envRange { kModOctaves };
     rkfx::SmoothedGain envSens { 1.0f };
 };

@@ -5,6 +5,7 @@
 namespace
 {
     constexpr float kButterworthQ = 0.70710678f;
+    const float kSnappyKneeGain = 1.0f / juce::Decibels::decibelsToGain (FilterEngine::kSnappyKneeDb);
 }
 
 float FilterEngine::resonanceToQ (float r) noexcept
@@ -25,6 +26,7 @@ void FilterEngine::prepare (double newSampleRate)
     cutoffOctaves.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     resonance.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     envAmount.reset (sampleRate, rkfx::kParamSmoothingSeconds);
+    envRange.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     lfoDepth.reset (sampleRate, rkfx::kParamSmoothingSeconds);
     envSens.reset (sampleRate, rkfx::kParamSmoothingSeconds);
 
@@ -36,6 +38,7 @@ void FilterEngine::reset()
     cutoffOctaves.setCurrentAndTargetValue (cutoffOctaves.getTargetValue());
     resonance.setCurrentAndTargetValue (resonance.getTargetValue());
     envAmount.setCurrentAndTargetValue (envAmount.getTargetValue());
+    envRange.setCurrentAndTargetValue (envRange.getTargetValue());
     lfoDepth.setCurrentAndTargetValue (lfoDepth.getTargetValue());
     envSens.setCurrentAndTargetValue (envSens.getTargetValue());
 
@@ -54,6 +57,7 @@ void FilterEngine::setSettings (const Settings& s)
     cutoffOctaves.setTargetValue (std::log2 (juce::jlimit (20.0f, 20000.0f, s.cutoffHz)));
     resonance.setTargetValue (juce::jlimit (0.0f, 1.0f, s.resonance));
     envAmount.setTargetValue (juce::jlimit (-1.0f, 1.0f, s.envAmount));
+    envRange.setTargetValue (juce::jlimit (1.0f, 8.0f, s.envRangeOctaves));
     lfoDepth.setTargetValue (juce::jlimit (-1.0f, 1.0f, s.lfoDepth));
     envSens.setTargetValue (juce::Decibels::decibelsToGain (s.envSensDb));
 
@@ -105,6 +109,7 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
         const auto baseOctave = cutoffOctaves.getNextValue();
         const auto resonantK = 1.0f / resonanceToQ (resonance.getNextValue());
         const auto env = envAmount.getNextValue();
+        const auto range = envRange.getNextValue();
         const auto depth = lfoDepth.getNextValue();
         const auto sens = envSens.getNextValue();
 
@@ -117,8 +122,28 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
 
             const auto level = envelope.process (detector * sens);
             if (std::abs (env) > 0.0f)
-                envelope01 = rkfx::EnvelopeFollower::toUnit (level, kEnvFloorDb);
+            {
+                if (settings.envSnappy)
+                {
+                    // The power over the knee's, softly limited: p / (1 + p).
+                    const auto a = level * kSnappyKneeGain;
+                    const auto p = a * a;
+                    envelope01 = p / (1.0f + p);
+                }
+                else
+                {
+                    envelope01 = rkfx::EnvelopeFollower::toUnit (level, kEnvFloorDb);
+                }
+            }
         }
+
+        // The envelope's move in octaves. Smooth: even in dB. Snappy: even in Hz,
+        // from the cutoff up to Range octaves above it (or down, for a negative Amount).
+        float envOctaves = 0.0f;
+        if (env != 0.0f)
+            envOctaves = settings.envSnappy
+                ? std::copysign (std::log2 (1.0f + (std::exp2 (range) - 1.0f) * std::abs (env) * envelope01), env)
+                : range * env * envelope01;
 
         for (int ch = 0; ch < numChannels; ++ch)
         {
@@ -127,7 +152,7 @@ void FilterEngine::process (float* const* io, int numChannels, int numSamples, c
             auto g = staticG;
             if (! staticCutoff)
             {
-                auto octave = baseOctave + kModOctaves * (env * envelope01 + depth * lfoValue);
+                auto octave = baseOctave + envOctaves + kModOctaves * depth * lfoValue;
                 octave = juce::jlimit ((float) minOctave, (float) maxOctave, octave);
                 g = rkfx::StateVariableFilter::gFor (std::exp2 ((double) octave), sampleRate);
             }

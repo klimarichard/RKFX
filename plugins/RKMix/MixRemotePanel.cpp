@@ -14,6 +14,28 @@ namespace
 {
     juce::Rectangle<int> inner (juce::Rectangle<int> a) { return a.withTrimmedTop (kSectionTitle).reduced (8, 2); }
     constexpr int kLinkWidth = 150, kLinkHeight = 180, kQrSize = 118;
+    constexpr int kCellPadX = 6, kCellText = 4 + 4 + 20 + 18;   // padding, colour bar, name, phones
+
+    // A bus's code at full size, for scanning when the grid has made them small.
+    struct BigCode : public juce::Component
+    {
+        BigCode (juce::String n, juce::String u, juce::Colour c) : name (std::move (n)), url (std::move (u)), colour (c) { setSize (260, 300); }
+        void paint (juce::Graphics& g) override
+        {
+            auto r = getLocalBounds().reduced (8);
+            g.setColour (colour);
+            g.fillRoundedRectangle (r.removeFromTop (4).toFloat(), 2.0f);
+            g.setColour (rkfx::Palette::text);
+            g.setFont (rkfx::Fonts::bold (15.0f));
+            g.drawText (name, r.removeFromTop (24), juce::Justification::centred, true);
+            g.setColour (rkfx::Palette::textDim);
+            g.setFont (rkfx::Fonts::regular (11.0f));
+            g.drawText ("Link copied", r.removeFromBottom (18), juce::Justification::centred);
+            rkfx::RemoteQr (url).draw (g, r.reduced (2).toFloat());
+        }
+        juce::String name, url;
+        juce::Colour colour;
+    };
 }
 
 RKMixEditor::RemotePanel::RemotePanel (RKMixEditor& o) : Panel (o)
@@ -208,11 +230,28 @@ void RKMixEditor::RemotePanel::resized()
     a.removeFromTop (6);
     newLinks.setBounds (a.removeFromTop (kSwitchH));
 
+    // Every link fits: the column count that gives the largest code (up to full size).
     auto grid = inner (linksArea).withTrimmedTop (4);
-    const auto perRow = juce::jmax (1, grid.getWidth() / kLinkWidth);
-    for (size_t i = 0; i < links.size(); ++i)
-        links[i].area = { grid.getX() + (int) (i % (size_t) perRow) * kLinkWidth, grid.getY() + (int) (i / (size_t) perRow) * kLinkHeight,
-                          kLinkWidth, kLinkHeight };
+    const auto n = (int) links.size();
+    int columns = 1;
+    linkQr = 0;
+    for (int c = 1; c <= juce::jmax (1, n); ++c)
+    {
+        const auto rows = (n + c - 1) / juce::jmax (1, c);
+        const auto w = juce::jmin (kLinkWidth, grid.getWidth() / c);
+        const auto h = juce::jmin (kLinkHeight, grid.getHeight() / juce::jmax (1, rows));
+        const auto qr = juce::jmin (kQrSize, w - 2 * kCellPadX, h - kCellText);
+        if (qr > linkQr)
+        {
+            linkQr = qr;
+            columns = c;
+        }
+    }
+    linkQr = juce::jmax (24, linkQr);
+    const auto cellW = juce::jmin (kLinkWidth, grid.getWidth() / columns);
+    const auto cellH = juce::jmin (kLinkHeight, linkQr + kCellText);
+    for (int i = 0; i < n; ++i)
+        links[(size_t) i].area = { grid.getX() + (i % columns) * cellW, grid.getY() + (i / columns) * cellH, cellW, cellH };
 }
 
 void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
@@ -316,7 +355,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
                           t, juce::Justification::topLeft, 10);
     }
 
-    rkfx::drawPanel (g, linksArea, owner.panelColour(), "In-ear mixes: one code per Aux bus (click a code to copy its link)");
+    rkfx::drawPanel (g, linksArea, owner.panelColour(), "In-ear mixes (click a code to copy it)");
     if (links.empty())
     {
         g.setColour (rkfx::Palette::textDim);
@@ -326,7 +365,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
     }
     for (const auto& link : links)
     {
-        auto cell = link.area.reduced (6, 2);
+        auto cell = link.area.reduced (kCellPadX, 2);
         const auto name = owner.busDisplayName (link.bus);
         g.setColour (MixGui::stripColour (owner.mixer.getBusColour (link.bus)));
         g.fillRoundedRectangle (cell.removeFromTop (4).toFloat(), 2.0f);
@@ -334,7 +373,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
         g.setFont (rkfx::Fonts::bold (13.0f));
         g.drawText (name, cell.removeFromTop (20), juce::Justification::centred, true);
 
-        auto qrArea = cell.removeFromTop (kQrSize).withSizeKeepingCentre (kQrSize, kQrSize);
+        auto qrArea = cell.removeFromTop (linkQr).withSizeKeepingCentre (linkQr, linkQr);
         if (listening)
             rkfx::RemoteQr (link.url).draw (g, qrArea.toFloat());
         else
@@ -343,7 +382,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
             g.drawRoundedRectangle (qrArea.toFloat().reduced (0.5f), 4.0f, 1.0f);
             g.setColour (rkfx::Palette::textDim);
             g.setFont (rkfx::Fonts::regular (11.5f));
-            g.drawFittedText ("Switch the remote on", qrArea.reduced (8), juce::Justification::centred, 2);
+            g.drawFittedText ("Switch the remote on", qrArea.reduced (juce::jmin (8, linkQr / 8)), juce::Justification::centred, 3, 0.6f);
         }
 
         g.setFont (rkfx::Fonts::regular (11.0f));
@@ -370,6 +409,13 @@ void RKMixEditor::RemotePanel::mouseDown (const juce::MouseEvent& e)
             juce::SystemClipboard::copyTextToClipboard (link.url);
             copied = link.url;
             repaint();
+            // Many buses make small codes: show this one at full size to scan.
+            if (linkQr < kQrSize && owner.mixer.getRemote().isListening())
+                if (auto* top = getTopLevelComponent())
+                    juce::CallOutBox::launchAsynchronously (
+                        std::make_unique<BigCode> (owner.busDisplayName (link.bus), link.url,
+                                                   MixGui::stripColour (owner.mixer.getBusColour (link.bus))),
+                        top->getLocalArea (this, link.area), top);
             return;
         }
 }

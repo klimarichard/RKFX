@@ -561,6 +561,7 @@ private:
         juce::Rectangle<int> oscArea;
         struct Link { int bus; juce::String url; juce::Rectangle<int> area; };
         std::vector<Link> links;
+        int linkQr = 118;                  // the codes' size: smaller when many buses share the space
         std::array<int, mix::kBuses> connected {};
         int lastVersion = -1;
         juce::String copied;               // the link just copied (a note)

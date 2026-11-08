@@ -217,7 +217,14 @@ The **Recorder** page records every input to its own WAV file for the whole gig,
 1. On the Recorder page, choose **Playback (virtual soundcheck)**, then **Load...** a recording's folder: RKMix's own, or any WAV files whose names start with their input number (`05 Kick.wav`, `09-10 Overheads.wav`). A recording at another sample rate than the session's is refused.
 2. Each file is shown with the input it feeds; change it in its menu (a stereo file goes onto a pair: In 1/2, In 3/4...). The mix's links don't have to match: a stereo file plays into two unlinked channels as well. The recorded main and buses are listed but **Off**. **Use the recording's names** names the channels as they were.
 3. Switch inputs to **Playback**: **PB** in the Input section of the Channel page, or **All to playback**. A strip on Playback shows **PB** over its number. An input on Playback with no file is silent.
-4. **Play** / **Pause**, **Stop** (back to the start), **◀ Marker** and **Marker ▶**, and the bar (click to go there). **Loop** plays the part between the markers around the play position over and over: one song's mix.
+4. **Play** / **Pause**, **Stop** (back to the start), **◀ Marker** and **Marker ▶**, **-1 min**, **-10 s**, **+10 s** and **+1 min**, and the bar (click to go there). **Loop** plays the part between the markers around the play position over and over: one song's mix.
+5. **Markers** (the list beside the files): every marker of the recording, in time order, the one at the play position highlighted.
+   - **Click** a marker to go there.
+   - **Double-click** its name to rename it ("Take 03" to "Hallelujah"). Enter keeps the new name, Esc leaves the old one.
+   - **×**, or **Delete** on the selected marker, deletes it. **Undo delete** brings back the last one deleted.
+   - **Add marker here** puts a new one ("Marker 1", "Marker 2"...) at the play position, also while playing.
+
+   The changes are saved into the recording's `session.json` right away, so they are there the next time it is loaded. (A folder of plain WAV files gets a `session.json` that holds only its markers.) The bar, ◀ Marker / Marker ▶, Loop and the iPad follow at once. The markers can't be changed while locked, or in a recording that is still being recorded.
 
 - The recording replaces the input **before the trim**: the gate, the compressor, the keys, the inserts (RKTrigger and RKFollow play their samples and synths as at the gig) all work as live. Every file stays aligned to the sample; starts, stops and jumps fade over 5 ms.
 - **The source is never saved**, never in scenes and never undone: every session and every loaded mix starts with every input **Live**, so a show can't start on Playback by mistake. **Lock** blocks switching to Playback; **PLAYBACK: all live** in the master section stays available, also when locked.

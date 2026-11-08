@@ -93,6 +93,7 @@ Each input has a source, **Live** or **Playback**:
 ### Transport
 
 - **Play / Pause / Stop**, a position bar with the markers (click to locate), **previous / next marker**, and **Loop** between two markers (rehearse one song's mix over and over).
+- **Marker list** (added 2026-11-08): the loaded recording's markers in a scrollable list beside the file mapping; click to locate, double-click to rename, × / Delete to delete (Undo delete for the last one), **Add marker here** at the play position. Edits are written into `session.json` at once (a plain-WAV folder gets one with only `markers`; `scan` reads markers for both kinds). Not while locked, nor for the folder being recorded into (the recorder rewrites its `session.json`). Plus **-1 min / -10 s / +10 s / +1 min** jumps.
 - All tracks share one playback position and are read by one disk thread, so they stay sample-aligned.
 - **Streaming:** generalise `PlayStream` (one song, two channels, a ring filled by a `TimeSliceClient`) into a multi-track reader: N mono rings of 3 s each, filled ahead by one `TimeSliceThread`, all advanced by the same position. A locate drops the rings, refills them on the disk thread, and starts once 0.5 s is ready (the transport shows "locating"). Every start, stop and locate fades over 5 ms.
 - A ring that runs dry plays silence for that block and counts an underrun (shown).

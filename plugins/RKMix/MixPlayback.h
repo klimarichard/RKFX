@@ -2,6 +2,7 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <memory>
@@ -90,6 +91,18 @@ public:
     /** Loops the part between the markers around the play position (or stops looping). */
     void loopAroundPosition (bool on);
 
+    /** The loaded recording's markers, edited (message thread): kept in time
+        order and saved into its session.json at once (the rest of the file is
+        kept; a folder of plain WAVs gets one that holds only the markers).
+        addMarker returns the new marker's index (an empty label: the next
+        "Marker n"); the others say whether there was such a marker and the
+        file was written. */
+    int addMarker (juce::int64 at, const juce::String& label = {});
+    bool renameMarker (int index, const juce::String& label);
+    bool removeMarker (int index);
+    /** The index of the last marker at or before @p sample, or -1. */
+    int markerIndexAt (juce::int64 sample) const;
+
     bool isPlaying() const noexcept { return playing.load(); }
     bool isLocating() const noexcept { return requestGen.load() != readyGen.load(); }
     juce::int64 getPosition() const noexcept { return shownPosition.load(); }
@@ -143,4 +156,5 @@ private:
     void fill();
     void relocate (juce::int64 target);
     void updateRoutes();
+    bool saveMarkers() const;
 };

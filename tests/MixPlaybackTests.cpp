@@ -85,6 +85,46 @@ public:
             expectEquals (r.names[2], juce::String ("Keys"));
         }
 
+        beginTest ("Markers edited: added in time order, renamed, deleted; saved into session.json, the rest kept");
+        {
+            const auto copy = root.getChildFile ("edit");
+            makeRecording (copy);
+            MixPlayback p;
+            expect (p.load (MixPlayback::scan (copy), kRate).wasOk());
+            expectEquals (p.addMarker (36000), 1, "between Scene 2 and Scene 3");
+            expectEquals (p.getRecording().markers[1].label, juce::String ("Marker 1"));
+            expectEquals (p.addMarker (1000, "Intro"), 0);
+            expectEquals (p.addMarker (60000), 4);
+            expectEquals (p.getRecording().markers[4].label, juce::String ("Marker 2"), "the next number");
+            expect (p.renameMarker (2, "Verse"));
+            expect (! p.renameMarker (2, "   "), "an empty name is refused");
+            expect (! p.renameMarker (9, "x"));
+            expect (p.removeMarker (3));   // Scene 3
+            expectEquals (p.markerIndexAt (0), -1);
+            expectEquals (p.markerIndexAt (40000), 2);
+
+            const auto r = MixPlayback::scan (copy);
+            expectEquals ((int) r.markers.size(), 4);
+            expectEquals (r.markers[0].label, juce::String ("Intro"));
+            expectEquals (r.markers[2].label, juce::String ("Verse"));
+            expectEquals (r.markers[2].at, (juce::int64) 36000);
+            expectEquals (r.markers[3].label, juce::String ("Marker 2"));
+            expectEquals ((int) r.files.size(), 2, "the files are still described");
+            expectEquals (r.names[2], juce::String ("Keys"), "and the names");
+
+            // A folder of plain WAVs keeps its markers in a session.json of its own.
+            const auto plain = root.getChildFile ("plain markers");
+            plain.createDirectory();
+            writeWav (plain.getChildFile ("01 Vox.wav"), 1, 0);
+            MixPlayback q;
+            expect (q.load (MixPlayback::scan (plain), kRate).wasOk());
+            q.addMarker (12000, "Chorus");
+            const auto again = MixPlayback::scan (plain);
+            expectEquals ((int) again.markers.size(), 1);
+            expectEquals ((int) again.files.size(), 1, "still read as plain WAVs");
+            expectEquals (again.files[0].inputs[0], 0);
+        }
+
         beginTest ("Play: every input sample for sample (after the 5 ms fade-in), all aligned");
         {
             MixPlayback p;

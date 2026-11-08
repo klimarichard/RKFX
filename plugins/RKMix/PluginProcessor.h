@@ -8,6 +8,7 @@
 #include "MixMonitorEqSession.h"
 #include "MixRecorderSession.h"
 #include "MixPlayback.h"
+#include "MixExport.h"
 #include "MixScenes.h"
 #include "MixUndo.h"
 #include "MixRemote.h"
@@ -149,6 +150,12 @@ public:
     bool anyInputOnPlayback() const noexcept;
     /** Bumped when an input's source changes (the window polls it). */
     int getSourceVersion() const noexcept { return sourceVersion.load(); }
+
+    /** Export: the main mix of a region of the loaded recording, faster than real time. */
+    MixExport& getExport() noexcept { return exporter; }
+    /** The mix as it is now, for an export (message thread): its settings, the
+        faders and mutes (no solo, talkback or oscillator), a copy of every insert, the tempo. */
+    MixExport::Mix exportMix();
 
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }
@@ -386,6 +393,7 @@ private:
     std::unique_ptr<MixMonitorEqSession> monitorEq;
     std::unique_ptr<MixRecorderSession> recorder;
     MixPlayback playback;
+    MixExport exporter;
     std::array<std::atomic<bool>, kChannels> inputOnPlayback {};
     std::atomic<int> sourceVersion { 0 };
     juce::AudioBuffer<float> playbackInputs;            // the inputs with the recording in place of the live ones
@@ -426,7 +434,9 @@ private:
     std::atomic<std::uint64_t> changed { MixEngine::kEverything };
     std::atomic<bool> loadingMix { false };
 
-    void readSettings (std::uint64_t parts);            // mix settings -> engineSettings
+    void readSettings (std::uint64_t parts) { readSettings (engineSettings, parts); }   // mix settings -> engineSettings
+    void readSettings (MixEngine::Settings&, std::uint64_t parts) const;
+    std::atomic<double> hostBpm { 120.0 };               // the host's tempo, last seen (for an export)
     static bool isStripField (int field);               // in channel presets (not routing)
     std::vector<rkfx::ParamInfo> stripInfos() const;
     MixEngine::Levels readLevels() const;

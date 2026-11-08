@@ -154,10 +154,12 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
             name.setBounds (b);
         }
 
-        void mouseDown (const juce::MouseEvent&) override
+        void mouseDown (const juce::MouseEvent& e) override
         {
-            list.list.selectRow (row);
-            list.locate (row);
+            // Shift: a range, Cmd: one more (for Export and Export each); a plain click also goes there.
+            list.list.selectRowsBasedOnModifierKeys (row, e.mods, false);
+            if (! e.mods.isShiftDown() && ! e.mods.isCommandDown())
+                list.locate (row);
         }
 
         static constexpr int kTimeWidth = 58;
@@ -185,6 +187,130 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
             list.selectRow (index);
         };
         addChildComponent (undoDelete);
+        list.setMultipleSelectionEnabled (true);
+
+        exportOne.setTooltip ("The main mix, as it is set now, from the selected marker to the next one (Shift-click: several "
+                              "markers in a row, one file), into the recording's Exports folder; faster than real time");
+        exportEach.setTooltip ("One file per selected marker, each to the next marker");
+        showExports.setTooltip ("Opens the recording's Exports folder");
+        cancelExport.setTooltip ("Stops the export (a file not finished is not kept)");
+        exportOne.onClick = [this] { startExport (false); };
+        exportEach.onClick = [this] { startExport (true); };
+        showExports.onClick = [this]
+        {
+            const auto exports = exportFolder();
+            if (exports == juce::File())
+                return;
+            exports.createDirectory();
+            exports.revealToUser();
+        };
+        cancelExport.onClick = [this] { panel.owner.mixer.getExport().cancel(); };
+        for (auto* b : { &exportOne, &exportEach, &showExports })
+            addAndMakeVisible (*b);
+        addChildComponent (progressBar);
+        addChildComponent (cancelExport);
+        progressBar.setColour (juce::ProgressBar::foregroundColourId, panel.owner.accent());
+        progressBar.setColour (juce::ProgressBar::backgroundColourId, rkfx::Palette::knobTrack);
+    }
+
+    juce::File exportFolder() const
+    {
+        auto& p = panel.owner.mixer.getPlayback();
+        return p.isLoaded() ? p.getRecording().folder.getChildFile ("Exports") : juce::File();
+    }
+
+    /** What the selection exports: from a marker to the next one (or the end). Nothing
+        selected: the part around the play position, as Loop. No markers: all of it. */
+    std::vector<MixExport::Region> regionsToExport (bool each) const
+    {
+        auto& p = panel.owner.mixer.getPlayback();
+        const auto& r = p.getRecording();
+        const auto& markers = r.markers;
+        const auto count = (int) markers.size();
+        const auto startOf = [&] (int i) { return i < 0 ? (juce::int64) 0 : markers[(size_t) i].at; };
+        const auto endOf = [&] (int i) { return i + 1 < count ? markers[(size_t) i + 1].at : r.length; };
+        const auto nameOf = [&] (int i) { return i < 0 ? r.folder.getFileName() : markers[(size_t) i].label; };
+
+        std::vector<int> rows;
+        const auto chosen = list.getSelectedRows();
+        for (int i = 0; i < chosen.size(); ++i)
+            if (juce::isPositiveAndBelow (chosen[i], count))
+                rows.push_back (chosen[i]);
+        std::sort (rows.begin(), rows.end());
+        if (rows.empty())
+            rows.push_back (p.markerIndexAt (p.getPosition()));   // -1: before the first marker
+
+        std::vector<MixExport::Region> regions;
+        if (each)
+        {
+            for (const auto i : rows)
+                regions.push_back ({ startOf (i), endOf (i), nameOf (i) });
+        }
+        else
+        {
+            const auto first = rows.front(), last = rows.back();
+            regions.push_back ({ startOf (first), endOf (last), first == last ? nameOf (first) : nameOf (first) + " - " + nameOf (last) });
+        }
+        regions.erase (std::remove_if (regions.begin(), regions.end(), [] (const MixExport::Region& g) { return g.end <= g.start; }),
+                       regions.end());
+        return regions;
+    }
+
+    void startExport (bool each)
+    {
+        auto& console = panel.owner.mixer;
+        auto& p = console.getPlayback();
+        if (! p.isLoaded() || console.getExport().isRunning())
+            return;
+        auto regions = regionsToExport (each);
+        if (regions.empty())
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Nothing to export",
+                                                    "The selected markers sit on the same spot: there is nothing between them.");
+            return;
+        }
+        console.getExport().start (console.exportMix(), p.getRecording(), std::move (regions), exportFolder(), console.getRecorder().isFloat());
+        shownExportVersion = -1;
+        update (true);
+    }
+
+    /** The export's progress and its result (from update). */
+    void updateExport()
+    {
+        auto& ex = panel.owner.mixer.getExport();
+        const auto running = ex.isRunning();
+        exportProgress = ex.getProgress();
+        if (running)
+            progressBar.setTextToDisplay (ex.getStatus());
+        if (running != progressBar.isVisible())
+        {
+            progressBar.setVisible (running);
+            cancelExport.setVisible (running);
+            for (auto* b : { &exportOne, &exportEach, &showExports })
+                b->setVisible (! running);
+        }
+        const auto loaded = panel.owner.mixer.getPlayback().isLoaded();
+        for (auto* b : { &exportOne, &exportEach, &showExports })
+            b->setEnabled (loaded);
+
+        if (! running && ex.getVersion() != shownExportVersion)
+        {
+            const auto first = shownExportVersion == -2;
+            shownExportVersion = ex.getVersion();
+            if (! first)
+            {
+                result = ex.getStatus();
+                resultUntil = juce::Time::getMillisecondCounter() + 10000;
+                if (ex.lastFailed())
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export", result);
+                repaint();
+            }
+        }
+        if (result.isNotEmpty() && juce::Time::getMillisecondCounter() > resultUntil)
+        {
+            result = {};
+            repaint();
+        }
     }
 
     /** From the panel's tick: new markers, the one under the play head, the lock. */
@@ -209,6 +335,7 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
             panel.bar->repaint();
             repaint();
         }
+        updateExport();
         const auto now = p.isLoaded() ? p.markerIndexAt (p.getPosition()) : -1;
         if (now != current)
         {
@@ -295,12 +422,22 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
     {
         g.setColour (rkfx::Palette::textDim);
         g.setFont (rkfx::Fonts::bold (12.0f));
-        g.drawText ("MARKERS (" + juce::String (shownCount) + ")", getLocalBounds().removeFromTop (kHeader), juce::Justification::centredLeft);
+        auto header = getLocalBounds().removeFromTop (kHeader);
+        if (undoDelete.isVisible())
+            header.removeFromRight (100);
+        if (result.isNotEmpty())
+        {
+            g.setColour (panel.owner.mixer.getExport().lastFailed() ? rkfx::Palette::warning : panel.owner.accent());
+            g.setFont (rkfx::Fonts::regular (12.0f));
+            g.drawFittedText (result, header, juce::Justification::centredLeft, 1);
+        }
+        else
+            g.drawText ("MARKERS (" + juce::String (shownCount) + ")", header, juce::Justification::centredLeft);
         if (shownCount == 0 && panel.owner.mixer.getPlayback().isLoaded())
         {
             g.setFont (rkfx::Fonts::regular (12.0f));
-            g.drawFittedText ("None yet: Add marker here puts one at the play position.",
-                              getLocalBounds().withTrimmedTop (kHeader).reduced (6), juce::Justification::topLeft, 3);
+            g.drawFittedText ("None yet: Add marker here puts one at the play position. Export takes all of it.",
+                              getLocalBounds().withTrimmedTop (kHeader).withTrimmedBottom (kFooter).reduced (6), juce::Justification::topLeft, 4);
         }
     }
 
@@ -310,15 +447,31 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
         auto header = b.removeFromTop (kHeader);
         undoDelete.setBounds (header.removeFromRight (96).reduced (0, 1));
         b.removeFromTop (2);
+        auto footer = b.removeFromBottom (kFooter - 4);
+        b.removeFromBottom (4);
         list.setBounds (b);
+        exportOne.setBounds (footer.removeFromLeft (64));
+        footer.removeFromLeft (4);
+        exportEach.setBounds (footer.removeFromLeft (92));
+        showExports.setBounds (footer.removeFromRight (64));
+        auto running = list.getBounds().withY (exportOne.getY()).withHeight (exportOne.getHeight());
+        cancelExport.setBounds (running.removeFromRight (64));
+        running.removeFromRight (4);
+        progressBar.setBounds (running);
         current = -2;   // scrolled to again at this size
         update();
     }
 
-    static constexpr int kHeader = 22;
+    static constexpr int kHeader = 22, kFooter = 30;
     RecorderPanel& panel;
     juce::ListBox list;
     juce::TextButton undoDelete { "Undo delete" };
+    juce::TextButton exportOne { "Export" }, exportEach { "Export each" }, showExports { "Show" }, cancelExport { "Cancel" };
+    double exportProgress = 0.0;
+    juce::ProgressBar progressBar { exportProgress };
+    int shownExportVersion = -2;   // -2: what an earlier export said isn't shown again
+    juce::String result;
+    juce::uint32 resultUntil = 0;
     std::optional<MixPlayback::Marker> deleted;
     juce::File folder;
     int shownCount = -1, current = -2;

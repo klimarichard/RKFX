@@ -1,4 +1,5 @@
 #include "../plugins/RKMix/MixPlayback.h"
+#include "../plugins/RKMix/MixExport.h"
 #include "../plugins/RKMix/PluginProcessor.h"
 
 /** RKMix's virtual soundcheck (MixPlayback): files play into the inputs
@@ -292,6 +293,106 @@ public:
             played.getStateInformation (state);
             played.setStateInformation (state.getData(), (int) state.getSize());
             expect (! played.anyInputOnPlayback(), "a loaded mix starts all Live");
+        }
+
+        beginTest ("Export: the main mix of a region, sample for sample as the console plays it live; the inserts' latency taken out");
+        {
+            for (const auto withLimiter : { false, true })
+            {
+                RKMixProcessor live, played;
+                for (auto* m : { &live, &played })
+                {
+                    setParam (m->getSettings().param (mix::channelId (0, "eq_on")), 1.0f);
+                    setParam (m->getSettings().param (mix::channelId (0, "eq_lmid_gain")), 6.0f);
+                    setParam (m->getSettings().param (mix::channelId (0, "comp_on")), 1.0f);
+                    if (withLimiter)
+                        m->getRack().insert ({ InsertRack::Strip::main, 0, 0 }, "RKLimit", 2);
+                    m->prepareToPlay (kRate, kBlock);
+                }
+                expect (played.getPlayback().load (MixPlayback::scan (folder), kRate).wasOk());
+                const auto latency = withLimiter ? played.getRack().latencies().main : 0;
+
+                // Live: the files' signals straight into inputs 1, 3 and 4 from the start.
+                const int length = 48000 + latency + kBlock;
+                juce::AudioBuffer<float> heard (2, length), a (32, kBlock);
+                juce::MidiBuffer midi;
+                for (int at = 0; at + kBlock <= length; at += kBlock)
+                {
+                    a.clear();
+                    for (int i = 0; i < kBlock; ++i)
+                        for (const auto in : { 0, 2, 3 })
+                            a.setSample (in, i, signal (in, at + i));
+                    live.processBlock (a, midi);
+                    for (int side = 0; side < 2; ++side)
+                        heard.copyFrom (side, at, a, side, 0, kBlock);
+                }
+
+                // Exported: Scene 2 to Scene 3 (the inputs are still Live: the export plays the files anyway).
+                auto mixCopy = played.exportMix();
+                expect ((mixCopy.inserts != nullptr) == withLimiter);
+                const auto file = root.getChildFile (withLimiter ? "limited.wav" : "plain.wav");
+                const MixExport::Region region { 24000, 48000, "Scene 2" };
+                const auto r = MixExport::render (mixCopy, played.getPlayback().getRecording(), region, file, true);
+                expect (r.wasOk(), r.getErrorMessage());
+
+                juce::AudioFormatManager formats;
+                formats.registerBasicFormats();
+                std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+                expect (reader != nullptr);
+                if (reader == nullptr)
+                    continue;
+                expectEquals ((int) reader->numChannels, 2);
+                expect (reader->lengthInSamples >= 24000 && reader->lengthInSamples <= 24000 + (int) (MixExport::kMaxTailSeconds * kRate));
+                juce::AudioBuffer<float> got (2, 24000);
+                reader->read (&got, 0, 24000, 0, true, true);
+                float worst = 0.0f, loudest = 0.0f;
+                for (int side = 0; side < 2; ++side)
+                    for (int k = 0; k < 24000; ++k)
+                    {
+                        worst = juce::jmax (worst, std::abs (got.getSample (side, k) - heard.getSample (side, 24000 + k + latency)));
+                        loudest = juce::jmax (loudest, std::abs (got.getSample (side, k)));
+                    }
+                expectGreaterThan (loudest, 0.1f, "there is a mix");
+                expectLessThan (worst, 1.0e-5f, withLimiter ? "with RKLimit on the main, its latency taken out" : "the main, sample for sample");
+            }
+        }
+
+        beginTest ("Export: a reverb's tail rings on (at most 3 s); cancelled leaves no file; each region its own file, never over another");
+        {
+            RKMixProcessor m;
+            m.getRack().insert ({ InsertRack::Strip::main, 0, 0 }, "RKVerb", 2);
+            m.prepareToPlay (kRate, kBlock);
+            expect (m.getPlayback().load (MixPlayback::scan (folder), kRate).wasOk());
+            const auto& recording = m.getPlayback().getRecording();
+
+            auto withVerb = m.exportMix();
+            const auto tailFile = root.getChildFile ("tail.wav");
+            expect (MixExport::render (withVerb, recording, { 24000, 48000, "Tail" }, tailFile, false).wasOk());
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            {
+                std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (tailFile));
+                expect (reader != nullptr && reader->lengthInSamples > 24000 + 4800, "a tail");
+                expect (reader != nullptr && reader->lengthInSamples <= 24000 + (int) (MixExport::kMaxTailSeconds * kRate));
+                expect (reader != nullptr && reader->bitsPerSample == 24);
+            }
+
+            const auto cancelled = root.getChildFile ("cancelled.wav");
+            expect (MixExport::render (withVerb, recording, { 24000, 48000, "x" }, cancelled, false, [] (float p) { return p < 0.3f; }).failed());
+            expect (! cancelled.exists(), "nothing left behind");
+
+            const auto exports = root.getChildFile ("Exports");
+            MixExport ex;
+            for (int round = 0; round < 2; ++round)
+            {
+                expect (ex.start (m.exportMix(), recording, { { 0, 24000, "Scene 1" }, { 24000, 48000, "Scene 2" } }, exports, false));
+                for (int n = 0; n < 1000 && ex.isRunning(); ++n)
+                    juce::Thread::sleep (10);
+                expect (! ex.isRunning());
+                expectEquals (ex.getStatus(), juce::String ("Exported 2 files"));
+            }
+            expect (exports.getChildFile ("Scene 1.wav").existsAsFile() && exports.getChildFile ("Scene 2.wav").existsAsFile());
+            expect (exports.getChildFile ("Scene 2 (2).wav").existsAsFile(), "a second export doesn't overwrite the first");
         }
 
         root.deleteRecursively();

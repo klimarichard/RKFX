@@ -522,14 +522,25 @@ private:
 
         juce::TextButton loadButton { "Load..." }, unloadButton { "Unload" }, useNames { "Use the recording's names" },
                          allPlayback { "All to playback" }, allLive { "All live" },
-                         playButton { "Play" }, stopButton { "Stop" }, prevMarker, nextMarker, loopButton { "Loop" };
+                         playButton { "Play" }, stopButton { "Stop" }, prevMarker, nextMarker, loopButton { "Loop" },
+                         back60 { "-1 min" }, back10 { "-10 s" }, ahead10 { "+10 s" }, ahead60 { "+1 min" },
+                         addMarkerHere { "Add marker here" };
         struct PositionBar;
         std::unique_ptr<juce::Component> bar;   // a PositionBar
+        struct MarkerList;
+        std::unique_ptr<juce::Component> markerList;   // a MarkerList: the loaded recording's markers
+        struct MappingContent;
+        juce::Viewport mappingView;
+        std::unique_ptr<juce::Component> mappingContent;   // a MappingContent: each file and the input it feeds
         std::vector<std::unique_ptr<juce::ComboBox>> mapping;   // one per file of the recording
         juce::Rectangle<int> playbackInfo, mappingArea;
         int loadedFiles = -1;
         void rebuildMapping();
+        void layoutMapping();
         void loadRecording (const juce::File& folder);
+        void nudge (double seconds);
+        /** The loaded recording's markers can be changed: not locked, not the folder being recorded into. */
+        bool canEditMarkers() const;
     };
 
     struct RemotePanel : public Panel

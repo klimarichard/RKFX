@@ -1244,14 +1244,14 @@ void RKMixProcessor::resetChannelStrip (int ch)
 }
 
 //==============================================================================
-void RKMixProcessor::readSettings (std::uint64_t parts)
+void RKMixProcessor::readSettings (MixEngine::Settings& into, std::uint64_t parts) const
 {
     for (int ch = 0; ch < kChannels; ++ch)
     {
         if ((parts & (std::uint64_t (1) << ch)) == 0)
             continue;
 
-        engineSettings.channels[(size_t) ch] = channelSettings (ch);
+        into.channels[(size_t) ch] = channelSettings (ch);
     }
 
     for (int bus = 0; bus < mix::kBuses; ++bus)
@@ -1260,7 +1260,7 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
             continue;
 
         const auto& p = busParams[(size_t) bus];
-        auto& b = engineSettings.buses[(size_t) bus];
+        auto& b = into.buses[(size_t) bus];
         b.type = (mix::BusType) juce::roundToInt (valueOf (p.type));
         b.stereo = juce::roundToInt (valueOf (p.format)) == 1;
         b.output = juce::roundToInt (valueOf (p.output));
@@ -1281,14 +1281,14 @@ void RKMixProcessor::readSettings (std::uint64_t parts)
     if ((parts & MixSettings::kMainBit) != 0)
     {
         for (int pair = 0; pair < mix::kPairs; ++pair)
-            engineSettings.links[(size_t) pair] = valueOf (linkParams[(size_t) pair]) >= 0.5f;
-        engineSettings.main.balance = valueOf (mainBalance) * 0.01f;
-        engineSettings.main.output = juce::roundToInt (valueOf (mainOutput));
-        engineSettings.main.monoOutput = juce::roundToInt (valueOf (monoOutput));
-        engineSettings.main.dsp = chainSettings (mix::kMainChain);
-        engineSettings.main.monoDsp = chainSettings (mix::kMonoChain);
+            into.links[(size_t) pair] = valueOf (linkParams[(size_t) pair]) >= 0.5f;
+        into.main.balance = valueOf (mainBalance) * 0.01f;
+        into.main.output = juce::roundToInt (valueOf (mainOutput));
+        into.main.monoOutput = juce::roundToInt (valueOf (monoOutput));
+        into.main.dsp = chainSettings (mix::kMainChain);
+        into.main.monoDsp = chainSettings (mix::kMonoChain);
 
-        auto& m = engineSettings.monitor;
+        auto& m = into.monitor;
         m.soloInPlace = settings.choice ("solo_mode") == 1;
         m.afl = settings.choice ("solo_tap") == 1;
         m.cueOutput = settings.choice ("cue_out");
@@ -1493,6 +1493,24 @@ void RKMixProcessor::releaseMidi (juce::MidiBuffer& midi)
     rack.releaseAllMidi (midi);
 }
 
+MixExport::Mix RKMixProcessor::exportMix()
+{
+    MixExport::Mix m;
+    readSettings (m.settings, MixEngine::kEverything);
+    m.levels = readLevels();
+    m.levels.channelSolo.fill (false);
+    m.levels.busSolo.fill (false);
+    m.levels.talk = false;
+    m.levels.osc = false;
+    if (const auto inserts = rack.toVar(); inserts.getArray() != nullptr && ! inserts.getArray()->isEmpty())
+    {
+        m.inserts = std::make_unique<InsertRack>();
+        m.inserts->fromVar (inserts, [this] (InsertRack::Strip strip, int index) { return channelsOf (strip, index); });
+    }
+    m.bpm = standalone ? standalonePlayHead.bpm.load() : hostBpm.load();
+    return m;
+}
+
 void RKMixProcessor::prepareDsp (double sampleRate, int maxBlockSize, int)
 {
     if (preparedRate > 0.0 && ! juce::exactlyEqual (sampleRate, preparedRate))
@@ -1548,6 +1566,12 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
         reportedLatency = latency;
         reportLatency (latency);
     }
+
+    if (! standalone)
+        if (auto* head = getPlayHead())
+            if (const auto position = head->getPosition())
+                if (const auto bpm = position->getBpm(); bpm.hasValue() && *bpm > 0.0)
+                    hostBpm.store (*bpm, std::memory_order_relaxed);
 
     // The standalone app: MIDI learn, program changes, tempo; its own play head for the inserts.
     if (standalone)

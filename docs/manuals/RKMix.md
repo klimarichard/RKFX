@@ -217,7 +217,27 @@ The **Recorder** page records every input to its own WAV file for the whole gig,
 1. On the Recorder page, choose **Playback (virtual soundcheck)**, then **Load...** a recording's folder: RKMix's own, or any WAV files whose names start with their input number (`05 Kick.wav`, `09-10 Overheads.wav`). A recording at another sample rate than the session's is refused.
 2. Each file is shown with the input it feeds; change it in its menu (a stereo file goes onto a pair: In 1/2, In 3/4...). The mix's links don't have to match: a stereo file plays into two unlinked channels as well. The recorded main and buses are listed but **Off**. **Use the recording's names** names the channels as they were.
 3. Switch inputs to **Playback**: **PB** in the Input section of the Channel page, or **All to playback**. A strip on Playback shows **PB** over its number. An input on Playback with no file is silent.
-4. **Play** / **Pause**, **Stop** (back to the start), **◀ Marker** and **Marker ▶**, and the bar (click to go there). **Loop** plays the part between the markers around the play position over and over: one song's mix.
+4. **Play** / **Pause**, **Stop** (back to the start), **◀ Marker** and **Marker ▶**, **-1 min**, **-10 s**, **+10 s** and **+1 min**, and the bar (click to go there). **Loop** plays the part between the markers around the play position over and over: one song's mix.
+5. **Markers** (the list beside the files): every marker of the recording, in time order, the one at the play position highlighted.
+   - **Click** a marker to go there.
+   - **Double-click** its name to rename it ("Take 03" to "Hallelujah"). Enter keeps the new name, Esc leaves the old one.
+   - **×**, or **Delete** on the selected marker, deletes it. **Undo delete** brings back the last one deleted.
+   - **Add marker here** puts a new one ("Marker 1", "Marker 2"...) at the play position, also while playing.
+
+   - **Export** writes the **main mix**, as it is set now, from the selected marker to the next one into a stereo WAV file, much faster than real time (a song in a few seconds). Shift-click a few markers in a row for one file from the first to the end of the last, Cmd-click to pick several. With nothing selected it takes the part around the play position (as Loop). **Export each** writes one file per selected marker instead: every song of the night in one go. A progress bar shows how far it is, **Cancel** stops it, **Show** opens the folder.
+
+   The files go into an `Exports` folder inside the recording's folder, named after the marker (`Take 03.wav`; exporting again makes `Take 03 (2).wav`, never over the last one), at this computer's recorder format (24-bit or 32-bit float). The export:
+   - uses the mix as it is when you press Export: every setting, fader, mute and insert (copies of them, so the console carries on as it is). Scene recalls and fader moves inside the region aren't repeated.
+   - plays every file of the recording into the input it is mapped to, whether the input is on Playback or Live.
+   - leaves out solo, talkback and the oscillator.
+   - starts on the marker's sample: the mix runs from 2 seconds before (thrown away), so the compressors have settled and a reverb is already ringing.
+   - lets reverbs and delays ring out for up to 3 seconds after the end, then fades out.
+   - takes the main after its limiter, where the recorder takes it.
+   - doesn't include instruments outside RKMix: what RKTrigger or RKFollow play in Gig Performer is only in the export if it came back into an input and was recorded.
+
+   An export runs at a low priority beside the live mix; still, it is best not started during a show.
+
+   The changes are saved into the recording's `session.json` right away, so they are there the next time it is loaded. (A folder of plain WAV files gets a `session.json` that holds only its markers.) The bar, ◀ Marker / Marker ▶, Loop and the iPad follow at once. The markers can't be changed while locked, or in a recording that is still being recorded.
 
 - The recording replaces the input **before the trim**: the gate, the compressor, the keys, the inserts (RKTrigger and RKFollow play their samples and synths as at the gig) all work as live. Every file stays aligned to the sample; starts, stops and jumps fade over 5 ms.
 - **The source is never saved**, never in scenes and never undone: every session and every loaded mix starts with every input **Live**, so a show can't start on Playback by mistake. **Lock** blocks switching to Playback; **PLAYBACK: all live** in the master section stays available, also when locked.

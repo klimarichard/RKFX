@@ -59,9 +59,6 @@ MixPlayback::Recording MixPlayback::scan (const juce::File& folder)
                     file->role = s.toString().upToFirstOccurrenceOf (" ", false, false);
             }
         }
-        if (const auto* markers = session["markers"].getArray())
-            for (const auto& m : *markers)
-                r.markers.push_back ({ (juce::int64) m["at"], m["label"].toString() });
         if (const auto* names = session["names"].getArray())
             for (const auto& n : *names)
                 r.names.add (n.toString());
@@ -106,6 +103,12 @@ MixPlayback::Recording MixPlayback::scan (const juce::File& folder)
                 }
         }
     }
+
+    // The markers: RKMix's own, or ones added to a folder of plain WAVs.
+    if (const auto* markers = session["markers"].getArray())
+        for (const auto& m : *markers)
+            r.markers.push_back ({ (juce::int64) m["at"], m["label"].toString() });
+    std::stable_sort (r.markers.begin(), r.markers.end(), [] (const Marker& a, const Marker& b) { return a.at < b.at; });
 
     if (r.files.empty())
     {
@@ -299,6 +302,73 @@ void MixPlayback::loopAroundPosition (bool on)
             end = juce::jmin (end, m.at);
     }
     setLoop (true, start, end);
+}
+
+int MixPlayback::markerIndexAt (juce::int64 sample) const
+{
+    int found = -1;
+    for (int i = 0; i < (int) recording.markers.size(); ++i)
+        if (recording.markers[(size_t) i].at <= sample)
+            found = i;
+    return found;
+}
+
+int MixPlayback::addMarker (juce::int64 at, const juce::String& label)
+{
+    if (! loaded)
+        return -1;
+    auto name = label.trim();
+    if (name.isEmpty())
+    {
+        // The next "Marker n" after the highest one there.
+        int highest = 0;
+        for (const auto& m : recording.markers)
+            if (m.label.startsWith ("Marker ") && m.label.substring (7).containsOnly ("0123456789"))
+                highest = juce::jmax (highest, m.label.substring (7).getIntValue());
+        name = "Marker " + juce::String (highest + 1);
+    }
+    at = juce::jlimit<juce::int64> (0, recording.length, at);
+    auto& markers = recording.markers;
+    const auto it = std::upper_bound (markers.begin(), markers.end(), at, [] (juce::int64 t, const Marker& m) { return t < m.at; });
+    const auto index = (int) (it - markers.begin());
+    markers.insert (it, { at, name });
+    saveMarkers();
+    return index;
+}
+
+bool MixPlayback::renameMarker (int index, const juce::String& label)
+{
+    const auto name = label.trim();
+    if (! loaded || name.isEmpty() || ! juce::isPositiveAndBelow (index, (int) recording.markers.size()))
+        return false;
+    recording.markers[(size_t) index].label = name;
+    return saveMarkers();
+}
+
+bool MixPlayback::removeMarker (int index)
+{
+    if (! loaded || ! juce::isPositiveAndBelow (index, (int) recording.markers.size()))
+        return false;
+    recording.markers.erase (recording.markers.begin() + index);
+    return saveMarkers();
+}
+
+bool MixPlayback::saveMarkers() const
+{
+    const auto file = recording.folder.getChildFile ("session.json");
+    auto session = file.existsAsFile() ? juce::JSON::parse (file) : juce::var();
+    if (session.getDynamicObject() == nullptr)
+        session = juce::var (new juce::DynamicObject());
+    juce::Array<juce::var> list;
+    for (const auto& m : recording.markers)
+    {
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("at", m.at);
+        o->setProperty ("label", m.label);
+        list.add (juce::var (o));
+    }
+    session.getDynamicObject()->setProperty ("markers", list);
+    return file.replaceWithText (juce::JSON::toString (session));
 }
 
 bool MixPlayback::waitUntilReady (int ms) const

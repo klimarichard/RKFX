@@ -242,7 +242,7 @@ The **Recorder** page records every input to its own WAV file for the whole gig,
    - **×**, or **Delete** on the selected marker, deletes it. **Undo delete** brings back the last one deleted.
    - **Add marker here** puts a new one ("Marker 1", "Marker 2"...) at the play position, also while playing.
 
-   - **Scene markers:** a marker named "Scene 3" (or "Scene 3" followed by anything after a space: "Scene 3 Hallelujah") stands for a recall of scene 3, and is drawn in the accent colour on the bar. The recorder writes one at every recall, and you can make any marker one by renaming it. With **Scenes follow markers** on (the default, this computer's setting, beside Add marker here):
+   - **Scene markers:** a marker named "Scene 3" (or "Scene 3" followed by anything after a space: "Scene 3 Hallelujah") stands for a recall of scene 3. It stands out from the other markers: on the bar its line has a flag and its name is bold, in the accent colour (also on the iPad); in the list its number sits on a **Scene 3** tag, before its name in bold. Double-click it to rename the whole marker, "Scene 3" included. The recorder writes one at every recall, and you can make any marker one by renaming it. With **Scenes follow markers** on (the default, this computer's setting, beside Add marker here):
      - while the recording plays, passing a scene marker recalls its scene, as the console did at the gig (with the scene's glide);
      - a jump (the bar, ◀ Marker / Marker ▶, the -10 s / +1 min buttons, Loop) recalls the scene in effect where it lands, and **Play** recalls it if the console is on another scene;
      - before the first scene marker, or when you recall another scene by hand, nothing changes until the next scene marker;

@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "plugin/ParamBuilder.h"
+#include "remote/RemoteQr.h"
 
 namespace
 {
@@ -198,6 +199,14 @@ RKPlayEditor::RKPlayEditor (RKPlayProcessor& p)
     problemsButton.setTooltip ("Songs whose files are missing or unreadable: the list, and what to do");
     problemsButton.onClick = [this] { showShowCheck (! showCheck.isVisible()); };
     addToCanvas (problemsButton);
+
+    // A phone or iPad on the web remote: someone else can change the music too.
+    remoteLight.setColour (juce::TextButton::buttonColourId, juce::Colours::transparentBlack);
+    remoteLight.setColour (juce::TextButton::textColourOffId, juce::Colour (0xff5cb85c));
+    remoteLight.setTooltip ("Phones or iPads on the web remote: they can play, skip and queue songs too. Click for its settings.");
+    remoteLight.onClick = [this] { settings.setPage (Settings::web); showSettings (true); };
+    addToCanvas (remoteLight);
+    remoteLight.setVisible (false);
     addToCanvas (showCheck);
     showCheck.setVisible (false);
 
@@ -373,6 +382,7 @@ void RKPlayEditor::layoutContent()
     auto g = globalArea();
     level->setBounds (g.removeFromLeft (90));
     g.removeFromLeft (12);
+    remoteLight.setBounds (g.withTrimmedLeft (g.getWidth() - 124).withSizeKeepingCentre (120, 30));   // the room right of the pads
     auto padRow = g.withTrimmedRight (130).withSizeKeepingCentre (g.getWidth() - 130, 64);
     const auto padWidth = (padRow.getWidth() - (PlayEngine::kPads - 1) * 6) / PlayEngine::kPads;
     for (auto& b : padButtons)
@@ -1360,8 +1370,47 @@ RKPlayEditor::Settings::Settings (RKPlayEditor& o) : owner (o)
     relink.onClick = [this] { owner.chooseRelink(); };
     close.onClick = [this] { owner.showSettings (false); };
 
-    showPage.onClick = [this] { setPage (false); };
-    remotePage.onClick = [this] { setPage (true); };
+    showPage.onClick = [this] { setPage (show); };
+    webPage.onClick = [this] { setPage (web); };
+    remotePage.onClick = [this] { setPage (remote); };
+
+    // The web remote.
+    webOn.setTooltip ("Play the music from a phone or an iPad: scan the QR code (same network)");
+    webOn.onClick = [this] { if (auto* hub = owner.player.getRemote()) hub->setEnabled (webOn.getToggleState()); refreshWeb(); };
+    webIp.setTooltip ("The QR code and address use this computer's IP address instead of its name "
+                      "(some networks don't resolve .local names; the IP can change)");
+    webIp.onClick = [this] { if (auto* hub = owner.player.getRemote()) hub->setLinksUseIpAddress (webIp.getToggleState()); refreshWeb(); };
+    webPort.setInputRestrictions (5, "0123456789");
+    webPort.setTooltip ("The port (1024 to 65535; RKMix's remote uses 8080, RKBoard's 8081)");
+    webPin.setInputRestrictions (8, "0123456789");
+    webPin.setTooltip ("4 to 8 digits. A new PIN signs every device out");
+    for (auto* t : { &webPort, &webPin })
+    {
+        t->setJustification (juce::Justification::centredLeft);
+        const auto apply = [this, t]
+        {
+            if (auto* hub = owner.player.getRemote())
+            {
+                if (t == &webPort) hub->setPort (webPort.getText().getIntValue());
+                else               hub->setPin (webPin.getText());
+            }
+            refreshWeb();
+        };
+        t->onReturnKey = apply;
+        t->onFocusLost = apply;
+    }
+    newPin.setTooltip ("A new random PIN: every device must sign in again");
+    newPin.onClick = [this]
+    {
+        juce::String pin;
+        for (int i = 0; i < 4; ++i)
+            pin << juce::Random::getSystemRandom().nextInt (10);
+        if (auto* hub = owner.player.getRemote())
+            hub->setPin (pin);
+        refreshWeb();
+    };
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &webPage, &webOn, &webIp, &webPort, &webPin, &newPin })
+        addAndMakeVisible (*c);
     oscOn.setTooltip ("Control playback from TouchOSC on a phone or tablet, on the same network");
     oscOn.onClick = [this] { applyOsc(); };
     for (auto* t : { &oscPort, &phone, &phonePort })
@@ -1400,8 +1449,38 @@ void RKPlayEditor::Settings::resized()
     auto bottom = r.removeFromBottom (32);
     close.setBounds (bottom.removeFromRight (110));
     showPage.setBounds (bottom.removeFromLeft (100));
+    webPage.setBounds (bottom.removeFromLeft (110));
     remotePage.setBounds (bottom.removeFromLeft (100));
     r.removeFromBottom (10);
+
+    // The Web remote page: the settings and devices on the left, the QR code on the right.
+    {
+        webArea = r;
+        auto w = webArea.reduced (14, 10).withTrimmedTop (30);
+        qrArea = w.removeFromRight (230).removeFromTop (juce::jmin (200, w.getHeight() - 60)).withSizeKeepingCentre (200, 200);
+        w.removeFromRight (20);
+        const auto row = [&w] { auto line = w.removeFromTop (28); w.removeFromTop (8); return line; };
+        webOn.setBounds (row().removeFromLeft (300));
+        webStatusArea = row();
+        auto pin = row();
+        pin.removeFromLeft (60);
+        webPin.setBounds (pin.removeFromLeft (110));
+        pin.removeFromLeft (8);
+        newPin.setBounds (pin.removeFromLeft (90));
+        auto port = row();
+        port.removeFromLeft (60);
+        webPort.setBounds (port.removeFromLeft (110));
+        webIp.setBounds (row().removeFromLeft (360));
+        w.removeFromTop (4);
+        devicesArea = w;
+        auto list = w.withTrimmedTop (24);
+        for (auto& d : devices)
+        {
+            auto line = list.removeFromTop (26);
+            list.removeFromTop (4);
+            d.disconnect->setBounds (line.removeFromRight (96));
+        }
+    }
 
     // The Remote page: OSC, MIDI, keyboard and history.
     {
@@ -1474,7 +1553,54 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
     g.setColour (owner.backgroundColour());
     g.fillRoundedRectangle (getLocalBounds().toFloat(), rkfx::Style::kPanelRadius);
 
-    if (remote)
+    if (page == web)
+    {
+        owner.drawSection (g, webArea, "Web remote (phone and iPad)");
+        auto* hub = owner.player.getRemote();
+        g.setFont (rkfx::Fonts::regular (13.0f));
+        if (hub == nullptr)
+        {
+            g.setColour (rkfx::Palette::textDim);
+            g.drawText ("The web remote runs in the plugin and the app.", webArea, juce::Justification::centred);
+            return;
+        }
+        g.setColour (rkfx::Palette::textDim);
+        g.drawText ("PIN", webPin.getBounds().withX (webArea.getX() + 14).withWidth (50), juce::Justification::centredLeft);
+        g.drawText ("Port", webPort.getBounds().withX (webArea.getX() + 14).withWidth (50), juce::Justification::centredLeft);
+        g.setColour (hub->isListening() ? owner.accent() : rkfx::Palette::textDim);
+        g.drawFittedText (hub->getStatus(), webStatusArea, juce::Justification::centredLeft, 1, 0.8f);
+
+        // The QR code: the address with the PIN, so scanning it signs in.
+        if (hub->isListening())
+        {
+            rkfx::RemoteQr (hub->link (true)).draw (g, qrArea.toFloat());
+            g.setColour (rkfx::Palette::textDim);
+            g.drawFittedText (hub->link (false), qrArea.withY (qrArea.getBottom() + 4).withHeight (18).expanded (20, 0), juce::Justification::centred, 1, 0.7f);
+            g.drawFittedText ("Scan it with the phone's camera; Add to Home Screen for a full-screen app.",
+                              qrArea.withY (qrArea.getBottom() + 22).withHeight (34).expanded (20, 0), juce::Justification::centredTop, 2, 0.8f);
+        }
+        else
+        {
+            g.setColour (rkfx::Palette::outline);
+            g.drawRoundedRectangle (qrArea.toFloat().reduced (0.5f), 4.0f, 1.0f);
+            g.setColour (rkfx::Palette::textDim);
+            g.drawFittedText ("Switch the web remote on", qrArea.reduced (8), juce::Justification::centred, 2);
+        }
+
+        g.setColour (rkfx::Palette::textDim);
+        auto list = devicesArea;
+        g.drawText (devices.empty() ? "No devices connected" : "Connected", list.removeFromTop (20), juce::Justification::centredLeft);
+        list.removeFromTop (4);
+        g.setColour (rkfx::Palette::text);
+        for (const auto& d : devices)
+        {
+            auto line = list.removeFromTop (26);
+            list.removeFromTop (4);
+            g.drawFittedText (d.text, line.withTrimmedRight (104), juce::Justification::centredLeft, 1, 0.8f);
+        }
+        return;
+    }
+    if (page == remote)
     {
         auto* rig = owner.player.getRig();
         owner.drawSection (g, oscArea, "OSC remote");
@@ -1563,17 +1689,23 @@ void RKPlayEditor::Settings::paint (juce::Graphics& g)
                 relink.getBounds().translated (0, -26).withHeight (20), juce::Justification::centredLeft);
 }
 
-void RKPlayEditor::Settings::setPage (bool remoteShown)
+void RKPlayEditor::Settings::setPage (int shown)
 {
-    remote = remoteShown;
-    showPage.setToggleState (! remote, juce::dontSendNotification);
-    remotePage.setToggleState (remote, juce::dontSendNotification);
+    page = shown;
+    showPage.setToggleState (page == show, juce::dontSendNotification);
+    webPage.setToggleState (page == web, juce::dontSendNotification);
+    remotePage.setToggleState (page == remote, juce::dontSendNotification);
+    const auto hub = owner.player.getRemote() != nullptr;
+    for (juce::Component* c : std::initializer_list<juce::Component*> { &webOn, &webIp, &webPort, &webPin, &newPin })
+        c->setVisible (page == web && hub);
+    for (auto& d : devices)
+        d.disconnect->setVisible (page == web);
     for (juce::Component* c : std::initializer_list<juce::Component*> { &fadeOutTime, &target, &smart, &match, &safety, &lift, &chooseFolder,
                                                                           &clearFolder, &relink, &autoDuck, &depth, &threshold, &attack, &hold, &release })
-        c->setVisible (! remote);
+        c->setVisible (page == show);
     const auto rig = owner.player.getRig() != nullptr;
     for (juce::Component* c : std::initializer_list<juce::Component*> { &oscOn, &oscPort, &phone, &phonePort, &sendAll, &history })
-        c->setVisible (remote && rig);
+        c->setVisible (page == remote && rig);
     repaint();
 }
 
@@ -1591,8 +1723,42 @@ void RKPlayEditor::Settings::applyOsc()
     refresh();
 }
 
+void RKPlayEditor::Settings::refreshWeb()
+{
+    auto* hub = owner.player.getRemote();
+    if (hub == nullptr)
+        return;
+    lastWebVersion = hub->getVersion();
+    webOn.setToggleState (hub->isEnabled(), juce::dontSendNotification);
+    webIp.setToggleState (hub->linksUseIpAddress(), juce::dontSendNotification);
+    if (! webPort.hasKeyboardFocus (false)) webPort.setText (juce::String (hub->getPort()), false);
+    if (! webPin.hasKeyboardFocus (false))  webPin.setText (hub->getPin(), false);
+
+    // The devices, each with Disconnect.
+    for (auto& d : devices)
+        removeChildComponent (d.disconnect.get());
+    devices.clear();
+    for (const auto& d : hub->getDevices())
+    {
+        DeviceRow row;
+        row.id = d.id;
+        row.text = (d.name.isNotEmpty() ? d.name : juce::String ("A device")) + " (" + d.address + ")"
+                 + (! d.signedIn ? juce::String ("  -  typing the PIN") : juce::String());
+        row.disconnect = std::make_unique<juce::TextButton> ("Disconnect");
+        row.disconnect->setTooltip ("Let this device go: it must type the PIN again");
+        const auto id = d.id;
+        row.disconnect->onClick = [this, id] { if (auto* h = owner.player.getRemote()) h->disconnect (id); refreshWeb(); };
+        addChildComponent (*row.disconnect);
+        row.disconnect->setVisible (page == web);
+        devices.push_back (std::move (row));
+    }
+    resized();
+    repaint();
+}
+
 void RKPlayEditor::Settings::refresh()
 {
+    refreshWeb();
     if (auto* rig = owner.player.getRig())
     {
         const auto& o = rig->getOsc();
@@ -1770,7 +1936,7 @@ void RKPlayEditor::showSettings (bool shown)
     if (shown)
         showCheck.setVisible (false);
     if (shown && ! settings.isVisible())
-        settings.setPage (settings.remote);
+        settings.setPage (settings.page);
     settings.setVisible (shown);
     if (shown)
         settings.toFront (false);
@@ -1974,6 +2140,16 @@ void RKPlayEditor::tick()
     const auto dipped = player.getDuckDb() < -0.5f;
     duckButton.setToggleState (player.isManualDuck() || dipped, juce::dontSendNotification);
     duckButton.setButtonText (dipped ? "Duck " + juce::String (juce::roundToInt (player.getDuckDb())) + " dB" : juce::String ("Duck"));
+
+    // The web remote: its settings page, and the light while a device is on it.
+    if (auto* hub = player.getRemote())
+    {
+        if (hub->getVersion() != settings.lastWebVersion)
+            settings.refreshWeb();
+        const auto n = hub->numSignedIn();
+        remoteLight.setVisible (n > 0);
+        remoteLight.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xe2\x97\x8f ")) + "Remote (" + juce::String (n) + ")");
+    }
 
     // MIDI learned (or OSC changed): the Remote page and a note.
     if (auto* rig = player.getRig(); rig != nullptr && rig->getVersion() != lastRigVersion)

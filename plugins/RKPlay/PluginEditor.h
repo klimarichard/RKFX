@@ -127,14 +127,31 @@ private:
                          close { "Close" };
         juce::Rectangle<int> transportArea, loudnessArea, duckArea, folderArea;
 
-        // The Remote page (the standalone app's OSC, MIDI, keyboard and history)
-        juce::TextButton showPage { "Show" }, remotePage { "Remote" };
-        bool remote = false;
+        // The pages: Show, Web remote (the plugin and the app), Remote (the standalone app's OSC, MIDI, keyboard and history)
+        enum Page { show, web, remote };
+        juce::TextButton showPage { "Show" }, webPage { "Web remote" }, remotePage { "Remote" };
+        int page = show;
+
+        // The web remote (PlayRemoteHub): on, the link and its QR code, the PIN, the port, the devices
+        juce::ToggleButton webOn { "Web remote on (phone and iPad)" }, webIp { "Address by IP (if the name doesn't work)" };
+        juce::TextEditor webPort, webPin;
+        juce::TextButton newPin { "New PIN" };
+        struct DeviceRow
+        {
+            int id = 0;
+            juce::String text;
+            std::unique_ptr<juce::TextButton> disconnect;
+        };
+        std::vector<DeviceRow> devices;
+        int lastWebVersion = -1;
+        juce::Rectangle<int> webArea, qrArea, webStatusArea, devicesArea;
+        void refreshWeb();
+
         juce::ToggleButton oscOn { "OSC remote (TouchOSC)" };
         juce::TextEditor oscPort, phone, phonePort;
         juce::TextButton sendAll { "Send everything again" }, history { "Show the history..." };
         juce::Rectangle<int> oscArea, midiArea, keysArea;
-        void setPage (bool remotePage);
+        void setPage (int);
         void applyOsc();
     };
 
@@ -186,6 +203,7 @@ private:
     Settings settings { *this };
     ShowCheck showCheck { *this };
     juce::TextButton problemsButton;
+    juce::TextButton remoteLight;         // while a phone or iPad is connected to the web remote
     std::unique_ptr<juce::FileChooser> chooser;
 
     juce::Rectangle<int> infoArea, listArea, queueArea, preListenArea, endAtArea, messageArea;   // endAtArea: Times (End at, Switch at)

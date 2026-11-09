@@ -3,6 +3,7 @@
 
 #include "PlayAnalysis.h"
 #include "PlayEngine.h"
+#include "PlayRemote.h"
 #include "PlayRig.h"
 #include "dsp/Loudness.h"
 #include "PlayStream.h"
@@ -82,6 +83,33 @@ namespace
                                  [n, first] (int, int) { return 0.01f * (float) (first + n + 1); }));
         return files;
     }
+
+    /** A web remote page without a network: what it is sent, kept as JSON. */
+    struct FakeConnection : public rkfx::RemoteServer::Connection
+    {
+        explicit FakeConnection (const juce::String& from = "10.0.0.5") { path = "/ws/play"; address = from; }
+        bool send (const juce::String& text) override { sent.add (text); return true; }
+        void close() override { closed = true; }
+        juce::StringArray sent;
+        bool closed = false;
+
+        /** The latest message of @p type sent (void if none). */
+        juce::var last (const juce::String& type) const
+        {
+            juce::var found;
+            for (const auto& text : sent)
+                if (const auto v = juce::JSON::parse (text); v["type"].toString() == type)
+                    found = v;
+            return found;
+        }
+        int count (const juce::String& type) const
+        {
+            int n = 0;
+            for (const auto& text : sent)
+                n += juce::JSON::parse (text)["type"].toString() == type ? 1 : 0;
+            return n;
+        }
+    };
 
     /** A player for tests: plain gain, no smart crossfade, streams filled on the calling thread. */
     struct TestPlayer : public RKPlayProcessor
@@ -1548,6 +1576,245 @@ public:
             expectEquals (rig.getSelected(), 12);
             value ("selected");
             expectEquals (rig.getSelected(), -1, "the list changed: nothing selected");
+        }
+
+        beginTest ("Web remote: PIN and token, the players listed, now and the lists, every command");
+        {
+            const auto settings = juce::File::createTempFile ("rkplay-remote.json");
+            PlayRemoteHub hub;
+            hub.setSettingsFileForTesting (settings);
+            hub.setEnabled (true);   // not serving: no player asked to
+            expect (! hub.isListening());
+            expect (hub.setPin ("2468"));
+            expect (! hub.setPin ("12a4") && ! hub.setPin ("123"));
+
+            TestPlayer p, other;
+            p.addFiles (0, songsIn ("remote/main", 6, 5.0));
+            const auto requests = p.addPlaylist ("Requests");
+            p.addFiles (requests, songsIn ("remote/requests", 3, 5.0, 10));
+            p.setCrossfade (0.0);
+            hub.addPlayer (p, false);
+            hub.addPlayer (other, false);
+
+            FakeConnection page;
+            const auto say = [&] (const juce::String& json) { hub.received (page, json); hub.tick(); hub.send (page); };
+            hub.opened (page);
+
+            // Nothing before the PIN.
+            say (R"({"t":"play"})");
+            expect (p.getState() == RKPlayProcessor::State::stopped);
+            say (R"({"t":"hello","name":"iPhone","pin":"1111"})");
+            expect ((bool) page.last ("auth")["wrong"]);
+            say (R"({"t":"hello","name":"iPhone","pin":"2468"})");
+            const auto token = page.last ("auth")["token"].toString();
+            expect ((bool) page.last ("auth")["ok"] && token.length() >= 16);
+            expectEquals (hub.numSignedIn(), 1);
+
+            const auto list = page.last ("players")["list"];
+            expectEquals (list.size(), 2);
+            const auto id = (int) list[0]["id"];
+            expectEquals (id, hub.idOf (p));
+
+            page.sent.clear();
+            say (R"({"t":"open","p":)" + juce::String (id) + "}");
+            auto now = page.last ("now");
+            expectEquals (now["state"].toString(), juce::String ("stopped"));
+            expectEquals (now["title"].toString(), juce::String ("Song 01"), "stopped: the song Play starts");
+            expectEquals (page.last ("lists")["lists"].size(), 2);
+            expectEquals ((int) page.last ("lists")["lists"][1]["count"], 3);
+            expectEquals (page.last ("pads")["pads"].size(), PlayEngine::kPads);
+            expectEquals (page.last ("queue")["items"].size(), 0);
+
+            // Unchanged: nothing sent again.
+            page.sent.clear();
+            hub.tick(); hub.send (page);
+            expectEquals (page.sent.size(), 0);
+
+            // The transport.
+            say (R"({"t":"play"})");
+            p.runFor (0.6);
+            hub.tick(); hub.send (page);
+            now = page.last ("now");
+            expectEquals (now["state"].toString(), juce::String ("playing"));
+            expectEquals ((int) now["playing"]["index"], 0);
+            expect ((double) now["pos"] >= 0.5 && (double) now["pos"] < 0.75, "the position in quarter seconds");
+            expectWithinAbsoluteError ((double) now["len"], 5.0, 0.05);
+            expectEquals (now["next"].toString(), juce::String ("Song 02"));
+            say (R"({"t":"next"})");
+            p.runFor (0.1);
+            expectEquals (p.getCurrent().index, 1);
+            say (R"({"t":"pause"})");
+            expect (p.getState() == RKPlayProcessor::State::paused);
+            say (R"({"t":"playpause"})");
+            expect (p.getState() == RKPlayProcessor::State::playing);
+
+            // The song list: sent when asked for, again only when it changes.
+            page.sent.clear();
+            say (R"({"t":"songs","playlist":0})");
+            auto songs = page.last ("songs");
+            expectEquals ((int) songs["playlist"], 0);
+            expectEquals (songs["songs"].size(), 6);
+            expectEquals (songs["songs"][2][0].toString(), juce::String ("Song 03"));
+            expectWithinAbsoluteError ((double) songs["songs"][2][2], 5.0, 0.05);
+            const auto file3 = songs["songs"][2][4].toString();
+            expect (file3.endsWith ("Song 03.wav"));
+            page.sent.clear();
+            p.runFor (0.3);
+            hub.tick(); hub.send (page);
+            expectEquals (page.count ("songs"), 0, "playing on changes no list");
+
+            // Play next, checked by the file: an edit in the window moved it.
+            p.removeSong (0, 5);
+            p.moveSong (0, 2, 4);
+            hub.tick(); hub.send (page);
+            expectEquals (page.last ("songs")["songs"].size(), 5, "the list changed: sent again");
+            say (R"({"t":"queueNext","playlist":0,"index":2,"file":)" + juce::JSON::toString (file3) + "}");
+            expect (p.getQueue().size() == 1 && p.getQueue().front().index == 4, "Song 03, where it is now");
+            say (R"({"t":"queueNext","playlist":1,"index":0,"file":"/nowhere/Gone.wav"})");
+            expectEquals ((int) p.getQueue().size(), 1, "a song that's gone never plays");
+            expect (! page.last ("moved").isVoid());
+            const auto req2 = p.getShow().playlists[(size_t) requests].songs[1].file.getFullPathName();
+            say (R"({"t":"queueNext","playlist":1,"index":1,"file":)" + juce::JSON::toString (req2) + "}");
+            expectEquals ((int) page.last ("queue")["items"].size(), 2);
+            expectEquals (page.last ("queue")["items"][1]["title"].toString(), juce::String ("Song 02"));
+
+            // The queue: move, remove, clear.
+            const auto second = (int) page.last ("queue")["items"][1]["id"];
+            say (R"({"t":"queueMove","id":)" + juce::String (second) + R"(,"to":0})");
+            expect (p.getQueue().front().playlist == requests, "moved to the front");
+            say (R"({"t":"queueRemove","id":)" + juce::String (second) + "}");
+            expect (p.getQueue().size() == 1 && p.getQueue().front().playlist == 0);
+            say (R"({"t":"queueClear"})");
+            expect (p.getQueue().empty());
+
+            // Play now, and go on from a song.
+            say (R"({"t":"playNow","playlist":1,"index":2,"file":)"
+                 + juce::JSON::toString (p.getShow().playlists[(size_t) requests].songs[2].file.getFullPathName()) + "}");
+            p.runFor (0.1);
+            expect (p.getCurrent().queued && p.getCurrent().playlist == requests && p.getCurrent().index == 2, "Play now: a one-off");
+            const auto song1 = p.getShow().playlists[0].songs[0].file.getFullPathName();
+            say (R"({"t":"jump","playlist":0,"index":0,"file":)" + juce::JSON::toString (song1) + "}");
+            p.runFor (0.1);
+            expect (! p.getCurrent().queued && p.getCurrent().playlist == 0 && p.getCurrent().index == 0, "the list goes on from there");
+
+            // Playlists: after this song, cancelled; now.
+            say (R"({"t":"switch","playlist":1,"now":false})");
+            expectEquals (p.getPendingSwitch(), requests);
+            expectEquals ((int) page.last ("now")["pending"], requests);
+            say (R"({"t":"cancelSwitch"})");
+            expectEquals (p.getPendingSwitch(), -1);
+            expect (! page.last ("now").hasProperty ("pending"));
+            say (R"({"t":"switch","playlist":1,"now":true})");
+            p.runFor (0.1);
+            expectEquals (p.getShow().active, requests);
+            expectEquals ((int) page.last ("lists")["active"], requests);
+
+            // Level, Duck, a pad, End at.
+            say (R"({"t":"level","v":0.25})");
+            expectWithinAbsoluteError (p.findParam ("level")->getValue(), 0.25f, 1.0e-6f);
+            expect (page.last ("now")["levelText"].toString().endsWith (" dB"));
+            say (R"({"t":"duck","on":true})");
+            expect (p.isManualDuck());
+            expect ((bool) page.last ("now")["duck"]);
+            say (R"({"t":"duck","on":false})");
+            expect (! p.isManualDuck());
+            say (R"({"t":"pad","n":12})");   // no such pad: nothing
+            say (R"({"t":"endAt","time":"23:45"})");
+            expect (p.getShow().endAt.on);
+            expectEquals (p.getShow().endAt.minutes, 23 * 60 + 45);
+            expectEquals (page.last ("now")["endAt"]["time"].toString(), juce::String ("23:45"));
+            say (R"({"t":"endAt","time":"tea"})");
+            expectEquals (p.getShow().endAt.minutes, 23 * 60 + 45, "not a time: unchanged");
+            say (R"({"t":"endAt","off":true})");
+            expect (! p.getShow().endAt.on);
+
+            // Stop and Panic.
+            say (R"({"t":"stop"})");
+            p.runFor (1.0);
+            say (R"({"t":"panic"})");
+            expect (p.getState() == RKPlayProcessor::State::stopped);
+
+            // The same device again: its token, no PIN.
+            FakeConnection again ("10.0.0.6");
+            hub.opened (again);
+            hub.received (again, R"({"t":"hello","token":")" + token + "\"}");
+            hub.tick(); hub.send (again);
+            expect ((bool) again.last ("auth")["ok"]);
+            expectEquals ((int) hub.getDevices().size(), 2);
+            hub.closed (again);
+
+            // Five wrong PINs: wait 30 s.
+            FakeConnection guess ("10.0.0.9");
+            hub.opened (guess);
+            for (int i = 0; i < 5; ++i)
+                hub.received (guess, R"({"t":"hello","pin":"0000"})");
+            hub.received (guess, R"({"t":"hello","pin":"2468"})");
+            hub.tick(); hub.send (guess);
+            expect ((int) guess.last ("auth")["wait"] > 0, "locked out, even with the right PIN");
+            hub.closed (guess);
+
+            // A player that goes: the page hears it.
+            page.sent.clear();
+            hub.removePlayer (p);
+            hub.tick(); hub.send (page);
+            expect (! page.last ("gone").isVoid());
+            expectEquals (page.last ("players")["list"].size(), 1);
+
+            // A new PIN lets everyone go; the settings are saved.
+            hub.setPin ("97531");
+            expect (page.closed);
+            PlayRemoteHub reloaded;
+            reloaded.setSettingsFileForTesting (settings);
+            expectEquals (reloaded.getPin(), juce::String ("97531"));
+            expect (reloaded.isEnabled());
+            expectEquals (reloaded.getPort(), PlayRemoteHub::kDefaultPort);
+            reloaded.setEnabled (false);
+            hub.removePlayer (other);
+
+            // The pages.
+            expect (hub.answer ("/").body.toString().contains ("play.js"));
+            expect (hub.answer ("/p/rk.js").body.toString().contains ("const RK"));
+            expect (hub.answer ("/p/play.js").body.toString().contains ("PlayRemoteHub"));
+            expectEquals (hub.answer ("/p/../secret").status, 404);
+            expect (hub.answer ("/manifest/play.json").body.toString().contains ("RKPlay"));
+            expectEquals (hub.answer ("/icon.png").contentType, juce::String ("image/png"));
+            expect (hub.link (true).endsWith (":8082/#pin=97531"));
+            settings.deleteFile();
+        }
+
+        beginTest ("Web remote search: every word, accents ignored, across playlists, at most 200");
+        {
+            expectEquals (PlayRemoteHub::fold (juce::String (juce::CharPointer_UTF8 ("Caf\xc3\xa9 \xc5\x98\xc3\xadjen \xc5\xbdLU\xc5\xa4OU\xc4\x8cK\xc3\x9d Stra\xc3\x9f" "e"))),
+                          juce::String ("cafe rijen zlutoucky strasse"));
+
+            TestPlayer p;
+            const auto quiet = [] (int, int) { return 0.01f; };
+            p.addFiles (0, { writeWav ("search/The Beatles - Let It Be", kRate, 4800, quiet),
+                             writeWav ("search/The Beatles - Help", kRate, 4800, quiet) });
+            const auto dinner = p.addPlaylist ("Dinner");
+            p.addFiles (dinner, { writeWav (juce::String (juce::CharPointer_UTF8 ("search/Karel Gott - Lady Carneval \xc5\x99\xc3\xadjen")), kRate, 4800, quiet) });
+
+            PlayRemoteHub hub;
+            const auto results = [&] (const juce::String& q) { return juce::JSON::parse (hub.searchJson (p, q))["results"]; };
+            expectEquals (results ("beatles let").size(), 1, "every word, in any order");
+            expectEquals (results ("let beatles")[0][2].toString(), juce::String ("Let It Be"));
+            expectEquals (results ("BEATLES").size(), 2, "case ignored");
+            const auto gott = results ("carneval rijen");
+            expectEquals (gott.size(), 1, "accents ignored");
+            expectEquals ((int) gott[0][0], dinner);
+            expectEquals ((int) gott[0][1], 0);
+            expectEquals (gott[0][3].toString(), juce::String ("Karel Gott"));
+            expectEquals (results ("").size(), 0);
+            expectEquals (results ("nothing like it").size(), 0);
+
+            p.addFiles (0, songsIn ("search/many", 210, 0.1));
+            const auto many = juce::JSON::parse (hub.searchJson (p, "song"));
+            expectEquals (many["results"].size(), PlayRemoteHub::kMaxResults);
+            expect ((bool) many["more"]);
+
+            expectEquals (PlayRemoteHub::findSong (p, 0, 1, p.getShow().playlists[0].songs[1].file.getFullPathName()), 1);
+            expectEquals (PlayRemoteHub::findSong (p, 0, 0, p.getShow().playlists[0].songs[1].file.getFullPathName()), 1, "found where it is");
+            expectEquals (PlayRemoteHub::findSong (p, 5, 0, "x"), -1);
         }
 
         beginTest ("MIDI: a learned footswitch plays, program changes switch playlists");

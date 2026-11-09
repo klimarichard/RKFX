@@ -51,6 +51,17 @@ target_link_libraries(RKFXSnapshot_RKPlay PRIVATE rkplay_factory_presets rkfx_co
                       PUBLIC juce::juce_recommended_config_flags)
 add_dependencies(RKFXSnapshots RKFXSnapshot_RKPlay)
 
+# RKPlay's web remote served from a headless RKPlay playing a made-up show (try it in a browser).
+juce_add_console_app(RKFXRemoteDemo_RKPlay PRODUCT_NAME "RKFXRemoteDemo_RKPlay")
+set_target_properties(RKFXRemoteDemo_RKPlay PROPERTIES EXCLUDE_FROM_ALL TRUE)
+target_sources(RKFXRemoteDemo_RKPlay PRIVATE PlayRemoteDemo.cpp ${RKPLAY_SOURCES})
+target_include_directories(RKFXRemoteDemo_RKPlay PRIVATE ${RKPLAY_INCLUDE_DIRS})
+target_compile_definitions(RKFXRemoteDemo_RKPlay PRIVATE JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_DISPLAY_SPLASH_SCREEN=0
+                           RKPLAY_REMOTE_FROM_DISK="${PROJECT_SOURCE_DIR}/plugins/RKPlay/remote")
+target_link_libraries(RKFXRemoteDemo_RKPlay PRIVATE rkplay_factory_presets rkfx_core juce::juce_audio_formats juce::juce_osc
+                      juce::juce_audio_processors juce::juce_gui_basics
+                      PUBLIC juce::juce_recommended_config_flags)
+
 # The RKMusic plugin icons (tools/icons): renders each plugin's icon_big.png
 # and icon_small.png. Not built by default; see tools/icons/RenderIcons.cpp.
 juce_add_console_app(RKIconRender PRODUCT_NAME "RKIconRender")

@@ -16,6 +16,9 @@ const send = (t, a, extra) => net.send(Object.assign({ t, a }, extra || {}));
 const locked = () => !!(C.isLocked && C.isLocked("faders"));
 const hms = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 3600) + ":" + String(Math.floor(s / 60) % 60).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 
+// "Scene 3", "Scene 3 Hallelujah", "Scene 3: Hallelujah" (scenes 1-32; not "Scene 3b"), as MixScenes::sceneOfMarker.
+const isSceneMarker = label => { const m = /^\s*scene\s+(\d{1,2})(?![\p{L}\p{N}])/iu.exec(label); return !!m && +m[1] >= 1 && +m[1] <= 32; };
+
 // The recording's position: markers, the loop, the play head; tap to locate.
 class PositionBar extends Component {
   constructor() { super(); this.takesTouches = true; }
@@ -24,10 +27,14 @@ class PositionBar extends Component {
     g.setColour(Palette.knobTrack); g.fillRoundedRectangle(0, 22, this.w, this.h - 22, 6);
     const pb = rec && rec.pb; if (!pb || !pb.loaded) return;
     if (pb.loop) { g.setColour(Palette.accent.withAlpha(0.3)); g.fillRect(this.xOf(pb.ls), 22, this.xOf(pb.le) - this.xOf(pb.ls), this.h - 22); }
-    g.setFont(13);
     for (const [t, label] of pb.markers) {
-      const x = this.xOf(t);
-      g.setColour(Palette.textDim); g.drawVerticalLine(x, 16, this.h); g.drawText(label, x + 3, 0, 120, 18, J.centredLeft);
+      const x = this.xOf(t), scene = isSceneMarker(label);
+      // A scene marker (it recalls its scene): accent colour, bold, a flag on its line.
+      g.setColour(scene ? Palette.accent.brighter(0.4) : Palette.textDim);
+      g.drawVerticalLine(x, 16, this.h);
+      if (scene) g.fillPolygon([x - 6, 16, x + 6, 16, x, 24]);
+      g.setFont(13, scene);
+      g.drawText(label, x + 3, 0, 120, 18, J.centredLeft);
     }
     g.setColour(Palette.accent); g.fillRect(this.xOf(pb.pos) - 2, 18, 4, this.h - 18);
   }

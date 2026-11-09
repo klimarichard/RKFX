@@ -264,6 +264,18 @@ int MixScenes::sceneOfMarker (const juce::String& label)
     return n >= 1 && n <= kNumScenes ? n - 1 : -1;
 }
 
+juce::String MixScenes::nameOfSceneMarker (const juce::String& label)
+{
+    if (sceneOfMarker (label) < 0)
+        return {};
+    auto rest = label.trimStart().substring (6).trimStart();
+    rest = rest.substring (rest.initialSectionContainingOnly ("0123456789").length());
+    auto i = 0;
+    while (i < rest.length() && ! juce::CharacterFunctions::isLetterOrDigit (rest[i]))
+        ++i;
+    return rest.substring (i).trimEnd();
+}
+
 //==============================================================================
 std::vector<MixScenes::KnobRef> MixScenes::getKnobs() const
 {

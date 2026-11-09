@@ -101,6 +101,8 @@ public:
     /** The scene a recorder marker stands for: a label "Scene N" or "Scene N <anything>"
         (N 1..32) gives N - 1; anything else -1. */
     static int sceneOfMarker (const juce::String& label);
+    /** A scene marker's name after "Scene N" ("Scene 3: Hallelujah" gives "Hallelujah"); empty for none. */
+    static juce::String nameOfSceneMarker (const juce::String& label);
 
     //==========================================================================
     /** The scene values, the inserts' on/off and the scene-controlled knobs, as numbers. */

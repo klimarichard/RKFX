@@ -64,9 +64,18 @@ struct RKMixEditor::RecorderPanel::PositionBar : public juce::Component
             const auto x = xOf (markers[i].at);
             // A label stops short of the next marker (the list shows the whole name).
             const auto room = juce::jmin (90.0f, (i + 1 < markers.size() ? xOf (markers[i + 1].at) : r.getRight()) - x - 4.0f);
-            // A scene marker (it recalls its scene, and export follows it): in the accent colour.
-            g.setColour (MixScenes::sceneOfMarker (markers[i].label) >= 0 ? panel.owner.accent().brighter (0.4f) : rkfx::Palette::textDim);
+            // A scene marker (it recalls its scene, and export follows it): in the accent colour,
+            // its name in bold, a flag on its line.
+            const auto isScene = MixScenes::sceneOfMarker (markers[i].label) >= 0;
+            g.setColour (isScene ? panel.owner.accent().brighter (0.4f) : rkfx::Palette::textDim);
             g.drawVerticalLine ((int) x, 12.0f, r.getBottom());
+            if (isScene)
+            {
+                juce::Path flag;
+                flag.addTriangle ((float) (int) x - 4.5f, 12.0f, (float) (int) x + 5.5f, 12.0f, (float) (int) x + 0.5f, 18.0f);
+                g.fillPath (flag);
+            }
+            g.setFont (isScene ? rkfx::Fonts::bold (11.0f) : rkfx::Fonts::regular (11.0f));
             if (room > 8.0f)
                 g.drawText (markers[i].label, juce::Rectangle<float> (x + 2.0f, 0.0f, room, 14.0f), juce::Justification::centredLeft, true);
         }
@@ -107,9 +116,26 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
             name.onTextChange = [this]
             {
                 auto& p = list.panel.owner.mixer.getPlayback();
-                if (! list.panel.canEditMarkers() || ! p.renameMarker (row, name.getText()))
-                    name.setText (label(), juce::dontSendNotification);   // an empty name keeps the old one
+                if (list.panel.canEditMarkers())
+                    p.renameMarker (row, name.getText());   // an empty name keeps the old one
+                set (row);
                 list.panel.bar->repaint();
+            };
+            // A scene marker shows its number on a chip; renaming edits the whole label ("Scene 3 Hallelujah").
+            name.onEditorShow = [this]
+            {
+                name.setBounds (nameArea (false));
+                if (auto* editor = name.getCurrentTextEditor())
+                {
+                    editor->setBounds (name.getLocalBounds());
+                    editor->setText (label(), false);
+                    editor->selectAll();
+                }
+            };
+            name.onEditorHide = [this]
+            {
+                name.setBounds (nameArea (true));   // still editing at this point: resized() would skip it
+                repaint();
             };
             remove.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));
             remove.setTooltip ("Delete this marker");
@@ -127,8 +153,14 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
         void set (int newRow)
         {
             row = newRow;
+            const auto text = label();
+            scene = MixScenes::sceneOfMarker (text);
             if (! name.isBeingEdited())
-                name.setText (label(), juce::dontSendNotification);
+            {
+                name.setFont (scene >= 0 ? rkfx::Fonts::bold (12.5f) : rkfx::Fonts::regular (12.5f));
+                name.setText (scene >= 0 ? MixScenes::nameOfSceneMarker (text) : text, juce::dontSendNotification);
+                resized();
+            }
             const auto editable = list.panel.canEditMarkers();
             name.setEditable (false, editable, false);
             remove.setVisible (editable);
@@ -146,14 +178,43 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
             g.drawText (s >= 3600 ? juce::String::formatted ("%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
                                   : juce::String::formatted ("%d:%02d", s / 60, s % 60),
                         getLocalBounds().removeFromLeft (kTimeWidth).withTrimmedLeft (4), juce::Justification::centredLeft);
+
+            // A scene marker: "Scene 3" on an outlined chip in the accent colour, before its name.
+            if (scene >= 0 && ! name.isBeingEdited())
+            {
+                const auto chip = chipArea().toFloat().reduced (0.5f, 3.5f);
+                g.setColour (list.panel.owner.accent().brighter (0.4f));
+                g.drawRoundedRectangle (chip, 3.0f, 1.0f);
+                g.setFont (rkfx::Fonts::bold (10.5f));
+                g.drawText (chipText(), chip, juce::Justification::centred, false);
+            }
+        }
+
+        juce::String chipText() const { return "Scene " + juce::String (scene + 1); }
+
+        juce::Rectangle<int> chipArea() const
+        {
+            const auto width = (int) std::ceil (juce::GlyphArrangement::getStringWidth (rkfx::Fonts::bold (10.5f), chipText())) + 10;
+            return getLocalBounds().withTrimmedLeft (kTimeWidth + 2).withWidth (width);
+        }
+
+        // The name's place: after the chip for a scene marker (unless the whole label is being edited).
+        juce::Rectangle<int> nameArea (bool afterChip) const
+        {
+            auto b = getLocalBounds();
+            b.removeFromLeft (kTimeWidth);
+            b.removeFromRight (22);
+            if (afterChip && scene >= 0)
+                b.setLeft (chipArea().getRight() + 1);
+            return b;
         }
 
         void resized() override
         {
-            auto b = getLocalBounds();
-            b.removeFromLeft (kTimeWidth);
-            remove.setBounds (b.removeFromRight (22).reduced (1, 2));
-            name.setBounds (b);
+            remove.setBounds (getLocalBounds().removeFromRight (22).reduced (1, 2));
+            if (! name.isBeingEdited())
+                name.setBounds (nameArea (true));
+            repaint();
         }
 
         void mouseDown (const juce::MouseEvent& e) override
@@ -167,6 +228,7 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
         static constexpr int kTimeWidth = 58;
         MarkerList& list;
         int row = -1;
+        int scene = -1;   // a scene marker's scene, or -1
         juce::Label name;
         juce::TextButton remove;
     };

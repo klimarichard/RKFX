@@ -1681,6 +1681,68 @@ public:
                     && p.findParam ("scene") != nullptr && p.findParam ("talk") != nullptr);
         }
 
+        beginTest ("Markers from Gig Performer: a new rackspace or song name while recording; merged with a scene recall; /rkmix/marker");
+        {
+            juce::TemporaryFile temp;
+            const auto root = temp.getFile();
+            RKMixProcessor p;
+            p.getRemote().setSettingsFileForTesting (root.getChildFile ("remote.json"));
+            auto& osc = p.getRemote().getOsc();
+            osc.setEnabled (true);
+            auto& rec = p.getRecorder();
+            rec.setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            rec.setRootFolder (root.getChildFile ("Recordings"));
+            rec.setNameMarkers (true);
+            auto& s = p.getSettings();
+            for (int ch = 1; ch < 32; ++ch)
+                setParam (s.param (mix::recordInputId (ch)), 0.0f);
+            setParam (s.param ("scene_glide"), 0.0f);
+            p.prepareToPlay (48000.0, 128);
+            const auto send = [&osc] (const char* address, auto... args)
+            {
+                osc.handle (juce::OSCMessage (juce::OSCAddressPattern (address), args...));
+            };
+
+            send ("/rkmix/now", juce::String ("Before"));          // not recording: nothing
+            expect (rec.start().wasOk(), rec.getStatus());
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Hallelujah"), juce::String ("Intro"));
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Hallelujah"), juce::String ("Verse"));   // a variation: no marker
+            run (p, 400);
+            p.recallScene (2);                                     // the rackspace recalls a scene, then its name comes
+            send ("/rkmix/now", juce::String ("Ballad"));
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Rock"));             // the name first, then the scene
+            run (p, 50);
+            p.recallScene (4);
+            run (p, 10);
+            p.recallScene (1);
+            run (p, 400);                                          // over a second later: apart (the test's take holds 4 s)
+            send ("/rkmix/now", juce::String ("Finale"));
+            run (p, 10);
+            send ("/rkmix/marker", juce::String ("Solo"));
+            send ("/rkmix/marker");
+            run (p, 10);
+            rec.setNameMarkers (false);
+            send ("/rkmix/now", juce::String ("Encore"));          // off: nothing
+            rec.setNameMarkers (true);
+            send ("/rkmix/clear");                                 // no name: nothing
+            run (p, 10);
+            rec.stop();
+
+            const auto takes = root.getChildFile ("Recordings").findChildFiles (juce::File::findDirectories, false);
+            expectEquals (takes.size(), 1);
+            juce::StringArray labels;
+            const auto session = takes.size() == 1 ? juce::JSON::parse (takes[0].getChildFile ("session.json")) : juce::var();
+            if (const auto* markers = session["markers"].getArray())
+                    for (const auto& m : *markers)
+                        labels.add (m["label"].toString());
+            expectEquals (labels.joinIntoString ("|"), juce::String ("Hallelujah|Scene 3 Ballad|Scene 5 Rock|Scene 2|Finale|Solo|Marker 1"));
+            expectEquals (MixScenes::sceneOfMarker (labels[1]), 2, "a merged marker is still a scene marker");
+            root.deleteRecursively();
+        }
+
         beginTest ("Input patch: reaches the audio; kept in the session; old mixes default; scenes, copy/paste and presets leave it");
         {
             RKMixProcessor p;

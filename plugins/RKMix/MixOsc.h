@@ -16,6 +16,10 @@ class RKMixProcessor;
         /rkmix/now      "Song 3" "Chorus"  both at once (the second optional)
         /rkmix/clear                       both gone
         /rkmix/scene    3                  recalls scene 3 (1 to 32)
+        /rkmix/marker   "Solo"             a marker in the recording (no name: "Marker n")
+
+    While recording, a new first line (a new rackspace or song) also adds a
+    marker named after it (MixRecorderSession::showNameChanged).
 
     The names are only shown: they aren't saved with the mix, aren't in the
     scenes or the undo history, and are gone when OSC is switched off. The

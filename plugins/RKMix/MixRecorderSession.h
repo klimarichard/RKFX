@@ -39,6 +39,11 @@ public:
     bool isRecording() const noexcept { return recorder.isRecording(); }
     void addMarker (const juce::String& label = {});      // empty: "Marker n"
     void sceneRecalled (int scene);
+    /** Gig Performer's first line (the rackspace, or the song) changed by OSC:
+        a marker named after it, while recording with Markers from Gig Performer on.
+        A scene recall within a second of it makes one marker: "Scene 3 <name>". */
+    void showNameChanged (const juce::String& name);
+    static constexpr double kMergeSeconds = 1.0;
     void mixLoaded();                                    // a mix loaded or a session restored
     void sampleRateChanged();
 
@@ -63,6 +68,9 @@ public:
     void setPairsAsMono (bool);
     /** Virtual soundcheck: a marker "Scene N" recalls scene N when playback
         passes it, and a jump recalls the scene in effect where it lands. */
+    /** Markers from Gig Performer's rackspace (or song) changes. */
+    bool getNameMarkers() const noexcept { return nameMarkers; }
+    void setNameMarkers (bool);
     bool getFollowScenes() const noexcept { return followScenes; }
     void setFollowScenes (bool);
     /** The scene marker in effect at @p sample of the loaded recording: its index, or -1. */
@@ -91,7 +99,10 @@ private:
     RKMixProcessor& mixer;
     MixRecorder recorder;
     juce::File settingsFile, rootFolder;
-    bool asFloat = false, pairsAsMono = false, followScenes = true;
+    bool asFloat = false, pairsAsMono = false, followScenes = true, nameMarkers = true;
+    enum class LastMarker { none, scene, name } lastMarker = LastMarker::none;   // the last automatic one, to merge with
+    int lastScene = -1;
+    juce::String lastName;
     juce::TimedCallback sceneTimer { [this] { pollSceneMarkers(); } };
     juce::String followKey;                              // the recording and scene marker last followed
     bool followPlaying = false;

@@ -198,6 +198,16 @@ void MixRecorder::addMarker (const juce::String& label)
     writeSession (*live);
 }
 
+bool MixRecorder::renameLastMarker (const juce::String& label, juce::int64 withinSamples)
+{
+    const juce::ScopedLock dl (diskLock);
+    if (live == nullptr || live->markers.empty() || recorded.load() - live->markers.back().first > withinSamples)
+        return false;
+    live->markers.back().second = label;
+    writeSession (*live);
+    return true;
+}
+
 int MixRecorder::getNumMarkers() const
 {
     const juce::ScopedLock dl (diskLock);

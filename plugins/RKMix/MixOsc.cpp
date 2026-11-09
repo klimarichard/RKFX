@@ -160,12 +160,17 @@ MixOsc::Now MixOsc::getNow() const
 void MixOsc::setNow (const Now& n)
 {
     const Now cleaned { clean (n.title), clean (n.subtitle) };
+    bool newTitle = false;
     {
         const juce::ScopedLock sl (nowLock);
         if (cleaned == now)
             return;
+        newTitle = cleaned.title != now.title;
         now = cleaned;
     }
+    // A new rackspace (or song): a marker in the recording.
+    if (newTitle && cleaned.title.isNotEmpty())
+        mixer.getRecorder().showNameChanged (cleaned.title);
     if (onNowChanged != nullptr)
         onNowChanged();
 }
@@ -193,6 +198,12 @@ void MixOsc::handle (const juce::OSCMessage& m)
         n = { text (m, 0), text (m, 1) };
     else if (what == "clear")
         n = {};
+    else if (what == "marker")
+    {
+        // A marker in the recording, named (or "Marker n"): for a script's own moments.
+        mixer.getRecorder().addMarker (clean (text (m, 0)));
+        return;
+    }
     else if (what == "scene")
     {
         // Scenes 1 to 32, as on the window's buttons.

@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "MixEditorStyle.h"
+#include "MixOsc.h"
 
 #include <optional>
 
@@ -552,6 +553,7 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
     float32.onClick = [this] { owner.mixer.getRecorder().setFloat (true); refresh(); };
     pairsMono.onClick = [this] { auto& r = owner.mixer.getRecorder(); r.setPairsAsMono (! r.getPairsAsMono()); refresh(); };
     pairsMono.setTooltip ("A linked pair as two mono files (L and R) instead of one stereo file, for a DAW that prefers mono tracks");
+    gpMarkers.onClick = [this] { auto& r = owner.mixer.getRecorder(); r.setNameMarkers (! r.getNameMarkers()); refresh(); };
     int24.setTooltip ("This computer's format for new recordings");
     float32.setTooltip ("This computer's format for new recordings: never clips, a third larger");
 
@@ -564,7 +566,7 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
     allInputs.onClick = [setAll] { setAll (true); };
     noInputs.onClick = [setAll] { setAll (false); };
 
-    for (auto* b : { &recordButton, &markerButton, &folderButton, &showButton, &int24, &float32, &pairsMono, &allInputs, &noInputs })
+    for (auto* b : { &recordButton, &markerButton, &folderButton, &showButton, &int24, &float32, &pairsMono, &gpMarkers, &allInputs, &noInputs })
         addAndMakeVisible (*b);
 
     for (int ch = 0; ch < kChannels; ++ch)
@@ -778,6 +780,11 @@ void RKMixEditor::RecorderPanel::refresh()
     int24.setToggleState (! rec.isFloat(), juce::dontSendNotification);
     float32.setToggleState (rec.isFloat(), juce::dontSendNotification);
     pairsMono.setToggleState (rec.getPairsAsMono(), juce::dontSendNotification);
+    gpMarkers.setToggleState (rec.getNameMarkers(), juce::dontSendNotification);
+    gpMarkers.setTooltip (juce::String ("While recording, a marker named after each new rackspace (or song in the setlist) that Gig Performer sends "
+                                        "by OSC; with a scene recalled at the same time, one marker: \"Scene 3 <name>\". This computer's setting.")
+                          + (owner.mixer.getRemote().getOsc().isEnabled() ? juce::String()
+                                                                           : "\nNames by OSC are off now: switch them on on the Remote page."));
 
     // What a take records is fixed when Record is pressed.
     for (auto* c : std::initializer_list<juce::Component*> { &int24, &float32, &pairsMono, &folderButton, &allInputs, &noInputs, mainSwitch })
@@ -877,6 +884,8 @@ void RKMixEditor::RecorderPanel::resized()
     float32.setBounds (formatRow.removeFromLeft (110));
     c.removeFromTop (8);
     pairsMono.setBounds (c.removeFromTop (26).removeFromLeft (200));
+    c.removeFromTop (6);
+    gpMarkers.setBounds (c.removeFromTop (26).removeFromLeft (230));
 
     // The view buttons, top right of the right side.
     {

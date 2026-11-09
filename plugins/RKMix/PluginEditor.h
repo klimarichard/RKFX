@@ -510,6 +510,7 @@ private:
 
         juce::TextButton recordButton { "Record" }, markerButton { "Marker" }, folderButton { "Folder..." }, showButton { "Show" },
                          int24 { "24-bit" }, float32 { "32-bit float" }, pairsMono { "Pairs as two mono files" },
+                         gpMarkers { "Markers from Gig Performer" },
                          allInputs { "All" }, noInputs { "None" };
         std::array<rkfx::ToggleSwitch*, mix::kChannels> inputs {};
         rkfx::ToggleSwitch* mainSwitch = nullptr;

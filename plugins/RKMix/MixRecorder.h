@@ -77,6 +77,8 @@ public:
 
     /** A marker at the current position ("Scene 3", "Marker 2"). */
     void addMarker (const juce::String& label);
+    /** Renames the last marker if it is at most @p withinSamples old; false if there is none that recent. */
+    bool renameLastMarker (const juce::String& label, juce::int64 withinSamples);
     int getNumMarkers() const;
 
     /** Notes for session.json (e.g. "split: the session was restored"). */

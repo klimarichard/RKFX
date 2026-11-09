@@ -45,6 +45,11 @@ On SystemEvent Matching GigLoaded
    SendNames(GetCurrentRackspaceIndex(), GetCurrentVariation())
 End
 
+// While RKMix records, each new rackspace (or song) name it gets from here
+// also becomes a marker in the recording (Recorder page: Markers from Gig
+// Performer). A marker of your own, from any callback:
+//    SendOSCMessage { '/rkmix/marker', "Solo" } to RKMIX_IP : RKMIX_PORT
+//
 // Optional: recall an RKMix scene (1 to 32) too, e.g. one per rackspace,
 // inside On Rackspace:
 //    SendOSCMessage { '/rkmix/scene', newRackspaceIndex + 1 } to RKMIX_IP : RKMIX_PORT

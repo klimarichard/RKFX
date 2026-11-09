@@ -49,6 +49,7 @@ void MixRecorderSession::loadSettings()
     asFloat = (bool) v.getProperty ("float", false);
     pairsAsMono = (bool) v.getProperty ("pairsAsMono", false);
     followScenes = (bool) v.getProperty ("followScenes", true);
+    nameMarkers = (bool) v.getProperty ("nameMarkers", true);
 }
 
 void MixRecorderSession::saveSettings() const
@@ -58,6 +59,7 @@ void MixRecorderSession::saveSettings() const
     o->setProperty ("float", asFloat);
     o->setProperty ("pairsAsMono", pairsAsMono);
     o->setProperty ("followScenes", followScenes);
+    o->setProperty ("nameMarkers", nameMarkers);
     settingsFile.getParentDirectory().createDirectory();
     settingsFile.replaceWithText (juce::JSON::toString (juce::var (o)));
 }
@@ -65,6 +67,7 @@ void MixRecorderSession::saveSettings() const
 void MixRecorderSession::setRootFolder (const juce::File& f) { rootFolder = f; saveSettings(); }
 void MixRecorderSession::setFloat (bool on)                  { asFloat = on; saveSettings(); }
 void MixRecorderSession::setPairsAsMono (bool on)            { pairsAsMono = on; saveSettings(); }
+void MixRecorderSession::setNameMarkers (bool on)            { nameMarkers = on; saveSettings(); }
 void MixRecorderSession::setFollowScenes (bool on)           { followScenes = on; followKey = {}; saveSettings(); }
 
 //==============================================================================
@@ -274,11 +277,43 @@ void MixRecorderSession::addMarker (const juce::String& label)
     if (! isRecording())
         return;
     recorder.addMarker (label.isNotEmpty() ? label : "Marker " + juce::String (++markerCount));
+    lastMarker = LastMarker::none;
 }
 
 void MixRecorderSession::sceneRecalled (int scene)
 {
+    if (! isRecording())
+        return;
+    const auto within = (juce::int64) (kMergeSeconds * recorder.getSampleRate());
+
+    // Gig Performer's rackspace just changed: one marker, the scene's number with the song's name.
+    if (lastMarker == LastMarker::name
+        && recorder.renameLastMarker ("Scene " + juce::String (scene + 1) + " " + lastName, within))
+    {
+        lastMarker = LastMarker::none;
+        return;
+    }
     addMarker (mixer.getScenes().markerLabel (scene));
+    lastMarker = LastMarker::scene;
+    lastScene = scene;
+}
+
+void MixRecorderSession::showNameChanged (const juce::String& name)
+{
+    if (! isRecording() || ! nameMarkers || name.trim().isEmpty())
+        return;
+    const auto within = (juce::int64) (kMergeSeconds * recorder.getSampleRate());
+
+    // A scene recalled just before (the same rackspace change): one marker, keeping the scene marker's number.
+    if (lastMarker == LastMarker::scene
+        && recorder.renameLastMarker ("Scene " + juce::String (lastScene + 1) + " " + name.trim(), within))
+    {
+        lastMarker = LastMarker::none;
+        return;
+    }
+    addMarker (name.trim());
+    lastMarker = LastMarker::name;
+    lastName = name.trim();
 }
 
 void MixRecorderSession::mixLoaded()

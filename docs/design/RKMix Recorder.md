@@ -74,6 +74,7 @@ Linking or unlinking a pair while recording would leave a file that no longer ma
 On the Recorder page, **Playback: Load...** picks a recording folder (it reads `session.json`; a folder of plain WAVs without one is accepted too, mapped by the number at the start of each name, else in order). It shows the length, the markers, and how each file maps to inputs (editable: drag a file to another input).
 
 - **Each channel of a file feeds one input:** a mono file one input, a stereo file two neighbouring inputs (left to the odd one, right to the even one). A stereo file can only be dropped on an odd input, so its two sides land on a pair.
+- **An input reaches every channel patched from it** (added 2026-11-09 with the input patch, see RKMix.md): playback replaces the raw input, so one file can feed several channels (a split), and PB switches a channel's Source input.
 - The mix's links don't have to match the recording: a stereo file still plays into two inputs that are now unlinked (each side into its own channel), and two mono files into a pair that is now linked.
 - A plain WAV without `session.json`: a stereo file takes two inputs, from the number its name starts with.
 

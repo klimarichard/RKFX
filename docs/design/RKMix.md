@@ -460,7 +460,7 @@ The limiter sits **after the fader**, so on an in-ear mix it protects the ears e
 - **MIDI out** from audio-to-MIDI inserts (RKTrigger, RKFollow): each plugin's own channel and notes (no separate Channel Out), a warning only for the same note or controller on the same channel; pure MIDI effects not hosted in v1. RKTrigger's MIDI out in Gig Performer is checked first (MIDI's Step 0).
 - **Not in v1:** mid/side input pairs, a comp-before-EQ switch. (Direct outs were here too; the user asked for them after phase 8, see Outputs.)
 
-## Input patch (designed 2026-11-04, not built)
+## Input patch (designed 2026-11-04, built 2026-11-09)
 
 Today channel *n* always takes input *n*. The input patch lets **any input feed any channel**, so if the wiring changes (a stage box sends the vocal on In 7 instead of In 3, or a venue's multicore is in a different order), the mix stays as it is and only the patch changes.
 
@@ -502,6 +502,25 @@ Today channel *n* always takes input *n*. The input patch lets **any input feed 
 - **No new processing.** Each block the engine builds a table of 32 source pointers from the settings, either `in[source]` or a shared silent buffer for Off. Where it now passes `in + ch` (processChannel, keySignal, the pair's right side), it passes the table instead. A split reads one input twice, which is fine because `in` is read-only.
 - **Setting** `ch<n>_src`: a choice, Off / In 1–32, stored by key (`off`, `1` … `32`), appended. A change rebuilds the render plan as a structure change, because the plan's channel activity can depend on it.
 - **CPU:** none measurable (32 pointers per block). The input lights cost 32 peak scans per block, only while the Patch page is open.
+
+### Virtual soundcheck with the patch (added 2026-11-09)
+
+The user asked whether a playback track could reach more than one channel. With the patch it does, with no playback-only routing:
+
+- **Playback replaces the raw input** (In *n*), as it always did (`MixPlayback::process` writes into the inputs before the engine). Each channel then takes its Source from those inputs, so a file mapped to In 7 reaches every channel patched from In 7, exactly as the mic would at the gig. A split set up in a virtual soundcheck is one the live console can run, and the other way round.
+- **Live / PB is per input** (`inputOnPlayback`, unchanged). A channel's **PB** switch (`setChannelOnPlayback`) switches its Source input, a linked pair both sides' inputs; a channel shows PB when its input (either side's) is on Playback. So a split channel switches with its source. A channel on Off has no input to switch.
+- **The file mapping** still maps files to inputs; each item names the channels that input reaches ("In 7 > Ch 3 Vocal, 20 Vocal IEM").
+- **The recorder** still records the raw inputs (so a recording plays back through any patch). Files are named after the channel each input feeds (a linked pair's, else the first named channel, else the first; "In *n*" for an input no channel takes). Inputs *n* / *n* + 1 (*n* odd) record as one stereo file when a linked pair takes them as its left and right; with the default patch this is today's rule. `session.json` gains `patch` (each channel's Source, 0 Off). Patch changes are allowed while recording: the files are the inputs, fixed when Record was pressed.
+- **Export** runs a copy of the engine with the patch in its settings, so it exports what the console plays.
+
+### As built (2026-11-09)
+
+- `MixEngine::Channel::source`: `kOwnInput` (-1, the engine's default for tests and old callers), 0 Off, *n* In *n*. `sourceOf (ch, in)` picks the pointer (Off: a silent buffer allocated in `prepare`); `processChannel` passes `{ sourceOf (ch), sourceOf (ch + 1) }` to the strip, `keySignal` reads `sourceOf (key)`. Talkback and Monitor EQ's measuring read `in` directly. No new processing; a Source change switches at once (no crossfade: a setup action, said in the manual).
+- Setting `ch<n>_src`, choice Off / In 1–32 (keys `off`, `1` … `32`), default *n*, appended at the end of the settings. It's a channel field (`ChannelField::source`), not a strip field, so presets, copy/paste and Reset strip skip it. `_src` is structure in `MixScenes`.
+- The key choices now read "Ch *n*" (keys unchanged); the window's and the iPad's lists show the channel's name ("Key: Ch 7 Kick").
+- **Patch page** (`MixPatchPanel.cpp`, a tab between Routing and Talk / Osc; tabs narrowed to 82 px): input lights (raw inputs as they arrive, Live or Playback; `watchInputs` counts watchers, peaks measured only while one watches), "-" for an unused input, "x2" for a split; the 32 channels in **4 columns of 8** (as the Routing page's outputs, not 2 × 16); Default (confirmation) and Swap (click two channels).
+- **The Source box sits in the Channel page's header** beside the colours (a pair: L and R boxes), since the Input section has no room under the trim. The fader strip shows "3 ← 7", "5/6 ← 10/9", "← Off".
+- **The iPad:** a **Patch** tab of its own (`remote/patch.js`; the Setup page is full): the lights (`{"t":"inputs","on"}`, then `{"type":"inputs","p":[dB × 32]}` ten times a second while any iPad shows it, separate peaks from the window's), the Source boxes, Default (tap twice) and Swap. The structure message carries each channel's `src`; the Mix page's strips show the arrow too.
 
 ### Tests
 

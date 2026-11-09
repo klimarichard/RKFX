@@ -69,7 +69,7 @@ In **Settings > Remote**, a new **Web remote** section above OSC: on/off, the li
 
 - **`plugins/RKPlay/PlayRemote.h/.cpp`**: the hub, modelled on `BoardRemoteHub`. It owns the `RemoteServer` (one per process through a `juce::SharedResourcePointer`, so two RKPlays in one host share the port and the page lists them by name, as RKBoard does). Incoming messages are queued and handled on the message thread (a 20 Hz tick); a push thread sends what waits.
 - **`plugins/RKPlay/remote/play.html` and `play.js`**: the page, using `host/remote/rk.js` for the fader, the buttons and the palette. Song lists are long, so they're drawn as normal HTML rows (scrolling, search field, drag) rather than on the canvas; the transport, fader and pads use `rk.js`.
-- **Shared PIN and device code.** RKMix's `MixConsole` and RKBoard's `BoardRemote` each have their own copy of the PIN, token, lockout and device list. RKPlay would be the third copy, so it's the time to move that into **`host/remote/RemoteAccess.h/.cpp`** and use it in all three. RKMix's and RKBoard's behaviour doesn't change; their existing tests are the check. (If you'd rather not touch RKMix and RKBoard now, RKPlay can copy the code and the move can come later.)
+- **PIN and device code: copied** from RKBoard's `BoardRemote` for now (the user's choice, 2026-11-10). Moving it into a shared `host/remote/RemoteAccess` used by RKMix, RKBoard and RKPlay is left for later.
 - **The rig's song-list selection isn't reused.** `PlayRig`'s page and selection are for TouchOSC (one shared selection for every OSC device). The web remote keeps its selection per device, on the page itself, and sends the song with the command.
 
 ### Protocol
@@ -126,3 +126,16 @@ Stop and Panic's Unlock is on the page only (the server trusts a signed-in devic
 - **Pre-listening** on the remote (it plays on the Mac's cue output, which the person with the phone usually can't hear).
 - **Seeking** within a song (OSC can't either; too easy to do by accident).
 - **Album art.**
+
+## As built (2026-11-10)
+
+Built as designed, with these differences:
+
+- **The page is all canvas** (`rk.js`), song lists included: only the rows on screen are drawn, so a long playlist scrolls smoothly (with momentum). The search field is `rk.js`'s text input; a search runs on Enter.
+- **iPad layout:** Play alone on the left; Songs, Queue, Lists and **Pads** as tabs on the right (Play and the pads together didn't fit). The page scales to about 1000 points wide on an iPad held sideways, 400 on a phone.
+- **Settings:** a third page, **Web remote**, between Show and Remote (in the plugin too); the OSC page is unchanged.
+- **The light** is in the bottom bar, right of the pads ("● Remote (n)", click for the settings), not in the header: the transport row is full.
+- **Players' names** in the page's list are the show (preset) names; RKPlay has no remote name of its own.
+- **Unlock** locks again after one press of Stop or Panic, or after 5 seconds.
+- `RKFXRemoteDemo_RKPlay` serves the page from a headless RKPlay with a made-up show; with `RKPLAY_DEMO_SNAPSHOT=<png>`, SIGUSR1 saves the window's Web remote page. The page was checked with Playwright Chromium (in the session scratchpad) at phone and iPad sizes.
+- **Untested on a real phone or iPad, and in Gig Performer.**

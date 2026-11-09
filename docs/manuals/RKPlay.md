@@ -12,7 +12,7 @@ For the preset menu and Bypass, see [Common Controls](Common%20Controls.md).
 - **Transport:** **|<** (previous), **Play/Pause**, **>|** (next), **Fade out**, **Stop**, **Duck** and **Settings**. While some songs' files are missing, a red button says how many (see Show check).
 - **Left:** the playlists as tabs, the shown playlist's settings, and its songs.
 - **Right:** the **Queue**, **Pre-listen** and **Times** (End at and Switch at).
-- **Bottom:** the **Level** knob and the **8 pads**.
+- **Bottom:** the **Level** knob and the **8 pads**. While a phone or iPad is on the web remote, a green **● Remote (1)** shows there (click it for its settings).
 
 A show is everything RKPlay holds: the playlists, the pads and every setting. A show is RKPlay's preset, and in Gig Performer it is saved with the gig.
 
@@ -159,10 +159,35 @@ The cue output is RKPlay's second stereo output: in Gig Performer, the plugin's 
 
 ## Settings
 
-**Settings** opens over the lower half of the window, with two pages:
+**Settings** opens over the lower half of the window, with three pages:
 
 - **Show:** Fade-out time (0.5 to 30 s), Smart crossfade, the Loudness settings, Ducking, and the **Music folder**.
+- **Web remote** (the plugin and the app): playing the music from a phone or an iPad (see below).
 - **Remote** (standalone app): OSC, MIDI, the keyboard shortcuts and the history.
+
+## Remote control from a phone or iPad (web)
+
+Play the music from a phone in your pocket or an iPad on the desk, with nothing to install. It works in the app and in the plugin (RKPlay in a Gig Performer rackspace).
+
+1. In **Settings > Web remote**, turn on **Web remote on**.
+2. Scan the **QR code** with the phone's camera. The page opens signed in (the code carries the PIN). On another device, open the address shown and type the **PIN**.
+3. In Safari, **Share > Add to Home Screen** makes it a full-screen app.
+
+The phone or iPad must be on the same network as the Mac. If the page doesn't open by the Mac's name (some venue and hotel networks don't allow `.local` names), tick **Address by IP** and scan the code again.
+
+**The pages.** On a phone the pages are tabs along the bottom. On an iPad held sideways, **Play** stays on the left and the other pages are tabs on the right.
+
+- **Play:** the song, its times and progress, and what's next. **Play/Pause**, **Previous**, **Next** and **Fade out**. **Stop** and **Panic** only work after **Unlock**, and lock again after one press or after 5 seconds, so a stray finger can't stop the music. The **Level** fader, **Duck**, and **End at** (tap **End at...** and type a time like 23:30, or **Off**). Switch at, and a playlist switch waiting for the song to end (with **Cancel**), show here too.
+- **Songs:** the whole playlist. The playing song is marked ▶, and the list follows it (except for 30 seconds after you scroll by hand). The button at the top picks another playlist to browse. **Search all playlists** finds a song by any words of its title or artist, accents ignored ("hegerova" finds Hegerová). **Tapping a song only selects it**; then choose **Play next** (onto the queue), **Play now** (a one-off; the playlist then goes on where it was) or **Go on from here** (the playlist goes on from that song).
+- **Queue:** the requests waiting, in order. Drag a song by its **≡** to reorder, **×** removes it, **Clear** removes them all.
+- **Lists:** every playlist. Tap one to **Switch now** (crossfade), switch **After this song**, or **Show its songs**.
+- **Pads:** the 8 pads, lit while they play. Tap to start, tap again to stop.
+
+**Safety.** The remote plays the music; it can't change the show (songs, playlists, loudness, pads' sounds). If a song was moved or removed in the window just before you pressed Play next, the remote finds it where it is now, or says it's gone; it never plays the wrong song. A PIN protects it: a device that signed in once is remembered. Five wrong PINs from one device make it wait 30 seconds. **New PIN** signs every device out, and **Disconnect** lets one device go.
+
+**Several devices** can be on at once (your phone and the venue manager's iPad); they all show the same thing. The port is **8082** (RKMix's remote uses 8080 and RKBoard's 8081, so all three can run in one gig); change it if another app uses it. Several RKPlays in one Gig Performer share the remote: the page asks which one (by show name). The settings are the Mac's, shared by the plugin and the app.
+
+The web remote and the OSC remote (below) can both be on; use whichever suits you.
 
 ### Show check
 
@@ -260,5 +285,5 @@ Everything else is in the show.
 
 - **Bypass** silences RKPlay (with a fade). RKPlay never passes its input through.
 - RKPlay adds no latency, and uses very little CPU: the files are read and prepared ahead on a background thread, so playback never waits for the disk. If a disk can't keep up (a sleeping USB drive), the song fades out rather than stuttering, and the next one starts.
-- The measurements are kept in `~/Library/Application Support/RKFX/RKPlay/analysis.json`; a file that changes is measured again. The app's other files (OSC settings, learned MIDI, the autosave, the history) are in the same folder.
+- The measurements are kept in `~/Library/Application Support/RKFX/RKPlay/analysis.json`; a file that changes is measured again. The app's other files (OSC settings, learned MIDI, the autosave, the history) and the web remote's settings (`remote.json`) are in the same folder.
 - Gig Performer tip: put RKPlay on its own outputs into the mixer (or RKMix), map widgets to Play, Fade Out and Duck, and feed the announcement mic into RKPlay's input for automatic ducking.

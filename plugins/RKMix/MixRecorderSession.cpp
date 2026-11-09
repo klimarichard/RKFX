@@ -15,11 +15,13 @@ MixRecorderSession::MixRecorderSession (RKMixProcessor& p) : mixer (p)
     rootFolder = defaultRootFolder();
     loadSettings();
     startTimerHz (10);
+    sceneTimer.startTimerHz (30);
 }
 
 MixRecorderSession::~MixRecorderSession()
 {
     stopTimer();
+    sceneTimer.stopTimer();
     recorder.stop();
 }
 
@@ -46,6 +48,7 @@ void MixRecorderSession::loadSettings()
         rootFolder = juce::File (path);
     asFloat = (bool) v.getProperty ("float", false);
     pairsAsMono = (bool) v.getProperty ("pairsAsMono", false);
+    followScenes = (bool) v.getProperty ("followScenes", true);
 }
 
 void MixRecorderSession::saveSettings() const
@@ -54,6 +57,7 @@ void MixRecorderSession::saveSettings() const
     o->setProperty ("folder", rootFolder.getFullPathName());
     o->setProperty ("float", asFloat);
     o->setProperty ("pairsAsMono", pairsAsMono);
+    o->setProperty ("followScenes", followScenes);
     settingsFile.getParentDirectory().createDirectory();
     settingsFile.replaceWithText (juce::JSON::toString (juce::var (o)));
 }
@@ -61,6 +65,52 @@ void MixRecorderSession::saveSettings() const
 void MixRecorderSession::setRootFolder (const juce::File& f) { rootFolder = f; saveSettings(); }
 void MixRecorderSession::setFloat (bool on)                  { asFloat = on; saveSettings(); }
 void MixRecorderSession::setPairsAsMono (bool on)            { pairsAsMono = on; saveSettings(); }
+void MixRecorderSession::setFollowScenes (bool on)           { followScenes = on; followKey = {}; saveSettings(); }
+
+//==============================================================================
+int MixRecorderSession::sceneMarkerAt (juce::int64 sample) const
+{
+    auto& pb = mixer.getPlayback();
+    if (! pb.isLoaded())
+        return -1;
+    const auto& markers = pb.getRecording().markers;   // in time order
+    int found = -1;
+    for (int i = 0; i < (int) markers.size() && markers[(size_t) i].at <= sample; ++i)
+        if (MixScenes::sceneOfMarker (markers[(size_t) i].label) >= 0)
+            found = i;
+    return found;
+}
+
+void MixRecorderSession::pollSceneMarkers()
+{
+    // Playback passing a scene marker (or a jump past one) recalls its scene,
+    // as the console did at the gig. Loading a recording changes nothing; Play
+    // recalls the scene in effect if the console is on another.
+    auto& pb = mixer.getPlayback();
+    if (! followScenes || ! pb.isLoaded())
+    {
+        followKey = {};
+        followPlaying = false;
+        return;
+    }
+    // (While locating the position is already where it is going.)
+    const auto index = sceneMarkerAt (pb.getPosition());
+    const auto& markers = pb.getRecording().markers;
+    const auto scene = index >= 0 ? MixScenes::sceneOfMarker (markers[(size_t) index].label) : -1;
+    const auto key = pb.getRecording().folder.getFullPathName() + "|"
+                   + (index >= 0 ? juce::String (markers[(size_t) index].at) + "|" + juce::String (scene) : juce::String ("-"));
+    const auto playing = pb.isPlaying();
+    const auto started = playing && ! followPlaying;
+    followPlaying = playing;
+
+    const auto firstLook = followKey.isEmpty() || ! followKey.startsWith (pb.getRecording().folder.getFullPathName() + "|");
+    const auto moved = key != followKey;
+    followKey = key;
+    if (scene < 0 || firstLook)
+        return;
+    if ((moved || started) && scene != mixer.getScenes().getCurrent())
+        mixer.recallScene (scene);
+}
 
 //==============================================================================
 MixRecorder::Take MixRecorderSession::makeTake() const
@@ -228,7 +278,7 @@ void MixRecorderSession::addMarker (const juce::String& label)
 
 void MixRecorderSession::sceneRecalled (int scene)
 {
-    addMarker ("Scene " + juce::String (scene + 1));
+    addMarker (mixer.getScenes().markerLabel (scene));
 }
 
 void MixRecorderSession::mixLoaded()

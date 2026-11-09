@@ -319,7 +319,10 @@ class MixPage extends Component {
     this.strips = [];
     this.layerButtons = kLayers.map((t, i) => this.add(new TextButton(t, () => { mix.layer = i; mix.spill = -1; this.rebuild(); })));
     this.sceneButtons = [];
-    for (let i = 0; i < 16; i++) this.sceneButtons.push(this.add(new TextButton(num(i), () => { if (!C.isLocked("everything")) net.send({ t: "scene", n: i }); })));
+    // 32 scenes, 16 at a time: the bank button switches (lit when the active scene is in the other bank)
+    this.sceneBank = 0; this.lastScene = -1;
+    for (let i = 0; i < 16; i++) this.sceneButtons.push(this.add(new TextButton(num(i), () => { if (!C.isLocked("everything")) net.send({ t: "scene", n: this.sceneBank * 16 + i }); })));
+    this.bankButton = this.add(new TextButton("1-16", () => { this.sceneBank = 1 - this.sceneBank; app.dirty = true; }));
     this.clearSolo = this.add(new TextButton("Clear solo", () => net.send({ t: "clearSolo" })));
     this.talk = this.add(new TalkButton());
     this.main = this.add(new MasterStrip("main"));
@@ -376,10 +379,10 @@ class MixPage extends Component {
     let x = 12;
     const widths = [104, 104, 76, 60, 68, 68];
     this.layerButtons.forEach((b, i) => { b.setBounds(x, bottomY + 12, widths[i], 32); x += widths[i] + 6; });
-    x += 56;   // "SCENE"
-    this.sceneX = x - 54;
-    const sw = Math.max(26, Math.min(40, Math.floor((W - 12 - x) / 16) - 3));
+    this.bankButton.setBounds(x, bottomY + 12, 56, 32); x += 62;
+    const sw = Math.max(26, Math.min(40, Math.floor((W - 12 - 130 - x) / 16) - 3));
     for (const b of this.sceneButtons) { b.setBounds(x, bottomY + 12, sw, 32); x += sw + 3; }
+    this.sceneNameArea = { x: x + 6, y: bottomY + 8, w: W - 12 - x - 6, h: 40 };
     // the master column
     const mx = W - L.master - gap, top = gap;
     this.clearSolo.setBounds(mx, top, L.master, 36);
@@ -404,9 +407,17 @@ class MixPage extends Component {
     g.setColour(Palette.tintedPanel); g.fillRect(0, bottomY, this.w, L.bottom);
     g.setColour(Palette.outline); g.fillRect(0, bottomY, this.w, 1);
     this.layerButtons.forEach((b, i) => { b.toggle = mix.layer === i; });
-    g.setColour(Palette.textDim); g.setFont(12, true);
-    g.drawText("SCENE", this.sceneX - 4, bottomY + 12, 50, 32, J.centredRight);
-    if (s) this.sceneButtons.forEach((b, i) => { b.toggle = s.scene === i; });
+    if (s) {
+      if (s.scene !== this.lastScene) { this.lastScene = s.scene; this.sceneBank = Math.floor(s.scene / 16); }
+      this.bankButton.text = this.sceneBank ? "17-32" : "1-16";
+      this.bankButton.toggle = Math.floor(s.scene / 16) !== this.sceneBank;
+      this.sceneButtons.forEach((b, i) => { const n = this.sceneBank * 16 + i; b.text = num(n); b.toggle = s.scene === n; });
+      // the current scene's number and name
+      const a = this.sceneNameArea, name = s.sceneNames ? s.sceneNames[s.scene] : "";
+      g.setColour(Palette.textDim); g.setFont(11, true); g.drawText("SCENE " + (s.scene + 1), a.x, a.y, a.w, 18, J.centredLeft);
+      g.setColour(name ? Palette.text : Palette.knobTrack); g.setFont(13);
+      g.drawFittedText(name || "(no name)", a.x, a.y + 18, a.w, 20, J.centredLeft, 1, 0.7);
+    }
     const sending = mix.sendsOnFader >= 0;
     this.clearSolo.visible = !sending; this.sendsBack.visible = sending;
     this.clearSolo.enabled = !!(s && s.anySolo);

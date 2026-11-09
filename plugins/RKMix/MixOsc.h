@@ -15,7 +15,7 @@ class RKMixProcessor;
         /rkmix/subtitle "Chorus"           the second line
         /rkmix/now      "Song 3" "Chorus"  both at once (the second optional)
         /rkmix/clear                       both gone
-        /rkmix/scene    3                  recalls scene 3 (1 to 16)
+        /rkmix/scene    3                  recalls scene 3 (1 to 32)
 
     The names are only shown: they aren't saved with the mix, aren't in the
     scenes or the undo history, and are gone when OSC is switched off. The

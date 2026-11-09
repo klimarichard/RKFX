@@ -45,6 +45,6 @@ On SystemEvent Matching GigLoaded
    SendNames(GetCurrentRackspaceIndex(), GetCurrentVariation())
 End
 
-// Optional: recall an RKMix scene (1 to 16) too, e.g. one per rackspace,
+// Optional: recall an RKMix scene (1 to 32) too, e.g. one per rackspace,
 // inside On Rackspace:
 //    SendOSCMessage { '/rkmix/scene', newRackspaceIndex + 1 } to RKMIX_IP : RKMIX_PORT

@@ -1,5 +1,7 @@
 #include "MixExport.h"
 
+#include <algorithm>
+
 namespace
 {
     /** The inserts' play head: the export's position at the mix's tempo, playing. */
@@ -168,12 +170,63 @@ juce::Result MixExport::render (Mix& mix, const MixPlayback::Recording& recordin
         engine->setInserts (mix.inserts.get());
         engine->setLatencies (mix.inserts->latencies());
     }
-    engine->setSettings (mix.settings);
-    engine->setLevels (mix.levels);
+    // The scene markers on the way: every step from the preroll to the region's end, in order.
+    const auto preRollSamples = juce::jmin (region.start, (juce::int64) (kPreRollSeconds * rate));
+    const auto runFrom = region.start - preRollSamples;
+    struct Event { juce::int64 at; const State* state; };
+    std::vector<Event> events;
+    const State* initial = nullptr;
+    for (const auto& change : mix.changes)
+        for (size_t k = 0; k < change.steps.size(); ++k)
+        {
+            const auto at = change.at + (juce::int64) k * change.stepSamples;
+            if (at <= runFrom)
+                initial = &change.steps[k];
+            else if (at < region.end)
+                events.push_back ({ at, &change.steps[k] });
+        }
+    std::stable_sort (events.begin(), events.end(), [] (const Event& a, const Event& b) { return a.at < b.at; });
+
+    const auto applyInserts = [&mix] (const std::array<bool, InsertRack::kTotalSlots>& on, const std::vector<float>& knobs)
+    {
+        if (mix.inserts == nullptr)
+            return;
+        for (int slot = 0; slot < InsertRack::kTotalSlots; ++slot)
+        {
+            const auto where = InsertRack::slotAt (slot);
+            if (mix.inserts->get (where) != nullptr && mix.inserts->isOn (where) != on[(size_t) slot])
+                mix.inserts->setOn (where, on[(size_t) slot]);
+        }
+        for (size_t i = 0; i < mix.knobRefs.size() && i < knobs.size(); ++i)
+            if (auto* plugin = mix.inserts->get (InsertRack::slotAt (mix.knobRefs[i].slot)))
+                if (auto* p = plugin->findParam (mix.knobRefs[i].paramId); p != nullptr && ! juce::exactlyEqual (p->getValue(), knobs[i]))
+                    p->setValueNotifyingHost (knobs[i]);
+    };
+    const auto noSolo = [] (MixEngine::Levels levels)
+    {
+        levels.channelSolo.fill (false);
+        levels.busSolo.fill (false);
+        levels.talk = levels.osc = false;
+        return levels;
+    };
+
+    if (initial != nullptr)
+    {
+        engine->setSettings (initial->settings);
+        engine->setLevels (noSolo (initial->levels));
+        applyInserts (initial->insertOn, initial->knobs);
+    }
+    else
+    {
+        engine->setSettings (mix.settings);
+        engine->setLevels (noSolo (mix.levels));
+        applyInserts (mix.insertOn, mix.knobs);
+    }
     engine->reset();
     MainTap tap;
     engine->setOutputTaps (&tap);
     const auto latency = engine->getLatency();
+    size_t nextEvent = 0;
 
     // The file: written beside, moved into place when complete.
     juce::TemporaryFile temp (file);
@@ -201,10 +254,23 @@ juce::Result MixExport::render (Mix& mix, const MixPlayback::Recording& recordin
     juce::MidiBuffer midi;
     int tailLength = 0;
 
-    for (juce::int64 run = 0; run < runTotal; run += kBlock)
+    for (juce::int64 run = 0; run < runTotal;)
     {
-        const auto n = (int) juce::jmin<juce::int64> (kBlock, runTotal - run);
-        const auto at = from + run;                            // this block's first input sample
+        auto at = from + run;                                  // this block's first input sample
+
+        // A scene marker's step due now: the mix changes here (blocks are split at each one).
+        while (nextEvent < events.size() && events[nextEvent].at <= at)
+        {
+            const auto& state = *events[nextEvent++].state;
+            engine->setSettings (state.settings);
+            engine->setLevels (noSolo (state.levels));
+            applyInserts (state.insertOn, state.knobs);
+        }
+        auto blockLength = juce::jmin<juce::int64> (kBlock, runTotal - run);
+        if (nextEvent < events.size())
+            blockLength = juce::jmin (blockLength, events[nextEvent].at - at);
+        const auto n = (int) juce::jmax<juce::int64> (1, blockLength);
+        run += n;
 
         // The inputs: each file's channels into the inputs they feed, silent from the region's end on.
         inputs.clear();
@@ -256,7 +322,7 @@ juce::Result MixExport::render (Mix& mix, const MixPlayback::Recording& recordin
             }
         }
 
-        if (onProgress != nullptr && ! onProgress ((float) ((double) (run + n) / (double) runTotal)))
+        if (onProgress != nullptr && ! onProgress ((float) ((double) run / (double) runTotal)))
             return juce::Result::fail ("cancelled");
     }
 

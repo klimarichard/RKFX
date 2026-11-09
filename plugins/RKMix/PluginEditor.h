@@ -448,6 +448,7 @@ private:
         juce::Rectangle<int> glideArea, safeArea, scopeArea;
 
         juce::ComboBox scopeScene;
+        juce::Label sceneName;
         int scopeFor = 0, lastCurrent = -1;
         std::array<juce::TextButton, MixScenes::Scope::numCategories> categoryButtons;
         std::array<juce::TextButton, mix::kBuses> sendButtons;
@@ -525,7 +526,7 @@ private:
                          allPlayback { "All to playback" }, allLive { "All live" },
                          playButton { "Play" }, stopButton { "Stop" }, prevMarker, nextMarker, loopButton { "Loop" },
                          back60 { "-1 min" }, back10 { "-10 s" }, ahead10 { "+10 s" }, ahead60 { "+1 min" },
-                         addMarkerHere { "Add marker here" };
+                         addMarkerHere { "Add marker here" }, followScenesButton { "Scenes follow markers" };
         struct PositionBar;
         std::unique_ptr<juce::Component> bar;   // a PositionBar
         struct MarkerList;
@@ -653,7 +654,12 @@ private:
     MonitorPanel monitorPanel;
     ScenesPanel scenesPanel;
     AssignPanel assignPanel;
-    std::array<juce::TextButton, 16> sceneButtons;
+    std::array<juce::TextButton, 16> sceneButtons;   // the bank's 16 scenes
+    juce::TextButton sceneBankButton;                 // "1-16" / "17-32"
+    int sceneBank = 0, lastSceneCurrent = -1;
+    juce::Rectangle<int> sceneNameArea;               // the current scene's name, after the buttons
+    int sceneOf (int button) const noexcept { return sceneBank * 16 + button; }
+    void renameScene (int scene);
     int lastSceneVersion = -1, lastAssignVersion = -1;
 
     // Standalone: tempo, tap, MIDI clock; MIDI learn

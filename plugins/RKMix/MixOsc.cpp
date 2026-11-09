@@ -195,7 +195,7 @@ void MixOsc::handle (const juce::OSCMessage& m)
         n = {};
     else if (what == "scene")
     {
-        // Scenes 1 to 16, as on the window's buttons.
+        // Scenes 1 to 32, as on the window's buttons.
         if (const auto scene = whole (m, 0); scene >= 1 && scene <= MixScenes::kNumScenes)
             mixer.recallScene (scene - 1);
         return;

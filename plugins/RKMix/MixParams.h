@@ -134,7 +134,7 @@ namespace MixParams
         p.addBool ("mono_mute", "Mono Mute", false);
         for (int slot = 0; slot < 32; ++slot)
             p.addPercent (assignId (slot), "Assign " + num (slot), 0.0f, 100.0f, 0.0f);
-        p.addInt ("scene", "Scene", 1, 16, 1);
+        p.addInt ("scene", "Scene", 1, 32, 1);   // 1-16 until 2026-11-09 (the user uses no Gig Performer mapping of it)
         p.addBool ("talk", "Talk", false);
 
         // DCAs and mute groups (appended).

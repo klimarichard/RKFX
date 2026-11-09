@@ -2,6 +2,10 @@
 #include "PluginEditor.h"
 #include "host/PedalRegistry.h"
 
+#include <cmath>
+#include <limits>
+#include <unordered_map>
+
 namespace rkfx { std::vector<FactoryPreset> factoryPresetList_RKMix(); }
 
 namespace
@@ -39,11 +43,28 @@ namespace
         "direct_out", "direct_tap", "src",
     };
 
+    /** exportMix's replayed scene values (normalised), on the message thread only. */
+    thread_local const std::unordered_map<const juce::RangedAudioParameter*, float>* valueOverrides = nullptr;
+
     void raise (std::atomic<float>& peak, float value) noexcept
     {
         auto current = peak.load();
         while (value > current && ! peak.compare_exchange_weak (current, value)) {}
     }
+}
+
+//==============================================================================
+float RKMixProcessor::normalisedOf (const juce::RangedAudioParameter* p) noexcept
+{
+    if (valueOverrides != nullptr)
+        if (const auto it = valueOverrides->find (p); it != valueOverrides->end())
+            return it->second;
+    return p->getValue();
+}
+
+float RKMixProcessor::valueOf (const juce::RangedAudioParameter* p) noexcept
+{
+    return p->convertFrom0to1 (normalisedOf (p));
 }
 
 //==============================================================================
@@ -366,7 +387,7 @@ void RKMixProcessor::handleStandaloneMidi (int numSamples)
             }
             else if (message.isProgramChange())
             {
-                // Program changes 0-15 recall scenes 1-16.
+                // Program changes 0-31 recall scenes 1-32.
                 if (message.getProgramChangeNumber() < MixScenes::kNumScenes)
                     sceneParam->setValueNotifyingHost (sceneParam->convertTo0to1 ((float) message.getProgramChangeNumber() + 1.0f));
             }
@@ -1459,7 +1480,7 @@ float RKMixProcessor::withDcas (float faderDb, const Membership& m, const std::a
     // never past the top of a fader.
     auto db = faderDb;
     for (int dca = 0; dca < mix::kDcas; ++dca)
-        if (m.dcas[(size_t) dca]->getValue() >= 0.5f)
+        if (normalisedOf (m.dcas[(size_t) dca]) >= 0.5f)
         {
             if (dcaDb[(size_t) dca] <= mix::kFaderMinDb + 0.001f)
                 return mix::kFaderMinDb;
@@ -1471,10 +1492,10 @@ float RKMixProcessor::withDcas (float faderDb, const Membership& m, const std::a
 bool RKMixProcessor::groupMuted (const Membership& m) const
 {
     for (int dca = 0; dca < mix::kDcas; ++dca)
-        if (dcaMutes[(size_t) dca]->getValue() >= 0.5f && m.dcas[(size_t) dca]->getValue() >= 0.5f)
+        if (normalisedOf (dcaMutes[(size_t) dca]) >= 0.5f && normalisedOf (m.dcas[(size_t) dca]) >= 0.5f)
             return true;
     for (int group = 0; group < mix::kMuteGroups; ++group)
-        if (muteGroups[(size_t) group]->getValue() >= 0.5f && m.muteGroups[(size_t) group]->getValue() >= 0.5f)
+        if (normalisedOf (muteGroups[(size_t) group]) >= 0.5f && normalisedOf (m.muteGroups[(size_t) group]) >= 0.5f)
             return true;
     return false;
 }
@@ -1556,7 +1577,7 @@ void RKMixProcessor::releaseMidi (juce::MidiBuffer& midi)
     rack.releaseAllMidi (midi);
 }
 
-MixExport::Mix RKMixProcessor::exportMix()
+MixExport::Mix RKMixProcessor::exportMix (const std::vector<MixExport::Region>& regions)
 {
     MixExport::Mix m;
     readSettings (m.settings, MixEngine::kEverything);
@@ -1565,6 +1586,86 @@ MixExport::Mix RKMixProcessor::exportMix()
     m.levels.busSolo.fill (false);
     m.levels.talk = false;
     m.levels.osc = false;
+
+    // The inserts' on/off and the scene-controlled knobs, as they are now.
+    auto replay = scenes->startReplay();
+    m.insertOn = replay.state.insertOn;
+    m.knobs = replay.state.knobs;
+    for (const auto& k : scenes->getKnobs())
+        m.knobRefs.push_back ({ k.slot, k.paramId });
+
+    // The scene markers on the way: each one's recall, replayed (the console untouched).
+    const auto& recording = playback.getRecording();
+    if (! regions.empty() && recorder->getFollowScenes() && playback.isLoaded() && recording.sampleRate > 0.0)
+    {
+        const auto rate = recording.sampleRate;
+        juce::int64 firstRun = std::numeric_limits<juce::int64>::max(), lastEnd = 0;
+        for (const auto& r : regions)
+        {
+            firstRun = juce::jmin (firstRun, r.start - juce::jmin (r.start, (juce::int64) (MixExport::kPreRollSeconds * rate)));
+            lastEnd = juce::jmax (lastEnd, r.end);
+        }
+
+        // Normalised scene values as the parameters' values, for readSettings and readLevels.
+        std::unordered_map<const juce::RangedAudioParameter*, float> values;
+        const auto stateOf = [&] (const MixScenes::State& s)
+        {
+            for (int i = 0; i < scenes->getNumEntries() && i < (int) s.values.size(); ++i)
+                values[scenes->getEntryParam (i)] = s.values[(size_t) i];
+            valueOverrides = &values;
+            MixExport::State out;
+            readSettings (out.settings, MixEngine::kEverything);
+            out.levels = readLevels();
+            valueOverrides = nullptr;
+            out.insertOn = s.insertOn;
+            out.knobs = s.knobs;
+            return out;
+        };
+
+        const auto glideMs = settings.value ("scene_glide");
+        const auto knobRefs = scenes->getKnobs();
+        for (const auto& marker : recording.markers)   // in time order
+        {
+            const auto scene = MixScenes::sceneOfMarker (marker.label);
+            if (scene < 0 || marker.at >= lastEnd)
+                continue;
+            const auto before = replay.state;
+            scenes->replay (replay, scene);
+            const auto& after = replay.state;
+            if (before.values == after.values && before.insertOn == after.insertOn && before.knobs == after.knobs)
+                continue;
+
+            MixExport::Change change;
+            change.at = marker.at;
+            if (marker.at < firstRun || glideMs <= 0.0f)
+            {
+                // Before every run (only where it leaves the mix matters), or no glide: one step.
+                change.steps.push_back (stateOf (after));
+                if (marker.at < firstRun)
+                    m.changes.clear();
+            }
+            else
+            {
+                // A recall's glide, sampled: continuous values move, switches change at once.
+                const auto count = juce::jlimit (1, 8, (int) std::ceil (glideMs / 25.0f));
+                change.stepSamples = juce::jmax (1, (int) std::round (glideMs * 0.001 * rate / count));
+                for (int k = 1; k <= count; ++k)
+                {
+                    const auto t = (float) k / (float) count;
+                    auto step = after;
+                    for (int i = 0; i < scenes->getNumEntries() && i < (int) step.values.size(); ++i)
+                        if (scenes->entryGlides (i))
+                            step.values[(size_t) i] = before.values[(size_t) i] + t * (after.values[(size_t) i] - before.values[(size_t) i]);
+                    for (size_t i = 0; i < step.knobs.size() && i < before.knobs.size() && i < knobRefs.size(); ++i)
+                        if (knobRefs[i].glides)
+                            step.knobs[i] = before.knobs[i] + t * (after.knobs[i] - before.knobs[i]);
+                    change.steps.push_back (stateOf (step));
+                }
+            }
+            m.changes.push_back (std::move (change));
+        }
+    }
+
     if (const auto inserts = rack.toVar(); inserts.getArray() != nullptr && ! inserts.getArray()->isEmpty())
     {
         m.inserts = std::make_unique<InsertRack>();

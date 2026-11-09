@@ -10,7 +10,7 @@
 #include <functional>
 #include <vector>
 
-/** RKMix's 16 scenes. A scene holds the mix's values: the faders and
+/** RKMix's 32 scenes, each with a name. A scene holds the mix's values: the faders and
     mutes, every strip and bus setting that is a value (trims, EQ, dynamics,
     pans, sends, assigns, section switches), each insert's on/off, and the
     insert knobs made scene controlled. It never holds the structure (links,
@@ -32,7 +32,7 @@
 class MixScenes : private juce::Timer
 {
 public:
-    static constexpr int kNumScenes = 16;
+    static constexpr int kNumScenes = 32;
     static constexpr int kMaxKnobs = 64;
 
     /** What recalling a scene changes. Everything by default. */
@@ -90,8 +90,45 @@ public:
     juce::var toVar() const;
     void fromVar (const juce::var&);
 
-    /** Bumped when the current scene or the scene-controlled knobs change. */
+    /** Bumped when the current scene, a name or the scene-controlled knobs change. */
     int getVersion() const noexcept { return version.load(); }
+
+    /** A scene's own name ("" for none), saved with the mix. */
+    juce::String getName (int scene) const;
+    void setName (int scene, const juce::String&);
+    /** "Scene 3", or "Scene 3 Chorus" with its name: the recorder's marker for a recall. */
+    juce::String markerLabel (int scene) const;
+    /** The scene a recorder marker stands for: a label "Scene N" or "Scene N <anything>"
+        (N 1..32) gives N - 1; anything else -1. */
+    static int sceneOfMarker (const juce::String& label);
+
+    //==========================================================================
+    /** The scene values, the inserts' on/off and the scene-controlled knobs, as numbers. */
+    struct State
+    {
+        std::vector<float> values;             // normalised, by entry
+        std::array<bool, InsertRack::kTotalSlots> insertOn {};
+        std::vector<float> knobs;              // normalised, by knob
+    };
+
+    /** Recalls replayed without touching the console (export): starts from the
+        mix as it is now, then replay() does what recall() would. */
+    struct Replay
+    {
+        State state;
+        int current = 0;
+        std::array<State, kNumScenes> scenes;
+        std::array<bool, kNumScenes> stored {};
+    };
+    Replay startReplay() const;
+    void replay (Replay&, int scene) const;
+
+    int getNumEntries() const noexcept { return (int) entries.size(); }
+    juce::RangedAudioParameter* getEntryParam (int index) const noexcept { return entries[(size_t) index].param; }
+    bool entryGlides (int index) const noexcept { return entries[(size_t) index].glides; }
+    struct KnobRef { int slot = 0; juce::String paramId; bool glides = true; };
+    /** The scene-controlled knobs, in State::knobs order. */
+    std::vector<KnobRef> getKnobs() const;
 
 private:
     struct Entry
@@ -129,6 +166,7 @@ private:
     std::vector<Knob> knobs;
     std::array<Scene, kNumScenes> scenes;
     std::array<Scope, kNumScenes> scopes;      // apart from the scenes: storing a scene keeps its scope
+    std::array<juce::String, kNumScenes> names;
     int current = 0;
 
     std::vector<Glide> glides;
@@ -137,6 +175,9 @@ private:
 
     juce::RangedAudioParameter* knobParam (const Knob&) const;
     bool isRecallSafe (const Entry&) const;
+    bool isSlotRecallSafe (int slot) const;
+    /** @p state as recalling @p scene (its values) with @p scope leaves it. */
+    void applyTo (State& state, const State& scene, const Scope& scope) const;
     Scene capture() const;
     void apply (const Scene&, const Scope&);
     void finishGlides();

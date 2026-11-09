@@ -61,6 +61,13 @@ public:
     void setFloat (bool);
     bool getPairsAsMono() const noexcept { return pairsAsMono; }
     void setPairsAsMono (bool);
+    /** Virtual soundcheck: a marker "Scene N" recalls scene N when playback
+        passes it, and a jump recalls the scene in effect where it lands. */
+    bool getFollowScenes() const noexcept { return followScenes; }
+    void setFollowScenes (bool);
+    /** The scene marker in effect at @p sample of the loaded recording: its index, or -1. */
+    int sceneMarkerAt (juce::int64 sample) const;
+    void pollSceneMarkers();   // tests: the follower's step at once
     static juce::File defaultRootFolder();
     void setSettingsFileForTesting (const juce::File&);
 
@@ -84,7 +91,10 @@ private:
     RKMixProcessor& mixer;
     MixRecorder recorder;
     juce::File settingsFile, rootFolder;
-    bool asFloat = false, pairsAsMono = false;
+    bool asFloat = false, pairsAsMono = false, followScenes = true;
+    juce::TimedCallback sceneTimer { [this] { pollSceneMarkers(); } };
+    juce::String followKey;                              // the recording and scene marker last followed
+    bool followPlaying = false;
     juce::String status;
     int markerCount = 0;
     std::array<bool, 16> takeLinks {};                   // the links when Record was pressed

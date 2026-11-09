@@ -168,8 +168,15 @@ public:
     /** Export: the main mix of a region of the loaded recording, faster than real time. */
     MixExport& getExport() noexcept { return exporter; }
     /** The mix as it is now, for an export (message thread): its settings, the
-        faders and mutes (no solo, talkback or oscillator), a copy of every insert, the tempo. */
-    MixExport::Mix exportMix();
+        faders and mutes (no solo, talkback or oscillator), a copy of every insert, the tempo.
+        With Scenes follow markers on and a recording loaded, also every scene
+        marker's recall up to the end of the last of @p regions (none: none). */
+    MixExport::Mix exportMix (const std::vector<MixExport::Region>& regions = {});
+
+    /** A parameter's value in real units (hides ProcessorBase::valueOf): the live
+        one, or while exportMix works out a replayed scene, that scene's. */
+    static float valueOf (const juce::RangedAudioParameter* p) noexcept;
+    static float normalisedOf (const juce::RangedAudioParameter* p) noexcept;
 
     /** The monitor remote (message thread). */
     MixRemote& getRemote() noexcept { return *remote; }

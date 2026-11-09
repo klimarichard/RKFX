@@ -627,6 +627,12 @@ juce::String MixConsole::structureJson() const
     json << R"(],"up":[)" << members (mixer.getUserPage (0)) << "," << members (mixer.getUserPage (1)) << "]";
 
     auto& undo = mixer.getUndo();
+    {
+        juce::StringArray sceneNames;
+        for (int i = 0; i < MixScenes::kNumScenes; ++i)
+            sceneNames.add (jsonString (mixer.getScenes().getName (i)));
+        json << R"(,"sceneNames":[)" << sceneNames.joinIntoString (",") << "]";
+    }
     json << R"(,"scene":)" << mixer.getScenes().getCurrent()
          << R"(,"now":)" << mixer.getRemote().getOsc().nowJson()
          << R"(,"undo":)" << jsonString (undo.canUndo() ? undo.undoDescription() : juce::String())

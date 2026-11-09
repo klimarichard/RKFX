@@ -1359,14 +1359,14 @@ public:
             send ("/rkmix/clear");
             expect (osc.getNow().isEmpty(), "cleared");
 
-            // Scenes 1 to 16, as the window numbers them (an int, a float or text).
+            // Scenes 1 to 32, as the window numbers them (an int, a float or text).
             send ("/rkmix/scene", 3);
             expectEquals (p.getScenes().getCurrent(), 2);
             send ("/rkmix/scene", 5.0f);
             expectEquals (p.getScenes().getCurrent(), 4);
             send ("/rkmix/scene", juce::String ("2"));
             expectEquals (p.getScenes().getCurrent(), 1);
-            send ("/rkmix/scene", 17);
+            send ("/rkmix/scene", 33);
             send ("/rkmix/scene", 0);
             expectEquals (p.getScenes().getCurrent(), 1, "out of range: nothing");
 

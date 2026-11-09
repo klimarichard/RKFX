@@ -908,23 +908,24 @@ const juce::String& PlayRemoteHub::songsOf (Player& player, int playlist)
 //==============================================================================
 juce::String PlayRemoteHub::fold (const juce::String& s)
 {
-    // Latin letters with accents (Czech, Slovak, German, French, Spanish, Polish...) to their base letter.
+    // Latin letters with accents (Czech, Slovak, German, French, Spanish, Polish...) to their base letter;
+    // capitals too (toLowerCase only lowers ASCII).
     static const juce::String from = juce::CharPointer_UTF8 (
-        "\xc3\xa0\xc3\xa1\xc3\xa2\xc3\xa3\xc3\xa4\xc3\xa5\xc4\x81\xc4\x83\xc4\x85"   // àáâãäåāăą
-        "\xc3\xa7\xc4\x87\xc4\x8d"                                                   // çćč
-        "\xc4\x8f\xc4\x91"                                                           // ďđ
-        "\xc3\xa8\xc3\xa9\xc3\xaa\xc3\xab\xc4\x93\xc4\x97\xc4\x99\xc4\x9b"           // èéêëēėęě
-        "\xc3\xac\xc3\xad\xc3\xae\xc3\xaf\xc4\xab"                                   // ìíîïī
-        "\xc4\xba\xc4\xbe\xc5\x82"                                                   // ĺľł
-        "\xc3\xb1\xc5\x84\xc5\x88"                                                   // ñńň
-        "\xc3\xb2\xc3\xb3\xc3\xb4\xc3\xb5\xc3\xb6\xc3\xb8\xc5\x91"                   // òóôõöøő
-        "\xc5\x95\xc5\x99"                                                           // ŕř
-        "\xc5\x9b\xc5\xa1\xc5\x9f"                                                   // śšş
-        "\xc5\xa5"                                                                   // ť
-        "\xc3\xb9\xc3\xba\xc3\xbb\xc3\xbc\xc5\xab\xc5\xaf\xc5\xb1"                   // ùúûüūůű
-        "\xc3\xbd\xc3\xbf"                                                           // ýÿ
-        "\xc5\xba\xc5\xbc\xc5\xbe");                                                 // źżž
-    static const juce::String to = "aaaaaaaaa" "ccc" "dd" "eeeeeeee" "iiiii" "lll" "nnn" "ooooooo" "rr" "sss" "t" "uuuuuuu" "yy" "zzz";
+        "\xc3\xa0\xc3\xa1\xc3\xa2\xc3\xa3\xc3\xa4\xc3\xa5\xc4\x81\xc4\x83\xc4\x85\xc3\x80\xc3\x81\xc3\x82\xc3\x83\xc3\x84\xc3\x85\xc4\x80\xc4\x82\xc4\x84"   // àáâãäåāăąÀÁÂÃÄÅĀĂĄ
+        "\xc3\xa7\xc4\x87\xc4\x8d\xc3\x87\xc4\x86\xc4\x8c"   // çćčÇĆČ
+        "\xc4\x8f\xc4\x91\xc4\x8e\xc4\x90"   // ďđĎĐ
+        "\xc3\xa8\xc3\xa9\xc3\xaa\xc3\xab\xc4\x93\xc4\x97\xc4\x99\xc4\x9b\xc3\x88\xc3\x89\xc3\x8a\xc3\x8b\xc4\x92\xc4\x96\xc4\x98\xc4\x9a"   // èéêëēėęěÈÉÊËĒĖĘĚ
+        "\xc3\xac\xc3\xad\xc3\xae\xc3\xaf\xc4\xab\xc3\x8c\xc3\x8d\xc3\x8e\xc3\x8f\xc4\xaa"   // ìíîïīÌÍÎÏĪ
+        "\xc4\xba\xc4\xbe\xc5\x82\xc4\xb9\xc4\xbd\xc5\x81"   // ĺľłĹĽŁ
+        "\xc3\xb1\xc5\x84\xc5\x88\xc3\x91\xc5\x83\xc5\x87"   // ñńňÑŃŇ
+        "\xc3\xb2\xc3\xb3\xc3\xb4\xc3\xb5\xc3\xb6\xc3\xb8\xc5\x91\xc3\x92\xc3\x93\xc3\x94\xc3\x95\xc3\x96\xc3\x98\xc5\x90"   // òóôõöøőÒÓÔÕÖØŐ
+        "\xc5\x95\xc5\x99\xc5\x94\xc5\x98"   // ŕřŔŘ
+        "\xc5\x9b\xc5\xa1\xc5\x9f\xc5\x9a\xc5\xa0\xc5\x9e"   // śšşŚŠŞ
+        "\xc5\xa5\xc5\xa4"   // ťŤ
+        "\xc3\xb9\xc3\xba\xc3\xbb\xc3\xbc\xc5\xab\xc5\xaf\xc5\xb1\xc3\x99\xc3\x9a\xc3\x9b\xc3\x9c\xc5\xaa\xc5\xae\xc5\xb0"   // ùúûüūůűÙÚÛÜŪŮŰ
+        "\xc3\xbd\xc3\xbf\xc3\x9d\xc5\xb8"   // ýÿÝŸ
+        "\xc5\xba\xc5\xbc\xc5\xbe\xc5\xb9\xc5\xbb\xc5\xbd");  // źżžŹŻŽ
+    static const juce::String to = "aaaaaaaaaaaaaaaaaaccccccddddeeeeeeeeeeeeeeeeiiiiiiiiiillllllnnnnnnoooooooooooooorrrrssssssttuuuuuuuuuuuuuuyyyyzzzzzz";
     jassert (from.length() == to.length());
 
     auto lower = s.toLowerCase();
@@ -935,7 +936,7 @@ juce::String PlayRemoteHub::fold (const juce::String& s)
         const auto i = from.indexOfChar (c);
         if (i >= 0)
             out << to[i];
-        else if (c == 0xdf)   // ß
+        else if (c == 0xdf || c == 0x1e9e)   // ß, ẞ
             out << "ss";
         else
             out << c;

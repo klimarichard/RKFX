@@ -312,7 +312,7 @@ Pages (tabs at the top):
 - **Patch:** the input lights and every channel's Source, as in the window. **Default** asks for a second tap; **Swap**, then tap two channels. The strips show a repatched channel's input after an arrow, as in the window.
 - **Monitor EQ:** measure any Aux bus's wedge or in-ear from where the performer stands, with big Start, Next, Finish, Stop, Apply and Undo buttons (see [Monitor EQ](#monitor-eq-tuning-wedges-and-in-ears)). Calibration and measurement files are loaded in the window; the iPad can then choose them.
 
-An open insert shows its controls as knobs and switches, with **On**, **Copy**, **Paste**, **Replace...**, **Remove** (tap it twice) and **Close**. The plugin's own editor, with its curves and pads, is in RKMix's window.
+An open insert looks like the plugin's window on the computer, with **On**, **Copy**, **Paste**, **Replace...**, **Remove** (tap it twice) and **Close** above it. Its knobs, faders and switches sit where the window has them, so it's easy to find your way if you know the plugin; they're the iPad's own, for your fingers. Around them is a picture of the rest of the window: its panels, titles, curves and meters, redrawn a few times a second as they change (move an RKGraphEQ band and its curve follows; switch it to 31 bands and the faders change). Only the window's preset bar stays on the computer, and a few of its buttons that aren't settings (RKGraphEQ's **Flat**, RKLoop's export menu).
 
 **Lock** (top right) locks the iPad: the faders and mutes only, or everything. Hold it a second to unlock. It's the iPad's own lock, apart from the window's.
 

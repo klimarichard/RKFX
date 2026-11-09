@@ -350,7 +350,7 @@ void RKMixEditor::RemotePanel::paint (juce::Graphics& g)
         g.setColour (rkfx::Palette::textDim);
         g.setFont (rkfx::Fonts::regular (12.0f));
         g.drawFittedText ("Gig Performer's gig script sends the rackspace and variation (/rkmix/title, /rkmix/subtitle) "
-                          "to this port; the phones and the iPad show them at the top. /rkmix/scene 1 to 16 recalls a "
+                          "to this port; the phones and the iPad show them at the top. /rkmix/scene 1 to 32 recalls a "
                           "scene. The names aren't saved with the mix. See the manual for the script.",
                           t, juce::Justification::topLeft, 10);
     }

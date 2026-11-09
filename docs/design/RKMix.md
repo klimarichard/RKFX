@@ -460,6 +460,164 @@ The limiter sits **after the fader**, so on an in-ear mix it protects the ears e
 - **MIDI out** from audio-to-MIDI inserts (RKTrigger, RKFollow): each plugin's own channel and notes (no separate Channel Out), a warning only for the same note or controller on the same channel; pure MIDI effects not hosted in v1. RKTrigger's MIDI out in Gig Performer is checked first (MIDI's Step 0).
 - **Not in v1:** mid/side input pairs, a comp-before-EQ switch. (Direct outs were here too; the user asked for them after phase 8, see Outputs.)
 
+## Input patch (designed 2026-11-04, built 2026-11-09)
+
+Today channel *n* always takes input *n*. The input patch lets **any input feed any channel**, so if the wiring changes (a stage box sends the vocal on In 7 instead of In 3, or a venue's multicore is in a different order), the mix stays as it is and only the patch changes.
+
+### What it does
+
+- **Every channel has a Source:** Off or In 1–32. The default is its own number (channel 3 takes In 3), so a mix that never touches the patch works as it does today.
+- **A linked pair has two sources,** one per side: the left side uses the odd channel's Source, the right side the even channel's. This is the one place where a follower channel's own setting is used while linked. Linking or unlinking doesn't change either source. A pair whose sources are swapped (In 8 left, In 7 right) is allowed.
+- **One input can feed several channels** (a split): the same vocal mic on channel 3 for the PA and on channel 20 with its own EQ and compressor for the singer's in-ear. Each channel processes its own copy.
+- **Off** makes the channel silent (as an input with nothing plugged in): the signal light stays dark, the strip still processes silence, and an RKTrigger insert on it gets silence.
+- **An input that no channel uses** goes nowhere. The patch page shows it as unused.
+
+### What follows the patch
+
+| Thing | Follows | Why |
+| --- | --- | --- |
+| The channel strip, its sends, direct out, meters, signal light | the channel's Source | they belong to the channel |
+| Gate and comp **Key** "Ch *n*" | channel *n*'s Source, after channel *n*'s trim | a key means "the kick channel", wherever the kick mic is plugged in. The key list is renamed from "In *n*" to "Ch *n*" with the channel's name. Existing mixes need no migration, because the default patch maps channel *n* to In *n* |
+| **Talkback source** | the raw input (In *n*) | the talkback mic is a physical input, often not a channel at all |
+
+### Scenes, presets, undo
+
+- **Structure, not scene:** a scene never changes the patch (the suffix `_src` joins the structure list in `MixScenes`), as with tap points and keys.
+- **Saved with the mix.** A mix saved before the patch existed loads with the default patch (no `chN_src` = its own number).
+- **Channel presets and copy/paste** never hold the Source. It's routing, as pan and keys are.
+- **Undo** covers it for free: MixUndo polls every mix setting.
+- **Reset** puts the default patch back.
+- **Factory presets** keep the default patch.
+
+### The window
+
+- **A Patch page** in the top panel, beside the Routing page. It shows 32 rows in two columns of 16. Each row has the channel number, name and colour, then its **Source** box. A Source that isn't the channel's own number is drawn in the accent colour.
+- **Input signal lights:** across the top of the Patch page, a row of 32 lights shows which raw inputs carry signal. You can see where a mic actually arrives ("the vocal is lighting In 7") and patch it there. These are measured only while the page is open, as the window's meters are.
+- **Buttons:** **Default** (channel *n* ← In *n*, after a confirmation) and **Swap** (pick two channels to exchange their sources: the usual fix when two cables are swapped).
+- **The strip:** the Source box also sits in the channel page's Trim row, so a channel can be repatched where you're already working. A repatched channel shows its source under the number on the fader strip ("← 7"), so it's visible from the faders.
+- **The console remote:** the iPad's Setup page gets the same list (Source per channel, the input lights). Source joins the structure message per channel, and the raw input peaks are sent only while that page is open.
+
+### Engine
+
+- **No new processing.** Each block the engine builds a table of 32 source pointers from the settings, either `in[source]` or a shared silent buffer for Off. Where it now passes `in + ch` (processChannel, keySignal, the pair's right side), it passes the table instead. A split reads one input twice, which is fine because `in` is read-only.
+- **Setting** `ch<n>_src`: a choice, Off / In 1–32, stored by key (`off`, `1` … `32`), appended. A change rebuilds the render plan as a structure change, because the plan's channel activity can depend on it.
+- **CPU:** none measurable (32 pointers per block). The input lights cost 32 peak scans per block, only while the Patch page is open.
+
+### Virtual soundcheck with the patch (added 2026-11-09)
+
+The user asked whether a playback track could reach more than one channel. With the patch it does, with no playback-only routing:
+
+- **Playback replaces the raw input** (In *n*), as it always did (`MixPlayback::process` writes into the inputs before the engine). Each channel then takes its Source from those inputs, so a file mapped to In 7 reaches every channel patched from In 7, exactly as the mic would at the gig. A split set up in a virtual soundcheck is one the live console can run, and the other way round.
+- **Live / PB is per input** (`inputOnPlayback`, unchanged). A channel's **PB** switch (`setChannelOnPlayback`) switches its Source input, a linked pair both sides' inputs; a channel shows PB when its input (either side's) is on Playback. So a split channel switches with its source. A channel on Off has no input to switch.
+- **The file mapping** still maps files to inputs; each item names the channels that input reaches ("In 7 > Ch 3 Vocal, 20 Vocal IEM").
+- **The recorder** still records the raw inputs (so a recording plays back through any patch). Files are named after the channel each input feeds (a linked pair's, else the first named channel, else the first; "In *n*" for an input no channel takes). Inputs *n* / *n* + 1 (*n* odd) record as one stereo file when a linked pair takes them as its left and right; with the default patch this is today's rule. `session.json` gains `patch` (each channel's Source, 0 Off). Patch changes are allowed while recording: the files are the inputs, fixed when Record was pressed.
+- **Export** runs a copy of the engine with the patch in its settings, so it exports what the console plays.
+
+### As built (2026-11-09)
+
+- `MixEngine::Channel::source`: `kOwnInput` (-1, the engine's default for tests and old callers), 0 Off, *n* In *n*. `sourceOf (ch, in)` picks the pointer (Off: a silent buffer allocated in `prepare`); `processChannel` passes `{ sourceOf (ch), sourceOf (ch + 1) }` to the strip, `keySignal` reads `sourceOf (key)`. Talkback and Monitor EQ's measuring read `in` directly. No new processing; a Source change switches at once (no crossfade: a setup action, said in the manual).
+- Setting `ch<n>_src`, choice Off / In 1–32 (keys `off`, `1` … `32`), default *n*, appended at the end of the settings. It's a channel field (`ChannelField::source`), not a strip field, so presets, copy/paste and Reset strip skip it. `_src` is structure in `MixScenes`.
+- The key choices now read "Ch *n*" (keys unchanged); the window's and the iPad's lists show the channel's name ("Key: Ch 7 Kick").
+- **Patch page** (`MixPatchPanel.cpp`, a tab between Routing and Talk / Osc; tabs narrowed to 82 px): input lights (raw inputs as they arrive, Live or Playback; `watchInputs` counts watchers, peaks measured only while one watches), "-" for an unused input, "x2" for a split; the 32 channels in **4 columns of 8** (as the Routing page's outputs, not 2 × 16); Default (confirmation) and Swap (click two channels).
+- **The Source box sits in the Channel page's header** beside the colours (a pair: L and R boxes), since the Input section has no room under the trim. The fader strip shows "3 ← 7", "5/6 ← 10/9", "← Off".
+- **The iPad:** a **Patch** tab of its own (`remote/patch.js`; the Setup page is full): the lights (`{"t":"inputs","on"}`, then `{"type":"inputs","p":[dB × 32]}` ten times a second while any iPad shows it, separate peaks from the window's), the Source boxes, Default (tap twice) and Swap. The structure message carries each channel's `src`; the Mix page's strips show the arrow too.
+
+### Tests
+
+- The default patch is bit-exact with today's engine (every existing summing test passes unchanged).
+- Swap two channels' sources: each channel's output is the other input's signal.
+- A split: two channels fed from one input, each processed separately.
+- Off: the channel is silent at every tap and in its direct out.
+- A linked pair: each side follows its own Source, including swapped sides.
+- A key "Ch *n*" follows channel *n*'s Source.
+- Talkback ignores the patch.
+- A scene recall leaves the patch alone, and undo puts a patch change back.
+- A mix without `_src` loads with the default patch.
+
+## 32 scenes, names, scene markers (built 2026-11-09)
+
+The user asked for scene names, 32 scenes, and recorder markers that mean a scene recall, followed in the virtual soundcheck and in export.
+
+- **32 scenes** (`MixScenes::kNumScenes`). The host parameter `scene` is stretched to 1–32 (same ID): the user confirmed no Gig Performer mapping uses it, so the changed normalisation breaks nothing of theirs. Program changes 0–31, OSC `/rkmix/scene` 1–32, the iPad's `{"t":"scene","n"}` 0–31. Older mixes' 16 scenes load into 1–16.
+- **Names:** `MixScenes::getName/setName` (40 characters, one line), saved in the scenes' var (`names`), not undone (names never are). Version bumps on a rename, so the window and the iPad follow. `markerLabel (n)`: "Scene n" or "Scene n Name", the recorder's marker at a recall. The structure message carries `sceneNames`.
+- **The scene bar** keeps 16 buttons (narrower, 28 px) with a bank button before them ("1-16" / "17-32", lit in the accent when the active scene is in the other bank; a recall from anywhere switches the bank to it) and the active scene's number and name after them. Right-click: Recall, Rename... (an AlertWindow), Copy to (all 32, by name), Recall scope.... The Scenes page's scene list shows names, with the picked scene's name editable beside it. The iPad: the same bank button and the name.
+- **Scene markers:** `MixScenes::sceneOfMarker`: "Scene N", optionally followed by a non-alphanumeric character and anything ("Scene 3 Hallelujah", "Scene 3: x"; not "Scene 3b"), N 1–32. Drawn in the accent on the position bar.
+- **Playback follows them** (`MixRecorderSession::pollSceneMarkers`, 30 Hz on the message thread; `followScenes` in recorder.json, default on, "Scenes follow markers" on the playback view). The scene marker in effect at the play position (the last at or before it) is tracked with the recording's folder; when it changes (playing past one, any jump, a loop seam, a rename) or Play starts, its scene is recalled if the console is on another. The first look after a load records it without recalling. A scene recalled by hand stays until the marker in effect changes. Up to 33 ms late: fine for a soundcheck.
+- **Export replays them** (`RKMixProcessor::exportMix (regions)`): `MixScenes::startReplay` (the mix as it is now, the stored scenes with the current one captured) and `replay` (what `recall` would do: store the current, a never-stored scene starts as the mix, else `applyTo` with the scope and recall-safe strips) give the scene values after each scene marker up to the last region's end. Each is turned into engine settings and levels by `readSettings` / `readLevels` under a **thread-local override** of the parameters' values (`RKMixProcessor::valueOf` / `normalisedOf` hide `ProcessorBase::valueOf`; only the message thread ever sets it, so the audio thread never sees it). The glide is sampled: up to 8 steps 25 ms or more apart, continuous values interpolated, switches at once (the engine's own 20 ms smoothing joins the steps). Changes before the first run keep only the last (its final state). `MixExport::render` starts each run in the state of the last step at or before its preroll start, and applies later steps at their exact samples (blocks split there) up to the region's end; inserts' on/off and scene-controlled knobs are set on the export's copies. Memory: about 40 KB per step.
+- **Tests:** marker parsing; export changes at the marker's sample (silence from it on, sound before), a region starting on a marker, the next region's preroll in the earlier scene, the glide, Follow off; the console's scene and faders untouched; playback recalls on a jump, not on load, not before the first scene marker, not when off, a hand-picked scene kept; names saved and in the markers; the Scene parameter reaching 32.
+
+## Key from a bus (designed 2026-11-04, not built)
+
+Today a gate or compressor key can only be another input. With a bus key, the detector can listen to a **bus**. The main use is ducking the band under speech: the "Band" group's compressor is keyed from the "Speech" group, so the band goes down by itself whenever someone talks into any of the speech mics. A single input can't do that once there's more than one speech mic.
+
+### Where a key can be set
+
+| Section | Key choices |
+| --- | --- |
+| Channel gate and comp (today's Key) | Self, Ch 1–32, **Bus 1–16** |
+| Bus comp (new Key) | Self, Ch 1–32, Bus 1–16 except itself |
+| Main comp (new Key) | Self, Ch 1–32, Bus 1–16 |
+
+- The mono sum's compressor gets no key: it is the main's sum, and the main's key already covers it.
+- Names are shown in the list ("Bus 3 Speech", "Ch 5 Kick"), as everywhere else.
+- A key carries no audio, so it can never make a routing loop, and a key from any bus is allowed. The only choice left out is a bus keying itself, which is Self.
+
+### What the key hears
+
+- **A bus key** is the bus's signal **after its inserts and mute, before its fader** (pre-fader, follows mute). Muting the speech group stops the ducking. Riding the speech fader doesn't change how much the band ducks.
+- **A stereo bus** keys from its louder side, sample by sample, as a stereo channel's detector does.
+- **A channel key** ("Ch *n*") is as today: that channel's Source after its trim.
+
+### Timing
+
+RKMix processes channels first, then Groups in ascending order, then FX buses, Aux buses, and finally the main. A key from a bus that is already done in this block is **on time**. Any other bus key has to use that bus's signal from the **previous block**:
+
+| Keyed section | On time | One block late |
+| --- | --- | --- |
+| Main comp | every bus | — |
+| Bus comp of a Group | lower-numbered Groups | higher Groups, FX, Aux buses |
+| Bus comp of an FX bus | every Group, lower-numbered FX buses | higher FX, Aux buses |
+| Bus comp of an Aux bus | Groups, FX, lower-numbered Aux buses | higher Aux buses |
+| Channel gate or comp | — | every bus |
+
+- **"One block late"** is the host's block: 2.7 ms at 128 samples and 48 kHz, 10.7 ms at 512. With a compressor attack of 10 ms or more (ducking) it isn't audible. On a gate opened by a bus, the first few milliseconds would be cut, so the manual recommends a channel key for gates.
+- **The Key box marks a late key** with a small "late" label. Its tooltip gives the delay at the current block size and sample rate.
+- **Insert latency is not compensated** for a key: a key from a bus with latent inserts arrives late by that latency too. Making up for it would delay the keyed signal itself, and a key is never worth added latency. The manual says so.
+- **The common case is on time:** a ducked "Band" Group keyed by a lower-numbered "Speech" Group, or the main keyed by any bus. Factory preset Small Band doesn't use a bus key. The manual's example puts Speech on a lower Group than Band.
+
+### Engine
+
+- **Key signal per bus, only when used:** after a bus's inserts and mute, if any key in the mix points at it, the engine writes the bus's mono key (louder side) into a ring of `maxBlock` samples. On-time readers read this block's samples. Late readers read the newest *n* samples from before this block was written (*n* = this block's length), so a block-size change never reads a gap.
+- **No key used = no cost:** the render plan lists which buses feed a key and which readers are late. Unused buses write nothing.
+- **Bus and main comp** get a `key` pointer as the channel strip's comp has (`BusDsp` processComp gains a detector input). nullptr means Self, as on channels.
+- **Settings:** `ch<n>_gate_key` / `ch<n>_comp_key` gain the choices `bus1` … `bus16` (appended keys, so saved mixes load unchanged). New settings `bus<n>_comp_key` and `main_comp_key` (default Self). All are structure, not scene, joining the `_comp_key` handling already in `MixScenes`. Copy/paste and channel presets leave keys out, as today.
+- **Bus type changes:** if a bus key's source changes type (and so its order), only its timing changes. The Key box's late mark follows.
+- **Memory:** 16 rings of `maxBlock` floats, allocated in `prepare()`.
+
+### Tests
+
+- A Group keyed by a lower Group ducks in the same block (no lag, checked by the sample position of the first gain reduction).
+- A channel keyed by a bus lags by exactly one block, for 64, 128 and 512 sample blocks, and when the block size changes between blocks.
+- Muting the key bus stops the ducking. Moving its fader doesn't change it.
+- A stereo bus key follows its louder side.
+- A bus never appears as its own key, and every other combination works.
+- Mixes saved before bus keys existed load with the same keys.
+- With no bus key in the mix, the output is bit-exact with today's engine.
+
+## Deferred to v2 (decided 2026-11-04)
+
+Talked about but not planned for now:
+
+- **Console remote phase 7:** an iPhone layout of the full console, an OSC layer (TouchOSC, hardware), a native wrapper only if needed.
+- **Virtual soundcheck:** record every input with one button, then switch each channel between live and playback.
+- **Output processing:** per-output delay, EQ and limiter for delay speakers and wedges.
+- **Ringing-out help:** a spectrum view (RTA) on a bus that highlights feedback, with one-click narrow cuts.
+- **Gain finder:** hold during soundcheck, and the trim sets itself so peaks land around −18 dBFS.
+- **Speech automixer:** gain sharing across chosen mic channels (the Dugan method).
+- **Scenes that follow RKPlay or a set list:** song-named scenes, MIDI program changes out on recall, more than 16 scenes, set lists of scenes.
+- **Meters:** loudness (LUFS) and phase correlation on the main. Also a clip memory on each channel: a light that latches when the channel clips, with the time ("clipped at 21:43"), until cleared.
+- **From "Not in v1":** mid/side input pairs, a comp-before-EQ switch, multithreaded channel processing.
+
 ## Open questions
 
 - **Accent colour** (`#6B8CA6` proposed) and window size once phase 1 is on screen.

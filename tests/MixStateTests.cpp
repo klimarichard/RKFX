@@ -1359,14 +1359,14 @@ public:
             send ("/rkmix/clear");
             expect (osc.getNow().isEmpty(), "cleared");
 
-            // Scenes 1 to 16, as the window numbers them (an int, a float or text).
+            // Scenes 1 to 32, as the window numbers them (an int, a float or text).
             send ("/rkmix/scene", 3);
             expectEquals (p.getScenes().getCurrent(), 2);
             send ("/rkmix/scene", 5.0f);
             expectEquals (p.getScenes().getCurrent(), 4);
             send ("/rkmix/scene", juce::String ("2"));
             expectEquals (p.getScenes().getCurrent(), 1);
-            send ("/rkmix/scene", 17);
+            send ("/rkmix/scene", 33);
             send ("/rkmix/scene", 0);
             expectEquals (p.getScenes().getCurrent(), 1, "out of range: nothing");
 
@@ -1679,6 +1679,155 @@ public:
             expect (p.findParam ("ch_fader_32") != nullptr && p.findParam ("bus_mute_16") != nullptr
                     && p.findParam ("mono_mute") != nullptr && p.findParam ("assign32") != nullptr
                     && p.findParam ("scene") != nullptr && p.findParam ("talk") != nullptr);
+        }
+
+        beginTest ("Markers from Gig Performer: a new rackspace or song name while recording; merged with a scene recall; /rkmix/marker");
+        {
+            juce::TemporaryFile temp;
+            const auto root = temp.getFile();
+            RKMixProcessor p;
+            p.getRemote().setSettingsFileForTesting (root.getChildFile ("remote.json"));
+            auto& osc = p.getRemote().getOsc();
+            osc.setEnabled (true);
+            auto& rec = p.getRecorder();
+            rec.setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            rec.setRootFolder (root.getChildFile ("Recordings"));
+            rec.setNameMarkers (true);
+            auto& s = p.getSettings();
+            for (int ch = 1; ch < 32; ++ch)
+                setParam (s.param (mix::recordInputId (ch)), 0.0f);
+            setParam (s.param ("scene_glide"), 0.0f);
+            p.prepareToPlay (48000.0, 128);
+            const auto send = [&osc] (const char* address, auto... args)
+            {
+                osc.handle (juce::OSCMessage (juce::OSCAddressPattern (address), args...));
+            };
+
+            send ("/rkmix/now", juce::String ("Before"));          // not recording: nothing
+            expect (rec.start().wasOk(), rec.getStatus());
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Hallelujah"), juce::String ("Intro"));
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Hallelujah"), juce::String ("Verse"));   // a variation: no marker
+            run (p, 400);
+            p.recallScene (2);                                     // the rackspace recalls a scene, then its name comes
+            send ("/rkmix/now", juce::String ("Ballad"));
+            run (p, 10);
+            send ("/rkmix/now", juce::String ("Rock"));             // the name first, then the scene
+            run (p, 50);
+            p.recallScene (4);
+            run (p, 10);
+            p.recallScene (1);
+            run (p, 400);                                          // over a second later: apart (the test's take holds 4 s)
+            send ("/rkmix/now", juce::String ("Finale"));
+            run (p, 10);
+            send ("/rkmix/marker", juce::String ("Solo"));
+            send ("/rkmix/marker");
+            run (p, 10);
+            rec.setNameMarkers (false);
+            send ("/rkmix/now", juce::String ("Encore"));          // off: nothing
+            rec.setNameMarkers (true);
+            send ("/rkmix/clear");                                 // no name: nothing
+            run (p, 10);
+            rec.stop();
+
+            const auto takes = root.getChildFile ("Recordings").findChildFiles (juce::File::findDirectories, false);
+            expectEquals (takes.size(), 1);
+            juce::StringArray labels;
+            const auto session = takes.size() == 1 ? juce::JSON::parse (takes[0].getChildFile ("session.json")) : juce::var();
+            if (const auto* markers = session["markers"].getArray())
+                    for (const auto& m : *markers)
+                        labels.add (m["label"].toString());
+            expectEquals (labels.joinIntoString ("|"), juce::String ("Hallelujah|Scene 3 Ballad|Scene 5 Rock|Scene 2|Finale|Solo|Marker 1"));
+            expectEquals (MixScenes::sceneOfMarker (labels[1]), 2, "a merged marker is still a scene marker");
+            root.deleteRecursively();
+        }
+
+        beginTest ("Input patch: reaches the audio; kept in the session; old mixes default; scenes, copy/paste and presets leave it");
+        {
+            RKMixProcessor p;
+            p.prepareToPlay (48000.0, 128);
+            auto& s = p.getSettings();
+            expect (! p.isPatched());
+            expectEquals (p.getChannelInput (4), 4, "channel 5 takes In 5 by default");
+
+            // Input 1 carries the signal (see run): channel 1 Off, channel 6 on In 1.
+            p.setChannelInput (0, -1);
+            p.setChannelInput (5, 0);
+            expect (p.isPatched());
+            expectEquals (p.getChannelInput (0), -1);
+            expect (p.channelsOfInput (0) == juce::Array<int> { 5 });
+            setParam (s.param (mix::channelId (5, "pan")), -100.0f);
+            const auto b = run (p, 40);
+            expectGreaterThan (b.getMagnitude (0, 0, 128), 0.3f, "In 1 through channel 6, panned left");
+            expectLessThan (b.getMagnitude (1, 0, 128), 1.0e-4f, "channel 1 Off: nothing on the right");
+
+            // The session keeps it; a mix without it loads with the default patch.
+            juce::MemoryBlock state;
+            p.getStateInformation (state);
+            RKMixProcessor q;
+            q.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (q.getChannelInput (0), -1);
+            expectEquals (q.getChannelInput (5), 0);
+            auto old = s.toVar();
+            if (auto* o = old.getDynamicObject())
+                for (int ch = 0; ch < 32; ++ch)
+                    o->removeProperty (juce::Identifier (mix::channelId (ch, "src")));
+            q.getSettings().fromVar (old);
+            expect (! q.isPatched(), "a mix saved before the patch: the default");
+
+            // A scene never changes it.
+            setParam (s.param ("scene_glide"), 0.0f);
+            p.recallScene (1);
+            p.setChannelInput (5, 9);
+            p.recallScene (0);
+            expectEquals (p.getChannelInput (5), 9, "structure: it stays");
+
+            // Copy and paste of the whole strip, Reset strip: the source stays.
+            p.pasteChannel (7, p.copyChannel (5, RKMixProcessor::Section::whole));
+            expectEquals (p.getChannelInput (7), 7, "paste doesn't move the source");
+            p.resetChannelStrip (5);
+            expectEquals (p.getChannelInput (5), 9, "Reset strip keeps it");
+
+            // Default puts it all back.
+            p.setDefaultPatch();
+            expect (! p.isPatched());
+        }
+
+        beginTest ("Input patch: PB switches the channel's input (so a split follows); the recorder names inputs by their channel");
+        {
+            juce::TemporaryFile temp;
+            const auto root = temp.getFile();
+            RKMixProcessor p;
+            auto& s = p.getSettings();
+            p.setChannelInput (2, 6);              // the vocal on In 7: channel 3 for the PA...
+            p.setChannelInput (19, 6);             // ...and channel 20 for the in-ear
+            p.setChannelName (2, "Vocal");
+            p.setChannelOnPlayback (2, true);
+            expect (p.isInputOnPlayback (6) && ! p.isInputOnPlayback (2), "its input, In 7, not In 3");
+            expect (p.isChannelOnPlayback (19), "the split channel plays back with it");
+            p.setChannelOnPlayback (19, false);
+            expect (! p.isChannelOnPlayback (2));
+
+            // A linked pair on In 9/10 as its two sides: one stereo file named after it.
+            setParam (s.param (mix::linkId (5)), 1.0f);      // channels 11/12
+            p.setChannelInput (10, 8);
+            p.setChannelInput (11, 9);
+            p.setChannelName (10, "Keys");
+            p.setChannelOnPlayback (10, true);
+            expect (p.isInputOnPlayback (8) && p.isInputOnPlayback (9));
+            p.setAllInputsLive();
+
+            auto& rec = p.getRecorder();
+            rec.setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            juce::StringArray tracks;
+            for (const auto& t : rec.makeTake().tracks)
+                tracks.add (t.fileName);
+            expect (tracks.contains ("07 Vocal.wav"), tracks.joinIntoString (", "));
+            expect (tracks.contains ("09-10 Keys.wav"), tracks.joinIntoString (", "));
+            expect (tracks.contains ("03 In 3.wav"), "an input no channel takes keeps its number");
+            expect (tracks.contains ("11 In 11.wav") && tracks.contains ("12 In 12.wav"), "the pair's own inputs are mono now");
+            root.deleteRecursively();
         }
     }
 };

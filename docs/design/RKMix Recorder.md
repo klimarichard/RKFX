@@ -67,6 +67,13 @@ Linking or unlinking a pair while recording would leave a file that no longer ma
 - **A session restored by the host** while recording (Gig Performer reloading the gig, `setStateInformation`) can't be refused. The take then ends and a new one starts in a new folder on the same block (no samples lost between them), with the new mix's links. Both takes' `session.json` note the split.
 - **The console remote** (iPad): Record / Stop (Stop with a confirmation), elapsed time, dropouts, Marker.
 
+### Markers from Gig Performer (built 2026-11-09)
+
+- While recording, a new **first line** from Names by OSC (`MixOsc::setNow`: the title changed and isn't empty) calls `MixRecorderSession::showNameChanged`, which adds a marker named after it: a new rackspace, or a song in the setlist. The second line (variation, song part) never adds one. Needs Names by OSC on; the gig script is unchanged.
+- **Merged with a scene recall:** a rackspace change that also recalls a scene (`/rkmix/scene`, or anything else) gives two events in either order. Within `kMergeSeconds` (1 s, measured in the take's samples) the second renames the first (`MixRecorder::renameLastMarker`) to "Scene N <name>", so it stays a scene marker and carries the song's name. Any other marker in between (Marker button, host parameter, `/rkmix/marker`) ends the pairing.
+- `/rkmix/marker "name"` adds a marker (empty: "Marker n"), always, while recording.
+- **Markers from Gig Performer** (Recorder page, `nameMarkers` in recorder.json, default on) switches the automatic ones off.
+
 ## Virtual soundcheck (playback)
 
 ### Loading
@@ -74,6 +81,7 @@ Linking or unlinking a pair while recording would leave a file that no longer ma
 On the Recorder page, **Playback: Load...** picks a recording folder (it reads `session.json`; a folder of plain WAVs without one is accepted too, mapped by the number at the start of each name, else in order). It shows the length, the markers, and how each file maps to inputs (editable: drag a file to another input).
 
 - **Each channel of a file feeds one input:** a mono file one input, a stereo file two neighbouring inputs (left to the odd one, right to the even one). A stereo file can only be dropped on an odd input, so its two sides land on a pair.
+- **An input reaches every channel patched from it** (added 2026-11-09 with the input patch, see RKMix.md): playback replaces the raw input, so one file can feed several channels (a split), and PB switches a channel's Source input.
 - The mix's links don't have to match the recording: a stereo file still plays into two inputs that are now unlinked (each side into its own channel), and two mono files into a pair that is now linked.
 - A plain WAV without `session.json`: a stereo file takes two inputs, from the number its name starts with.
 

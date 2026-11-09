@@ -24,18 +24,52 @@
     starts on the marker's sample. After the region the inputs go silent and
     the tail rings for up to 3 s, cut where it falls under -70 dB and faded
     over 20 ms. The main is taken after its limiter (where the recorder takes
-    it). A cancelled or failed file leaves nothing behind. */
+    it). A cancelled or failed file leaves nothing behind.
+
+    Scene markers ("Scene N"): the mix can change on the way, as the console
+    did at the gig. Each change is a few steps (a recall's glide, sampled),
+    worked out on the message thread from the scenes (MixScenes::replay); the
+    run starts in the state of the last change before it, and applies the
+    later ones at their samples, up to the region's end (the tail rings in
+    the region's last scene). */
 class MixExport : private juce::Thread
 {
 public:
     static constexpr double kPreRollSeconds = 2.0, kMaxTailSeconds = 3.0, kTailFloorDb = -70.0, kTailFadeMs = 20.0;
     static constexpr int kBlock = 512;
 
-    /** The mix to export through (made on the message thread). */
-    struct Mix
+    /** The mix at one moment: the engine's settings and levels, the inserts' on/off and scene-controlled knobs. */
+    struct State
     {
         MixEngine::Settings settings;
         MixEngine::Levels levels;
+        std::array<bool, InsertRack::kTotalSlots> insertOn {};
+        std::vector<float> knobs;                // normalised, by Mix::knobs
+    };
+
+    /** A scene marker's recall: steps[k] from sample at + k * stepSamples of the recording. */
+    struct Change
+    {
+        juce::int64 at = 0;
+        int stepSamples = 0;
+        std::vector<State> steps;
+    };
+
+    struct KnobRef
+    {
+        int slot = 0;                            // InsertRack flat index
+        juce::String paramId;
+    };
+
+    /** The mix to export through (made on the message thread). */
+    struct Mix
+    {
+        MixEngine::Settings settings;            // as it is now (until the first change)
+        MixEngine::Levels levels;
+        std::array<bool, InsertRack::kTotalSlots> insertOn {};
+        std::vector<float> knobs;
+        std::vector<KnobRef> knobRefs;           // the scene-controlled insert knobs
+        std::vector<Change> changes;             // in time order
         std::unique_ptr<InsertRack> inserts;     // a copy of the console's, or nullptr
         double bpm = 120.0;                      // for tempo-synced inserts
     };

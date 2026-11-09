@@ -395,6 +395,151 @@ public:
             expect (exports.getChildFile ("Scene 2 (2).wav").existsAsFile(), "a second export doesn't overwrite the first");
         }
 
+        beginTest ("Scene markers: \"Scene N\" (with or without a name) and nothing else");
+        {
+            expectEquals (MixScenes::sceneOfMarker ("Scene 3"), 2);
+            expectEquals (MixScenes::sceneOfMarker ("Scene 12 Hallelujah"), 11);
+            expectEquals (MixScenes::sceneOfMarker ("scene 32: Encore"), 31);
+            expectEquals (MixScenes::sceneOfMarker ("Scene 33"), -1);
+            expectEquals (MixScenes::sceneOfMarker ("Scene 0"), -1);
+            expectEquals (MixScenes::sceneOfMarker ("Scene 3b"), -1);
+            expectEquals (MixScenes::sceneOfMarker ("Scenes 3"), -1);
+            expectEquals (MixScenes::sceneOfMarker ("Marker 1"), -1);
+        }
+
+        // A mix whose scenes 2 and 3 mute and open the vocal (In 1 only: the keys are down in every scene).
+        const auto sceneMix = [this, folder, root] (RKMixProcessor& m, float glideMs, bool follow)
+        {
+            m.getRecorder().setSettingsFileForTesting (root.getChildFile ("recorder.json"));
+            m.getRecorder().setFollowScenes (follow);
+            auto& s = m.getSettings();
+            setParam (s.param ("scene_glide"), glideMs);
+            setParam (*m.findParam (mix::channelFaderId (2)), mix::kFaderMinDb);
+            setParam (*m.findParam (mix::channelFaderId (3)), mix::kFaderMinDb);
+            m.recallScene (1);                                                     // Scene 2: the vocal down
+            setParam (*m.findParam (mix::channelFaderId (0)), mix::kFaderMinDb);
+            m.recallScene (2);                                                     // Scene 3: up again
+            setParam (*m.findParam (mix::channelFaderId (0)), 0.0f);
+            m.recallScene (0);                                                     // back in Scene 1, the vocal up
+            m.getScenes().cancelGlides();
+            setParam (*m.findParam (mix::channelFaderId (0)), 0.0f);
+            m.prepareToPlay (kRate, kBlock);
+            expect (m.getPlayback().load (MixPlayback::scan (folder), kRate).wasOk());
+        };
+        const auto exported = [this, root] (RKMixProcessor& m, MixExport::Region region)
+        {
+            auto mixCopy = m.exportMix ({ region });
+            const auto file = root.getChildFile ("scenes " + juce::String (juce::Random::getSystemRandom().nextInt()) + ".wav");
+            expect (MixExport::render (mixCopy, m.getPlayback().getRecording(), region, file, true).wasOk());
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+            juce::AudioBuffer<float> got (2, (int) (region.end - region.start));
+            got.clear();
+            if (reader != nullptr)
+                reader->read (&got, 0, got.getNumSamples(), 0, true, true);
+            return got;
+        };
+        const auto peakOf = [] (const juce::AudioBuffer<float>& b, int from, int to)
+        {
+            return juce::jmax (b.getMagnitude (0, from, to - from), b.getMagnitude (1, from, to - from));
+        };
+
+        beginTest ("Export follows the scene markers: the mix changes at the marker; the console stays as it is");
+        {
+            RKMixProcessor m;
+            sceneMix (m, 0.0f, true);
+            const auto first = exported (m, { 0, 48000, "Scene 1" });
+            expectGreaterThan (peakOf (first, 1000, 23000), 0.1f, "Scene 1: the vocal up");
+            expectLessThan (peakOf (first, 25500, 48000), 1.0e-4f, "from the Scene 2 marker on: down");
+            expectGreaterThan (peakOf (first, 23000, 24000), 0.1f, "not before the marker");
+
+            // A region starting on the marker: its preroll in Scene 1, Scene 2 from its first sample.
+            const auto second = exported (m, { 24000, 48000, "Scene 2" });
+            expectLessThan (peakOf (second, 1500, 24000), 1.0e-4f, "Scene 2 all the way");
+            const auto third = exported (m, { 48000, 72000, "Scene 3" });
+            expectGreaterThan (peakOf (third, 1500, 24000), 0.1f, "Scene 3: up again (its preroll in Scene 2)");
+
+            expectEquals (m.getScenes().getCurrent(), 0, "the console's scene untouched");
+            expectWithinAbsoluteError (rkfx::ProcessorBase::valueOf (m.findParam (mix::channelFaderId (0))), 0.0f, 0.01f, "and its fader");
+        }
+
+        beginTest ("Export with the scene glide: the change glides; Scenes follow markers off: the mix as it is");
+        {
+            RKMixProcessor glide;
+            sceneMix (glide, 100.0f, true);
+            const auto g = exported (glide, { 0, 48000, "Glide" });
+            expectGreaterThan (peakOf (g, 24000, 24000 + 1200), 0.05f, "still sounding early in the 100 ms glide");
+            expectLessThan (peakOf (g, 24000 + 6500, 48000), 1.0e-4f, "down after it");
+
+            RKMixProcessor off;
+            sceneMix (off, 0.0f, false);
+            const auto o = exported (off, { 0, 48000, "Off" });
+            expectGreaterThan (peakOf (o, 30000, 48000), 0.1f, "no scene change");
+        }
+
+        beginTest ("Playback follows the scene markers: passing or jumping to one recalls its scene; loading recalls nothing");
+        {
+            RKMixProcessor m;
+            sceneMix (m, 0.0f, true);
+            auto& rec = m.getRecorder();
+            auto& pb = m.getPlayback();
+            juce::AudioBuffer<float> b (32, kBlock);
+            juce::MidiBuffer midi;
+            const auto settle = [&]
+            {
+                for (int n = 0; n < 400 && (pb.needsAudio() || pb.isLocating()); ++n)
+                {
+                    b.clear();
+                    m.processBlock (b, midi);
+                    pb.waitUntilReady (20);
+                }
+                expect (! pb.isLocating(), "located");
+                b.clear();
+                m.processBlock (b, midi);
+                rec.pollSceneMarkers();
+            };
+            rec.pollSceneMarkers();
+            expectEquals (m.getScenes().getCurrent(), 0, "loaded: nothing recalled");
+            pb.locate (30000);
+            settle();
+            expectEquals (m.getScenes().getCurrent(), 1, "jumped past Scene 2");
+            pb.locate (50000);
+            settle();
+            expectEquals (m.getScenes().getCurrent(), 2, "past Scene 3");
+            m.recallScene (4);
+            rec.pollSceneMarkers();
+            expectEquals (m.getScenes().getCurrent(), 4, "a scene chosen by hand stays until the next marker");
+            pb.locate (1000);
+            settle();
+            expectEquals (m.getScenes().getCurrent(), 4, "before any scene marker: nothing");
+            rec.setFollowScenes (false);
+            pb.locate (30000);
+            settle();
+            expectEquals (m.getScenes().getCurrent(), 4, "off: nothing");
+        }
+
+        beginTest ("32 scenes with names: kept in the session; a recall's marker carries the name; the Scene parameter reaches 32");
+        {
+            RKMixProcessor a;
+            a.getScenes().setName (19, "  Hallelujah\n");
+            expectEquals (a.getScenes().getName (19), juce::String ("Hallelujah"));
+            expectEquals (a.getScenes().markerLabel (19), juce::String ("Scene 20 Hallelujah"));
+            expectEquals (MixScenes::sceneOfMarker (a.getScenes().markerLabel (19)), 19);
+            expectEquals (a.getScenes().markerLabel (3), juce::String ("Scene 4"));
+            a.recallScene (31);
+            expectEquals (a.getScenes().getCurrent(), 31);
+            expectEquals (juce::roundToInt (rkfx::ProcessorBase::valueOf (a.findParam ("scene"))), 32);
+            juce::MemoryBlock state;
+            a.getStateInformation (state);
+            RKMixProcessor b;
+            b.setStateInformation (state.getData(), (int) state.getSize());
+            expectEquals (b.getScenes().getName (19), juce::String ("Hallelujah"));
+            expectEquals (b.getScenes().getCurrent(), 31);
+            setParam (*b.findParam ("scene"), 20.0f);
+            expectEquals (b.getScenes().getCurrent(), 19, "the host parameter recalls scene 20");
+        }
+
         root.deleteRecursively();
     }
 

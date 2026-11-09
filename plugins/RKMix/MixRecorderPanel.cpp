@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
 #include "MixEditorStyle.h"
+#include "MixOsc.h"
 
 #include <optional>
 
@@ -63,7 +64,8 @@ struct RKMixEditor::RecorderPanel::PositionBar : public juce::Component
             const auto x = xOf (markers[i].at);
             // A label stops short of the next marker (the list shows the whole name).
             const auto room = juce::jmin (90.0f, (i + 1 < markers.size() ? xOf (markers[i + 1].at) : r.getRight()) - x - 4.0f);
-            g.setColour (rkfx::Palette::textDim);
+            // A scene marker (it recalls its scene, and export follows it): in the accent colour.
+            g.setColour (MixScenes::sceneOfMarker (markers[i].label) >= 0 ? panel.owner.accent().brighter (0.4f) : rkfx::Palette::textDim);
             g.drawVerticalLine ((int) x, 12.0f, r.getBottom());
             if (room > 8.0f)
                 g.drawText (markers[i].label, juce::Rectangle<float> (x + 2.0f, 0.0f, room, 14.0f), juce::Justification::centredLeft, true);
@@ -269,7 +271,8 @@ struct RKMixEditor::RecorderPanel::MarkerList : public juce::Component, private 
                                                     "The selected markers sit on the same spot: there is nothing between them.");
             return;
         }
-        console.getExport().start (console.exportMix(), p.getRecording(), std::move (regions), exportFolder(), console.getRecorder().isFloat());
+        auto mixToExport = console.exportMix (regions);   // with the scene markers on the way
+        console.getExport().start (std::move (mixToExport), p.getRecording(), std::move (regions), exportFolder(), console.getRecorder().isFloat());
         shownExportVersion = -1;
         update (true);
     }
@@ -550,6 +553,7 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
     float32.onClick = [this] { owner.mixer.getRecorder().setFloat (true); refresh(); };
     pairsMono.onClick = [this] { auto& r = owner.mixer.getRecorder(); r.setPairsAsMono (! r.getPairsAsMono()); refresh(); };
     pairsMono.setTooltip ("A linked pair as two mono files (L and R) instead of one stereo file, for a DAW that prefers mono tracks");
+    gpMarkers.onClick = [this] { auto& r = owner.mixer.getRecorder(); r.setNameMarkers (! r.getNameMarkers()); refresh(); };
     int24.setTooltip ("This computer's format for new recordings");
     float32.setTooltip ("This computer's format for new recordings: never clips, a third larger");
 
@@ -562,7 +566,7 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
     allInputs.onClick = [setAll] { setAll (true); };
     noInputs.onClick = [setAll] { setAll (false); };
 
-    for (auto* b : { &recordButton, &markerButton, &folderButton, &showButton, &int24, &float32, &pairsMono, &allInputs, &noInputs })
+    for (auto* b : { &recordButton, &markerButton, &folderButton, &showButton, &int24, &float32, &pairsMono, &gpMarkers, &allInputs, &noInputs })
         addAndMakeVisible (*b);
 
     for (int ch = 0; ch < kChannels; ++ch)
@@ -630,8 +634,18 @@ RKMixEditor::RecorderPanel::RecorderPanel (RKMixEditor& o) : Panel (o)
         list->update (true);
         list->list.selectRow (index);
     };
+    followScenesButton.setClickingTogglesState (false);
+    followScenesButton.setColour (juce::TextButton::buttonOnColourId, owner.accent());
+    followScenesButton.setTooltip ("A marker named \"Scene N\" (\"Scene 3\", \"Scene 3 Chorus\") recalls scene N when playback passes it, "
+                                   "and a jump recalls the scene in effect where it lands. Export follows them too. This computer's setting");
+    followScenesButton.onClick = [this]
+    {
+        auto& r = owner.mixer.getRecorder();
+        r.setFollowScenes (! r.getFollowScenes());
+        refresh();
+    };
     for (auto* b : { &loadButton, &unloadButton, &useNames, &allPlayback, &allLive, &playButton, &stopButton, &prevMarker, &nextMarker, &loopButton,
-                     &back60, &back10, &ahead10, &ahead60, &addMarkerHere })
+                     &back60, &back10, &ahead10, &ahead60, &addMarkerHere, &followScenesButton })
         addChildComponent (*b);
     bar = std::make_unique<PositionBar> (*this);
     addChildComponent (*bar);
@@ -660,7 +674,7 @@ void RKMixEditor::RecorderPanel::showView (bool playback)
         c->setVisible (! playback);
     for (auto* c : std::initializer_list<juce::Component*> { &loadButton, &unloadButton, &useNames, &allPlayback, &allLive, &playButton,
                                                             &stopButton, &prevMarker, &nextMarker, &loopButton, bar.get(),
-                                                            &back60, &back10, &ahead10, &ahead60, &addMarkerHere,
+                                                            &back60, &back10, &ahead10, &ahead60, &addMarkerHere, &followScenesButton,
                                                             markerList.get(), &mappingView })
         c->setVisible (playback);
     refresh();
@@ -693,6 +707,21 @@ bool RKMixEditor::RecorderPanel::canEditMarkers() const
     return p.isLoaded() && ! owner.isLocked() && ! (rec.isRecording() && rec.getTakeFolder() == p.getRecording().folder);
 }
 
+juce::String RKMixEditor::RecorderPanel::inputChannels (int input) const
+{
+    // The input patch: the channels an input feeds ("  > 3 Vocal, 20 Vocal IEM").
+    juce::StringArray names;
+    for (const auto ch : owner.mixer.channelsOfInput (input))
+    {
+        if (ch % 2 == 1 && owner.mixer.isLinked (ch / 2) && owner.mixer.getChannelInput (ch - 1) == input - 1)
+            continue;   // the right side of a pair already listed
+        const auto leader = ch % 2 == 1 && owner.mixer.isLinked (ch / 2) ? ch - 1 : ch;
+        const auto n = owner.mixer.getChannelName (leader);
+        names.add (num (leader) + (n.isNotEmpty() ? " " + n : juce::String()));
+    }
+    return names.isEmpty() ? juce::String ("  (no channel)") : "  > Ch " + names.joinIntoString (", ");
+}
+
 void RKMixEditor::RecorderPanel::rebuildMapping()
 {
     for (auto& m : mapping)
@@ -707,10 +736,10 @@ void RKMixEditor::RecorderPanel::rebuildMapping()
         box->addItem ("Off", 1);
         if (f.numChannels == 1)
             for (int in = 0; in < kChannels; ++in)
-                box->addItem ("In " + num (in), 2 + in);
+                box->addItem ("In " + num (in) + inputChannels (in), 2 + in);
         else if (f.numChannels == 2)
             for (int in = 0; in < kChannels; in += 2)
-                box->addItem ("In " + num (in) + "/" + num (in + 1), 2 + in);
+                box->addItem ("In " + num (in) + "/" + num (in + 1) + inputChannels (in), 2 + in);
         box->setSelectedId (f.inputs.empty() || f.inputs[0] < 0 ? 1 : 2 + f.inputs[0], juce::dontSendNotification);
         box->setTooltip (f.file.getFileName() + (f.role.isNotEmpty() ? " (recorded " + f.role + ", not an input)" : juce::String()));
         box->onChange = [this, i, raw = box.get()]
@@ -751,6 +780,11 @@ void RKMixEditor::RecorderPanel::refresh()
     int24.setToggleState (! rec.isFloat(), juce::dontSendNotification);
     float32.setToggleState (rec.isFloat(), juce::dontSendNotification);
     pairsMono.setToggleState (rec.getPairsAsMono(), juce::dontSendNotification);
+    gpMarkers.setToggleState (rec.getNameMarkers(), juce::dontSendNotification);
+    gpMarkers.setTooltip (juce::String ("While recording, a marker named after each new rackspace (or song in the setlist) that Gig Performer sends "
+                                        "by OSC; with a scene recalled at the same time, one marker: \"Scene 3 <name>\". This computer's setting.")
+                          + (owner.mixer.getRemote().getOsc().isEnabled() ? juce::String()
+                                                                           : "\nNames by OSC are off now: switch them on on the Remote page."));
 
     // What a take records is fixed when Record is pressed.
     for (auto* c : std::initializer_list<juce::Component*> { &int24, &float32, &pairsMono, &folderButton, &allInputs, &noInputs, mainSwitch })
@@ -771,6 +805,7 @@ void RKMixEditor::RecorderPanel::refresh()
                      &back60, &back10, &ahead10, &ahead60 })
         b->setEnabled (loaded);
     addMarkerHere.setEnabled (canEditMarkers());
+    followScenesButton.setToggleState (rec.getFollowScenes(), juce::dontSendNotification);
     useNames.setEnabled (loaded && ! pb.getRecording().names.isEmpty());
     if (! loaded && ! mapping.empty())
     {
@@ -849,6 +884,8 @@ void RKMixEditor::RecorderPanel::resized()
     float32.setBounds (formatRow.removeFromLeft (110));
     c.removeFromTop (8);
     pairsMono.setBounds (c.removeFromTop (26).removeFromLeft (200));
+    c.removeFromTop (6);
+    gpMarkers.setBounds (c.removeFromTop (26).removeFromLeft (230));
 
     // The view buttons, top right of the right side.
     {
@@ -887,6 +924,8 @@ void RKMixEditor::RecorderPanel::resized()
             nav.removeFromLeft (4);
         }
         addMarkerHere.setBounds (nav.removeFromRight (130));
+        nav.removeFromRight (8);
+        followScenesButton.setBounds (nav.removeFromRight (170));
         pbArea.removeFromTop (4);
         bar->setBounds (pbArea.removeFromTop (40));
         pbArea.removeFromTop (8);

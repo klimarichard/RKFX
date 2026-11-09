@@ -1354,6 +1354,137 @@ public:
             const auto ra = block (plain, 40 * kBlock), rb = block (e, 40 * kBlock);
             expectEquals (maxError (rb, 2, [&ra] (int i) { return ra.outSample (2, i); }), 0.0f);
         }
+
+        //======================================================================
+        // The input patch
+        const auto exactOn = [] (const Run& r, int outCh, const std::function<float (int)>& expected)
+        {
+            for (int i = 0; i < kBlock; ++i)
+                if (! juce::exactlyEqual (r.outSample (outCh, i), expected (i)))
+                    return false;
+            return true;
+        };
+
+        beginTest ("Patch: every channel on its own number is bit-exact with the default");
+        {
+            auto plain = only ({ 0, 3, 4 });
+            plain.links[2] = true;
+            plain.channels[0].strip.comp.on = true;
+            plain.channels[0].strip.comp.key = 4;
+            auto patched = plain;
+            for (int ch = 0; ch < kChannels; ++ch)
+                patched.channels[(size_t) ch].source = ch + 1;
+            auto a = makeEngine (plain), b = makeEngine (patched);
+            for (int n = 0; n < 4; ++n)
+            {
+                const auto ra = block (a, n * kBlock), rb = block (b, n * kBlock);
+                for (int out = 0; out < 2; ++out)
+                    expect (exactOn (rb, out, [&ra, out] (int i) { return ra.outSample (out, i); }), "block " + juce::String (n));
+            }
+        }
+
+        beginTest ("Patch: two channels swapped take each other's input");
+        {
+            auto s = only ({});
+            s.channels[0].source = 6;                         // channel 1 <- In 6
+            s.channels[5].source = 1;                         // channel 6 <- In 1
+            s.channels[0].directOut = 3;
+            s.channels[5].directOut = 4;
+            auto e = makeEngine (s);
+            const auto r = block (e);
+            expect (exactOn (r, 2, [&r] (int i) { return r.inSample (5, i); }), "channel 1 carries In 6");
+            expect (exactOn (r, 3, [&r] (int i) { return r.inSample (0, i); }), "channel 6 carries In 1");
+        }
+
+        beginTest ("Patch: a split, one input on two channels, each processed on its own");
+        {
+            auto s = only ({});
+            s.channels[2].source = 3;                         // the vocal, In 3, for the PA
+            s.channels[19].source = 3;                        // and again on channel 20 for the in-ear
+            s.channels[2].directOut = 1;
+            s.channels[19].directOut = 2;
+            s.channels[19].directTap = mix::Tap::preFader;
+            s.channels[19].strip.trimDb = -6.0f;
+            auto e = makeEngine (s);
+            const auto r = block (e);
+            expect (exactOn (r, 0, [&r] (int i) { return r.inSample (2, i); }), "channel 3 as it comes");
+            const auto g = juce::Decibels::decibelsToGain (-6.0f);
+            expectLessThan (maxError (r, 1, [&r, g] (int i) { return g * r.inSample (2, i); }), 1.0e-6f, "channel 20: the same input, its own trim");
+        }
+
+        beginTest ("Patch: Off is silent at every tap and in its direct out");
+        {
+            auto s = only ({ 4 });
+            s.channels[4].source = 0;
+            s.channels[4].directOut = 3;
+            s.buses[0].output = 4;
+            s.buses[0].stereo = false;
+            s.channels[4].sendDb[0] = 0.0f;
+            auto e = makeEngine (s);
+            const auto r = block (e);
+            for (int out = 0; out < 4; ++out)
+                expectEquals (peak (r, out), 0.0f);
+        }
+
+        beginTest ("Patch: a linked pair, each side its own Source, swapped sides too");
+        {
+            auto s = only ({});
+            s.links[3] = true;                                // channels 7/8
+            s.channels[6].source = 12;                        // left <- In 12
+            s.channels[7].source = 11;                        // right <- In 11
+            s.channels[6].directOut = mix::pairTarget (2);    // Out 3/4
+            auto e = makeEngine (s);
+            const auto r = block (e);
+            expect (exactOn (r, 2, [&r] (int i) { return r.inSample (11, i); }), "left: In 12");
+            expect (exactOn (r, 3, [&r] (int i) { return r.inSample (10, i); }), "right: In 11");
+        }
+
+        beginTest ("Patch: a key Ch n follows channel n's Source; talkback takes the raw input");
+        {
+            // Channel 1's gate keyed by channel 6, which takes In 9: In 9 opens it, In 6 doesn't.
+            const auto run = [] (MixEngine& e, int loudInput)
+            {
+                juce::AudioBuffer<float> in (kChannels, kBlock), out (kChannels, kBlock);
+                float loudest = 0.0f;
+                for (int b = 0; b < 40; ++b)
+                {
+                    in.clear();
+                    for (int i = 0; i < kBlock; ++i)
+                    {
+                        const auto x = (float) std::sin (2.0 * juce::MathConstants<double>::pi * 220.0 * (b * kBlock + i) / kRate);
+                        in.setSample (0, i, 0.01f * x);
+                        in.setSample (loudInput, i, 0.3f * x);
+                    }
+                    e.process (in.getArrayOfReadPointers(), out.getArrayOfWritePointers(), kBlock, false);
+                    if (b >= 30)
+                        loudest = juce::jmax (loudest, out.getMagnitude (0, 0, kBlock));
+                }
+                return loudest;
+            };
+            auto s = only ({ 0 });
+            s.channels[0].strip.gate.on = true;
+            s.channels[0].strip.gate.thresholdDb = -30.0f;
+            s.channels[0].strip.gate.key = 6;
+            s.channels[5].source = 9;
+            auto e = makeEngine (s);
+            expectGreaterThan (run (e, 8), 0.004f, "In 9 (channel 6's Source) opens it");
+            e = makeEngine (s);
+            expectLessThan (run (e, 5), 3.0e-4f, "In 6 no longer does");
+
+            auto t = only ({});
+            t.buses[0] = {};
+            t.buses[0].stereo = false;
+            t.buses[0].output = 3;
+            t.monitor.talkSource = 6;                         // the raw In 6
+            t.channels[5].source = 0;                         // channel 6 is Off
+            MixEngine::Levels levels;
+            levels.talk = true;
+            auto talk = makeEngine (t, levels);
+            float loudest = 0.0f;
+            for (int b = 0; b < 20; ++b)
+                loudest = juce::jmax (loudest, peak (block (talk, b * kBlock, { 5 }), 2));
+            expectGreaterThan (loudest, 0.3f, "talkback ignores the patch");
+        }
     }
 };
 

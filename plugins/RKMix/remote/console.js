@@ -20,6 +20,13 @@ const S = () => state.structure;
 function isStereo(ch) { const s = S(); return !!(s && s.ch[ch] && s.ch[ch].st); }
 function channelLabel(ch) { return isStereo(ch) ? `${ch + 1}/${ch + 2}` : String(ch + 1); }
 function channelName(ch) { const s = S(), n = s && s.ch[ch] ? s.ch[ch].n : ""; return n || "Ch " + channelLabel(ch); }
+// The input patch: "" when a channel takes its own input, else its source ("7", "Off", "3/9" for a pair).
+function patchNote(ch) {
+  const s = S(); if (!s || !s.ch[ch] || s.ch[ch].src === undefined) return "";
+  const src = c => s.ch[c].src, name = c => src(c) === 0 ? "Off" : String(src(c));
+  if (isStereo(ch)) return src(ch) === ch + 1 && src(ch + 1) === ch + 2 ? "" : name(ch) + "/" + name(ch + 1);
+  return src(ch) === ch + 1 ? "" : name(ch);
+}
 function busName(bus) { const s = S(), n = s && s.bus[bus] ? s.bus[bus].n : ""; return n || "Bus " + (bus + 1); }
 function dcaName(d) { const s = S(), n = s && s.dca[d] ? s.dca[d].n : ""; return n || "DCA " + (d + 1); }
 function muteGroupName(g) { const s = S(), n = s && s.mg[g] ? s.mg[g].n : ""; return n || "Mute " + (g + 1); }
@@ -100,6 +107,7 @@ function receive(msg) {
     case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
     case "meq": if (C.onMonitorEq) C.onMonitorEq(msg); break;
     case "rec": if (C.onRecorder) C.onRecorder(msg); break;
+    case "inputs": if (C.onInputs) C.onInputs(msg); break;
   }
   app.dirty = true;
 }
@@ -275,5 +283,5 @@ function start() {
 }
 
 return { state, net, store, curves, listeners, pages, addPage, start, get root() { return root; },
-         kHeader, isStereo, channelLabel, channelName, busName, dcaName, muteGroupName, stripName, busType, busTypeNames, num, kUserPageBus };
+         kHeader, isStereo, channelLabel, channelName, patchNote, busName, dcaName, muteGroupName, stripName, busType, busTypeNames, num, kUserPageBus };
 })();

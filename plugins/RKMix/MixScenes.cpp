@@ -84,7 +84,7 @@ bool MixScenes::isSceneValue (const juce::String& id)
     for (const auto* prefix : { "link", "talk_", "osc_", "solo_", "cue_", "midi_", "scene_", "rec_" })
         if (id.startsWith (prefix))
             return false;
-    for (const auto* suffix : { "_type", "_format", "_out", "_solosafe", "_recallsafe", "_gate_key", "_comp_key", "_panmode", "_tap" })
+    for (const auto* suffix : { "_type", "_format", "_out", "_solosafe", "_recallsafe", "_gate_key", "_comp_key", "_panmode", "_tap", "_src" })
         if (id.endsWith (suffix))
             return false;
     if (id.startsWith ("ch") && id.contains ("_tap"))
@@ -214,6 +214,124 @@ bool MixScenes::isRecallSafe (const Entry& e) const
     return false;
 }
 
+bool MixScenes::isSlotRecallSafe (int slot) const
+{
+    const auto where = InsertRack::slotAt (slot);
+    if (where.strip == InsertRack::Strip::channel)
+        return settings.flag (mix::channelId (where.index, "recallsafe"));
+    if (where.strip == InsertRack::Strip::bus)
+        return settings.flag (mix::busId (where.index, "recallsafe"));
+    return false;
+}
+
+//==============================================================================
+juce::String MixScenes::getName (int scene) const
+{
+    return juce::isPositiveAndBelow (scene, kNumScenes) ? names[(size_t) scene] : juce::String();
+}
+
+void MixScenes::setName (int scene, const juce::String& name)
+{
+    if (! juce::isPositiveAndBelow (scene, kNumScenes))
+        return;
+    const auto clean = name.removeCharacters ("\r\n\t").trim().substring (0, 40);
+    if (clean != names[(size_t) scene])
+    {
+        names[(size_t) scene] = clean;
+        ++version;
+    }
+}
+
+juce::String MixScenes::markerLabel (int scene) const
+{
+    const auto name = getName (scene);
+    return "Scene " + juce::String (scene + 1) + (name.isNotEmpty() ? " " + name : juce::String());
+}
+
+int MixScenes::sceneOfMarker (const juce::String& label)
+{
+    const auto t = label.trimStart();
+    if (! t.startsWithIgnoreCase ("scene "))
+        return -1;
+    const auto rest = t.substring (6).trimStart();
+    const auto digits = rest.initialSectionContainingOnly ("0123456789");
+    if (digits.isEmpty() || digits.length() > 2)
+        return -1;
+    // "Scene 3", "Scene 3 Chorus", "Scene 3: Chorus" (not "Scene 3b").
+    if (const auto after = rest.substring (digits.length()); after.isNotEmpty() && juce::CharacterFunctions::isLetterOrDigit (after[0]))
+        return -1;
+    const auto n = digits.getIntValue();
+    return n >= 1 && n <= kNumScenes ? n - 1 : -1;
+}
+
+//==============================================================================
+std::vector<MixScenes::KnobRef> MixScenes::getKnobs() const
+{
+    std::vector<KnobRef> list;
+    for (const auto& k : knobs)
+    {
+        auto* p = knobParam (k);
+        list.push_back ({ k.slot, k.paramId, p == nullptr || (! p->isDiscrete() && ! p->isBoolean()) });
+    }
+    return list;
+}
+
+void MixScenes::applyTo (State& state, const State& scene, const Scope& scope) const
+{
+    // As apply(): only the scope, never a recall-safe strip; inserts only where there is one.
+    for (size_t i = 0; i < entries.size() && i < scene.values.size() && i < state.values.size(); ++i)
+    {
+        const auto& e = entries[i];
+        const auto inScope = e.sendBus >= 0 ? scope.sendsTo (e.sendBus) : scope.has (e.category);
+        if (inScope && ! isRecallSafe (e))
+            state.values[i] = scene.values[i];
+    }
+    if (scope.has (Scope::inserts))
+    {
+        for (int slot = 0; slot < InsertRack::kTotalSlots; ++slot)
+            if (rack.get (InsertRack::slotAt (slot)) != nullptr && ! isSlotRecallSafe (slot))
+                state.insertOn[(size_t) slot] = scene.insertOn[(size_t) slot];
+        for (size_t i = 0; i < knobs.size() && i < scene.knobs.size() && i < state.knobs.size(); ++i)
+            if (knobParam (knobs[i]) != nullptr && ! isSlotRecallSafe (knobs[i].slot))
+                state.knobs[i] = scene.knobs[i];
+    }
+}
+
+MixScenes::Replay MixScenes::startReplay() const
+{
+    const auto toState = [] (const Scene& s) { return State { s.values, s.insertOn, s.knobs }; };
+    Replay r;
+    const auto now = capture();
+    r.state = toState (now);
+    r.current = current;
+    for (int i = 0; i < kNumScenes; ++i)
+    {
+        const auto& s = i == current ? now : scenes[(size_t) i];
+        r.stored[(size_t) i] = s.stored;
+        if (s.stored)
+            r.scenes[(size_t) i] = toState (s);
+    }
+    return r;
+}
+
+void MixScenes::replay (Replay& r, int scene) const
+{
+    // As recall(): the current scene keeps the mix as it is; a scene never stored starts as it.
+    scene = juce::jlimit (0, kNumScenes - 1, scene);
+    if (scene == r.current)
+        return;
+    r.scenes[(size_t) r.current] = r.state;
+    r.stored[(size_t) r.current] = true;
+    r.current = scene;
+    if (! r.stored[(size_t) scene])
+    {
+        r.scenes[(size_t) scene] = r.state;
+        r.stored[(size_t) scene] = true;
+        return;
+    }
+    applyTo (r.state, r.scenes[(size_t) scene], scopes[(size_t) scene]);
+}
+
 MixScenes::Scene MixScenes::capture() const
 {
     // A glide under way counts as arrived.
@@ -248,15 +366,7 @@ void MixScenes::apply (const Scene& s, const Scope& scope)
     glideMs = settings.value ("scene_glide");
 
     // A recall-safe strip keeps everything of its own, its inserts too.
-    const auto slotSafe = [this] (int slot)
-    {
-        const auto where = InsertRack::slotAt (slot);
-        if (where.strip == InsertRack::Strip::channel)
-            return settings.flag (mix::channelId (where.index, "recallsafe"));
-        if (where.strip == InsertRack::Strip::bus)
-            return settings.flag (mix::busId (where.index, "recallsafe"));
-        return false;
-    };
+    const auto slotSafe = [this] (int slot) { return isSlotRecallSafe (slot); };
 
     const auto set = [this] (juce::RangedAudioParameter& p, float to, bool canGlide)
     {
@@ -476,6 +586,11 @@ juce::var MixScenes::toVar() const
         list.add (juce::var (scene));
     }
     root->setProperty ("scenes", list);
+
+    juce::Array<juce::var> nameList;
+    for (const auto& n : names)
+        nameList.add (n);
+    root->setProperty ("names", nameList);
     return juce::var (root);
 }
 
@@ -487,6 +602,11 @@ void MixScenes::fromVar (const juce::var& v)
         s = {};
     for (auto& s : scopes)
         s = {};
+    for (auto& n : names)
+        n = {};
+    if (const auto* nameList = v["names"].getArray())
+        for (int i = 0; i < juce::jmin (kNumScenes, nameList->size()); ++i)
+            names[(size_t) i] = nameList->getReference (i).toString().substring (0, 40);
 
     if (const auto* knobList = v["knobs"].getArray())
         for (const auto& k : *knobList)

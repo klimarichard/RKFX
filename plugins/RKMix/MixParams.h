@@ -134,7 +134,7 @@ namespace MixParams
         p.addBool ("mono_mute", "Mono Mute", false);
         for (int slot = 0; slot < 32; ++slot)
             p.addPercent (assignId (slot), "Assign " + num (slot), 0.0f, 100.0f, 0.0f);
-        p.addInt ("scene", "Scene", 1, 16, 1);
+        p.addInt ("scene", "Scene", 1, 32, 1);   // 1-16 until 2026-11-09 (the user uses no Gig Performer mapping of it)
         p.addBool ("talk", "Talk", false);
 
         // DCAs and mute groups (appended).
@@ -174,7 +174,7 @@ namespace MixParams
         juce::StringArray keyNames { "Self" }, keyKeys { "self" };
         for (int ch = 0; ch < kChannels; ++ch)
         {
-            keyNames.add ("In " + num (ch));
+            keyNames.add ("Ch " + num (ch));   // the channel's Source after its trim (keys stay "1".."32")
             keyKeys.add (num (ch));
         }
         for (int ch = 0; ch < kChannels; ++ch)
@@ -371,6 +371,16 @@ namespace MixParams
         p.addBool ("rec_main", "Record Main", true);
         for (int bus = 0; bus < kBuses; ++bus)
             p.addBool (recordBusId (bus), "Record Bus " + num (bus), false);
+
+        // The input patch (appended): the input each channel takes, by default its own number.
+        juce::StringArray sourceInputNames { "Off" }, sourceInputKeys { "off" };
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            sourceInputNames.add ("In " + num (ch));
+            sourceInputKeys.add (num (ch));
+        }
+        for (int ch = 0; ch < kChannels; ++ch)
+            p.addChoice (channelId (ch, "src"), channelName (ch) + "Source", sourceInputNames, sourceInputKeys, ch + 1);
 
         return p;
     }

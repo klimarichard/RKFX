@@ -18,7 +18,7 @@ const K = { knobW: 58, knobH: 80, switchW: 50, switchH: 30, title: 22, gap: 8, b
 function S() { return state.structure; }
 function inner(a) { return { x: a.x + 8, y: a.y + K.title, w: a.w - 16, h: a.h - K.title - 2 }; }
 const eqLocked = () => !!(C.isLocked && C.isLocked("everything"));
-function keyName(v) { return v === 0 ? "Self" : "Key: In " + v; }
+function keyName(v) { if (v === 0) return "Self"; const s = C.state.structure, l = v - 1, lead = l % 2 === 1 && C.isStereo(l - 1) ? l - 1 : l, n = s && s.ch[lead] ? s.ch[lead].n : ""; return "Key: Ch " + v + (n ? " " + n : ""); }
 const tapLabels = ["Default", "Input", "Pre-EQ", "Pre-Comp", "Pre-Ins", "Pre-Fader", "Post-Fader"];
 
 function canSend(from, to) {

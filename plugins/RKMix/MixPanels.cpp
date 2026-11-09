@@ -7,10 +7,7 @@ using namespace mix;
 
 namespace
 {
-    juce::String keyName (int value)
-    {
-        return value == 0 ? juce::String ("Self") : "Key: In " + juce::String (value);
-    }
+    juce::String sourceName (int value) { return value == 0 ? juce::String ("Off") : "In " + juce::String (value); }
 
     constexpr int kDirectLabelWidth = 70, kDirectAtWidth = 24;   // the sends page's "Direct out [..] at [..]"
 
@@ -102,11 +99,31 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     {
         if (owner.isLocked())
             return;
-        owner.mixer.setInputOnPlayback (channel, ! owner.mixer.isInputOnPlayback (channel));
+        owner.mixer.setChannelOnPlayback (channel, ! owner.mixer.isChannelOnPlayback (channel));
         owner.sourcesChanged();
     };
     addAndMakeVisible (source);
     link = make<rkfx::ToggleSwitch> (s.param (linkId (ch / 2)), accent, "Link " + num (ch / 2 * 2) + "/" + num (ch / 2 * 2 + 1));
+
+    // The input patch: the input this channel takes (a pair: one per side).
+    patchSource = make<ChoiceBox> (param ("src"), sourceName, 1);
+    patchSource->setTooltip (stereo ? "The input the left side takes (the Patch page has every channel)"
+                                    : "The input this channel takes (the Patch page has every channel)");
+    if (stereo)
+    {
+        patchSourceR = make<ChoiceBox> (s.param (channelId (ch + 1, "src")), sourceName, 1);
+        patchSourceR->setTooltip ("The input the right side takes");
+    }
+
+    // A key: another channel's input after that channel's trim, named.
+    const auto keyName = [&o] (int value)
+    {
+        if (value == 0)
+            return juce::String ("Self");
+        const auto leader = o.leaderOf (value - 1);
+        const auto name = o.mixer.getChannelName (leader);
+        return "Key: Ch " + juce::String (value) + (name.isNotEmpty() ? " " + name : juce::String());
+    };
 
     // Input
     trim = knob (input, "trim", "Trim");
@@ -131,7 +148,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     knob (gate, "gate_hold", "Hold");
     knob (gate, "gate_rel", "Release");
     gateKey = make<ChoiceBox> (param ("gate_key"), keyName, 1);
-    gateKey->setTooltip ("Key: the gate listens to another input (after its trim) instead of this channel");
+    gateKey->setTooltip ("Key: the gate listens to another channel's input (after its trim) instead of this channel");
 
     // Output
     pan = knob (output, "pan", stereo ? "Balance" : "Pan");
@@ -167,7 +184,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     knob (comp, "comp_rel", "Release");
     knob (comp, "comp_makeup", "Makeup");
     compKey = make<ChoiceBox> (param ("comp_key"), keyName, 1);
-    compKey->setTooltip ("Key: the compressor listens to another input (after its trim), e.g. to duck under a voice");
+    compKey->setTooltip ("Key: the compressor listens to another channel's input (after its trim), e.g. to duck under a voice");
     compCurve = std::make_unique<TransferCurve> ([this] (float inputDb)
     {
         return StripDsp::compTransferDb (owner.mixer.channelSettings (channel).strip.comp, inputDb);
@@ -183,7 +200,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
 void RKMixEditor::ChannelPanel::refresh()
 {
     // The source: Live, or Playback (in the accent colour).
-    const auto onPlayback = owner.mixer.isInputOnPlayback (channel);
+    const auto onPlayback = owner.mixer.isChannelOnPlayback (channel);
     source.setButtonText (onPlayback ? "PB" : "Live");
     source.setToggleState (onPlayback, juce::dontSendNotification);
 
@@ -231,6 +248,13 @@ void RKMixEditor::ChannelPanel::resized()
     link->setBounds (header.removeFromRight (90));
     header.removeFromRight (8);
     presets.setBounds (header.removeFromRight (120));
+    header.removeFromRight (12);
+    if (patchSourceR != nullptr)
+    {
+        patchSourceR->setBounds (header.removeFromRight (72));
+        header.removeFromRight (4);
+    }
+    patchSource->setBounds (header.removeFromRight (72));
     header.removeFromRight (16);
     placeSwatches (header, swatches);
     header.removeFromRight (12);
@@ -1165,11 +1189,20 @@ RKMixEditor::ScenesPanel::ScenesPanel (RKMixEditor& o) : Panel (o)
         busSafe[(size_t) bus] = make<rkfx::ToggleSwitch> (s.param (busId (bus, "recallsafe")), rkfx::Palette::warning, "B" + num (bus));
 
     // The recall scope of one scene (the active one, unless another is picked).
-    for (int i = 0; i < MixScenes::kNumScenes; ++i)
-        scopeScene.addItem ("Scene " + juce::String (i + 1), i + 1);
     scopeScene.onChange = [this] { editScope (scopeScene.getSelectedId() - 1); };
-    scopeScene.setTooltip ("The scene whose recall scope is shown");
+    scopeScene.setTooltip ("The scene whose name and recall scope are shown");
     addAndMakeVisible (scopeScene);
+
+    // Its name (double-click, or right-click a scene button: Rename...).
+    styleName (sceneName, 13.0f);
+    sceneName.setJustificationType (juce::Justification::centredLeft);
+    sceneName.setTooltip ("Double-click to name this scene (the scene bar and the recorder's markers show it)");
+    sceneName.onTextChange = [this]
+    {
+        owner.mixer.getScenes().setName (scopeFor, sceneName.getText());
+        owner.refreshScenes();
+    };
+    addAndMakeVisible (sceneName);
 
     const auto toggle = [this] (juce::TextButton& b, const juce::String& tooltip)
     {
@@ -1242,7 +1275,13 @@ void RKMixEditor::ScenesPanel::refresh()
         lastCurrent = current;
         scopeFor = current;
     }
+    auto& scenes = owner.mixer.getScenes();
+    scopeScene.clear (juce::dontSendNotification);
+    for (int i = 0; i < MixScenes::kNumScenes; ++i)
+        scopeScene.addItem (scenes.markerLabel (i), i + 1);
     scopeScene.setSelectedId (scopeFor + 1, juce::dontSendNotification);
+    if (! sceneName.isBeingEdited())
+        sceneName.setText (scenes.getName (scopeFor), juce::dontSendNotification);
 
     const auto scope = owner.mixer.getScenes().getScope (scopeFor);
     for (int c = 0; c < MixScenes::Scope::numCategories; ++c)
@@ -1281,10 +1320,13 @@ void RKMixEditor::ScenesPanel::resized()
     // Recall scope: the scene, then the kinds of values, then the sends by bus.
     auto s = inner (scopeArea);
     auto top = s.removeFromTop (kSwitchH);
-    scopeScene.setBounds (top.removeFromLeft (110));
+    scopeScene.setBounds (top.removeFromLeft (170));
     top.removeFromLeft (8);
-    everything.setBounds (top.removeFromLeft (100));
     copyToAll.setBounds (top.removeFromRight (150));
+    top.removeFromRight (8);
+    everything.setBounds (top.removeFromRight (100));
+    top.removeFromRight (8);
+    sceneName.setBounds (top.removeFromLeft (juce::jmin (260, top.getWidth())));
     s.removeFromTop (10);
     auto row = s.removeFromTop (kSwitchH);
     const auto cw = (row.getWidth() - (MixScenes::Scope::numCategories - 1) * 4) / MixScenes::Scope::numCategories;
@@ -1307,7 +1349,7 @@ void RKMixEditor::ScenesPanel::paint (juce::Graphics& g)
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (12.0f));
     auto text = inner (glideArea).withTrimmedTop (kKnobH + 8);
-    g.drawFittedText ("16 scenes, in the bottom row: click to recall, right-click to copy. A scene holds the mix's values: "
+    g.drawFittedText ("32 scenes, in the bottom row (1-16 or 17-32): click to recall, right-click to rename or copy. A scene holds the mix's values: "
                       "faders, mutes, pans, sends, the strips' and buses' settings, inserts on or off, and the insert knobs "
                       "made scene controlled (right-click one). Never the structure: links, bus types, outputs, tap points, "
                       "which insert is where. Edits made while a scene is active go into it. Continuous values glide; "
@@ -1318,7 +1360,7 @@ void RKMixEditor::ScenesPanel::paint (juce::Graphics& g)
     g.drawText ("Channels", a.withHeight (18), juce::Justification::centredLeft);
     g.drawText ("Buses", a.withY (busSafe[0]->getY() - 20).withHeight (18), juce::Justification::centredLeft);
 
-    rkfx::drawPanel (g, scopeArea, owner.panelColour(), "Recall scope: what recalling the scene changes (it always stores everything)");
+    rkfx::drawPanel (g, scopeArea, owner.panelColour(), "The scene: its name, and its recall scope (what recalling it changes; it always stores everything)");
     g.setColour (rkfx::Palette::textDim);
     g.setFont (rkfx::Fonts::regular (12.0f));
     const auto scope = owner.mixer.getScenes().getScope (scopeFor);

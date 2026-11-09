@@ -58,6 +58,22 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     refresh();
 }
 
+juce::String RKMixEditor::patchNote (int channel) const
+{
+    const auto name = [this] (int ch)
+    {
+        const auto input = mixer.getChannelInput (ch);
+        return input < 0 ? juce::String ("Off") : juce::String (input + 1);
+    };
+    if (isStereo (channel))
+    {
+        if (mixer.getChannelInput (channel) == channel && mixer.getChannelInput (channel + 1) == channel + 1)
+            return {};
+        return name (channel) + "/" + name (channel + 1);
+    }
+    return mixer.getChannelInput (channel) == channel ? juce::String() : name (channel);
+}
+
 juce::String RKMixEditor::Strip::label() const
 {
     if (! isBus())
@@ -217,7 +233,7 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
         g.fillRoundedRectangle (numberRow.reduced (6, 0).toFloat(), 3.0f);
     }
     // On Playback (virtual soundcheck): "PB" in the accent colour over the number.
-    const auto onPlayback = ! isBus() && owner.mixer.isInputOnPlayback (channel);
+    const auto onPlayback = ! isBus() && owner.mixer.isChannelOnPlayback (channel);
     if (onPlayback && ! groupMuted)
     {
         g.setColour (owner.accent());
@@ -225,7 +241,12 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
     }
     g.setColour (groupMuted ? rkfx::Palette::text : onPlayback ? juce::Colours::black : rkfx::Palette::textDim);
     g.setFont (onPlayback ? rkfx::Fonts::bold (11.0f) : rkfx::Fonts::regular (11.0f));
-    g.drawText (onPlayback ? "PB " + label() : label(), numberRow, juce::Justification::centred);
+    // Repatched: the input it takes after an arrow ("3 <- 7").
+    const auto note = isBus() ? juce::String() : owner.patchNote (channel);
+    const auto text = (onPlayback ? "PB " : "") + label() + (note.isNotEmpty() ? juce::String::fromUTF8 (" \xe2\x86\x90 ") + note : juce::String());
+    if (note.isNotEmpty() && ! onPlayback && ! groupMuted)
+        g.setColour (owner.accent().brighter (0.5f));
+    g.drawFittedText (text, numberRow.reduced (2, 0), juce::Justification::centred, 1, 0.8f);
 
     if (isBus())
         return;
@@ -335,6 +356,7 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
       mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main, kMainChain),
       monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono, kMonoChain),
       routingPanel (*this),
+      patchPanel (*this),
       monitorPanel (*this),
       scenesPanel (*this),
       assignPanel (*this)
@@ -362,11 +384,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (mainStrip);
     addToCanvas (monoStrip);
     addToCanvas (routingPanel);
+    addToCanvas (patchPanel);
 
     addToCanvas (monitorPanel);
     addToCanvas (scenesPanel);
     addToCanvas (assignPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &patchPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
         addToCanvas (*tab);
     remotePanel = std::make_unique<RemotePanel> (*this);
     addToCanvas (*remotePanel);
@@ -388,11 +411,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     for (int i = 0; i < (int) sceneButtons.size(); ++i)
     {
         auto& b = sceneButtons[(size_t) i];
-        b.setButtonText (juce::String (i + 1));
-        b.setTooltip ("Scene " + juce::String (i + 1) + ": click to recall, right-click to copy");
-        b.onClick = [this, i] { mixer.recallScene (i); };
+        b.onClick = [this, i] { mixer.recallScene (sceneOf (i)); };
         addToCanvas (b);
     }
+    sceneBankButton.setTooltip ("Scenes 1-16 or 17-32 on the buttons (lit: the active scene is in the other bank)");
+    sceneBankButton.onClick = [this] { sceneBank = 1 - sceneBank; refreshScenes(); };
+    addToCanvas (sceneBankButton);
     addMouseListener (this, true);   // right-clicks anywhere inside: control menus
 
     // The standalone app: its tempo (tap, MIDI clock).
@@ -413,6 +437,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     stripPage.onClick = [this] { setPage (Page::strip); };
     sendsPage.onClick = [this] { setPage (Page::sends); };
     routingPage.onClick = [this] { setPage (Page::routing); };
+    patchPage.onClick = [this] { setPage (Page::patch); };
+    patchPage.setTooltip ("The input patch: which input each channel takes");
     monitorPage.onClick = [this] { setPage (Page::monitor); };
 
     // The Master section: solo, the cue output, talk, the oscillator.
@@ -537,10 +563,10 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &patchPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
     {
-        tab->setBounds (tabs.removeFromLeft (90));
-        tabs.removeFromLeft (5);
+        tab->setBounds (tabs.removeFromLeft (82));
+        tabs.removeFromLeft (4);
     }
 
     lockButton.setBounds (tabs.removeFromRight (120));
@@ -550,6 +576,7 @@ void RKMixEditor::layoutContent()
     undoButton.setBounds (tabs.removeFromRight (64));
 
     routingPanel.setBounds (panelArea());
+    patchPanel.setBounds (panelArea());
     monitorPanel.setBounds (panelArea());
     scenesPanel.setBounds (panelArea());
     assignPanel.setBounds (panelArea());
@@ -598,13 +625,17 @@ void RKMixEditor::layoutContent()
         layers.removeFromLeft (6);
     }
 
-    // The scene bar
-    layers.removeFromLeft (56);   // "Scene"
+    // The scene bar: the bank, 16 scenes, the current one's name
+    sceneBankButton.setBounds (layers.removeFromLeft (52));
+    layers.removeFromLeft (6);
     for (auto& b : sceneButtons)
     {
-        b.setBounds (layers.removeFromLeft (34));
+        b.setBounds (layers.removeFromLeft (28));
         layers.removeFromLeft (3);
     }
+    layers.removeFromLeft (4);
+    const auto nameArea = layers.withRight (globalArea().getRight());
+    sceneNameArea = nameArea.withSizeKeepingCentre (nameArea.getWidth(), 34);
 
     layoutStrips();
     applyLock();
@@ -709,14 +740,24 @@ void RKMixEditor::paintContent (juce::Graphics& g)
                           masterArea().removeFromTop (kTopHeight).reduced (10).removeFromBottom (36), juce::Justification::centred, 2);
     }
 
-    g.setColour (rkfx::Palette::textDim);
-    g.setFont (rkfx::Fonts::bold (12.0f));
-    g.drawText ("SCENE", sceneButtons[0].getBounds().translated (-54, 0).withWidth (50), juce::Justification::centredRight);
+    // The current scene's number and name, after the buttons.
+    {
+        const auto current = mixer.getScenes().getCurrent();
+        const auto name = mixer.getScenes().getName (current);
+        g.setColour (rkfx::Palette::textDim);
+        g.setFont (rkfx::Fonts::bold (11.0f));
+        g.drawText ("SCENE " + juce::String (current + 1), sceneNameArea.withHeight (sceneNameArea.getHeight() / 2).translated (0, 2),
+                    juce::Justification::bottomLeft);
+        g.setColour (name.isNotEmpty() ? rkfx::Palette::text : rkfx::Palette::knobTrack);
+        g.setFont (rkfx::Fonts::regular (12.0f));
+        g.drawFittedText (name.isNotEmpty() ? name : juce::String ("(no name)"),
+                          sceneNameArea.withTrimmedTop (sceneNameArea.getHeight() / 2), juce::Justification::topLeft, 1, 0.7f);
+    }
 
     // A dot under a scene that recalls only part of the mix (its recall scope).
     g.setColour (accent());
     for (int i = 0; i < (int) sceneButtons.size(); ++i)
-        if (! mixer.getScenes().getScope (i).isEverything())
+        if (! mixer.getScenes().getScope (sceneOf (i)).isEverything())
         {
             const auto b = sceneButtons[(size_t) i].getBounds();
             g.fillEllipse ((float) b.getCentreX() - 2.5f, (float) b.getBottom() + 3.0f, 5.0f, 5.0f);
@@ -852,6 +893,7 @@ void RKMixEditor::setPage (Page p)
     if (sendsPanel != nullptr)
         sendsPanel->setVisible (page == Page::sends);
     routingPanel.setVisible (page == Page::routing);
+    patchPanel.setVisible (page == Page::patch);
     monitorPanel.setVisible (page == Page::monitor);
     scenesPanel.setVisible (page == Page::scenes);
     assignPanel.setVisible (page == Page::assign);
@@ -869,11 +911,14 @@ void RKMixEditor::setPage (Page p)
         assignPanel.refresh();
     if (page == Page::routing)
         routingPanel.refresh();
+    if (page == Page::patch)
+        patchPanel.refresh();
     if (page == Page::monitor)
         monitorPanel.refresh();
     stripPage.setToggleState (page == Page::strip, juce::dontSendNotification);
     sendsPage.setToggleState (page == Page::sends, juce::dontSendNotification);
     routingPage.setToggleState (page == Page::routing, juce::dontSendNotification);
+    patchPage.setToggleState (page == Page::patch, juce::dontSendNotification);
     monitorPage.setToggleState (page == Page::monitor, juce::dontSendNotification);
     scenesPage.setToggleState (page == Page::scenes, juce::dontSendNotification);
     assignPage.setToggleState (page == Page::assign, juce::dontSendNotification);
@@ -920,6 +965,8 @@ void RKMixEditor::refreshAll()
             panel->refresh();
     if (routingPanel.isVisible())
         routingPanel.refresh();
+    if (patchPanel.isVisible())
+        patchPanel.refresh();
     if (monitorPanel.isVisible())
         monitorPanel.refresh();
     if (scenesPanel.isVisible())
@@ -1580,18 +1627,51 @@ void RKMixEditor::TalkButton::mouseUp (const juce::MouseEvent& e)
 
 void RKMixEditor::refreshScenes()
 {
-    lastSceneVersion = mixer.getScenes().getVersion();
-    const auto current = mixer.getScenes().getCurrent();
+    auto& scenes = mixer.getScenes();
+    lastSceneVersion = scenes.getVersion();
+    const auto current = scenes.getCurrent();
+    // A recall from anywhere shows its bank.
+    if (current != lastSceneCurrent)
+    {
+        lastSceneCurrent = current;
+        sceneBank = current / 16;
+    }
+    sceneBankButton.setButtonText (sceneBank == 0 ? "1-16" : "17-32");
+    sceneBankButton.setColour (juce::TextButton::buttonColourId, current / 16 != sceneBank ? accent().withAlpha (0.6f)
+                                                                                            : rkfx::Palette::knobBody);
     for (int i = 0; i < (int) sceneButtons.size(); ++i)
     {
-        sceneButtons[(size_t) i].setToggleState (i == current, juce::dontSendNotification);
-        const auto scope = mixer.getScenes().getScope (i);
-        sceneButtons[(size_t) i].setTooltip (scope.isEverything() ? juce::String()
-            : "Recalls: " + scope.describe ([this] (int bus) { return busDisplayName (bus); }));
+        const auto scene = sceneOf (i);
+        auto& b = sceneButtons[(size_t) i];
+        b.setButtonText (juce::String (scene + 1));
+        b.setToggleState (scene == current, juce::dontSendNotification);
+        const auto scope = scenes.getScope (scene);
+        const auto name = scenes.getName (scene);
+        b.setTooltip ("Scene " + juce::String (scene + 1) + (name.isNotEmpty() ? ": " + name : juce::String())
+                      + (scope.isEverything() ? juce::String() : "\nRecalls: " + scope.describe ([this] (int bus) { return busDisplayName (bus); }))
+                      + "\nClick to recall; right-click to rename or copy");
     }
     if (scenesPanel.isVisible())
         scenesPanel.refresh();
-    repaint (sceneButtons.front().getBounds().getUnion (sceneButtons.back().getBounds()).expanded (2, 6));
+    repaint (sceneBankButton.getBounds().getUnion (sceneNameArea).expanded (2, 6));
+}
+
+void RKMixEditor::renameScene (int scene)
+{
+    auto* window = new juce::AlertWindow ("Scene " + juce::String (scene + 1), "Its name (shown on the scene bar and in the recorder's markers):",
+                                          juce::MessageBoxIconType::NoIcon, this);
+    window->addTextEditor ("name", mixer.getScenes().getName (scene));
+    window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<RKMixEditor> safe (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safe, window, scene] (int result)
+    {
+        if (safe != nullptr && result == 1)
+        {
+            safe->mixer.getScenes().setName (scene, window->getTextEditorContents ("name"));
+            safe->refreshScenes();
+        }
+    }), true);
 }
 
 void RKMixEditor::editSceneScope (int scene)
@@ -1604,11 +1684,12 @@ void RKMixEditor::editSceneScope (int scene)
 void RKMixEditor::showSceneMenu (int scene)
 {
     juce::PopupMenu copyTo;
-    for (int i = 0; i < (int) sceneButtons.size(); ++i)
-        copyTo.addItem (100 + i, "Scene " + juce::String (i + 1), i != scene);
+    for (int i = 0; i < MixScenes::kNumScenes; ++i)
+        copyTo.addItem (100 + i, mixer.getScenes().markerLabel (i), i != scene);
     juce::PopupMenu menu;
-    menu.addSectionHeader ("Scene " + juce::String (scene + 1));
+    menu.addSectionHeader (mixer.getScenes().markerLabel (scene));
     menu.addItem (1, "Recall");
+    menu.addItem (3, "Rename...");
     menu.addSubMenu ("Copy to", copyTo);
     menu.addItem (2, "Recall scope...");
     if (mixer.isStandalone())
@@ -1626,6 +1707,8 @@ void RKMixEditor::showSceneMenu (int scene)
             safe->mixer.recallScene (scene);
         else if (result == 2)
             safe->editSceneScope (scene);
+        else if (result == 3)
+            return safe->renameScene (scene);
         else if (safe->handleLearnResult (result, MixLearn::scene, 50))
             return;
         else if (result >= 100)
@@ -1642,7 +1725,7 @@ void RKMixEditor::mouseDown (const juce::MouseEvent& e)
     for (int i = 0; i < (int) sceneButtons.size(); ++i)
         if (e.originalComponent == &sceneButtons[(size_t) i])
         {
-            showSceneMenu (i);
+            showSceneMenu (sceneOf (i));
             return;
         }
     for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)

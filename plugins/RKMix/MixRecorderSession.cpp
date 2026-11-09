@@ -15,11 +15,13 @@ MixRecorderSession::MixRecorderSession (RKMixProcessor& p) : mixer (p)
     rootFolder = defaultRootFolder();
     loadSettings();
     startTimerHz (10);
+    sceneTimer.startTimerHz (30);
 }
 
 MixRecorderSession::~MixRecorderSession()
 {
     stopTimer();
+    sceneTimer.stopTimer();
     recorder.stop();
 }
 
@@ -46,6 +48,8 @@ void MixRecorderSession::loadSettings()
         rootFolder = juce::File (path);
     asFloat = (bool) v.getProperty ("float", false);
     pairsAsMono = (bool) v.getProperty ("pairsAsMono", false);
+    followScenes = (bool) v.getProperty ("followScenes", true);
+    nameMarkers = (bool) v.getProperty ("nameMarkers", true);
 }
 
 void MixRecorderSession::saveSettings() const
@@ -54,6 +58,8 @@ void MixRecorderSession::saveSettings() const
     o->setProperty ("folder", rootFolder.getFullPathName());
     o->setProperty ("float", asFloat);
     o->setProperty ("pairsAsMono", pairsAsMono);
+    o->setProperty ("followScenes", followScenes);
+    o->setProperty ("nameMarkers", nameMarkers);
     settingsFile.getParentDirectory().createDirectory();
     settingsFile.replaceWithText (juce::JSON::toString (juce::var (o)));
 }
@@ -61,6 +67,53 @@ void MixRecorderSession::saveSettings() const
 void MixRecorderSession::setRootFolder (const juce::File& f) { rootFolder = f; saveSettings(); }
 void MixRecorderSession::setFloat (bool on)                  { asFloat = on; saveSettings(); }
 void MixRecorderSession::setPairsAsMono (bool on)            { pairsAsMono = on; saveSettings(); }
+void MixRecorderSession::setNameMarkers (bool on)            { nameMarkers = on; saveSettings(); }
+void MixRecorderSession::setFollowScenes (bool on)           { followScenes = on; followKey = {}; saveSettings(); }
+
+//==============================================================================
+int MixRecorderSession::sceneMarkerAt (juce::int64 sample) const
+{
+    auto& pb = mixer.getPlayback();
+    if (! pb.isLoaded())
+        return -1;
+    const auto& markers = pb.getRecording().markers;   // in time order
+    int found = -1;
+    for (int i = 0; i < (int) markers.size() && markers[(size_t) i].at <= sample; ++i)
+        if (MixScenes::sceneOfMarker (markers[(size_t) i].label) >= 0)
+            found = i;
+    return found;
+}
+
+void MixRecorderSession::pollSceneMarkers()
+{
+    // Playback passing a scene marker (or a jump past one) recalls its scene,
+    // as the console did at the gig. Loading a recording changes nothing; Play
+    // recalls the scene in effect if the console is on another.
+    auto& pb = mixer.getPlayback();
+    if (! followScenes || ! pb.isLoaded())
+    {
+        followKey = {};
+        followPlaying = false;
+        return;
+    }
+    // (While locating the position is already where it is going.)
+    const auto index = sceneMarkerAt (pb.getPosition());
+    const auto& markers = pb.getRecording().markers;
+    const auto scene = index >= 0 ? MixScenes::sceneOfMarker (markers[(size_t) index].label) : -1;
+    const auto key = pb.getRecording().folder.getFullPathName() + "|"
+                   + (index >= 0 ? juce::String (markers[(size_t) index].at) + "|" + juce::String (scene) : juce::String ("-"));
+    const auto playing = pb.isPlaying();
+    const auto started = playing && ! followPlaying;
+    followPlaying = playing;
+
+    const auto firstLook = followKey.isEmpty() || ! followKey.startsWith (pb.getRecording().folder.getFullPathName() + "|");
+    const auto moved = key != followKey;
+    followKey = key;
+    if (scene < 0 || firstLook)
+        return;
+    if ((moved || started) && scene != mixer.getScenes().getCurrent())
+        mixer.recallScene (scene);
+}
 
 //==============================================================================
 MixRecorder::Take MixRecorderSession::makeTake() const
@@ -71,16 +124,42 @@ MixRecorder::Take MixRecorderSession::makeTake() const
     t.sampleRate = mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0;
     t.asFloat = asFloat;
 
-    const auto name = [this] (int ch)
+    // The files are the inputs (as they arrive), named after the channel each
+    // feeds (the input patch: its first channel, a pair's name); an input no
+    // channel takes keeps its number.
+    // Inputs n and n + 1 are a stereo pair when a linked pair takes them, left and right: its leader, or -1.
+    const auto pairOf = [this] (int in)
     {
-        const auto n = mixer.getChannelName (ch);
-        return legal (n.isNotEmpty() ? n : "Ch " + juce::String (ch + 1));
+        if (in % 2 != 0 || in + 1 >= mix::kChannels)
+            return -1;
+        for (int pair = 0; pair < mix::kPairs; ++pair)
+            if (mixer.isLinked (pair) && mixer.getChannelInput (pair * 2) == in && mixer.getChannelInput (pair * 2 + 1) == in + 1)
+                return pair * 2;
+        return -1;
     };
+    const auto pairedInputs = [&] (int in) { return pairOf (in) >= 0; };
+    // An input split onto several channels takes the first named one's name (a pair's first).
+    const auto name = [&] (int in)
+    {
+        const auto leader = [this] (int ch) { return ch % 2 == 1 && mixer.isLinked (ch / 2) ? ch - 1 : ch; };
+        juce::Array<int> channels;
+        if (const auto pair = pairOf (in - in % 2); pair >= 0)
+            channels.add (pair);
+        for (const auto ch : mixer.channelsOfInput (in))
+            channels.addIfNotAlreadyThere (leader (ch));
+        if (channels.isEmpty())
+            return legal ("In " + juce::String (in + 1));
+        for (const auto ch : channels)
+            if (mixer.getChannelName (ch).isNotEmpty())
+                return legal (mixer.getChannelName (ch));
+        return legal ("Ch " + juce::String (channels[0] + 1));
+    };
+    const auto inPairedInputs = [&] (int in) { return pairedInputs (in - in % 2); };
 
-    // The inputs: a linked pair as one stereo file (or two mono ones), the rest mono.
+    // The inputs: a linked pair's two as one stereo file (or two mono ones), the rest mono.
     for (int ch = 0; ch < mix::kChannels; ++ch)
     {
-        const auto pair = ch % 2 == 0 && mixer.isLinked (ch / 2);
+        const auto pair = pairedInputs (ch);
         if (pair && ! pairsAsMono)
         {
             const auto left = s.flag (mix::recordInputId (ch)), right = s.flag (mix::recordInputId (ch + 1));
@@ -95,7 +174,7 @@ MixRecorder::Take MixRecorderSession::makeTake() const
         }
         if (! s.flag (mix::recordInputId (ch)))
             continue;
-        const auto inPair = (ch % 2 == 0 && mixer.isLinked (ch / 2)) || (ch % 2 == 1 && mixer.isLinked (ch / 2));
+        const auto inPair = inPairedInputs (ch);
         const auto label = inPair ? name (ch - ch % 2) + (ch % 2 == 0 ? " L" : " R") : name (ch);
         t.tracks.push_back ({ two (ch + 1) + " " + label + ".wav", { { Source::input, ch, 0 } } });
     }
@@ -125,6 +204,10 @@ MixRecorder::Take MixRecorderSession::makeTake() const
     }
     info->setProperty ("names", names);
     info->setProperty ("colours", colours);
+    juce::Array<juce::var> patch;   // each channel's Source as recording started: 0 Off, n In n
+    for (int ch = 0; ch < mix::kChannels; ++ch)
+        patch.add (mixer.getChannelInput (ch) + 1);
+    info->setProperty ("patch", patch);
     t.info = juce::var (info);
 
     const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M");
@@ -194,11 +277,43 @@ void MixRecorderSession::addMarker (const juce::String& label)
     if (! isRecording())
         return;
     recorder.addMarker (label.isNotEmpty() ? label : "Marker " + juce::String (++markerCount));
+    lastMarker = LastMarker::none;
 }
 
 void MixRecorderSession::sceneRecalled (int scene)
 {
-    addMarker ("Scene " + juce::String (scene + 1));
+    if (! isRecording())
+        return;
+    const auto within = (juce::int64) (kMergeSeconds * recorder.getSampleRate());
+
+    // Gig Performer's rackspace just changed: one marker, the scene's number with the song's name.
+    if (lastMarker == LastMarker::name
+        && recorder.renameLastMarker ("Scene " + juce::String (scene + 1) + " " + lastName, within))
+    {
+        lastMarker = LastMarker::none;
+        return;
+    }
+    addMarker (mixer.getScenes().markerLabel (scene));
+    lastMarker = LastMarker::scene;
+    lastScene = scene;
+}
+
+void MixRecorderSession::showNameChanged (const juce::String& name)
+{
+    if (! isRecording() || ! nameMarkers || name.trim().isEmpty())
+        return;
+    const auto within = (juce::int64) (kMergeSeconds * recorder.getSampleRate());
+
+    // A scene recalled just before (the same rackspace change): one marker, keeping the scene marker's number.
+    if (lastMarker == LastMarker::scene
+        && recorder.renameLastMarker ("Scene " + juce::String (lastScene + 1) + " " + name.trim(), within))
+    {
+        lastMarker = LastMarker::none;
+        return;
+    }
+    addMarker (name.trim());
+    lastMarker = LastMarker::name;
+    lastName = name.trim();
 }
 
 void MixRecorderSession::mixLoaded()

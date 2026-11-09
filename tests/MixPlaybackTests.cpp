@@ -405,6 +405,13 @@ public:
             expectEquals (MixScenes::sceneOfMarker ("Scene 3b"), -1);
             expectEquals (MixScenes::sceneOfMarker ("Scenes 3"), -1);
             expectEquals (MixScenes::sceneOfMarker ("Marker 1"), -1);
+
+            // The name shown beside the scene chip in the marker list.
+            expectEquals (MixScenes::nameOfSceneMarker ("Scene 3"), juce::String());
+            expectEquals (MixScenes::nameOfSceneMarker ("Scene 12 Hallelujah"), juce::String ("Hallelujah"));
+            expectEquals (MixScenes::nameOfSceneMarker ("scene 32: Encore "), juce::String ("Encore"));
+            expectEquals (MixScenes::nameOfSceneMarker (juce::String (juce::CharPointer_UTF8 ("Scene 3 - Ty a j\xc3\xa1"))), juce::String (juce::CharPointer_UTF8 ("Ty a j\xc3\xa1")));
+            expectEquals (MixScenes::nameOfSceneMarker ("Marker 1"), juce::String());
         }
 
         // A mix whose scenes 2 and 3 mute and open the vocal (In 1 only: the keys are down in every scene).

@@ -67,6 +67,13 @@ Linking or unlinking a pair while recording would leave a file that no longer ma
 - **A session restored by the host** while recording (Gig Performer reloading the gig, `setStateInformation`) can't be refused. The take then ends and a new one starts in a new folder on the same block (no samples lost between them), with the new mix's links. Both takes' `session.json` note the split.
 - **The console remote** (iPad): Record / Stop (Stop with a confirmation), elapsed time, dropouts, Marker.
 
+### Markers from Gig Performer (built 2026-11-09)
+
+- While recording, a new **first line** from Names by OSC (`MixOsc::setNow`: the title changed and isn't empty) calls `MixRecorderSession::showNameChanged`, which adds a marker named after it: a new rackspace, or a song in the setlist. The second line (variation, song part) never adds one. Needs Names by OSC on; the gig script is unchanged.
+- **Merged with a scene recall:** a rackspace change that also recalls a scene (`/rkmix/scene`, or anything else) gives two events in either order. Within `kMergeSeconds` (1 s, measured in the take's samples) the second renames the first (`MixRecorder::renameLastMarker`) to "Scene N <name>", so it stays a scene marker and carries the song's name. Any other marker in between (Marker button, host parameter, `/rkmix/marker`) ends the pairing.
+- `/rkmix/marker "name"` adds a marker (empty: "Marker n"), always, while recording.
+- **Markers from Gig Performer** (Recorder page, `nameMarkers` in recorder.json, default on) switches the automatic ones off.
+
 ## Virtual soundcheck (playback)
 
 ### Loading

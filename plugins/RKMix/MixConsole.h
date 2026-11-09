@@ -13,6 +13,7 @@
 #include <vector>
 
 class RKMixProcessor;
+class MixInsertLayout;
 
 /** The meters the remote pages get, apart from the window's: the loudest
     peaks (gain) and the most gain reduction (dB, <= 0) since the last look. */
@@ -154,6 +155,16 @@ private:
     int ticks = 0;
     juce::String structure;          // the latest structure message
     bool watchingInputs = false;     // some console shows the Patch page
+
+    // The insert each console shows, laid out as its window (message thread only).
+    struct OpenInsert
+    {
+        std::unique_ptr<MixInsertLayout> layout;
+        juce::String strip;          // "ch3", "bus2", "main", "mono"
+        int n = 0;                   // the slot on the strip
+    };
+    std::map<int, OpenInsert> openInserts;   // by console ID
+    void updateOpenInsert (Client&);
 
     /** A parameter by ID: a host parameter, a mix setting, or an insert's
         ("ins:<slot number>:<its parameter ID>"). */

@@ -27,7 +27,7 @@ namespace
 RKLoopEditor::Footswitch::Footswitch (juce::RangedAudioParameter& p, const juce::String& text)
     : juce::TextButton (text), param (p)
 {
-    rkfx::tagParameter (*this, p.getParameterID());   // RKBoard: right-click to assign it
+    rkfx::tagParameter (*this, p.getParameterID(), "momentary", text);   // RKBoard: right-click to assign it
     onStateChange = [this]
     {
         const auto pressed = isDown();
@@ -55,6 +55,9 @@ void RKLoopEditor::Footswitch::mouseUp (const juce::MouseEvent& e)
 //==============================================================================
 RKLoopEditor::Tile::Tile (RKLoopEditor& o, int i) : owner (o), index (i)
 {
+    // On RKMix's iPad: a tap picks this loop (not tagged as the Loop parameter: its right-click is Export).
+    getProperties().set ("rkfx.pick", "loop");
+    getProperties().set ("rkfx.pickValue", index + 1);
 }
 
 void RKLoopEditor::Tile::paint (juce::Graphics& g)
@@ -172,6 +175,11 @@ void RKLoopEditor::showRoleSwitch (int loop)
         removeChildComponent (role.get());
     role = std::make_unique<rkfx::SegmentedSwitch> (*loopProcessor.findParam (LoopParams::roleId (loop)), accent(),
                                                     juce::StringArray { "Part", "Layer" });
+    // The other loops' roles are reached through this switch too (pick the loop first), also on RKMix's iPad.
+    juce::StringArray roles;
+    for (int i = 0; i < LoopParams::kLoops; ++i)
+        roles.add (LoopParams::roleId (i));
+    role->getProperties().set ("rkfx.reaches", roles.joinIntoString (" "));
     addToCanvas (*role);
     resized();
 }

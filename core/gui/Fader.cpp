@@ -1,6 +1,7 @@
 #include "Fader.h"
 
 #include "LookAndFeel.h"
+#include "Switches.h"
 
 namespace rkfx
 {
@@ -21,6 +22,7 @@ Fader::Fader (juce::RangedAudioParameter& p, const juce::String& labelText)
                       repaint();
                   })
 {
+    tagParameter (*this, p.getParameterID(), "fader", label);
     valueEditor.setJustification (juce::Justification::centred);
     valueEditor.setFont (Fonts::regular (11.0f));
     valueEditor.setSelectAllWhenFocused (true);
@@ -35,6 +37,7 @@ Fader::Fader (juce::RangedAudioParameter& p, const juce::String& labelText)
 void Fader::setCompactValue (bool shouldBeCompact)
 {
     compact = shouldBeCompact;
+    getProperties().set ("rkfx.compact", compact);
     repaint();
 }
 

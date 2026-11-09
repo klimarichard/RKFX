@@ -130,6 +130,8 @@ public:
 
     /** Called before an insert is deleted (the editor closes its editor). */
     std::function<void (rkfx::ProcessorBase*)> insertAboutToRemove;
+    /** The same for the console remote (its hidden editors of the inserts the iPads show). */
+    std::function<void (rkfx::ProcessorBase*)> insertAboutToRemoveRemote;
 
     /** Scenes and assignables (message thread). Recalling moves the Scene host parameter too. */
     MixScenes& getScenes() noexcept { return *scenes; }

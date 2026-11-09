@@ -1,4 +1,5 @@
 #include "MixConsole.h"
+#include "MixInsertLayout.h"
 #include "MixOsc.h"
 
 #include "PluginProcessor.h"
@@ -60,10 +61,20 @@ struct MixConsole::Client
 };
 
 //==============================================================================
-MixConsole::MixConsole (RKMixProcessor& p) : mixer (p) {}
+MixConsole::MixConsole (RKMixProcessor& p) : mixer (p)
+{
+    // An insert leaving: the hidden editors of it go first.
+    mixer.insertAboutToRemoveRemote = [this] (rkfx::ProcessorBase* plugin)
+    {
+        for (auto it = openInserts.begin(); it != openInserts.end();)
+            it = it->second.layout != nullptr && &it->second.layout->plugin == plugin ? openInserts.erase (it) : std::next (it);
+    };
+}
 
 MixConsole::~MixConsole()
 {
+    mixer.insertAboutToRemoveRemote = nullptr;
+    openInserts.clear();
     if (watchingInputs)
         mixer.watchInputs (false);
 }
@@ -305,6 +316,9 @@ void MixConsole::tick()
                 }
                 queueValues (client);
                 queueCurves (client);
+                // An open insert's window: what moved or was drawn anew (4 times a second, the consoles in turn).
+                if ((ticks + client.id) % 8 == 0)
+                    updateOpenInsert (client);
                 if (const auto v = mixer.getMonitorEq().getVersion(); client.monitorEq && v != client.monitorEqSent)
                 {
                     if (monitorEqState.isEmpty())
@@ -326,6 +340,13 @@ void MixConsole::tick()
                 }
             }
             posted = posted || client.outbox.size() != before;
+        }
+
+        // Consoles gone: their open inserts' hidden editors too.
+        for (auto it = openInserts.begin(); it != openInserts.end();)
+        {
+            const auto present = std::any_of (clients.begin(), clients.end(), [&] (const auto& c) { return c.second->id == it->first; });
+            it = present ? std::next (it) : openInserts.erase (it);
         }
     }
     if (posted && onOutbox != nullptr)
@@ -716,6 +737,8 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
         else if (const auto d = indexAfter (strip, "dca", kDcas); d >= 0)
             mixer.setDcaColour (d, c);
     }
+    else if (type == "insClose")
+        openInserts.erase (client.id);   // the iPad closed the insert: its hidden editor goes
     else if (type.startsWith ("ins"))
         insertCommand (client, type, m);
     else if (type == "userPage")
@@ -1066,9 +1089,33 @@ void MixConsole::insertCommand (Client& client, const juce::String& type, const 
                     first = false;
                 }
             json << "]";
+
+            // Its window's layout, for the iPad to show the plugin as on the computer.
+            auto layout = std::make_unique<MixInsertLayout> (*plugin, flat);
+            if (layout->hasLayout())
+            {
+                json << R"(,"layout":)" << layout->layoutJson();
+                openInserts[client.id] = { std::move (layout), strip, slot.slot };
+            }
+            else
+                openInserts.erase (client.id);
         }
         post (client, json + "}");
     }
+}
+
+void MixConsole::updateOpenInsert (Client& client)
+{
+    const auto it = openInserts.find (client.id);
+    if (it == openInserts.end() || it->second.layout == nullptr)
+        return;
+    auto& open = it->second;
+    const auto head = R"({"s":)" + jsonString (open.strip) + R"(,"n":)" + juce::String (open.n);
+    const auto what = open.layout->update();
+    if (what == "layout")
+        post (client, head + R"(,"type":"insLayout","layout":)" + open.layout->layoutJson() + "}");
+    else if (what == "image")
+        post (client, head + R"(,"type":"insImg","img":)" + jsonString (open.layout->imageUrl()) + "}");
 }
 
 //==============================================================================

@@ -4,6 +4,7 @@
 
 #include "PlayAnalysis.h"
 #include "PlayEngine.h"
+#include "PlayRemote.h"
 #include "PlayRig.h"
 #include "PlayShow.h"
 #include "PlayStream.h"
@@ -205,6 +206,12 @@ public:
     /** Tests: as the standalone app, its rig kept in @p folder. */
     void setStandaloneForTesting (const juce::File& folder) { rig = std::make_unique<PlayRig> (*this, folder); }
 
+    // The phone and iPad web remote (PlayRemoteHub): one per process, shared
+    // by every RKPlay in it. The plugin and the app; never tests and tools.
+    void beginRemote();
+    /** The web remote, once begun (nullptr in tests and tools). */
+    PlayRemoteHub* getRemote() noexcept { return remoteHub != nullptr ? &remoteHub->get() : nullptr; }
+
     /** Stopped, @p index of @p playlist is the song Play starts (after a recovery). */
     void readyToPlay (int playlist, int index);
     void showNote (const juce::String& text) { setNote (text); }
@@ -267,6 +274,7 @@ private:
 
     // The standalone app
     std::unique_ptr<PlayRig> rig;
+    std::unique_ptr<juce::SharedResourcePointer<PlayRemoteHub>> remoteHub;
     juce::AbstractFifo midiFifo { 256 };
     std::array<juce::uint32, 256> midiEvents {};     // controller and program change messages, packed
     double currentStarted = 0.0;                     // when the current song began (for the history)

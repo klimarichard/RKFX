@@ -30,6 +30,9 @@ set(RKPLAY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayShow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayAnalysis.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/PlayRig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PlayRemote.cpp
+    ${PROJECT_SOURCE_DIR}/host/remote/RemoteServer.cpp   # the web remote's server and QR code, shared with RKBoard and RKMix
+    ${PROJECT_SOURCE_DIR}/host/remote/RemoteQr.cpp
     ${PROJECT_SOURCE_DIR}/host/MidiMap.cpp          # MIDI learn, shared with RKBoard and RKMix (just this file)
 )
 
@@ -50,6 +53,18 @@ else()
     configure_file("${RKFX_CORE_DIR}/plugin/FactoryPresetListEmpty.cpp.in"
                    "${CMAKE_CURRENT_BINARY_DIR}/RKPlayFactoryPresetList.cpp" @ONLY)
 endif()
+# The web remote's page (remote/play.html, play.js) and the suite's controls
+# (host/remote/rk.js, shared with RKMix and RKBoard), served by PlayRemoteHub.
+# (The TouchOSC layouts in remote/ are not served.)
+file(GLOB playRemoteFiles CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.html" "${CMAKE_CURRENT_SOURCE_DIR}/remote/*.js")
+list(APPEND playRemoteFiles "${PROJECT_SOURCE_DIR}/host/remote/rk.js")
+list(SORT playRemoteFiles)
+juce_add_binary_data(RKPlay_RemoteFiles
+    HEADER_NAME RKPlayRemoteFiles.h
+    NAMESPACE   RKPlayRemoteFiles
+    SOURCES     ${playRemoteFiles})
+target_link_libraries(rkplay_factory_presets INTERFACE RKPlay_RemoteFiles)
+
 target_sources(rkplay_factory_presets INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/RKPlayFactoryPresetList.cpp")
 target_compile_definitions(rkplay_factory_presets INTERFACE RKFX_FACTORY_PRESET_LIST=factoryPresetList_RKPlay)
 

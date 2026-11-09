@@ -74,6 +74,9 @@ RKPlayProcessor::RKPlayProcessor()
 RKPlayProcessor::~RKPlayProcessor()
 {
     stopTimer();
+    if (remoteHub != nullptr)
+        (*remoteHub)->removePlayer (*this);
+    remoteHub.reset();
     if (rig != nullptr)
     {
         finishCurrent();
@@ -1825,7 +1828,20 @@ juce::AudioProcessorEditor* RKPlayProcessor::createEditor()
     return new RKPlayEditor (*this);
 }
 
+void RKPlayProcessor::beginRemote()
+{
+    if (remoteHub != nullptr)
+        return;
+    remoteHub = std::make_unique<juce::SharedResourcePointer<PlayRemoteHub>>();
+    (*remoteHub)->addPlayer (*this, true);
+}
+
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new RKPlayProcessor();
+    // Only the plugin and the app serve the web remote (never tests and
+    // tools, whose wrapper type is undefined).
+    auto* player = new RKPlayProcessor();
+    if (player->wrapperType != juce::AudioProcessor::wrapperType_Undefined)
+        player->beginRemote();
+    return player;
 }

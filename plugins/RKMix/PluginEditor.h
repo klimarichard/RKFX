@@ -785,7 +785,7 @@ private:
     // Right-click on any control: assign it, make an insert knob scene controlled.
     void mouseDown (const juce::MouseEvent&) override;
     void showControlMenu (const juce::String& paramId, int insertSlot, juce::Component& target);
-    void showSceneMenu (int scene);
+    void showSceneMenu (int button);   // button 0-15 of the shown bank
     /** Standalone: learn or forget a controller for @p target (a MixLearn target). */
     void addLearnItems (juce::PopupMenu&, int target, int firstId);
     bool handleLearnResult (int result, int target, int firstId);

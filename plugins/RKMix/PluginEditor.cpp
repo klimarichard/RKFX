@@ -1681,8 +1681,9 @@ void RKMixEditor::editSceneScope (int scene)
     scenesPanel.editScope (scene);
 }
 
-void RKMixEditor::showSceneMenu (int scene)
+void RKMixEditor::showSceneMenu (int button)
 {
+    const auto scene = sceneOf (button);
     juce::PopupMenu copyTo;
     for (int i = 0; i < MixScenes::kNumScenes; ++i)
         copyTo.addItem (100 + i, mixer.getScenes().markerLabel (i), i != scene);
@@ -1699,7 +1700,7 @@ void RKMixEditor::showSceneMenu (int scene)
     }
 
     juce::Component::SafePointer<RKMixEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sceneButtons[(size_t) scene]), [safe, scene] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&sceneButtons[(size_t) button]), [safe, scene] (int result)
     {
         if (safe == nullptr || result == 0)
             return;
@@ -1725,7 +1726,7 @@ void RKMixEditor::mouseDown (const juce::MouseEvent& e)
     for (int i = 0; i < (int) sceneButtons.size(); ++i)
         if (e.originalComponent == &sceneButtons[(size_t) i])
         {
-            showSceneMenu (sceneOf (i));
+            showSceneMenu (i);
             return;
         }
     for (int userPage = 0; userPage < RKMixProcessor::kUserPages; ++userPage)

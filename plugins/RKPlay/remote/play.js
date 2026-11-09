@@ -30,7 +30,7 @@ const state = {
   query: "", results: null, more: false,
   selected: null,              // { playlist, index, file, title, artist }
   page: "play", wide: false,
-  unlockedAt: 0, noteVersion: -1, note: "", noteAt: 0, toast: "", toastAt: 0,
+  unlockedAt: -1e9, noteVersion: -1, note: "", noteAt: 0, toast: "", toastAt: 0,
 };
 
 const fmt = s => {
@@ -182,29 +182,30 @@ class BigButton extends TextButton {
 // A list that scrolls under a finger (with a little momentum); its rows are drawn, not components.
 class ListView extends Component {
   constructor() {
-    super(); this.takesTouches = true; this.offset = 0; this.rows = []; this.rowH = kRow; this.v = 0; this.scrolledAt = 0;
+    super(); this.takesTouches = true; this.offset = 0; this.rows = []; this.rowH = kRow; this.v = 0; this.scrolledAt = 0; this.top = 0;
     app.frameHooks.add(dt => {
       if (this.dragging || Math.abs(this.v) < 5) { this.v = 0; return; }
       this.scrollBy(this.v * dt); this.v *= Math.pow(0.04, dt);
     });
   }
   heightOf(row) { return row && row.header ? 30 : this.rowH; }
-  contentHeight() { let h = 0; for (const r of this.rows) h += this.heightOf(r); return h + kPad; }
+  contentHeight() { let h = 0; for (const r of this.rows) h += this.heightOf(r); return this.top + h + kPad; }
   maxOffset() { return Math.max(0, this.contentHeight() - this.h); }
   scrollBy(dy) { const o = Math.max(0, Math.min(this.maxOffset(), this.offset - dy)); if (o !== this.offset) { this.offset = o; this.repaint(); } }
-  topOf(i) { let y = 0; for (let k = 0; k < i && k < this.rows.length; k++) y += this.heightOf(this.rows[k]); return y; }
+  topOf(i) { let y = this.top; for (let k = 0; k < i && k < this.rows.length; k++) y += this.heightOf(this.rows[k]); return y; }
   scrollTo(i) {   // row i about a third down
     const y = this.topOf(i) - this.h / 3;
     this.offset = Math.max(0, Math.min(this.maxOffset(), y)); this.repaint();
   }
   rowAt(y) {
-    let top = -this.offset;
+    let top = this.top - this.offset;
     for (let i = 0; i < this.rows.length; i++) { const h = this.heightOf(this.rows[i]); if (y >= top && y < top + h) return i; top += h; }
     return -1;
   }
   paint(g) {
+    this.offset = Math.max(0, Math.min(this.offset, this.maxOffset()));   // (the list or the page's size changed)
     const c = g.ctx; c.save(); c.beginPath(); c.rect(0, 0, this.w, this.h); c.clip();
-    let y = -this.offset;
+    let y = this.top - this.offset;
     for (let i = 0; i < this.rows.length; i++) {
       const h = this.heightOf(this.rows[i]);
       if (y + h > 0 && y < this.h) this.paintRow(g, this.rows[i], i, y, h);
@@ -356,9 +357,9 @@ class PlayPage extends Component {
     this.play = this.add(new BigButton("Play", () => net.send({ t: "playpause" }), 22));
     this.next = this.add(new BigButton("⏭", () => net.send({ t: "next" }), 24));
     this.fade = this.add(new BigButton("Fade out", () => net.send({ t: "fade" }), 16));
-    this.unlock = this.add(new BigButton("Unlock", () => { state.unlockedAt = unlocked() ? 0 : performance.now(); app.dirty = true; }, 15));
-    this.stop = this.add(new BigButton("Stop", () => { if (unlocked()) { net.send({ t: "stop" }); state.unlockedAt = 0; } }, 15));
-    this.panic = this.add(new BigButton("Panic", () => { if (unlocked()) { net.send({ t: "panic" }); state.unlockedAt = 0; } }, 15));
+    this.unlock = this.add(new BigButton("Unlock", () => { state.unlockedAt = unlocked() ? -1e9 : performance.now(); app.dirty = true; }, 15));
+    this.stop = this.add(new BigButton("Stop", () => { if (unlocked()) { net.send({ t: "stop" }); state.unlockedAt = -1e9; } }, 15));
+    this.panic = this.add(new BigButton("Panic", () => { if (unlocked()) { net.send({ t: "panic" }); state.unlockedAt = -1e9; } }, 15));
     this.level = this.add(new LevelFader());
     this.duck = this.add(new BigButton("Duck", () => net.send({ t: "duck", on: !(state.now && state.now.duck) }), 16));
     this.endAt = this.add(new TextButton("End at...", () => this.askEndAt()));
@@ -615,9 +616,9 @@ class QueueList extends ListView {
     g.setColour(Palette.panel.brighter(0.15)); g.fillRoundedRectangle(2, y, this.w - 4, this.rowH, Style.cornerRadius);
     this.paintItem(g, row, y, this.rowH, -1);
     const to = this.dropIndex();
-    g.setColour(Palette.accent); g.fillRect(8, Math.min(to, this.rows.length) * this.rowH - this.offset - 1 + (to > this.drag.from ? this.rowH : 0), this.w - 16, 2);
+    g.setColour(Palette.accent); g.fillRect(8, this.top + Math.min(to, this.rows.length) * this.rowH - this.offset - 1 + (to > this.drag.from ? this.rowH : 0), this.w - 16, 2);
   }
-  dropIndex() { return Math.max(0, Math.min(this.rows.length - 1, Math.floor((this.drag.y + this.offset) / this.rowH))); }
+  dropIndex() { return Math.max(0, Math.min(this.rows.length - 1, Math.floor((this.drag.y + this.offset - this.top) / this.rowH))); }
   pointerDown(e) {
     const i = this.rowAt(e.y);
     if (i >= 0 && e.x < 46) { this.drag = { from: i, y: e.y }; this.repaint(); return true; }   // the handle: reorder
@@ -656,7 +657,7 @@ class QueuePage extends Component {
 
 // ---------------------------------------------------------------- Lists
 class ListsPage extends ListView {
-  constructor() { super(); this.rowH = 64; this.empty = "..."; }
+  constructor() { super(); this.rowH = 64; this.top = 8; this.empty = "..."; }
   structureChanged() { return false; }
   paint(g) {
     const l = state.lists;
@@ -798,8 +799,8 @@ function start() {
     const now = performance.now();
     if (now - lastTick > 100) {
       lastTick = now;
-      if (isPlaying() || unlocked() || state.unlockedAt || now - state.noteAt < kNoteSeconds * 1000 + 200 || now - state.toastAt < 3200) app.dirty = true;
-      if (state.unlockedAt && !unlocked()) state.unlockedAt = 0;
+      if (isPlaying() || unlocked() || state.unlockedAt > 0 || now - state.noteAt < kNoteSeconds * 1000 + 200 || now - state.toastAt < 3200) app.dirty = true;
+      if (state.unlockedAt > 0 && !unlocked()) state.unlockedAt = -1e9;
     }
   });
   net.connect();

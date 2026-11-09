@@ -259,6 +259,8 @@ RKMixProcessor::RKMixProcessor()
     {
         if (insertAboutToRemove != nullptr)
             insertAboutToRemove (plugin);
+        if (insertAboutToRemoveRemote != nullptr)
+            insertAboutToRemoveRemote (plugin);
         if (const auto slot = rack.slotOf (plugin); slot >= 0)
         {
             assigns->insertRemoved (slot);

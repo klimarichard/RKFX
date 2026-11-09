@@ -33,6 +33,7 @@ set(RKMIX_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MixGang.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemote.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixConsole.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/MixInsertLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixOsc.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixRemotePanel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/MixComponents.cpp

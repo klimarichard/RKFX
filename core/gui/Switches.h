@@ -8,10 +8,18 @@ namespace rkfx
 
 /** Controls tag themselves with the ID of the parameter they drive, so a
     host of the editor (RKBoard) can find it, e.g. to assign it on a
-    right-click. */
-inline void tagParameter (juce::Component& c, const juce::String& parameterId)
+    right-click. The suite's own controls also say what they are ("knob",
+    "fader", "toggle", "segments") and their label, so RKMix can lay out the
+    same controls on the iPad (MixInsertLayout). */
+inline void tagParameter (juce::Component& c, const juce::String& parameterId,
+                          const juce::String& widget = {}, const juce::String& label = {})
 {
-    c.getProperties().set ("rkfx.parameter", parameterId);
+    auto& properties = c.getProperties();
+    properties.set ("rkfx.parameter", parameterId);
+    if (widget.isNotEmpty())
+        properties.set ("rkfx.widget", widget);
+    if (label.isNotEmpty())
+        properties.set ("rkfx.label", label);
 }
 
 /** The parameter ID @p c (or the nearest of its parents) was tagged with,

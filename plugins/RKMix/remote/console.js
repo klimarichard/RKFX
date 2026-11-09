@@ -105,6 +105,8 @@ function receive(msg) {
     case "types": state.types = msg.list; break;
     case "clip": state.clipboard = msg.text; state.clipKind = msg.kind; break;
     case "insParams": if (C.onInsertParams) C.onInsertParams(msg); break;
+    case "insLayout": if (C.onInsertLayout) C.onInsertLayout(msg); break;
+    case "insImg": if (C.onInsertImage) C.onInsertImage(msg); break;
     case "meq": if (C.onMonitorEq) C.onMonitorEq(msg); break;
     case "rec": if (C.onRecorder) C.onRecorder(msg); break;
     case "inputs": if (C.onInputs) C.onInputs(msg); break;

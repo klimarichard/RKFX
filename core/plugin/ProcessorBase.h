@@ -69,6 +69,12 @@ public:
 
     const PluginConfig& getConfig() const noexcept { return config; }
 
+    /** The plugin's editor (JUCE keeps this private): public here so a host
+        can make a second, hidden one besides the active editor, as RKMix does
+        to lay out an insert on the iPad. Prefer createEditorAndMakeActive()
+        for the editor on screen. */
+    juce::AudioProcessorEditor* createEditor() override = 0;
+
     /** Plugins with MIDI output: what they can send at their current settings
         (message thread; RKMix warns when two of its inserts clash). */
     virtual MidiFootprint getMidiOutputFootprint() const { return {}; }

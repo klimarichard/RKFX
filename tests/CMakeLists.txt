@@ -197,6 +197,7 @@ target_sources(RKBoardTests PRIVATE
     PatchStateTests.cpp
     MixStateTests.cpp
     MixMonitorEqSessionTests.cpp
+    MixInsertLayoutTests.cpp
     ${RKMIX_SOURCES}
     ${RKBOARD_SOURCES}
 )

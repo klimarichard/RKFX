@@ -107,6 +107,8 @@ class Graphics {
     c.lineWidth = lw; c.lineCap = "round"; c.stroke(); c.lineCap = "butt";
   }
   textWidth(s) { return this.ctx.measureText(s).width; }
+  // A loaded <img> (or canvas) into a rectangle; nothing until it has loaded.
+  drawImage(img, x, y, w, h) { if (img && (img.complete === undefined || img.complete) && (img.naturalWidth || img.width)) this.ctx.drawImage(img, x, y, w, h); }
 
   baselineFor(y, h, just) {
     const fh = this.fontH;
@@ -494,6 +496,41 @@ class Knob extends ParamComponent {
     const delta = (this.lastY - e.y) / 200 * fine.scale(); this.lastY = e.y;
     this.dragN = Math.max(0, Math.min(1, this.dragN + delta));
     this.setNorm(this.dragN);
+  }
+  pointerUp() { store.hold(this.id, false); }
+}
+
+// rkfx::Fader: a vertical slider (RKGraphEQ's bands), its value above, its
+// label below; a bipolar range fills from its 0. Slide anywhere on it: it
+// moves from where it was; double-tap for the default.
+class Fader extends ParamComponent {
+  constructor(id, label, zero = 0, compact = false) { super(id); this.label = label; this.zero = zero; this.compact = compact; }
+  track() { const t = 16; return { x: 0, y: t + 6, w: this.w, h: Math.max(10, this.h - 2 * t - 12) }; }
+  valueText() {
+    const text = store.text(this.id);
+    if (!this.compact) return text;
+    const v = Math.round(parseFloat(text)); return isNaN(v) ? text : (v > 0 ? "+" : "") + v;
+  }
+  paint(g) {
+    const a = this.enabled ? 1 : 0.4, t = this.track(), cx = t.x + t.w / 2, yFor = n => t.y + t.h - n * t.h;
+    g.setColour(Palette.knobBody.withMultipliedAlpha(a)); g.fillRoundedRectangle(cx - 2, t.y, 4, t.h, 2);
+    if (this.zero > 0) { g.setColour(Palette.outline.withMultipliedAlpha(a)); g.drawHorizontalLine(yFor(this.zero), t.x + 2, t.x + t.w - 2); }
+    const n = this.norm, top = yFor(Math.max(this.zero, n)), bottom = yFor(Math.min(this.zero, n));
+    g.setColour(Palette.knobTrack.withMultipliedAlpha(a)); g.fillRect(cx - 2, top, 4, bottom - top);
+    const tw = Math.min(t.w - 2, 26);
+    g.setColour(Palette.text.withMultipliedAlpha(a)); g.fillRoundedRectangle(cx - tw / 2, yFor(n) - 3, tw, 6, 2);
+    g.setFont(this.compact ? 10.5 : 11.5);
+    g.drawFittedText(this.valueText(), 0, 0, this.w, 16, J.centred, 1);
+    g.setColour(Palette.textDim.withMultipliedAlpha(a)); g.drawFittedText(this.label, 0, this.h - 16, this.w, 16, J.centred, 1);
+  }
+  pointerDown(e) {
+    if (this.locked && this.locked()) return false;
+    if (e.taps >= 2 && this.info) { this.setNorm(this.info.def); return true; }
+    this.lastY = e.y; this.dragN = this.norm; store.hold(this.id, true); return true;
+  }
+  pointerMove(e) {
+    const delta = (this.lastY - e.y) / Math.max(60, this.track().h) * fine.scale(); this.lastY = e.y;
+    this.dragN = Math.max(0, Math.min(1, this.dragN + delta)); this.setNorm(this.dragN);
   }
   pointerUp() { store.hold(this.id, false); }
 }
@@ -887,6 +924,6 @@ class EqEditor extends ResponseCurve {
 }
 
 return { Colour, Palette, StripColours, StripColourNames, stripColour, Style, J, cssFont, Graphics, drawPanel, Component, app, store,
-         ParamComponent, TextButton, ToggleSwitch, SegmentedSwitch, Knob, MixFader, Meter, LinearSlider, GainReductionMeter,
+         ParamComponent, TextButton, ToggleSwitch, SegmentedSwitch, Knob, Fader, MixFader, Meter, LinearSlider, GainReductionMeter,
          ResponseCurve, TransferCurve, EqEditor, PopupMenu, ChoiceBox, editText, faderDbAt, faderPositionOf, fine, FineButton };
 })();

@@ -24,7 +24,7 @@ Knob::Knob (juce::RangedAudioParameter& p, const juce::String& labelText)
                       repaint();
                   })
 {
-    tagParameter (*this, p.getParameterID());
+    tagParameter (*this, p.getParameterID(), "knob", label);
     setRepaintsOnMouseActivity (false);
 
     valueEditor.setJustification (juce::Justification::centred);
@@ -45,6 +45,7 @@ void Knob::setDimmed (bool shouldBeDimmed)
     if (dimmed != shouldBeDimmed)
     {
         dimmed = shouldBeDimmed;
+        getProperties().set ("rkfx.dimmed", dimmed);
         repaint();
     }
 }

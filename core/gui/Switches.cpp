@@ -14,7 +14,7 @@ ToggleSwitch::ToggleSwitch (juce::RangedAudioParameter& p, juce::Colour accentCo
                       repaint();
                   })
 {
-    tagParameter (*this, p.getParameterID());
+    tagParameter (*this, p.getParameterID(), "toggle", text);
     attachment.sendInitialUpdate();
 }
 
@@ -53,7 +53,8 @@ SegmentedSwitch::SegmentedSwitch (juce::RangedAudioParameter& p, juce::Colour ac
         if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (&p))
             labels = choice->choices;
 
-    tagParameter (*this, p.getParameterID());
+    tagParameter (*this, p.getParameterID(), "segments", title);
+    getProperties().set ("rkfx.labels", labels.joinIntoString ("\n"));
     attachment.sendInitialUpdate();
 }
 

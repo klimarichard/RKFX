@@ -224,7 +224,7 @@ The **Recorder** page records every input to its own WAV file for the whole gig,
 - **The inputs are recorded as they arrive**, before the trim and polarity, so everything after the trim works the same on playback as live.
 - **One file per input:** a mono file for a single input, one **stereo file for a linked pair** (`05-06 Keys.wav`, left = the odd input) when the pair takes two neighbouring inputs, left and right. **Pairs as two mono files** (this computer's setting) records a pair as `05 Keys L.wav` and `06 Keys R.wav` instead, for a DAW that prefers mono tracks.
 - **Files:** WAV, **24-bit** or **32-bit float** (this computer's setting), at the session's sample rate, in a folder per recording: `Music/RKMusic Plugins/RKFX/Recordings/<date> <time> <mix name>/` (**Folder...** changes where; **Show** opens it). Each file is named by its input and the name of the channel it feeds (`01 Lead Vox.wav`; an input no channel takes is `03 In 3.wav`). A `session.json` beside them says which input each file came from, the names, colours and patch, the markers and any dropouts.
-- **Markers:** every scene recall writes one ("Scene 3"), and **Marker** adds "Marker 1", "Marker 2"...
+- **Markers:** every scene recall writes one ("Scene 3", or "Scene 3 Hallelujah" with its name), and **Marker** adds "Marker 1", "Marker 2"... A marker whose name starts with **Scene** and a number is a **scene marker** (see below).
 - **Size:** a mono track at 48 kHz, 24-bit is about 518 MB an hour: a 3-hour gig with 24 inputs is about 37 GB. Record refuses to start with less than 10 minutes of space, and stops by itself (the files finished) with a minute left. Files past 4 GB become RF64 automatically.
 - **Safe for the show:** the recording never touches the sound. If the disk can't keep up, RKMix drops what it can't write (counted as dropouts, every file still aligned) rather than stopping the audio. A crash or a power cut loses at most the last 10 seconds.
 - **While recording:** **Link** is dimmed (the files match the channels as they were), and so is loading a mix from the preset menu. The patch can change: the files are the inputs. If the host reloads the session anyway, the recording carries on in a new folder from the next sample. A change of sample rate stops it.
@@ -242,10 +242,18 @@ The **Recorder** page records every input to its own WAV file for the whole gig,
    - **×**, or **Delete** on the selected marker, deletes it. **Undo delete** brings back the last one deleted.
    - **Add marker here** puts a new one ("Marker 1", "Marker 2"...) at the play position, also while playing.
 
+   - **Scene markers:** a marker named "Scene 3" (or "Scene 3" followed by anything after a space: "Scene 3 Hallelujah") stands for a recall of scene 3, and is drawn in the accent colour on the bar. The recorder writes one at every recall, and you can make any marker one by renaming it. With **Scenes follow markers** on (the default, this computer's setting, beside Add marker here):
+     - while the recording plays, passing a scene marker recalls its scene, as the console did at the gig (with the scene's glide);
+     - a jump (the bar, ◀ Marker / Marker ▶, the -10 s / +1 min buttons, Loop) recalls the scene in effect where it lands, and **Play** recalls it if the console is on another scene;
+     - before the first scene marker, or when you recall another scene by hand, nothing changes until the next scene marker;
+     - loading a recording recalls nothing;
+     - Export follows the scene markers too (below).
+     Edits you make while a scene is active still go into it, so you can play the gig back and fix each song's scene as it comes.
    - **Export** writes the **main mix**, as it is set now, from the selected marker to the next one into a stereo WAV file, much faster than real time (a song in a few seconds). Shift-click a few markers in a row for one file from the first to the end of the last, Cmd-click to pick several. With nothing selected it takes the part around the play position (as Loop). **Export each** writes one file per selected marker instead: every song of the night in one go. A progress bar shows how far it is, **Cancel** stops it, **Show** opens the folder.
 
    The files go into an `Exports` folder inside the recording's folder, named after the marker (`Take 03.wav`; exporting again makes `Take 03 (2).wav`, never over the last one), at this computer's recorder format (24-bit or 32-bit float). The export:
-   - uses the mix as it is when you press Export: every setting, fader, mute and insert (copies of them, so the console carries on as it is). Scene recalls and fader moves inside the region aren't repeated.
+   - uses the mix as it is when you press Export: every setting, fader, mute and insert (copies of them, so the console carries on as it is). Fader moves you made during the gig aren't repeated.
+   - follows the **scene markers** (with Scenes follow markers on): the export starts in the scene of the last scene marker before it (or the mix as it is now, if there is none) and recalls each scene marker inside it at its exact sample, with the scene's glide, recall scope and recall-safe channels, as the console would. The console itself doesn't change. The tail after the region's end rings on in the region's last scene. So exporting from "Scene 3 Hallelujah" to the next marker gives that song in its own scene.
    - plays every file of the recording into the input it is mapped to, whether the input is on Playback or Live.
    - leaves out solo, talkback and the oscillator.
    - starts on the marker's sample: the mix runs from 2 seconds before (thrown away), so the compressors have settled and a reverb is already ringing.
@@ -298,7 +306,7 @@ The whole console on an iPad, from anywhere in the room: the same server as the 
 
 Pages (tabs at the top):
 
-- **Mix:** the strips as in the window: **Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA** (with **Spill**), **User 1**, **User 2**; Main and Mono always on the right, the **scenes** at the bottom, **Clear solo** and **TALK** (held, or tapped on and off when Latch is on). Put a finger anywhere on a fader and slide: it moves from where it was, never jumping to the finger. Several fingers move several faders. Pans slide sideways (double-tap: centre). An Aux or FX bus's **Sends** button (on the Buses layer) turns the channel faders into its sends, and the pans into its send pans in an Own bus; **Back to faders** ends it. While the faders show sends, the **EQ** button above each fader opens that send's EQ (the curve with its handles, On, Flat and the knobs). Tap a strip's name to select it, double-tap it to rename; tap its H G E C letters to open it on the Channel page. Tap an insert slot to add a plugin or open it.
+- **Mix:** the strips as in the window: **Inputs 1-16**, **Inputs 17-32**, **Buses**, **DCA** (with **Spill**), **User 1**, **User 2**; Main and Mono always on the right, the **scenes** at the bottom (16 at a time, **1-16** / **17-32** switches; the active scene's name beside them), **Clear solo** and **TALK** (held, or tapped on and off when Latch is on). Put a finger anywhere on a fader and slide: it moves from where it was, never jumping to the finger. Several fingers move several faders. Pans slide sideways (double-tap: centre). An Aux or FX bus's **Sends** button (on the Buses layer) turns the channel faders into its sends, and the pans into its send pans in an Own bus; **Back to faders** ends it. While the faders show sends, the **EQ** button above each fader opens that send's EQ (the curve with its handles, On, Flat and the knobs). Tap a strip's name to select it, double-tap it to rename; tap its H G E C letters to open it on the Channel page. Tap an insert slot to add a plugin or open it.
 - **Channel:** the selected channel in full (input, delay, high-pass, gate, output, EQ, compressor) with its sends, taps, send EQs (the **EQ** button under each Aux and FX send) and direct out; or a bus's, the main's or the mono's EQ, compressor and limiter, with a bus's setup and sends (or the main's routing). The **EQ curve** has a handle per band (and the high-pass, and the bus low-pass): drag it sideways for the frequency, up and down for the gain; double-tap it for 0 dB. Knobs: drag up and down, double-tap for the default. **Copy...** copies a section (or the whole strip), **Paste** puts it on the strip shown. The row at the bottom picks the strip (the Mix page's layer), the arrows step through every strip.
 - **Setup:** solo and the cue output, talkback, the oscillator, which channels and buses each DCA and mute group holds, and which strips the user pages show (in the order tapped).
 - **Patch:** the input lights and every channel's Source, as in the window. **Default** asks for a second tap; **Swap**, then tap two channels. The strips show a repatched channel's input after an arrow, as in the window.
@@ -331,7 +339,7 @@ What RKMix listens for (any sender, not only Gig Performer):
 | `/rkmix/subtitle` | text | The second line (the variation, or the song part). |
 | `/rkmix/now` | text, text | Both at once (the second optional). |
 | `/rkmix/clear` | | Both gone. |
-| `/rkmix/scene` | 1 to 16 | Recalls that scene (an integer, a float or text). |
+| `/rkmix/scene` | 1 to 32 | Recalls that scene (an integer, a float or text). |
 
 - The names are only shown: they aren't saved with the mix, aren't in the scenes or the undo history, and are gone when the names are switched off. A phone that connects later gets the names at once.
 - **From other computers** lets another computer on the network send (Gig Performer on another Mac); off, only this computer can.
@@ -374,7 +382,9 @@ The pages are saved with the mix.
 
 ## Scenes
 
-The scene bar (bottom row) holds **16 scenes**. Click a number to recall it; right-click to copy one scene to another. Changes you make go into the active scene.
+RKMix has **32 scenes**. The scene bar (bottom row) shows 16 at a time: the button before them switches between **1-16** and **17-32** (it lights when the active scene is in the other half, and a recall from anywhere shows its half). Click a number to recall it; right-click for **Rename...**, **Copy to** and **Recall scope...**. After the buttons the bar shows the active scene's number and name. Changes you make go into the active scene.
+
+- **Names:** give a scene a name ("Hallelujah", "Speech") with right-click → **Rename...**, or on the Scenes page (pick the scene, double-click the name beside it). Names are saved with the mix, shown in the tooltips and on the iPad, and written into the recorder's markers ("Scene 3 Hallelujah").
 
 - A scene holds the **mix**: faders, mutes, pans, sends, every strip value and section switch, inserts on or off, and insert knobs you mark **Scene controlled** (right-click the knob in the insert's window; up to 64).
 - A scene never changes the **structure**: links, bus types and formats, outputs, taps, which effect sits in which slot, names, user pages, talkback and oscillator setup.
@@ -392,7 +402,7 @@ The scene bar (bottom row) holds **16 scenes**. Click a number to recall it; rig
 - **Audio/MIDI settings:** the audio interface, MIDI input and MIDI output devices.
 - **Tempo** (master section): type it, **Tap**, or **Clock** to follow incoming MIDI clock. Tempo-synced inserts (delays, tremolos) follow it.
 - **MIDI learn:** the **MIDI** button on each Assign row; right-click a scene button, TALK or Tap to learn a controller for it. Learned controllers belong to your rig, the same for every mix.
-- **Program changes** 0-15 recall scenes 1-16.
+- **Program changes** 0-31 recall scenes 1-32.
 
 ## Starting points
 
@@ -417,7 +427,7 @@ A preset is a **whole console**: every setting, the inserts with their own setti
 | **Bus 1 Fader** … **Bus 16 Fader**, **Bus 1 Mute** … | Bus faders and mutes |
 | **Main Fader**, **Main Mute**, **Mono Fader**, **Mono Mute** | The main and the mono sum |
 | **Assign 1** … **Assign 32** | See Assignable controls |
-| **Scene** | 1 to 16 |
+| **Scene** | 1 to 32 (1 to 16 before 2026-11-09: a Gig Performer widget or variation set to a scene number then needs setting again) |
 | **Talk** | Talkback on or off |
 | **DCA 1 Fader** … **DCA 8 Fader**, **DCA 1 Mute** …, **Mute Group 1** … **Mute Group 8** | The DCAs and mute groups |
 | **Record**, **Marker** | The recorder: on = recording; Marker adds one marker per press |

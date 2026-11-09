@@ -693,6 +693,21 @@ bool RKMixEditor::RecorderPanel::canEditMarkers() const
     return p.isLoaded() && ! owner.isLocked() && ! (rec.isRecording() && rec.getTakeFolder() == p.getRecording().folder);
 }
 
+juce::String RKMixEditor::RecorderPanel::inputChannels (int input) const
+{
+    // The input patch: the channels an input feeds ("  > 3 Vocal, 20 Vocal IEM").
+    juce::StringArray names;
+    for (const auto ch : owner.mixer.channelsOfInput (input))
+    {
+        if (ch % 2 == 1 && owner.mixer.isLinked (ch / 2) && owner.mixer.getChannelInput (ch - 1) == input - 1)
+            continue;   // the right side of a pair already listed
+        const auto leader = ch % 2 == 1 && owner.mixer.isLinked (ch / 2) ? ch - 1 : ch;
+        const auto n = owner.mixer.getChannelName (leader);
+        names.add (num (leader) + (n.isNotEmpty() ? " " + n : juce::String()));
+    }
+    return names.isEmpty() ? juce::String ("  (no channel)") : "  > Ch " + names.joinIntoString (", ");
+}
+
 void RKMixEditor::RecorderPanel::rebuildMapping()
 {
     for (auto& m : mapping)
@@ -707,10 +722,10 @@ void RKMixEditor::RecorderPanel::rebuildMapping()
         box->addItem ("Off", 1);
         if (f.numChannels == 1)
             for (int in = 0; in < kChannels; ++in)
-                box->addItem ("In " + num (in), 2 + in);
+                box->addItem ("In " + num (in) + inputChannels (in), 2 + in);
         else if (f.numChannels == 2)
             for (int in = 0; in < kChannels; in += 2)
-                box->addItem ("In " + num (in) + "/" + num (in + 1), 2 + in);
+                box->addItem ("In " + num (in) + "/" + num (in + 1) + inputChannels (in), 2 + in);
         box->setSelectedId (f.inputs.empty() || f.inputs[0] < 0 ? 1 : 2 + f.inputs[0], juce::dontSendNotification);
         box->setTooltip (f.file.getFileName() + (f.role.isNotEmpty() ? " (recorded " + f.role + ", not an input)" : juce::String()));
         box->onChange = [this, i, raw = box.get()]

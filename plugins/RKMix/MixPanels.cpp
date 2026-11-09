@@ -7,10 +7,7 @@ using namespace mix;
 
 namespace
 {
-    juce::String keyName (int value)
-    {
-        return value == 0 ? juce::String ("Self") : "Key: In " + juce::String (value);
-    }
+    juce::String sourceName (int value) { return value == 0 ? juce::String ("Off") : "In " + juce::String (value); }
 
     constexpr int kDirectLabelWidth = 70, kDirectAtWidth = 24;   // the sends page's "Direct out [..] at [..]"
 
@@ -102,11 +99,31 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     {
         if (owner.isLocked())
             return;
-        owner.mixer.setInputOnPlayback (channel, ! owner.mixer.isInputOnPlayback (channel));
+        owner.mixer.setChannelOnPlayback (channel, ! owner.mixer.isChannelOnPlayback (channel));
         owner.sourcesChanged();
     };
     addAndMakeVisible (source);
     link = make<rkfx::ToggleSwitch> (s.param (linkId (ch / 2)), accent, "Link " + num (ch / 2 * 2) + "/" + num (ch / 2 * 2 + 1));
+
+    // The input patch: the input this channel takes (a pair: one per side).
+    patchSource = make<ChoiceBox> (param ("src"), sourceName, 1);
+    patchSource->setTooltip (stereo ? "The input the left side takes (the Patch page has every channel)"
+                                    : "The input this channel takes (the Patch page has every channel)");
+    if (stereo)
+    {
+        patchSourceR = make<ChoiceBox> (s.param (channelId (ch + 1, "src")), sourceName, 1);
+        patchSourceR->setTooltip ("The input the right side takes");
+    }
+
+    // A key: another channel's input after that channel's trim, named.
+    const auto keyName = [&o] (int value)
+    {
+        if (value == 0)
+            return juce::String ("Self");
+        const auto leader = o.leaderOf (value - 1);
+        const auto name = o.mixer.getChannelName (leader);
+        return "Key: Ch " + juce::String (value) + (name.isNotEmpty() ? " " + name : juce::String());
+    };
 
     // Input
     trim = knob (input, "trim", "Trim");
@@ -131,7 +148,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     knob (gate, "gate_hold", "Hold");
     knob (gate, "gate_rel", "Release");
     gateKey = make<ChoiceBox> (param ("gate_key"), keyName, 1);
-    gateKey->setTooltip ("Key: the gate listens to another input (after its trim) instead of this channel");
+    gateKey->setTooltip ("Key: the gate listens to another channel's input (after its trim) instead of this channel");
 
     // Output
     pan = knob (output, "pan", stereo ? "Balance" : "Pan");
@@ -167,7 +184,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
     knob (comp, "comp_rel", "Release");
     knob (comp, "comp_makeup", "Makeup");
     compKey = make<ChoiceBox> (param ("comp_key"), keyName, 1);
-    compKey->setTooltip ("Key: the compressor listens to another input (after its trim), e.g. to duck under a voice");
+    compKey->setTooltip ("Key: the compressor listens to another channel's input (after its trim), e.g. to duck under a voice");
     compCurve = std::make_unique<TransferCurve> ([this] (float inputDb)
     {
         return StripDsp::compTransferDb (owner.mixer.channelSettings (channel).strip.comp, inputDb);
@@ -183,7 +200,7 @@ RKMixEditor::ChannelPanel::ChannelPanel (RKMixEditor& o, int ch) : Panel (o), ch
 void RKMixEditor::ChannelPanel::refresh()
 {
     // The source: Live, or Playback (in the accent colour).
-    const auto onPlayback = owner.mixer.isInputOnPlayback (channel);
+    const auto onPlayback = owner.mixer.isChannelOnPlayback (channel);
     source.setButtonText (onPlayback ? "PB" : "Live");
     source.setToggleState (onPlayback, juce::dontSendNotification);
 
@@ -231,6 +248,13 @@ void RKMixEditor::ChannelPanel::resized()
     link->setBounds (header.removeFromRight (90));
     header.removeFromRight (8);
     presets.setBounds (header.removeFromRight (120));
+    header.removeFromRight (12);
+    if (patchSourceR != nullptr)
+    {
+        patchSourceR->setBounds (header.removeFromRight (72));
+        header.removeFromRight (4);
+    }
+    patchSource->setBounds (header.removeFromRight (72));
     header.removeFromRight (16);
     placeSwatches (header, swatches);
     header.removeFromRight (12);

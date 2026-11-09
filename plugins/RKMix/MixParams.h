@@ -174,7 +174,7 @@ namespace MixParams
         juce::StringArray keyNames { "Self" }, keyKeys { "self" };
         for (int ch = 0; ch < kChannels; ++ch)
         {
-            keyNames.add ("In " + num (ch));
+            keyNames.add ("Ch " + num (ch));   // the channel's Source after its trim (keys stay "1".."32")
             keyKeys.add (num (ch));
         }
         for (int ch = 0; ch < kChannels; ++ch)
@@ -371,6 +371,16 @@ namespace MixParams
         p.addBool ("rec_main", "Record Main", true);
         for (int bus = 0; bus < kBuses; ++bus)
             p.addBool (recordBusId (bus), "Record Bus " + num (bus), false);
+
+        // The input patch (appended): the input each channel takes, by default its own number.
+        juce::StringArray sourceInputNames { "Off" }, sourceInputKeys { "off" };
+        for (int ch = 0; ch < kChannels; ++ch)
+        {
+            sourceInputNames.add ("In " + num (ch));
+            sourceInputKeys.add (num (ch));
+        }
+        for (int ch = 0; ch < kChannels; ++ch)
+            p.addChoice (channelId (ch, "src"), channelName (ch) + "Source", sourceInputNames, sourceInputKeys, ch + 1);
 
         return p;
     }

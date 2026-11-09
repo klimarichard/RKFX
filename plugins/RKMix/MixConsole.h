@@ -153,6 +153,7 @@ private:
     std::atomic<int> version { 0 };
     int ticks = 0;
     juce::String structure;          // the latest structure message
+    bool watchingInputs = false;     // some console shows the Patch page
 
     /** A parameter by ID: a host parameter, a mix setting, or an insert's
         ("ins:<slot number>:<its parameter ID>"). */

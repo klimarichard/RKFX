@@ -140,11 +140,25 @@ public:
 
     /** Virtual soundcheck: a recording played into the inputs set to Playback.
         The source of each input is never saved, never in scenes, never undone:
-        every session and every loaded mix starts all Live. A linked pair's
-        two inputs switch together. */
+        every session and every loaded mix starts all Live. Playback replaces
+        the raw input, so it reaches every channel patched from it. */
     MixPlayback& getPlayback() noexcept { return playback; }
     void setInputOnPlayback (int input, bool onPlayback);
     bool isInputOnPlayback (int input) const noexcept { return inputOnPlayback[(size_t) input].load(); }
+    /** A channel's PB switch: its Source input (a linked pair: both sides' inputs). */
+    void setChannelOnPlayback (int channel, bool onPlayback);
+    bool isChannelOnPlayback (int channel) const noexcept;
+
+    /** The input patch: the input (0-based) channel @p channel takes, or -1 for Off. */
+    int getChannelInput (int channel) const noexcept;
+    /** The channels taking input @p input (0-based), in order. */
+    juce::Array<int> channelsOfInput (int input) const;
+    /** Sets channel @p channel's Source: an input (0-based), or -1 for Off. */
+    void setChannelInput (int channel, int input);
+    /** Every channel back to its own input. */
+    void setDefaultPatch();
+    /** True when some channel takes another input than its own number. */
+    bool isPatched() const noexcept;
     void setAllInputsLive();
     void setAllInputsOnPlayback();
     bool anyInputOnPlayback() const noexcept;
@@ -245,6 +259,12 @@ public:
 
     float takeCuePeak (int side) noexcept { return cuePeaks[(size_t) side].exchange (0.0f); }
 
+    /** The raw inputs' peaks (as they arrive, Live or Playback), for the Patch
+        page's signal lights: measured only while someone watches (counted). */
+    void watchInputs (bool on) noexcept { inputWatchers += on ? 1 : -1; }
+    float takeInputPeak (int input) noexcept { return inputPeaks[(size_t) input].exchange (0.0f); }
+    float takeRemoteInputPeak (int input) noexcept { return remoteInputPeaks[(size_t) input].exchange (0.0f); }
+
     //==============================================================================
     // Standalone only (in a host, Gig Performer does these): MIDI learn,
     // program changes for scenes, tempo with tap and MIDI clock.
@@ -291,7 +311,7 @@ private:
         gateOn, gateThr, gateRange, gateAtt, gateHold, gateRel, gateKey,
         eqOn, eqLowType, eqHighType, eqBands,                       // eqBands + 3 * band + (0 freq, 1 gain, 2 q)
         compOn = eqBands + 12, compThr, compRatio, compKnee, compAtt, compRel, compMakeup, compKey,
-        directOut, directTap,
+        directOut, directTap, source,
         numChannelFields
     };
     using ChannelParams = std::array<juce::RangedAudioParameter*, numChannelFields>;
@@ -453,6 +473,8 @@ private:
     std::atomic<int> namesVersion { 0 };
 
     std::array<std::atomic<float>, kChannels> channelPeaks {};
+    std::array<std::atomic<float>, kChannels> inputPeaks {}, remoteInputPeaks {};
+    std::atomic<int> inputWatchers { 0 };
     std::array<std::atomic<float>, 2> mainPeaks {}, cuePeaks {};
     std::array<std::atomic<bool>, kChannels> channelSolo {};
     std::array<std::atomic<bool>, mix::kBuses> busSolo {};

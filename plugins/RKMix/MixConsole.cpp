@@ -54,6 +54,7 @@ struct MixConsole::Client
     juce::var clipboard;              // a copied insert
     bool monitorEq = false;           // shows Monitor EQ: gets its state
     bool recorder = false;            // shows the Recorder: gets its state
+    bool inputs = false;              // shows the Patch page: gets the inputs' signal
     juce::String recorderSent;
     int monitorEqSent = -1;           // the session's version last sent
 };
@@ -61,7 +62,11 @@ struct MixConsole::Client
 //==============================================================================
 MixConsole::MixConsole (RKMixProcessor& p) : mixer (p) {}
 
-MixConsole::~MixConsole() = default;
+MixConsole::~MixConsole()
+{
+    if (watchingInputs)
+        mixer.watchInputs (false);
+}
 
 juce::String MixConsole::randomPin()
 {
@@ -248,6 +253,25 @@ void MixConsole::tick()
         juce::String monitorEqState;      // made once per tick, when some console wants it
         juce::String recorderState;
 
+        // The inputs' signal for the Patch pages showing (10 a second), measured only while one does.
+        bool wantInputs = false;
+        for (auto& [c, clientPtr] : clients)
+            wantInputs = wantInputs || (clientPtr->signedIn && clientPtr->inputs);
+        if (wantInputs != watchingInputs)
+        {
+            watchingInputs = wantInputs;
+            mixer.watchInputs (wantInputs);
+        }
+        juce::String inputsState;
+        if (wantInputs && ticks % 3 == 0)
+        {
+            inputsState << R"({"type":"inputs","p":[)";
+            for (int in = 0; in < kChannels; ++in)
+                inputsState << (in > 0 ? "," : "")
+                            << juce::roundToInt (juce::Decibels::gainToDecibels (mixer.takeRemoteInputPeak (in), -60.0f));
+            inputsState << "]}";
+        }
+
         for (auto& [c, clientPtr] : clients)
         {
             auto& client = *clientPtr;
@@ -288,6 +312,8 @@ void MixConsole::tick()
                     client.monitorEqSent = v;
                     post (client, monitorEqState);
                 }
+                if (client.inputs && inputsState.isNotEmpty())
+                    post (client, inputsState);
                 if (client.recorder)
                 {
                     if (recorderState.isEmpty())
@@ -562,6 +588,7 @@ juce::String MixConsole::structureJson() const
              << R"(,"c":)" << mixer.getChannelColour (ch)
              << R"(,"st":)" << flag (stereo) << R"(,"hid":)" << flag (ch % 2 == 1 && linked)
              << R"(,"gm":)" << flag (mixer.isChannelGroupMuted (ch)) << R"(,"so":)" << flag (mixer.isChannelSoloed (ch))
+             << R"(,"src":)" << mixer.getChannelInput (ch) + 1
              << R"(,"sec":[)" << flag (s.flag (channelId (ch, "hpf_on"))) << "," << flag (s.flag (channelId (ch, "gate_on")))
              << "," << flag (s.flag (channelId (ch, "eq_on"))) << "," << flag (s.flag (channelId (ch, "comp_on"))) << "]"
              << R"(,"ins":)" << inserts (InsertRack::Strip::channel, ch) << "}";
@@ -739,6 +766,8 @@ void MixConsole::command (Client& client, const juce::String& type, const juce::
         monitorEqCommand (client, m);
     else if (type == "rec" || type == "pb")
         recorderCommand (client, type, m);
+    else if (type == "inputs")
+        client.inputs = (bool) m["on"];
 }
 
 //==============================================================================
@@ -770,7 +799,7 @@ void MixConsole::recorderCommand (Client& client, const juce::String& type, cons
     {
         const auto ch = (int) m["ch"];
         if (juce::isPositiveAndBelow (ch, kChannels))
-            mixer.setInputOnPlayback (ch, (bool) m["on"]);
+            mixer.setChannelOnPlayback (ch, (bool) m["on"]);
     }
 }
 
@@ -787,7 +816,7 @@ juce::String MixConsole::recorderJson() const
 
     juce::StringArray sources;
     for (int ch = 0; ch < kChannels; ++ch)
-        if (mixer.isInputOnPlayback (ch))
+        if (mixer.isChannelOnPlayback (ch))
             sources.add (juce::String (ch));
     json << R"(,"src":[)" << sources.joinIntoString (",") << "]";
 

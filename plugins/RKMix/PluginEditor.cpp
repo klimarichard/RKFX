@@ -58,6 +58,22 @@ RKMixEditor::Strip::Strip (RKMixEditor& o, int ch, int b)
     refresh();
 }
 
+juce::String RKMixEditor::patchNote (int channel) const
+{
+    const auto name = [this] (int ch)
+    {
+        const auto input = mixer.getChannelInput (ch);
+        return input < 0 ? juce::String ("Off") : juce::String (input + 1);
+    };
+    if (isStereo (channel))
+    {
+        if (mixer.getChannelInput (channel) == channel && mixer.getChannelInput (channel + 1) == channel + 1)
+            return {};
+        return name (channel) + "/" + name (channel + 1);
+    }
+    return mixer.getChannelInput (channel) == channel ? juce::String() : name (channel);
+}
+
 juce::String RKMixEditor::Strip::label() const
 {
     if (! isBus())
@@ -217,7 +233,7 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
         g.fillRoundedRectangle (numberRow.reduced (6, 0).toFloat(), 3.0f);
     }
     // On Playback (virtual soundcheck): "PB" in the accent colour over the number.
-    const auto onPlayback = ! isBus() && owner.mixer.isInputOnPlayback (channel);
+    const auto onPlayback = ! isBus() && owner.mixer.isChannelOnPlayback (channel);
     if (onPlayback && ! groupMuted)
     {
         g.setColour (owner.accent());
@@ -225,7 +241,12 @@ void RKMixEditor::Strip::paint (juce::Graphics& g)
     }
     g.setColour (groupMuted ? rkfx::Palette::text : onPlayback ? juce::Colours::black : rkfx::Palette::textDim);
     g.setFont (onPlayback ? rkfx::Fonts::bold (11.0f) : rkfx::Fonts::regular (11.0f));
-    g.drawText (onPlayback ? "PB " + label() : label(), numberRow, juce::Justification::centred);
+    // Repatched: the input it takes after an arrow ("3 <- 7").
+    const auto note = isBus() ? juce::String() : owner.patchNote (channel);
+    const auto text = (onPlayback ? "PB " : "") + label() + (note.isNotEmpty() ? juce::String::fromUTF8 (" \xe2\x86\x90 ") + note : juce::String());
+    if (note.isNotEmpty() && ! onPlayback && ! groupMuted)
+        g.setColour (owner.accent().brighter (0.5f));
+    g.drawFittedText (text, numberRow.reduced (2, 0), juce::Justification::centred, 1, 0.8f);
 
     if (isBus())
         return;
@@ -335,6 +356,7 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
       mainStrip (*this, "Main", "main_fader", "main_mute", 2, InsertRack::Strip::main, kMainChain),
       monoStrip (*this, "Mono", "mono_fader", "mono_mute", 1, InsertRack::Strip::mono, kMonoChain),
       routingPanel (*this),
+      patchPanel (*this),
       monitorPanel (*this),
       scenesPanel (*this),
       assignPanel (*this)
@@ -362,11 +384,12 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     addToCanvas (mainStrip);
     addToCanvas (monoStrip);
     addToCanvas (routingPanel);
+    addToCanvas (patchPanel);
 
     addToCanvas (monitorPanel);
     addToCanvas (scenesPanel);
     addToCanvas (assignPanel);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &patchPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
         addToCanvas (*tab);
     remotePanel = std::make_unique<RemotePanel> (*this);
     addToCanvas (*remotePanel);
@@ -413,6 +436,8 @@ RKMixEditor::RKMixEditor (RKMixProcessor& p)
     stripPage.onClick = [this] { setPage (Page::strip); };
     sendsPage.onClick = [this] { setPage (Page::sends); };
     routingPage.onClick = [this] { setPage (Page::routing); };
+    patchPage.onClick = [this] { setPage (Page::patch); };
+    patchPage.setTooltip ("The input patch: which input each channel takes");
     monitorPage.onClick = [this] { setPage (Page::monitor); };
 
     // The Master section: solo, the cue output, talk, the oscillator.
@@ -537,10 +562,10 @@ juce::Rectangle<int> RKMixEditor::stripsArea() const
 void RKMixEditor::layoutContent()
 {
     auto tabs = topArea().removeFromTop (kTabHeight);
-    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
+    for (auto* tab : { &stripPage, &sendsPage, &routingPage, &patchPage, &monitorPage, &scenesPage, &assignPage, &recorderPage, &remotePage })
     {
-        tab->setBounds (tabs.removeFromLeft (90));
-        tabs.removeFromLeft (5);
+        tab->setBounds (tabs.removeFromLeft (82));
+        tabs.removeFromLeft (4);
     }
 
     lockButton.setBounds (tabs.removeFromRight (120));
@@ -550,6 +575,7 @@ void RKMixEditor::layoutContent()
     undoButton.setBounds (tabs.removeFromRight (64));
 
     routingPanel.setBounds (panelArea());
+    patchPanel.setBounds (panelArea());
     monitorPanel.setBounds (panelArea());
     scenesPanel.setBounds (panelArea());
     assignPanel.setBounds (panelArea());
@@ -852,6 +878,7 @@ void RKMixEditor::setPage (Page p)
     if (sendsPanel != nullptr)
         sendsPanel->setVisible (page == Page::sends);
     routingPanel.setVisible (page == Page::routing);
+    patchPanel.setVisible (page == Page::patch);
     monitorPanel.setVisible (page == Page::monitor);
     scenesPanel.setVisible (page == Page::scenes);
     assignPanel.setVisible (page == Page::assign);
@@ -869,11 +896,14 @@ void RKMixEditor::setPage (Page p)
         assignPanel.refresh();
     if (page == Page::routing)
         routingPanel.refresh();
+    if (page == Page::patch)
+        patchPanel.refresh();
     if (page == Page::monitor)
         monitorPanel.refresh();
     stripPage.setToggleState (page == Page::strip, juce::dontSendNotification);
     sendsPage.setToggleState (page == Page::sends, juce::dontSendNotification);
     routingPage.setToggleState (page == Page::routing, juce::dontSendNotification);
+    patchPage.setToggleState (page == Page::patch, juce::dontSendNotification);
     monitorPage.setToggleState (page == Page::monitor, juce::dontSendNotification);
     scenesPage.setToggleState (page == Page::scenes, juce::dontSendNotification);
     assignPage.setToggleState (page == Page::assign, juce::dontSendNotification);
@@ -920,6 +950,8 @@ void RKMixEditor::refreshAll()
             panel->refresh();
     if (routingPanel.isVisible())
         routingPanel.refresh();
+    if (patchPanel.isVisible())
+        patchPanel.refresh();
     if (monitorPanel.isVisible())
         monitorPanel.refresh();
     if (scenesPanel.isVisible())

@@ -84,7 +84,7 @@ bool MixScenes::isSceneValue (const juce::String& id)
     for (const auto* prefix : { "link", "talk_", "osc_", "solo_", "cue_", "midi_", "scene_", "rec_" })
         if (id.startsWith (prefix))
             return false;
-    for (const auto* suffix : { "_type", "_format", "_out", "_solosafe", "_recallsafe", "_gate_key", "_comp_key", "_panmode", "_tap" })
+    for (const auto* suffix : { "_type", "_format", "_out", "_solosafe", "_recallsafe", "_gate_key", "_comp_key", "_panmode", "_tap", "_src" })
         if (id.endsWith (suffix))
             return false;
     if (id.startsWith ("ch") && id.contains ("_tap"))

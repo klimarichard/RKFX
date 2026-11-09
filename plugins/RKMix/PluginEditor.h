@@ -41,7 +41,7 @@ public:
     static constexpr int kHeight = 900;
 
 private:
-    enum class Page { strip, sends, routing, monitor, scenes, assign, recorder, remote };
+    enum class Page { strip, sends, routing, patch, monitor, scenes, assign, recorder, remote };
     static constexpr int kBusLayer = 2;
     static constexpr int kDcaLayer = 3;       // the DCAs and mute groups (or a DCA's members, spilled)
     static constexpr int kUserLayer = 4;      // and 5: the user pages
@@ -302,6 +302,7 @@ private:
         std::array<rkfx::ToggleSwitch*, numSections> onSwitches {};
         rkfx::SegmentedSwitch *hpfSlope = nullptr, *lowType = nullptr, *highType = nullptr;
         ChoiceBox *gateKey = nullptr, *compKey = nullptr;
+        ChoiceBox *patchSource = nullptr, *patchSourceR = nullptr;   // the input patch (header): a pair has one per side
         rkfx::Knob *trim = nullptr, *pan = nullptr;
         std::array<rkfx::Knob*, 12> eqKnobs {};
         std::unique_ptr<rkfx::ResponseCurve> eqCurve;
@@ -536,6 +537,7 @@ private:
         juce::Rectangle<int> playbackInfo, mappingArea;
         int loadedFiles = -1;
         void rebuildMapping();
+        juce::String inputChannels (int input) const;
         void layoutMapping();
         void loadRecording (const juce::File& folder);
         void nudge (double seconds);
@@ -596,6 +598,34 @@ private:
         juce::Rectangle<int> mainArea, outputsArea;
     };
 
+    /** The input patch: which input each channel takes, the inputs' signal
+        lights, Default and Swap (docs/design/RKMix.md, Input patch). */
+    struct PatchPanel : public Panel
+    {
+        explicit PatchPanel (RKMixEditor&);
+        ~PatchPanel() override;
+        void resized() override;
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void visibilityChanged() override;
+        void refresh() override;
+
+        std::array<std::unique_ptr<ChoiceBox>, mix::kChannels> sources;
+        std::array<juce::Rectangle<int>, mix::kChannels> cells;
+        std::array<float, mix::kChannels> lights {};        // dB, falling
+        std::array<int, mix::kChannels> users {};           // channels taking each input
+        juce::TextButton defaultButton { "Default" }, swapButton { "Swap" };
+        int swapFirst = -1;                                 // Swap: the first channel picked, or -1
+        bool swapping = false;
+        juce::Rectangle<int> inputsArea, channelsArea;
+        juce::TimedCallback lightTimer { [this] { updateLights(); } };
+        bool watching = false;
+
+        void updateLights();
+        void watch (bool on);
+        juce::Rectangle<int> lightArea (int input) const;
+    };
+
     RKMixProcessor& mixer;
     rkfx::ParameterWatcher watcher;
 
@@ -605,6 +635,10 @@ private:
     std::unique_ptr<Panel> stripPanel, sendsPanel;
     RoutingPanel routingPanel;
 
+    PatchPanel patchPanel;
+    juce::TextButton patchPage { "Patch" };
+    /** The fader strip's patch note: "" for the default, else the source ("7", "Off", "3/9" for a pair). */
+    juce::String patchNote (int channel) const;
     juce::TextButton stripPage { "Channel" }, sendsPage { "Sends" }, routingPage { "Routing" }, monitorPage { "Talk / Osc" },
                      scenesPage { "Scenes" }, assignPage { "Assign" }, remotePage { "Remote" },
                      recorderPage { "Recorder" };

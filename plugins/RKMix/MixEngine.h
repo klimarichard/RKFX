@@ -34,6 +34,11 @@
     pan; before the fader it ignores mute and solo (a feed for a recorder), at
     Post-Fader it follows the fader and mute.
 
+    The input patch: each channel takes its Source (any input, or Off), a
+    linked pair one per side (the right side its own channel's Source). One
+    input may feed several channels. A key "Ch n" follows channel n's Source;
+    talkback and the Monitor EQ's measuring take the raw inputs.
+
     A linked pair is one stereo channel with its left channel's settings.
     Every gain glides (faders, pans and sends 20 ms, mutes and switches
     10 ms), and the strip's sections crossfade on and off. Mute applies at
@@ -60,6 +65,7 @@ public:
     static constexpr double kMuteFadeSeconds = 0.01;
     static constexpr int kMaxChannelLatency = 512;     // samples, a channel's inserts (lined up to the slowest)
     static constexpr int kMaxPathLatency = 4096;       // samples, any path to an output
+    static constexpr int kOwnInput = -1;               // a channel's Source: the input of its own number
 
     /** The inserts, run by the engine where they sit (implemented by the processor). */
     class Inserts
@@ -108,6 +114,7 @@ public:
         bool soloSafe = false;                    // in-place solo never mutes it
         int directOut = mix::kTargetOff;          // a direct output (a pair for a stereo channel)
         mix::Tap directTap = mix::Tap::input;     // where the direct output takes the channel
+        int source = kOwnInput;                   // the input patch: kOwnInput (its own number), 0 Off, n In n
     };
 
     struct Bus
@@ -307,6 +314,7 @@ private:
     juce::Random noise { 1234 };
     std::array<float, 2> cuePeaks {};
 
+    juce::AudioBuffer<float> silentBuffer;            // an input patched Off
     juce::AudioBuffer<float> channelBuffer, scratchBuffer, postBuffer, mainBuffer, monoBuffer, keyBuffer, curveBuffer;
     juce::AudioBuffer<float> busBuffers;              // 2 channels per bus
     juce::AudioBuffer<float> busChannelBuffers;       // the channels' part, lined up separately while a plan is active
@@ -397,7 +405,10 @@ private:
     /** dest += source x the product of @p gains. */
     void accumulate (float* dest, const float* source, std::initializer_list<const Curve*> gains, int numSamples) noexcept;
 
-    /** A key's signal (input @p key after its trim) in keyBuffer channel @p slot, or nullptr for none. */
+    /** The input channel @p ch takes (its Source), or silence for Off. */
+    const float* sourceOf (int ch, const float* const* in) const noexcept;
+
+    /** A key's signal (channel @p key's Source after its trim) in keyBuffer channel @p slot, or nullptr for none. */
     const float* keySignal (int key, int slot, const float* const* in, int numSamples) noexcept;
 
     /** Adds a mono (@p right == nullptr) or stereo signal to an output target. */

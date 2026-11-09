@@ -181,8 +181,10 @@ class Strip extends Component {
     // the number; on orange while a DCA or mute group silences it
     const nr = this.numberArea;
     if (e.gm) { g.setColour(Palette.warning.withAlpha(0.8)); g.fillRoundedRectangle(6, nr.y, this.w - 12, nr.h, 3); }
-    g.setColour(e.gm ? Palette.text : Palette.textDim); g.setFont(11);
-    g.drawText(this.label(), 0, nr.y, this.w, nr.h, J.centred);
+    // repatched: the input it takes after an arrow ("3 \u2190 7")
+    const note = this.isBus ? "" : C.patchNote(this.index);
+    g.setColour(e.gm ? Palette.text : note ? Palette.accent.brighter(0.5) : Palette.textDim); g.setFont(11);
+    g.drawFittedText(this.label() + (note ? " \u2190 " + note : ""), 2, nr.y, this.w - 4, nr.h, J.centred, 1, 0.8);
     if (this.isBus) return;
     // Sections in use: H G E C, the gate's and the compressor's lit while they reduce
     const letters = ["H", "G", "E", "C"], r = this.sectionRow, cw = Math.floor(r.w / 4);

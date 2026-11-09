@@ -36,7 +36,7 @@ namespace
         "eq_low_freq", "eq_low_gain", "eq_low_q", "eq_lmid_freq", "eq_lmid_gain", "eq_lmid_q",
         "eq_hmid_freq", "eq_hmid_gain", "eq_hmid_q", "eq_high_freq", "eq_high_gain", "eq_high_q",
         "comp_on", "comp_thr", "comp_ratio", "comp_knee", "comp_att", "comp_rel", "comp_makeup", "comp_key",
-        "direct_out", "direct_tap",
+        "direct_out", "direct_tap", "src",
     };
 
     void raise (std::atomic<float>& peak, float value) noexcept
@@ -471,11 +471,72 @@ void RKMixProcessor::setInputOnPlayback (int input, bool on)
 {
     if (! juce::isPositiveAndBelow (input, kChannels))
         return;
-    const auto first = isLinked (input / 2) ? input - input % 2 : input;
-    const auto count = isLinked (input / 2) ? 2 : 1;
-    for (int ch = first; ch < first + count; ++ch)
-        inputOnPlayback[(size_t) ch] = on;
+    inputOnPlayback[(size_t) input] = on;
     ++sourceVersion;
+}
+
+void RKMixProcessor::setChannelOnPlayback (int channel, bool on)
+{
+    if (! juce::isPositiveAndBelow (channel, kChannels))
+        return;
+    const auto first = isLinked (channel / 2) ? channel - channel % 2 : channel;
+    const auto count = isLinked (channel / 2) ? 2 : 1;
+    for (int ch = first; ch < first + count; ++ch)
+        if (const auto input = getChannelInput (ch); input >= 0)
+            inputOnPlayback[(size_t) input] = on;
+    ++sourceVersion;
+}
+
+bool RKMixProcessor::isChannelOnPlayback (int channel) const noexcept
+{
+    if (! juce::isPositiveAndBelow (channel, kChannels))
+        return false;
+    const auto first = isLinked (channel / 2) ? channel - channel % 2 : channel;
+    const auto count = isLinked (channel / 2) ? 2 : 1;
+    for (int ch = first; ch < first + count; ++ch)
+        if (const auto input = getChannelInput (ch); input >= 0 && inputOnPlayback[(size_t) input].load())
+            return true;
+    return false;
+}
+
+int RKMixProcessor::getChannelInput (int channel) const noexcept
+{
+    if (! juce::isPositiveAndBelow (channel, kChannels))
+        return -1;
+    return juce::roundToInt (valueOf (channelParams[(size_t) channel][source])) - 1;   // 0 Off
+}
+
+juce::Array<int> RKMixProcessor::channelsOfInput (int input) const
+{
+    juce::Array<int> channels;
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (getChannelInput (ch) == input)
+            channels.add (ch);
+    return channels;
+}
+
+void RKMixProcessor::setChannelInput (int channel, int input)
+{
+    if (! juce::isPositiveAndBelow (channel, kChannels))
+        return;
+    auto* p = channelParams[(size_t) channel][source];
+    const auto normalised = p->convertTo0to1 ((float) (juce::isPositiveAndBelow (input, kChannels) ? input + 1 : 0));
+    if (! juce::exactlyEqual (normalised, p->getValue()))
+        p->setValueNotifyingHost (normalised);
+}
+
+void RKMixProcessor::setDefaultPatch()
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        setChannelInput (ch, ch);
+}
+
+bool RKMixProcessor::isPatched() const noexcept
+{
+    for (int ch = 0; ch < kChannels; ++ch)
+        if (getChannelInput (ch) != ch)
+            return true;
+    return false;
 }
 
 void RKMixProcessor::setAllInputsLive()
@@ -902,7 +963,8 @@ void RKMixProcessor::setExtraState (const juce::var& extra)
 
 bool RKMixProcessor::isStripField (int field)
 {
-    return field != pan && field != toMain && field != gateKey && field != compKey && field != directOut && field != directTap;
+    return field != pan && field != toMain && field != gateKey && field != compKey && field != directOut && field != directTap
+        && field != source;
 }
 
 std::vector<rkfx::ParamInfo> RKMixProcessor::stripInfos() const
@@ -1376,6 +1438,7 @@ MixEngine::Channel RKMixProcessor::channelSettings (int ch) const
     c.soloSafe = valueOf (soloSafeParams[(size_t) ch]) >= 0.5f;
     c.directOut = index (directOut);
     c.directTap = (mix::Tap) index (directTap);
+    c.source = index (source);   // 0 Off, n In n
 
     const auto& routing = channelRouting[(size_t) ch];
     for (int bus = 0; bus < mix::kBuses; ++bus)
@@ -1599,6 +1662,16 @@ void RKMixProcessor::processDsp (juce::AudioBuffer<float>& buffer)
             playback.process (playbackInputs.getArrayOfWritePointers(), onPlayback, buffer.getNumSamples());
             inputs = playbackInputs.getArrayOfReadPointers();
         }
+
+        // The Patch page's signal lights: the inputs as they arrive.
+        if (inputWatchers.load (std::memory_order_relaxed) > 0)
+            for (int in = 0; in < kChannels; ++in)
+            {
+                const auto range = juce::FloatVectorOperations::findMinAndMax (inputs[in], buffer.getNumSamples());
+                const auto peak = juce::jmax (-range.getStart(), range.getEnd());
+                raise (inputPeaks[(size_t) in], peak);
+                raise (remoteInputPeaks[(size_t) in], peak);
+            }
 
         // The recorder: the inputs as they arrive (live or played back), the main and Aux buses as they leave.
         recorder->beginBlock (inputs, buffer.getNumSamples());

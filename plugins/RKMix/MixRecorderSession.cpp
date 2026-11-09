@@ -71,16 +71,42 @@ MixRecorder::Take MixRecorderSession::makeTake() const
     t.sampleRate = mixer.getSampleRate() > 0.0 ? mixer.getSampleRate() : 48000.0;
     t.asFloat = asFloat;
 
-    const auto name = [this] (int ch)
+    // The files are the inputs (as they arrive), named after the channel each
+    // feeds (the input patch: its first channel, a pair's name); an input no
+    // channel takes keeps its number.
+    // Inputs n and n + 1 are a stereo pair when a linked pair takes them, left and right: its leader, or -1.
+    const auto pairOf = [this] (int in)
     {
-        const auto n = mixer.getChannelName (ch);
-        return legal (n.isNotEmpty() ? n : "Ch " + juce::String (ch + 1));
+        if (in % 2 != 0 || in + 1 >= mix::kChannels)
+            return -1;
+        for (int pair = 0; pair < mix::kPairs; ++pair)
+            if (mixer.isLinked (pair) && mixer.getChannelInput (pair * 2) == in && mixer.getChannelInput (pair * 2 + 1) == in + 1)
+                return pair * 2;
+        return -1;
     };
+    const auto pairedInputs = [&] (int in) { return pairOf (in) >= 0; };
+    // An input split onto several channels takes the first named one's name (a pair's first).
+    const auto name = [&] (int in)
+    {
+        const auto leader = [this] (int ch) { return ch % 2 == 1 && mixer.isLinked (ch / 2) ? ch - 1 : ch; };
+        juce::Array<int> channels;
+        if (const auto pair = pairOf (in - in % 2); pair >= 0)
+            channels.add (pair);
+        for (const auto ch : mixer.channelsOfInput (in))
+            channels.addIfNotAlreadyThere (leader (ch));
+        if (channels.isEmpty())
+            return legal ("In " + juce::String (in + 1));
+        for (const auto ch : channels)
+            if (mixer.getChannelName (ch).isNotEmpty())
+                return legal (mixer.getChannelName (ch));
+        return legal ("Ch " + juce::String (channels[0] + 1));
+    };
+    const auto inPairedInputs = [&] (int in) { return pairedInputs (in - in % 2); };
 
-    // The inputs: a linked pair as one stereo file (or two mono ones), the rest mono.
+    // The inputs: a linked pair's two as one stereo file (or two mono ones), the rest mono.
     for (int ch = 0; ch < mix::kChannels; ++ch)
     {
-        const auto pair = ch % 2 == 0 && mixer.isLinked (ch / 2);
+        const auto pair = pairedInputs (ch);
         if (pair && ! pairsAsMono)
         {
             const auto left = s.flag (mix::recordInputId (ch)), right = s.flag (mix::recordInputId (ch + 1));
@@ -95,7 +121,7 @@ MixRecorder::Take MixRecorderSession::makeTake() const
         }
         if (! s.flag (mix::recordInputId (ch)))
             continue;
-        const auto inPair = (ch % 2 == 0 && mixer.isLinked (ch / 2)) || (ch % 2 == 1 && mixer.isLinked (ch / 2));
+        const auto inPair = inPairedInputs (ch);
         const auto label = inPair ? name (ch - ch % 2) + (ch % 2 == 0 ? " L" : " R") : name (ch);
         t.tracks.push_back ({ two (ch + 1) + " " + label + ".wav", { { Source::input, ch, 0 } } });
     }
@@ -125,6 +151,10 @@ MixRecorder::Take MixRecorderSession::makeTake() const
     }
     info->setProperty ("names", names);
     info->setProperty ("colours", colours);
+    juce::Array<juce::var> patch;   // each channel's Source as recording started: 0 Off, n In n
+    for (int ch = 0; ch < mix::kChannels; ++ch)
+        patch.add (mixer.getChannelInput (ch) + 1);
+    info->setProperty ("patch", patch);
     t.info = juce::var (info);
 
     const auto stamp = juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M");

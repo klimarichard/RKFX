@@ -109,6 +109,8 @@ void MixEngine::prepare (double newSampleRate, int maxBlockSize)
     mainBuffer.setSize (2, maxBlock);
     monoBuffer.setSize (1, maxBlock);
     keyBuffer.setSize (2, maxBlock);
+    silentBuffer.setSize (1, maxBlock);
+    silentBuffer.clear();
     curveBuffer.setSize (numRows, maxBlock);
     busBuffers.setSize (2 * kBuses, maxBlock);
     busChannelBuffers.setSize (2 * kBuses, maxBlock);
@@ -631,17 +633,27 @@ void MixEngine::sendAtTap (int ch, const ActiveSends& active, Tap tap, const flo
 }
 
 //==============================================================================
+const float* MixEngine::sourceOf (int ch, const float* const* in) const noexcept
+{
+    const auto source = settings.channels[(size_t) ch].source;
+    if (source == kOwnInput)
+        return in[ch];
+    if (source <= 0 || source > kChannels)
+        return silentBuffer.getReadPointer (0);
+    return in[source - 1];
+}
+
 const float* MixEngine::keySignal (int key, int slot, const float* const* in, int numSamples) noexcept
 {
     if (key <= 0 || key > kChannels)
         return nullptr;
 
-    // The key input after its own trim (not its processing: no order to respect).
+    // The key channel's Source after its own trim (not its processing: no order to respect).
     const auto source = key - 1;
     const auto leader = mix::leaderOf (settings.links, source);
     const auto gain = mix::trimGain (settings.channels[(size_t) leader].strip.trimDb);
     auto* dest = keyBuffer.getWritePointer (slot);
-    FVO::copyWithMultiply (dest, in[source], gain, numSamples);
+    FVO::copyWithMultiply (dest, sourceOf (source, in), gain, numSamples);
     return dest;
 }
 
@@ -671,7 +683,10 @@ void MixEngine::processChannel (int ch, const float* const* in, float* const* ou
     Curve panLeft, panRight;
     panCurves (s.pan, numSides == 2, panLeft, panRight, numSamples);
 
-    s.strip.process (in + ch, io, numSides, numSamples, scratchBuffer, gateKey, compKey,
+    // The input patch: the channel's Source (a pair's right side: its own channel's).
+    const float* source[2] = { sourceOf (ch, in), numSides == 2 ? sourceOf (ch + 1, in) : nullptr };
+
+    s.strip.process (source, io, numSides, numSamples, scratchBuffer, gateKey, compKey,
                      [&] (StripDsp::Tap stripTap, float* const* signal)
                      {
                          const auto tap = (Tap) (int) stripTap;

@@ -751,11 +751,11 @@ void SceneButton::paintButton (juce::Graphics& g, bool isMouseOver, bool isButto
         g.drawText (getButtonText(), area, juce::Justification::centred);
         return;
     }
-    g.setFont (Fonts::bold (13.0f));
-    g.drawText (getButtonText(), area.removeFromTop (area.getHeight() / 2 + 1), juce::Justification::centredBottom);
-    g.setColour (colour.withMultipliedAlpha (on ? 0.9f : 0.75f));
-    g.setFont (Fonts::regular (10.5f));
-    g.drawFittedText (sceneName, area, juce::Justification::centredTop, 1, 0.75f);
+    g.setFont (Fonts::bold (12.0f));
+    g.drawText (getButtonText(), area.removeFromTop (area.getHeight() / 2), juce::Justification::centredBottom);
+    g.setColour (colour.withMultipliedAlpha (on ? 0.95f : 0.8f));
+    g.setFont (Fonts::regular (12.0f));
+    g.drawFittedText (sceneName, area.reduced (2, 0), juce::Justification::centredTop, 1, 0.8f);
 }
 
 void SceneButton::mouseDoubleClick (const juce::MouseEvent& e)
@@ -1010,7 +1010,8 @@ void BoardEditor::resized()
     noteLabel.setBounds (header.withTrimmedLeft (8));
 
     auto sceneBar = getLocalBounds().withTrimmedTop (kHeaderHeight).removeFromTop (kSceneBarHeight).reduced (kMargin, 5);
-    const auto buttonWidth = 36;
+    const auto buttonWidth = 72;   // two rows of 8: room for the scene names
+    constexpr int kScenesPerRow = BoardProcessor::kNumScenes / 2;
     const auto small = [] (juce::Rectangle<int> r) { return r.withSizeKeepingCentre (r.getWidth(), 26); };
     tunerButton.setBounds (small (sceneBar.removeFromRight (64)));
     auto tempoArea = sceneBar.removeFromLeft (142);
@@ -1018,8 +1019,14 @@ void BoardEditor::resized()
     tempoUnit.setBounds (small (tempoArea.removeFromLeft (36)));
     tapButton.setBounds (small (tempoArea.removeFromLeft (48)));
     sceneBar.removeFromLeft (8);
-    for (auto& button : sceneButtons)
-        button.setBounds (sceneBar.removeFromLeft (buttonWidth));
+    {
+        auto grid = sceneBar.removeFromLeft (buttonWidth * kScenesPerRow);
+        const auto rowGap = 2;
+        const auto rowHeight = (grid.getHeight() - rowGap) / 2;
+        auto rows = std::array { grid.removeFromTop (rowHeight), grid.removeFromBottom (rowHeight) };
+        for (int i = 0; i < (int) sceneButtons.size(); ++i)
+            sceneButtons[(size_t) i].setBounds (rows[(size_t) (i / kScenesPerRow)].removeFromLeft (buttonWidth));
+    }
     sceneBar.removeFromRight (10);
     sceneBar.removeFromLeft (4);
     morphLabel.setBounds (small (sceneBar.removeFromLeft (92)));

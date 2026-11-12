@@ -192,7 +192,7 @@ public:
     static constexpr int kWidth = 1180;
     static constexpr int kPanelHeight = 560;    // the pedal's controls (scaled down only when the screen is too small)
     static constexpr int kHeaderHeight = 44;
-    static constexpr int kSceneBarHeight = 46;
+    static constexpr int kSceneBarHeight = 80;   // two rows of scene buttons
     static constexpr int kMargin = 12;
 
 private:

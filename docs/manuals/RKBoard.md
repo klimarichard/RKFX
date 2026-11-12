@@ -9,7 +9,7 @@ For knobs, presets and the standard controls inside each pedal, see [Common Cont
 ## The window
 
 - **Header (top):** the board preset (name, menu, Save, Save as), the **Assign** and **Remote** buttons, **Undo**, **Redo** and **Lock**, and the board's **In** and **Out** levels (-24 to +12 dB).
-- **Scene bar:** the tempo, scenes 1 to 16 with their names (see Scenes), and the **Morph** section (see Scene morph).
+- **Scene bar:** the tempo, scenes 1 to 16 in two rows of eight with their names (see Scenes), and the **Morph** section (see Scene morph).
 - **The board:** the pedals, flowing left to right. A board too long for one row continues on the next, like text, with a cable from the end of one row to the start of the next; the window grows by a row. The split, both paths and the merge always stay together on one row.
 - **Below the board:** the controls of the selected pedal (its own plugin window), the split's or merge's settings, the assignable parameters, or the remote's page.
 
